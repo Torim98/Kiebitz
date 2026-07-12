@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-bg: #0e0e0d;
+  --color-panel: #171716;
+  --color-panel2: #1e1e1d;
+  --color-panel3: #262625;
+  --color-line: #292927;
+  --color-line2: #3a3a37;
+
+  --color-ink: #f2f1ec;
+  --color-ink2: #b9b8ae;
+  --color-ink3: #8b8a82;
+
+  --color-accent: #22c08a;
+  --color-accent-dim: #17835e;
+  --color-accent-soft: #103528;
+
+  --color-win: #22c08a;
+  --color-draw: #8b8a82;
+  --color-loss: #e66767;
+
+  --color-blue: #3987e5;
+  --color-violet: #9085e9;
+  --color-gold: #d9a028;
+  --color-cc: #81b64c;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a37 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a37;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.animate-shake {
+  animation: shake 0.25s ease-in-out 2;
+}
