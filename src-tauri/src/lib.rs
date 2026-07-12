@@ -1,3 +1,4 @@
+mod db;
 mod engine;
 
 use serde::Serialize;
@@ -75,6 +76,27 @@ fn engine_info(app: tauri::AppHandle) -> EngineInfo {
     }
 }
 
+#[tauri::command]
+fn list_games(db: tauri::State<db::Db>) -> Result<Vec<db::GameRecord>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::list_games(&conn)
+}
+
+#[tauri::command]
+fn upsert_games(
+    db: tauri::State<db::Db>,
+    games: Vec<db::GameRecord>,
+) -> Result<db::UpsertResult, String> {
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::upsert_games(&mut conn, &games)
+}
+
+#[tauri::command]
+fn set_game_note(db: tauri::State<db::Db>, id: i64, note: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::set_note(&conn, id, &note)
+}
+
 /// Einmalige Analyse: startet die Engine, analysiert die Stellung, beendet sie.
 /// Für die spätere Dauer-Analyse (Eval-Bar live) wird die Engine als
 /// gemanagter State im Speicher gehalten — dieser Command ist der erste Schritt.
@@ -100,12 +122,20 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            let conn = rusqlite::Connection::open(data_dir.join("kiebitz.db"))?;
+            db::init(&conn).map_err(std::io::Error::other)?;
+            app.manage(db::Db(std::sync::Mutex::new(conn)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
             engine_info,
-            analyze_position
+            analyze_position,
+            list_games,
+            upsert_games,
+            set_game_note
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
