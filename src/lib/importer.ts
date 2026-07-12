@@ -61,14 +61,23 @@ function ccResult(me: CcSide, opp: CcSide): "win" | "loss" | "draw" {
   return "draw";
 }
 
-/** Import von chess.com: die letzten `months` Monatsarchive. */
-export async function importChessCom(user: string, months = 3): Promise<GameRecord[]> {
+/**
+ * Import von chess.com. `months` begrenzt auf die letzten n Monatsarchive;
+ * ohne Angabe wird die komplette Historie geholt.
+ */
+export async function importChessCom(
+  user: string,
+  months?: number,
+  onProgress?: (msg: string) => void
+): Promise<GameRecord[]> {
   const res = await fetch(`https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`);
   if (!res.ok) throw new Error(`chess.com: ${res.status}`);
-  const archives: string[] = (await res.json()).archives ?? [];
+  const all: string[] = (await res.json()).archives ?? [];
+  const selected = months != null ? all.slice(-months) : all;
 
   const games: GameRecord[] = [];
-  for (const url of archives.slice(-months)) {
+  for (const [i, url] of selected.entries()) {
+    onProgress?.(`chess.com: Monat ${i + 1}/${selected.length} …`);
     const monthRes = await fetch(url);
     if (!monthRes.ok) continue;
     const monthGames: CcGame[] = (await monthRes.json()).games ?? [];
@@ -88,6 +97,7 @@ export async function importChessCom(user: string, months = 3): Promise<GameReco
         source_id: g.url.split("/").pop() ?? g.url,
         url: g.url,
         played_at: date,
+        played_ts: g.end_time,
         time_class: TIME_CLASS[g.time_class] ?? g.time_class,
         color: iAmWhite ? "white" : "black",
         opponent: opp.username,
@@ -120,10 +130,11 @@ interface LiGame {
   };
 }
 
-/** Import von Lichess: die letzten `max` Partien als NDJSON. */
-export async function importLichess(user: string, max = 200): Promise<GameRecord[]> {
+/** Import von Lichess als NDJSON; ohne `max` die komplette Historie. */
+export async function importLichess(user: string, max?: number): Promise<GameRecord[]> {
+  const maxParam = max != null ? `max=${max}&` : "";
   const res = await fetch(
-    `https://lichess.org/api/games/user/${user}?max=${max}&opening=true`,
+    `https://lichess.org/api/games/user/${user}?${maxParam}opening=true`,
     { headers: { Accept: "application/x-ndjson" } }
   );
   if (!res.ok) throw new Error(`lichess: ${res.status}`);
@@ -146,6 +157,7 @@ export async function importLichess(user: string, max = 200): Promise<GameRecord
       source_id: g.id,
       url: `https://lichess.org/${g.id}`,
       played_at: new Date(g.createdAt).toISOString().slice(0, 10),
+      played_ts: Math.floor(g.createdAt / 1000),
       time_class: TIME_CLASS[g.speed] ?? g.speed,
       color: myColor,
       opponent: opp.user?.name ?? "Anonym",
@@ -169,12 +181,21 @@ export interface ImportSummary {
   errors: string[];
 }
 
-/** Holt Partien von beiden Plattformen; Fehler einer Quelle blockieren die andere nicht. */
+/**
+ * Holt Partien von beiden Plattformen; Fehler einer Quelle blockieren die
+ * andere nicht. `full` lädt die komplette Historie statt der letzten Monate.
+ */
 export async function fetchAll(
   ccUser: string,
-  liUser: string
+  liUser: string,
+  opts: { full?: boolean; onProgress?: (msg: string) => void } = {}
 ): Promise<{ games: GameRecord[]; summary: ImportSummary }> {
-  const [cc, li] = await Promise.allSettled([importChessCom(ccUser), importLichess(liUser)]);
+  const months = opts.full ? undefined : 3;
+  const liMax = opts.full ? undefined : 200;
+  const [cc, li] = await Promise.allSettled([
+    importChessCom(ccUser, months, opts.onProgress),
+    importLichess(liUser, liMax),
+  ]);
   const games: GameRecord[] = [];
   const summary: ImportSummary = { fetched: { cc: 0, li: 0 }, errors: [] };
 

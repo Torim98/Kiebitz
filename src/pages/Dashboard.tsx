@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   Line,
   LineChart,
@@ -9,23 +10,52 @@ import {
   Legend,
 } from "recharts";
 import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-react";
-import { games, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
+import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
+import { useBackendInfo } from "../lib/backend";
+import { listGames, type GameRecord } from "../lib/db";
+import { buildDashboard } from "../lib/stats";
+import type { UiGame } from "../lib/gameUi";
 import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { chart, DarkTooltip } from "../components/chartTheme";
-import { de } from "../lib/util";
+import { de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
 export default function Dashboard({ go }: { go: (p: PageId) => void }) {
-  const recent = games.slice(0, 5);
-  const unanalyzed = games.filter((g) => !g.analyzed).length;
+  const backend = useBackendInfo();
+  const [records, setRecords] = useState<GameRecord[] | null>(null);
+
+  useEffect(() => {
+    if (backend.mode === "desktop") {
+      listGames().then(setRecords).catch(() => setRecords(null));
+    }
+  }, [backend.mode]);
+
+  const live = records !== null && records.length > 0;
+  const dash = useMemo(() => (live ? buildDashboard(records!) : null), [live, records]);
+
+  const cards = dash
+    ? dash.cards
+    : ratings.map((r) => ({ id: r.id, platform: r.platform, tc: r.tc, value: r.value, delta: r.delta, spark: r.spark, url: r.url }));
+
+  const recent: UiGame[] = dash ? dash.recent : demoGames.slice(0, 5);
+  const unanalyzed = dash ? dash.unanalyzed : demoGames.filter((g) => !g.analyzed).length;
+  const history = dash ? dash.history : ratingHistory;
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    return h < 11 ? "Guten Morgen" : h < 18 ? "Guten Tag" : "Guten Abend";
+  })();
 
   return (
     <div className="mx-auto max-w-[1200px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Guten Abend, {profile.name}</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{greeting}, {profile.name}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            Samstag, 12. Juli 2026 · Zuletzt synchronisiert {profile.lastSync}
+            {new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            {live
+              ? ` · ${deInt(records!.length)} Partien in der Datenbank`
+              : " · Demo-Daten (Web-Preview)"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -36,7 +66,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
       </header>
 
       <div className="mb-4 grid grid-cols-2 gap-4 min-[1100px]:grid-cols-4">
-        {ratings.map((r) => (
+        {cards.map((r) => (
           <a
             key={r.id}
             href={r.url}
@@ -67,12 +97,15 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
-        <Card title="Rating-Verlauf · Rapid · 26 Wochen" className="min-[1100px]:col-span-2">
+        <Card
+          title={live ? "Rating-Verlauf · Rapid & Blitz · 26 Wochen" : "Rating-Verlauf · Rapid · 26 Wochen"}
+          className="min-[1100px]:col-span-2"
+        >
           <ResponsiveContainer width="100%" height={230}>
-            <LineChart data={ratingHistory} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
+            <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="week" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={4} />
-              <YAxis domain={[1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
+              <YAxis domain={live ? ["auto", "auto"] : [1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
               <Tooltip content={<DarkTooltip />} cursor={{ stroke: chart.axis }} />
               <Legend
                 verticalAlign="top"
@@ -81,8 +114,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                 iconType="plainline"
                 formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
               />
-              <Line type="monotone" dataKey="cc" name="chess.com" stroke={chart.cc} strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="li" name="lichess" stroke={chart.li} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="cc" name="chess.com" stroke={chart.cc} strokeWidth={2} dot={false} connectNulls />
+              <Line type="monotone" dataKey="li" name="lichess" stroke={chart.li} strokeWidth={2} dot={false} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -111,10 +144,10 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                   <Cpu size={15} className="text-violet" /> Analyse-Warteschlange
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
-                  {unanalyzed}
+                  {deInt(unanalyzed)}
                   <span className="ml-1.5 text-[13px] font-normal text-ink3">Partien ohne Analyse</span>
                 </div>
-                <div className="mt-1 text-[12px] text-ink3">Stockfish 17 · Tiefe 24</div>
+                <div className="mt-1 text-[12px] text-ink3">Stockfish 18 · nativ</div>
               </div>
               <Button onClick={() => go("analysis")}>Starten</Button>
             </div>
@@ -164,7 +197,12 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                 </td>
                 <td className="py-2.5 pl-2 pr-4 text-right">
                   <ExtLink
-                    href={g.source === "chess.com" ? "https://www.chess.com/games/archive/Torim98" : "https://lichess.org/@/Torim98/all"}
+                    href={
+                      g.url ??
+                      (g.source === "chess.com"
+                        ? "https://www.chess.com/games/archive/Torim98"
+                        : "https://lichess.org/@/Torim98/all")
+                    }
                   />
                 </td>
               </tr>

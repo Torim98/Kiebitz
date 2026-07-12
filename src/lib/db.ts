@@ -7,6 +7,7 @@ export interface GameRecord {
   source_id: string;
   url: string;
   played_at: string; // ISO-Datum
+  played_ts: number; // Unix-Sekunden (Partie-Ende)
   time_class: string;
   color: "white" | "black";
   opponent: string;
@@ -37,4 +38,8 @@ export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {
 
 export function setGameNote(id: number, note: string): Promise<void> {
   return invoke("set_game_note", { id, note });
+}
+
+export function dbStats(): Promise<{ total: number }> {
+  return invoke<{ total: number }>("db_stats");
 }

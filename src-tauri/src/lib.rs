@@ -97,6 +97,12 @@ fn set_game_note(db: tauri::State<db::Db>, id: i64, note: String) -> Result<(), 
     db::set_note(&conn, id, &note)
 }
 
+#[tauri::command]
+fn db_stats(db: tauri::State<db::Db>) -> Result<db::DbStats, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::stats(&conn)
+}
+
 /// Einmalige Analyse: startet die Engine, analysiert die Stellung, beendet sie.
 /// Für die spätere Dauer-Analyse (Eval-Bar live) wird die Engine als
 /// gemanagter State im Speicher gehalten — dieser Command ist der erste Schritt.
@@ -135,7 +141,8 @@ pub fn run() {
             analyze_position,
             list_games,
             upsert_games,
-            set_game_note
+            set_game_note,
+            db_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

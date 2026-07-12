@@ -1,51 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Database, Download, Loader2, Save, Search, StickyNote } from "lucide-react";
-import { games as demoGames, profile, type Game, type Result, type Source } from "../data/demo";
+import { Database, Download, History, Loader2, Save, Search, StickyNote } from "lucide-react";
+import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { listGames, setGameNote, upsertGames, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
+import { toUi, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
-
-interface UiGame extends Omit<Game, "tc"> {
-  tc: string;
-  dbId?: number;
-  url?: string;
-}
-
-const TC_LABEL: Record<string, string> = {
-  bullet: "Bullet",
-  blitz: "Blitz",
-  rapid: "Rapid",
-  daily: "Täglich",
-  classical: "Klassisch",
-};
-
-function toUi(r: GameRecord): UiGame {
-  const [y, m, d] = r.played_at.split("-");
-  return {
-    id: `db-${r.id}`,
-    dbId: r.id ?? undefined,
-    url: r.url,
-    date: d && m && y ? `${d}.${m}.${y}` : r.played_at,
-    source: r.source,
-    tc: TC_LABEL[r.time_class] ?? r.time_class,
-    color: r.color,
-    opponent: r.opponent,
-    oppElo: r.opp_elo,
-    myElo: r.my_elo,
-    result: r.result,
-    opening: r.opening || "—",
-    eco: r.eco,
-    moves: r.moves_count,
-    accuracy: r.accuracy,
-    analyzed: r.analyzed,
-    tags: [],
-    note: r.note || undefined,
-    sans: r.moves ? r.moves.split(" ") : undefined,
-  };
-}
 
 export default function Games() {
   const backend = useBackendInfo();
@@ -88,11 +50,14 @@ export default function Games() {
   const selected: UiGame | undefined =
     filtered.find((g) => g.id === selectedId) ?? filtered[0];
 
-  const runImport = async () => {
+  const runImport = async (full: boolean) => {
     setImporting(true);
-    setImportMsg(null);
+    setImportMsg(full ? "Komplette Historie wird geladen …" : "Neueste Partien werden geladen …");
     try {
-      const { games: fetched, summary } = await fetchAll(profile.ccUser, profile.liUser);
+      const { games: fetched, summary } = await fetchAll(profile.ccUser, profile.liUser, {
+        full,
+        onProgress: (msg) => setImportMsg(msg),
+      });
       const res = await upsertGames(fetched as GameRecord[]);
       await reload();
       let msg = `${res.inserted} neue Partien · abgerufen: chess.com ${summary.fetched.cc}, Lichess ${summary.fetched.li} · ${deInt(res.total)} in der Datenbank`;
@@ -132,17 +97,22 @@ export default function Games() {
           </p>
         </div>
         {backend.mode === "desktop" && (
-          <Button primary onClick={runImport}>
-            {importing ? (
-              <>
-                <Loader2 size={15} className="animate-spin" /> Importiere …
-              </>
-            ) : (
-              <>
-                <Download size={15} /> Von chess.com & Lichess importieren
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => !importing && runImport(true)}>
+              <History size={15} /> Alles importieren
+            </Button>
+            <Button primary onClick={() => !importing && runImport(false)}>
+              {importing ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Importiere …
+                </>
+              ) : (
+                <>
+                  <Download size={15} /> Neueste importieren
+                </>
+              )}
+            </Button>
+          </div>
         )}
       </header>
 

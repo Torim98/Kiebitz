@@ -13,6 +13,9 @@ pub struct GameRecord {
     pub source_id: String,
     pub url: String,
     pub played_at: String,
+    /// Unix-Sekunden des Partie-Endes (für Heatmaps nach Uhrzeit).
+    #[serde(default)]
+    pub played_ts: i64,
     pub time_class: String,
     pub color: String,
     pub opponent: String,
@@ -59,7 +62,26 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_games_played_at ON games(played_at DESC);",
     )
-    .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))
+    .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;
+
+    // Migration v2: Zeitstempel-Spalte. Schlägt fehl, wenn sie schon existiert — ok.
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN played_ts INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct DbStats {
+    pub total: i64,
+}
+
+pub fn stats(conn: &Connection) -> Result<DbStats, String> {
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    Ok(DbStats { total })
 }
 
 /// Fügt Partien ein; bereits vorhandene (source, source_id) werden aktualisiert,
@@ -73,12 +95,13 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
             .map_err(|e| e.to_string())?;
         let mut upsert_stmt = tx
             .prepare(
-                "INSERT INTO games (source, source_id, url, played_at, time_class, color,
+                "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
                     opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
+                    played_ts = excluded.played_ts,
                     accuracy = COALESCE(excluded.accuracy, games.accuracy),
                     moves = excluded.moves,
                     moves_count = excluded.moves_count",
@@ -95,6 +118,7 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.source_id,
                     g.url,
                     g.played_at,
+                    g.played_ts,
                     g.time_class,
                     g.color,
                     g.opponent,
@@ -124,10 +148,10 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
 pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, source, source_id, url, played_at, time_class, color, opponent,
+            "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, opponent,
                     opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves,
                     note, analyzed
-             FROM games ORDER BY played_at DESC, id DESC",
+             FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -138,19 +162,20 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 source_id: r.get(2)?,
                 url: r.get(3)?,
                 played_at: r.get(4)?,
-                time_class: r.get(5)?,
-                color: r.get(6)?,
-                opponent: r.get(7)?,
-                opp_elo: r.get(8)?,
-                my_elo: r.get(9)?,
-                result: r.get(10)?,
-                opening: r.get(11)?,
-                eco: r.get(12)?,
-                moves_count: r.get(13)?,
-                accuracy: r.get(14)?,
-                moves: r.get(15)?,
-                note: r.get(16)?,
-                analyzed: r.get::<_, i64>(17)? != 0,
+                played_ts: r.get(5)?,
+                time_class: r.get(6)?,
+                color: r.get(7)?,
+                opponent: r.get(8)?,
+                opp_elo: r.get(9)?,
+                my_elo: r.get(10)?,
+                result: r.get(11)?,
+                opening: r.get(12)?,
+                eco: r.get(13)?,
+                moves_count: r.get(14)?,
+                accuracy: r.get(15)?,
+                moves: r.get(16)?,
+                note: r.get(17)?,
+                analyzed: r.get::<_, i64>(18)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -174,6 +199,7 @@ mod tests {
             source_id: source_id.into(),
             url: format!("https://lichess.org/{source_id}"),
             played_at: "2026-07-11".into(),
+            played_ts: 1_783_769_082,
             time_class: "rapid".into(),
             color: "white".into(),
             opponent: "PagasusFantasy".into(),
