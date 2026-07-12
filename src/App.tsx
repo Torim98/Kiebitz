@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Settings,
 } from "lucide-react";
+import { useBackendInfo } from "./lib/backend";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
@@ -31,6 +32,7 @@ const nav: { id: PageId; label: string; icon: typeof LayoutDashboard }[] = [
 
 export default function App() {
   const [page, setPage] = useState<PageId>("dashboard");
+  const backend = useBackendInfo();
 
   return (
     <div className="flex h-full">
@@ -69,6 +71,20 @@ export default function App() {
               Synchronisiert
             </div>
             <div className="mt-0.5 text-[11px] text-ink3">{profile.lastSync} · 1.248 Partien</div>
+            <div className="mt-1.5 flex items-center gap-1.5 border-t border-line pt-1.5 text-[11px] text-ink3">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{
+                  background:
+                    backend.mode === "desktop" ? "var(--color-win)" : backend.mode === "web" ? "var(--color-gold)" : "var(--color-draw)",
+                }}
+              />
+              {backend.mode === "desktop"
+                ? `Desktop · Rust-Backend v${backend.info?.version}`
+                : backend.mode === "web"
+                  ? "Browser-Modus · Web-Preview"
+                  : "Verbinde …"}
+            </div>
           </div>
           <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] text-ink2 transition-colors hover:bg-panel2 hover:text-ink">
             <Settings size={17} className="text-ink3" />

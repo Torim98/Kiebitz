@@ -3,6 +3,7 @@ import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YA
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
 import { featuredGame } from "../data/demo";
 import Board from "../components/Board";
+import LiveEngine from "../components/LiveEngine";
 import { Button, Card } from "../components/ui";
 import { evalLabel, fenAfter, nagColor, winProb } from "../lib/util";
 
@@ -134,19 +135,7 @@ export default function Analysis() {
 
         {/* Engine-Panel */}
         <div className="flex flex-col gap-4">
-          <Card title="Engine-Varianten">
-            <div className="flex flex-col gap-2.5">
-              {featuredGame.pvLines.map((l, i) => (
-                <div key={i} className="rounded-lg border border-line bg-panel2 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-semibold text-accent">{l.eval}</span>
-                    <span className="text-[11px] text-ink3">Tiefe {l.depth}</span>
-                  </div>
-                  <div className="mt-1 text-[12px] leading-relaxed text-ink2">{l.line}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
+          <LiveEngine fen={fen} demoLines={featuredGame.pvLines} />
 
           <Card title="Auto-Annotation">
             <ul className="flex flex-col gap-2 text-[13px]">
