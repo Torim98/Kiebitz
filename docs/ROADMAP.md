@@ -15,31 +15,38 @@ Done so far:
 - SQLite persistence (`rusqlite`, bundled) with real game import from chess.com
   and Lichess, incremental and full history, duplicate-safe upsert, per-game notes.
 - Dashboard and Insights compute live statistics from the local database.
-
-Still running on demo data (not yet wired to the backend): the Repertoire tree,
-the Puzzle trainer, and the "errors by game phase" insight (needs the analysis
-pipeline below).
+- **Phase 1 complete:** auto-analysis pipeline, persistent streaming engine,
+  position search, persistent repertoire with FSRS training, and the local
+  Lichess puzzle database. The browser build keeps demo fallbacks; everything
+  real runs in the desktop app.
 
 ---
 
-## Phase 1 — Make the core real
+## Phase 1 — Make the core real ✅
 
 The features that currently show demo data become backed by the database.
 
-- [ ] **Auto-analysis pipeline.** Run Stockfish over imported games in the
-  background, cache evaluation per position, detect blunders/mistakes/inaccuracies
-  from eval swings, write annotations, and set the `analyzed` flag. Feeds the real
-  "errors by game phase" chart and the Analysis queue.
-- [ ] **Persistent engine + streaming eval.** Keep Stockfish as a managed,
-  long-lived process (Tauri state) instead of spawning per request; stream `info`
-  lines to the UI so the eval bar and depth update live.
-- [ ] **Position search.** Index positions by FEN hash so "show all my games that
-  reached this position" works across the whole database (SQLite FTS / hash table).
-- [ ] **Real Repertoire.** Persist the opening tree, train with FSRS spaced
-  repetition, and cross-reference against played games ("you left book here in N
-  games").
-- [ ] **Real Puzzles.** Import the Lichess puzzle database (CC0 dump), store
-  locally, filter by theme/rating, track a personal puzzle rating.
+- [x] **Auto-analysis pipeline.** Background worker (`analysis.rs`) with its own
+  Stockfish instance walks unanalyzed games, caches evals per normalized position
+  (`eval_cache`), judges moves by win-probability swings (≥10/20/30 % →
+  inaccuracy/mistake/blunder), writes `move_evals`, computes Lichess-style
+  accuracy, sets `analyzed`, and streams progress events. Feeds the real
+  "errors by game phase" chart (own moves only) and the Analysis queue.
+- [x] **Persistent engine + streaming eval.** `live.rs` keeps Stockfish as
+  managed Tauri state (MultiPV 3, multi-threaded); a reader thread streams
+  parsed `info` lines as `engine://info` events. Eval bar, depth, and three
+  PV lines update live while browsing moves.
+- [x] **Position search.** Every game position is indexed by normalized EPD key
+  (`positions` table, filled at import and during analysis). The Analysis page
+  shows "this position in your games" with next-move stats and jump-to-game.
+- [x] **Real Repertoire.** Move tree in `rep_nodes` with FSRS-4.5-weight
+  scheduler in Rust; lines are added by playing moves on the board; training
+  asks due positions and grades answers (correct → Good, wrong → Again);
+  coverage and per-node "left book here" stats come from the games database.
+- [x] **Real Puzzles.** One-click download (or local-file import) of the Lichess
+  CC0 dump (streamed zstd+CSV into SQLite), multi-move trainer with automatic
+  opponent replies, theme filter, and an Elo-based personal rating with per-theme
+  accuracy tracked in `puzzle_attempts`.
 
 ## Phase 2 — Settings & configuration
 

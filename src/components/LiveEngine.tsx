@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { Cpu, Loader2, Zap } from "lucide-react";
-import { analyzePosition, engineInfo, type AnalysisResult, type EngineInfo } from "../lib/backend";
-import { Button } from "./ui";
+import { Cpu, Pause, Play } from "lucide-react";
+import { engineInfo, type EngineInfo } from "../lib/backend";
+import { analyzeLive, onEngineDone, onEngineInfo, stopLive, type LiveInfo } from "../lib/analysis";
 
 type EngineState =
   | { mode: "checking" }
@@ -28,30 +28,41 @@ function pvToSan(fen: string, pv: string[]): string {
   return out.join(" ");
 }
 
-/** Bewertung immer aus Weiß-Sicht darstellen. */
-function whiteEval(fen: string, r: AnalysisResult): string {
-  const blackToMove = fen.split(" ")[1] === "b";
+/** Bewertung einer Linie aus Weiß-Sicht formatieren. */
+function lineEvalLabel(blackToMove: boolean, info: LiveInfo): string {
   const sign = blackToMove ? -1 : 1;
-  if (r.mate_in != null) return `#${sign * r.mate_in}`;
-  if (r.eval_cp != null) {
-    const cp = (sign * r.eval_cp) / 100;
+  if (info.mate_in != null) return `#${sign * info.mate_in}`;
+  if (info.eval_cp != null) {
+    const cp = (sign * info.eval_cp) / 100;
     return `${cp >= 0 ? "+" : "−"}${Math.abs(cp).toFixed(2)}`;
   }
   return "–";
 }
 
+/**
+ * Live-Analyse über die persistente Stockfish-Instanz: sobald sich die
+ * Stellung ändert, rechnet die Engine neu; info-Zeilen streamen als Events
+ * und aktualisieren Linien, Tiefe und (per onEval) die Eval-Bar.
+ */
 export default function LiveEngine({
   fen,
   demoLines,
+  onEval,
 }: {
   fen: string;
   demoLines: { eval: string; depth: number; line: string }[];
+  /** Bewertung aus Weiß-Sicht, sobald die Engine Tiefe gewinnt. */
+  onEval?: (evalCp: number | null, mateIn: number | null) => void;
 }) {
   const [engine, setEngine] = useState<EngineState>({ mode: "checking" });
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const depth = 22;
+  const [running, setRunning] = useState(true);
+  const [lines, setLines] = useState<Map<number, LiveInfo>>(new Map());
+  const [nps, setNps] = useState<number | null>(null);
+  const genRef = useRef(0);
+  const fenRef = useRef(fen);
+  fenRef.current = fen;
+  const onEvalRef = useRef(onEval);
+  onEvalRef.current = onEval;
 
   useEffect(() => {
     engineInfo()
@@ -59,25 +70,67 @@ export default function LiveEngine({
       .catch(() => setEngine({ mode: "web" }));
   }, []);
 
-  // Ergebnis verwerfen, sobald sich die Stellung ändert.
-  useEffect(() => {
-    setResult(null);
-    setError(null);
-  }, [fen]);
-
-  const run = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setResult(await analyzePosition(fen, depth));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const available = engine.mode === "desktop" && engine.info.available;
+
+  // Event-Listener einmalig registrieren.
+  useEffect(() => {
+    if (!available) return;
+    let unInfo: (() => void) | undefined;
+    let unDone: (() => void) | undefined;
+    let disposed = false;
+    onEngineInfo((info) => {
+      if (info.generation !== genRef.current) return;
+      setLines((prev) => {
+        const next = new Map(prev);
+        next.set(info.multipv, info);
+        return next;
+      });
+      if (info.nps != null) setNps(info.nps);
+      if (info.multipv === 1 && onEvalRef.current) {
+        const blackToMove = fenRef.current.split(" ")[1] === "b";
+        const sign = blackToMove ? -1 : 1;
+        onEvalRef.current(
+          info.eval_cp != null ? sign * info.eval_cp : null,
+          info.mate_in != null ? sign * info.mate_in : null
+        );
+      }
+    }).then((u) => (disposed ? u() : (unInfo = u)));
+    onEngineDone(() => {}).then((u) => (disposed ? u() : (unDone = u)));
+    return () => {
+      disposed = true;
+      unInfo?.();
+      unDone?.();
+    };
+  }, [available]);
+
+  // Bei Stellungswechsel (oder Start/Stopp) neu analysieren.
+  useEffect(() => {
+    if (!available) return;
+    setLines(new Map());
+    if (!running) return;
+    let stale = false;
+    analyzeLive(fen, 24)
+      .then((generation) => {
+        if (!stale) genRef.current = generation;
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [available, fen, running]);
+
+  // Beim Verlassen der Seite die Engine anhalten.
+  useEffect(() => {
+    return () => {
+      if (available) stopLive().catch(() => {});
+    };
+  }, [available]);
+
+  const blackToMove = fen.split(" ")[1] === "b";
+  const ordered = [1, 2, 3]
+    .map((i) => lines.get(i))
+    .filter((l): l is LiveInfo => l != null);
+  const depth = ordered[0]?.depth ?? 0;
 
   return (
     <section className="rounded-xl border border-line bg-panel">
@@ -108,41 +161,44 @@ export default function LiveEngine({
       <div className="p-4">
         {available ? (
           <>
-            <div className="flex items-center gap-2">
-              <Button primary onClick={run} className="flex-1">
-                {loading ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" /> Stockfish rechnet …
-                  </>
-                ) : (
-                  <>
-                    <Zap size={15} /> Diese Stellung analysieren
-                  </>
-                )}
-              </Button>
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                onClick={() => setRunning((r) => !r)}
+                className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink"
+              >
+                {running ? <Pause size={13} /> : <Play size={13} />}
+                {running ? "Pause" : "Analysieren"}
+              </button>
+              <span className="text-[11.5px] tabular-nums text-ink3">
+                {running && depth > 0
+                  ? `Tiefe ${depth}${nps ? ` · ${(nps / 1_000_000).toFixed(1)} Mn/s` : ""}`
+                  : running
+                    ? "rechnet …"
+                    : "pausiert"}
+              </span>
             </div>
 
-            {result && (
-              <div className="mt-3 rounded-lg border border-line bg-panel2 p-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[22px] font-semibold tabular-nums text-accent">
-                    {whiteEval(fen, result)}
-                  </span>
-                  <span className="text-[11.5px] text-ink3">Tiefe {result.depth}</span>
-                </div>
-                <div className="mt-1.5 text-[12.5px] leading-relaxed text-ink2">
-                  {pvToSan(fen, result.pv)}
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
-                {error}
-              </div>
-            )}
-            <p className="mt-3 text-[11.5px] leading-relaxed text-ink3">
-              Läuft nativ über den Rust-Sidecar — volle Stärke, alle Kerne. Bewertung aus Weiß-Sicht.
-            </p>
+            <div className="flex flex-col gap-2">
+              {ordered.length > 0
+                ? ordered.map((l) => (
+                    <div key={l.multipv} className="rounded-lg border border-line bg-panel2 px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[14px] font-semibold tabular-nums text-accent">
+                          {lineEvalLabel(blackToMove, l)}
+                        </span>
+                        <span className="text-[11px] text-ink3">Tiefe {l.depth}</span>
+                      </div>
+                      <div className="mt-1 truncate text-[12px] leading-relaxed text-ink2">
+                        {pvToSan(fen, l.pv)}
+                      </div>
+                    </div>
+                  ))
+                : running && (
+                    <div className="rounded-lg border border-dashed border-line2 px-3 py-4 text-center text-[12px] text-ink3">
+                      Stockfish rechnet …
+                    </div>
+                  )}
+            </div>
           </>
         ) : (
           <>

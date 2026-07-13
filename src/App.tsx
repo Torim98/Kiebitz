@@ -35,6 +35,12 @@ export default function App() {
   const [page, setPage] = useState<PageId>("dashboard");
   const backend = useBackendInfo();
   const [gameCount, setGameCount] = useState<number | null>(null);
+  const [analysisGameId, setAnalysisGameId] = useState<number | null>(null);
+
+  const openAnalysis = (gameId: number) => {
+    setAnalysisGameId(gameId);
+    setPage("analysis");
+  };
 
   useEffect(() => {
     if (backend.mode === "desktop") {
@@ -109,8 +115,8 @@ export default function App() {
 
       <main className="min-w-0 flex-1 overflow-y-auto">
         {page === "dashboard" && <Dashboard go={setPage} />}
-        {page === "games" && <Games />}
-        {page === "analysis" && <Analysis />}
+        {page === "games" && <Games openAnalysis={openAnalysis} />}
+        {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
         {page === "repertoire" && <Repertoire />}
         {page === "puzzles" && <Puzzles />}
         {page === "insights" && <Insights />}

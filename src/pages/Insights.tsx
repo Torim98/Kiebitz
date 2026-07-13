@@ -16,6 +16,7 @@ import {
 import { insights as demo } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { listGames, type GameRecord } from "../lib/db";
+import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { buildInsights, type LiveInsights } from "../lib/stats";
 import { Card } from "../components/ui";
 import { chart, DarkTooltip } from "../components/chartTheme";
@@ -31,13 +32,21 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
   );
 }
 
+const PHASE_DE: Record<string, string> = {
+  opening: "Eröffnung",
+  middlegame: "Mittelspiel",
+  endgame: "Endspiel",
+};
+
 export default function Insights() {
   const backend = useBackendInfo();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
+  const [errors, setErrors] = useState<PhaseErrors[] | null>(null);
 
   useEffect(() => {
     if (backend.mode === "desktop") {
       listGames().then(setRecords).catch(() => setRecords(null));
+      errorStats().then(setErrors).catch(() => setErrors(null));
     }
   }, [backend.mode]);
 
@@ -126,6 +135,42 @@ export default function Insights() {
             </BarChart>
           </ResponsiveContainer>
         </Card>
+
+        {live && (
+          <Card title="Meine Fehler nach Spielphase · aus der Auto-Analyse">
+            {errors && errors.some((e) => e.inaccuracy + e.mistake + e.blunder > 0) ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={errors.map((e) => ({ ...e, phase: PHASE_DE[e.phase] ?? e.phase }))}
+                  margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
+                  barSize={22}
+                  barGap={6}
+                >
+                  <CartesianGrid stroke={chart.grid} vertical={false} />
+                  <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
+                  <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
+                  <Tooltip content={<DarkTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    height={28}
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
+                  />
+                  <Bar dataKey="inaccuracy" name="Ungenauigkeiten" fill={chart.inaccuracy} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="mistake" name="Fehler" fill={chart.mistake} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="blunder" name="Patzer" fill={chart.blunder} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[240px] items-center justify-center px-6 text-center text-[12.5px] leading-relaxed text-ink3">
+                Noch keine analysierten Partien — starte die Auto-Analyse auf der Analyse-Seite,
+                dann füllt sich dieses Chart mit deinen echten Fehlern.
+              </div>
+            )}
+          </Card>
+        )}
 
         {live ? (
           <Card title="Siegquote nach Gegnerstärke · relativ zum eigenen Rating">

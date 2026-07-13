@@ -13,6 +13,8 @@ import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-reac
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { listGames, type GameRecord } from "../lib/db";
+import { repStats, type RepStats } from "../lib/repertoire";
+import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
 import { buildDashboard } from "../lib/stats";
 import type { UiGame } from "../lib/gameUi";
 import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
@@ -23,10 +25,14 @@ import type { PageId } from "../App";
 export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const backend = useBackendInfo();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
+  const [rep, setRep] = useState<RepStats | null>(null);
+  const [pz, setPz] = useState<PuzzleStats | null>(null);
 
   useEffect(() => {
     if (backend.mode === "desktop") {
       listGames().then(setRecords).catch(() => setRecords(null));
+      repStats().then(setRep).catch(() => {});
+      fetchPuzzleStats().then(setPz).catch(() => {});
     }
   }, [backend.mode]);
 
@@ -128,10 +134,14 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                   <BookOpen size={15} className="text-accent" /> Repertoire-Training
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
-                  {repertoireStats.dueToday}
+                  {rep ? rep.due_now : repertoireStats.dueToday}
                   <span className="ml-1.5 text-[13px] font-normal text-ink3">fällige Wiederholungen</span>
                 </div>
-                <div className="mt-1 text-[12px] text-ink3">Serie: {repertoireStats.streak} Tage</div>
+                <div className="mt-1 text-[12px] text-ink3">
+                  {rep
+                    ? `${rep.my_positions} Züge im Buch · Abdeckung ${de(rep.coverage_pct)} %`
+                    : `Serie: ${repertoireStats.streak} Tage`}
+                </div>
               </div>
               <Button primary onClick={() => go("repertoire")}>Trainieren</Button>
             </div>
@@ -160,13 +170,15 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                   <Puzzle size={15} className="text-gold" /> Tagesziel Puzzles
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
-                  {puzzleStats.todaySolved}
+                  {pz ? pz.today_solved : puzzleStats.todaySolved}
                   <span className="text-[15px] font-normal text-ink3"> / {puzzleStats.todayGoal}</span>
                 </div>
                 <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-panel3">
                   <div
                     className="h-full rounded-full bg-gold"
-                    style={{ width: `${(puzzleStats.todaySolved / puzzleStats.todayGoal) * 100}%` }}
+                    style={{
+                      width: `${Math.min(100, ((pz ? pz.today_solved : puzzleStats.todaySolved) / puzzleStats.todayGoal) * 100)}%`,
+                    }}
                   />
                 </div>
               </div>

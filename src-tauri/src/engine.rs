@@ -49,6 +49,20 @@ impl UciEngine {
         &self.name
     }
 
+    /// Setzt eine UCI-Option und wartet, bis die Engine bereit ist.
+    pub fn set_option(&mut self, name: &str, value: &str) -> Result<(), String> {
+        self.send(&format!("setoption name {name} value {value}"))?;
+        self.send("isready")?;
+        self.wait_for("readyok")
+    }
+
+    /// Sinnvolle Thread-Zahl für Hintergrund-Analyse: Kerne minus zwei.
+    pub fn worker_threads() -> usize {
+        std::thread::available_parallelism()
+            .map(|n| n.get().saturating_sub(2).max(1))
+            .unwrap_or(1)
+    }
+
     /// Liest Zeilen bis `uciok` und merkt sich dabei den `id name`-Wert.
     fn read_id_name(&mut self) -> Result<String, String> {
         let mut name = String::new();

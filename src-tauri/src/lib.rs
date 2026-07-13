@@ -1,5 +1,10 @@
+mod analysis;
+mod chess;
 mod db;
 mod engine;
+mod live;
+mod puzzles;
+mod repertoire;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -29,7 +34,7 @@ struct EngineInfo {
 /// Sucht die gebündelte Stockfish-Engine. Im Dev-Modus liegt sie unter
 /// `src-tauri/binaries/`, im Release neben den App-Ressourcen.
 /// Eine Umgebungsvariable `KIEBITZ_ENGINE` hat Vorrang.
-fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
+pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
     if let Ok(custom) = std::env::var("KIEBITZ_ENGINE") {
         let p = PathBuf::from(custom);
         if p.exists() {
@@ -104,8 +109,7 @@ fn db_stats(db: tauri::State<db::Db>) -> Result<db::DbStats, String> {
 }
 
 /// Einmalige Analyse: startet die Engine, analysiert die Stellung, beendet sie.
-/// Für die spätere Dauer-Analyse (Eval-Bar live) wird die Engine als
-/// gemanagter State im Speicher gehalten — dieser Command ist der erste Schritt.
+/// (Bleibt als Fallback; die Live-Analyse läuft über `analyze_live`.)
 #[tauri::command]
 fn analyze_position(
     app: tauri::AppHandle,
@@ -115,6 +119,24 @@ fn analyze_position(
     let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
     let mut uci = engine::UciEngine::spawn(&path.to_string_lossy())?;
     uci.analyze(&fen, depth.clamp(1, 40))
+}
+
+/// Dauer-Analyse über die persistente Engine: `info`-Zeilen kommen als
+/// `engine://info`-Events. Liefert die Generation dieser Anfrage.
+#[tauri::command]
+fn analyze_live(
+    app: tauri::AppHandle,
+    state: tauri::State<live::LiveEngine>,
+    fen: String,
+    depth: Option<u32>,
+) -> Result<u64, String> {
+    let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
+    state.analyze(&app, &path.to_string_lossy(), &fen, depth.unwrap_or(24).clamp(6, 40))
+}
+
+#[tauri::command]
+fn stop_live(state: tauri::State<live::LiveEngine>) {
+    state.stop();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -130,19 +152,44 @@ pub fn run() {
             }
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let conn = rusqlite::Connection::open(data_dir.join("kiebitz.db"))?;
+            let db_file = data_dir.join("kiebitz.db");
+            let conn = rusqlite::Connection::open(&db_file)?;
             db::init(&conn).map_err(std::io::Error::other)?;
             app.manage(db::Db(std::sync::Mutex::new(conn)));
+            app.manage(analysis::DbPath(db_file));
+            app.manage(analysis::AnalysisState::default());
+            app.manage(live::LiveEngine::default());
+            app.manage(puzzles::PuzzleImportState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
             engine_info,
             analyze_position,
+            analyze_live,
+            stop_live,
             list_games,
             upsert_games,
             set_game_note,
-            db_stats
+            db_stats,
+            analysis::start_analysis,
+            analysis::cancel_analysis,
+            analysis::analysis_running,
+            analysis::index_positions,
+            analysis::game_analysis,
+            analysis::error_stats,
+            analysis::search_position,
+            repertoire::rep_list,
+            repertoire::rep_add_line,
+            repertoire::rep_delete,
+            repertoire::rep_due,
+            repertoire::rep_review,
+            repertoire::rep_stats,
+            repertoire::rep_node_games,
+            puzzles::import_puzzles,
+            puzzles::next_puzzle,
+            puzzles::record_attempt,
+            puzzles::puzzle_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

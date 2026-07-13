@@ -1,22 +1,236 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Chess } from "chess.js";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Cpu } from "lucide-react";
+import {
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
+  Cpu,
+  ListChecks,
+  Loader2,
+  Search,
+  Square,
+  Zap,
+} from "lucide-react";
 import { featuredGame } from "../data/demo";
+import { useBackendInfo } from "../lib/backend";
+import { listGames, type GameRecord } from "../lib/db";
+import {
+  cancelAnalysis,
+  gameAnalysis,
+  onAnalysisDone,
+  onAnalysisGameDone,
+  onAnalysisProgress,
+  searchPosition,
+  startAnalysis,
+  type AnalysisProgress,
+  type MoveEvalRow,
+  type PositionSearch,
+} from "../lib/analysis";
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
-import { Button, Card } from "../components/ui";
+import { Button, Card, ResultBadge } from "../components/ui";
 import { evalLabel, fenAfter, nagColor, winProb } from "../lib/util";
 
-const sans = featuredGame.moves.map((m) => m.san);
+/** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
+interface ViewMove {
+  san: string;
+  evalCp: number | null; // nach dem Zug, aus Weiß-Sicht
+  mateIn: number | null;
+  nag?: string;
+  bestUci?: string;
+  judgment?: string;
+}
 
-export default function Analysis() {
-  const [ply, setPly] = useState(featuredGame.moves.length);
+const NAG: Record<string, string> = { inaccuracy: "?!", mistake: "?", blunder: "??" };
+const JUDGMENT_DE: Record<string, string> = {
+  inaccuracy: "Ungenauigkeit",
+  mistake: "Fehler",
+  blunder: "Patzer",
+};
 
-  const fen = useMemo(() => fenAfter(sans, ply), [ply]);
-  const currentEval = ply === 0 ? 20 : featuredGame.moves[ply - 1].eval;
-  const currentMove = ply > 0 ? featuredGame.moves[ply - 1] : null;
-  const whitePct = winProb(currentEval);
+/** Zahl fürs Chart / die Eval-Bar: Matt zählt wie ±10 Bauern. */
+function evalNum(cp: number | null, mate: number | null): number {
+  if (mate != null) return mate > 0 ? 1000 : -1000;
+  return cp ?? 0;
+}
 
+function rowsToViewMoves(sans: string[], rows: MoveEvalRow[]): ViewMove[] {
+  const byPly = new Map(rows.map((r) => [r.ply, r]));
+  return sans.map((san, i) => {
+    const r = byPly.get(i + 1);
+    return {
+      san,
+      evalCp: r ? r.eval_cp : null,
+      mateIn: r ? r.mate_in : null,
+      nag: r && r.judgment ? NAG[r.judgment] : undefined,
+      bestUci: r?.best_uci,
+      judgment: r?.judgment || undefined,
+    };
+  });
+}
+
+/** ACPL je Seite aus der Evalkurve (Startstellung ≈ +20 cp). */
+function acpl(moves: ViewMove[]): { white: number; black: number } {
+  let prev = 20;
+  const losses: { white: number[]; black: number[] } = { white: [], black: [] };
+  moves.forEach((m, i) => {
+    if (m.evalCp == null && m.mateIn == null) return;
+    const cur = Math.max(-1000, Math.min(1000, evalNum(m.evalCp, m.mateIn)));
+    const side = i % 2 === 0 ? "white" : "black";
+    const loss = side === "white" ? prev - cur : cur - prev;
+    losses[side].push(Math.max(0, Math.min(1000, loss)));
+    prev = cur;
+  });
+  const avg = (a: number[]) => (a.length ? Math.round(a.reduce((s, v) => s + v, 0) / a.length) : 0);
+  return { white: avg(losses.white), black: avg(losses.black) };
+}
+
+/** Kommentar zu einem annotierten Zug: Bewertungssprung + bessere Alternative. */
+function commentFor(sansBefore: string[], m: ViewMove, prevEval: number): string | null {
+  if (!m.judgment) return null;
+  let best = "";
+  if (m.bestUci) {
+    try {
+      const chess = new Chess();
+      for (const s of sansBefore) chess.move(s);
+      const move = chess.move({
+        from: m.bestUci.slice(0, 2),
+        to: m.bestUci.slice(2, 4),
+        promotion: m.bestUci.length > 4 ? m.bestUci[4] : undefined,
+      });
+      best = move.san;
+    } catch {
+      /* Zug nicht rekonstruierbar — Kommentar ohne Alternative */
+    }
+  }
+  const from = evalLabel(prevEval);
+  const to = m.mateIn != null ? `#${m.mateIn}` : evalLabel(m.evalCp ?? 0);
+  const base = `${JUDGMENT_DE[m.judgment]}. Die Bewertung springt von ${from} auf ${to}.`;
+  return best ? `${base} Besser war ${best}.` : base;
+}
+
+export default function Analysis({ targetGameId }: { targetGameId: number | null }) {
+  const backend = useBackendInfo();
+  const desktop = backend.mode === "desktop";
+
+  const [games, setGames] = useState<GameRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [rows, setRows] = useState<MoveEvalRow[] | null>(null);
+  const [ply, setPly] = useState(0);
+  const [liveEval, setLiveEval] = useState<{ cp: number | null; mate: number | null } | null>(null);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
+  const [running, setRunning] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [posSearch, setPosSearch] = useState<PositionSearch | null>(null);
+
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selectedId;
+
+  const reloadGames = useCallback(() => {
+    return listGames().then((gs) => {
+      setGames(gs.filter((g) => g.moves));
+      return gs;
+    });
+  }, []);
+
+  // Partien laden und Auswahl initialisieren.
+  useEffect(() => {
+    if (!desktop) return;
+    reloadGames().then((gs) => {
+      const withMoves = gs.filter((g) => g.moves);
+      const pick =
+        (targetGameId != null && withMoves.find((g) => g.id === targetGameId)) ||
+        withMoves.find((g) => g.analyzed) ||
+        withMoves[0];
+      if (pick?.id != null) setSelectedId(pick.id);
+    });
+  }, [desktop, targetGameId, reloadGames]);
+
+  // Analyse-Events.
+  useEffect(() => {
+    if (!desktop) return;
+    const cleanups: (() => void)[] = [];
+    let disposed = false;
+    const reg = (p: Promise<() => void>) =>
+      p.then((u) => (disposed ? u() : cleanups.push(u)));
+    reg(
+      onAnalysisProgress((p) => {
+        setRunning(true);
+        setProgress(p);
+      })
+    );
+    reg(
+      onAnalysisGameDone((p) => {
+        if (p.game_id === selectedRef.current) {
+          gameAnalysis(p.game_id).then(setRows).catch(() => {});
+        }
+      })
+    );
+    reg(
+      onAnalysisDone((p) => {
+        setRunning(false);
+        setProgress(null);
+        reloadGames();
+        setNotice(
+          p.error
+            ? `Analyse abgebrochen: ${p.error}`
+            : p.canceled
+              ? `Analyse gestoppt — ${p.analyzed} Partien fertig.`
+              : `Analyse abgeschlossen: ${p.analyzed} Partien.`
+        );
+      })
+    );
+    return () => {
+      disposed = true;
+      cleanups.forEach((u) => u());
+    };
+  }, [desktop, reloadGames]);
+
+  const game = useMemo(
+    () => games.find((g) => g.id === selectedId) ?? null,
+    [games, selectedId]
+  );
+
+  // Gespeicherte Analyse der gewählten Partie laden.
+  useEffect(() => {
+    if (!desktop || selectedId == null) return;
+    setRows(null);
+    gameAnalysis(selectedId).then(setRows).catch(() => setRows([]));
+  }, [desktop, selectedId]);
+
+  // Zug-Sicht: Demo im Web, echte Partie auf dem Desktop.
+  const live = desktop && game != null;
+  const sans = useMemo(
+    () => (live ? game.moves.split(" ").filter(Boolean) : featuredGame.moves.map((m) => m.san)),
+    [live, game]
+  );
+  const viewMoves: ViewMove[] = useMemo(() => {
+    if (!live) {
+      const byNag: Record<string, string> = { "?!": "inaccuracy", "?": "mistake", "??": "blunder" };
+      return featuredGame.moves.map((m) => ({
+        san: m.san,
+        evalCp: m.eval,
+        mateIn: null,
+        nag: m.nag,
+        judgment: m.nag ? byNag[m.nag] : undefined,
+      }));
+    }
+    return rowsToViewMoves(sans, rows ?? []);
+  }, [live, sans, rows]);
+
+  const analyzedRows = live ? (rows?.length ?? 0) > 0 : true;
+
+  // Beim Partiewechsel ans Ende springen.
+  useEffect(() => {
+    setPly(sans.length);
+    setLiveEval(null);
+  }, [selectedId, sans.length]);
+
+  const fen = useMemo(() => fenAfter(sans, ply), [sans, ply]);
+
+  // Tastatur-Navigation.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
@@ -24,29 +238,156 @@ export default function Analysis() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [sans.length]);
 
-  const evalSeries = featuredGame.moves.map((m, i) => ({
-    ply: i + 1,
-    eval: Math.max(-600, Math.min(600, m.eval)) / 100,
-  }));
+  // Positionssuche (entprellt).
+  useEffect(() => {
+    if (!desktop) return;
+    const t = setTimeout(() => {
+      searchPosition(fen).then(setPosSearch).catch(() => setPosSearch(null));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [desktop, fen]);
 
-  const s = featuredGame.summary;
+  // Eval an der aktuellen Stellung: live von der Engine, sonst gespeichert.
+  const storedEval = ply === 0 ? 20 : evalNum(viewMoves[ply - 1]?.evalCp ?? null, viewMoves[ply - 1]?.mateIn ?? null);
+  const shownEval = liveEval ? evalNum(liveEval.cp, liveEval.mate) : storedEval;
+  const whitePct = winProb(shownEval);
+  const currentMove = ply > 0 ? viewMoves[ply - 1] : null;
+  const currentComment = useMemo(() => {
+    if (!currentMove) return null;
+    if (!live) return featuredGame.moves[ply - 1]?.comment ?? null;
+    const prevEval = ply <= 1 ? 20 : evalNum(viewMoves[ply - 2]?.evalCp ?? null, viewMoves[ply - 2]?.mateIn ?? null);
+    return commentFor(sans.slice(0, ply - 1), currentMove, prevEval);
+  }, [live, currentMove, ply, sans, viewMoves]);
+
+  const evalSeries = viewMoves
+    .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
+    .filter((_, i) => !live || (rows ?? []).length > i);
+
+  const summary = useMemo(() => {
+    const counts = { inaccuracy: 0, mistake: 0, blunder: 0 };
+    viewMoves.forEach((m, i) => {
+      const mine = !live || !game ? true : (game.color === "white") === (i % 2 === 0);
+      if (m.judgment && m.judgment in counts && mine) {
+        counts[m.judgment as keyof typeof counts]++;
+      }
+    });
+    return { ...counts, acpl: acpl(viewMoves) };
+  }, [viewMoves, live, game]);
+
+  const unanalyzed = games.filter((g) => !g.analyzed);
+  const headerSub = live
+    ? `${game.color === "white" ? "Ich" : game.opponent} vs. ${game.color === "white" ? game.opponent : "ich"} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+      <header className="mb-4 flex items-end justify-between">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">Analyse</h1>
-          <p className="mt-0.5 text-[13px] text-ink3">
-            {featuredGame.white} vs. {featuredGame.black} · {featuredGame.event} · {featuredGame.result}
-          </p>
+          <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[12.5px] text-ink2">
-          <Cpu size={14} className="text-accent" />
-          {featuredGame.engine}
-        </div>
+        {live && <ResultBadge result={game.result} />}
       </header>
+
+      {desktop && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5">
+          <select
+            value={selectedId ?? ""}
+            onChange={(e) => setSelectedId(Number(e.target.value))}
+            className="max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+          >
+            {games.map((g) => (
+              <option key={g.id} value={g.id ?? undefined}>
+                {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
+                {g.result === "win" ? "Sieg" : g.result === "loss" ? "Niederlage" : "Remis"}
+              </option>
+            ))}
+          </select>
+
+          {running ? (
+            <>
+              <div className="flex min-w-[220px] flex-1 items-center gap-2 text-[12px] text-ink2">
+                <Loader2 size={14} className="animate-spin text-accent" />
+                {progress
+                  ? `Partie ${progress.game_index}/${progress.games_total} · ${progress.opponent} · Zug ${Math.ceil(progress.ply / 2)}/${Math.ceil(progress.plies / 2)}`
+                  : "Analyse läuft …"}
+                {progress && (
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel3">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all"
+                      style={{ width: `${(progress.ply / progress.plies) * 100}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+              <Button onClick={() => cancelAnalysis()}>
+                <Square size={13} /> Stopp
+              </Button>
+            </>
+          ) : (
+            <>
+              {selectedId != null && (
+                <Button
+                  primary
+                  onClick={() => {
+                    setNotice(null);
+                    setRunning(true);
+                    startAnalysis({ gameIds: [selectedId], depth: 18 }).catch((e) => {
+                      setRunning(false);
+                      setNotice(String(e));
+                    });
+                  }}
+                >
+                  <Zap size={14} />
+                  {analyzedRows ? "Neu analysieren" : "Diese Partie analysieren"}
+                </Button>
+              )}
+              {unanalyzed.length > 0 && (
+                <Button
+                  onClick={() => {
+                    setNotice(null);
+                    setRunning(true);
+                    startAnalysis({ limit: 10, depth: 14 }).catch((e) => {
+                      setRunning(false);
+                      setNotice(String(e));
+                    });
+                  }}
+                >
+                  <ListChecks size={14} /> Nächste 10 ({unanalyzed.length} offen)
+                </Button>
+              )}
+              {unanalyzed.length > 10 && (
+                <Button
+                  onClick={() => {
+                    setNotice(null);
+                    setRunning(true);
+                    startAnalysis({ depth: 14 }).catch((e) => {
+                      setRunning(false);
+                      setNotice(String(e));
+                    });
+                  }}
+                >
+                  Alle analysieren
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-4 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[12.5px] text-accent">
+          {notice}
+        </div>
+      )}
+
+      {desktop && games.length === 0 && (
+        <div className="mb-4 rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[13px] text-ink3">
+          Noch keine Partien mit Zügen in der Datenbank — importiere zuerst unter „Partien".
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[auto_1fr_300px]">
         {/* Brett + Eval-Bar */}
@@ -56,7 +397,7 @@ export default function Analysis() {
             <div className="w-full bg-[#e6e3d3]" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
           </div>
           <div>
-            <Board boardId="analysis" fen={fen} width={400} />
+            <Board boardId="analysis" fen={fen} width={400} orientation={live && game.color === "black" ? "black" : "white"} />
             <div className="mt-3 flex items-center justify-between">
               <div className="flex gap-1">
                 <Button onClick={() => setPly(0)}><ChevronFirst size={15} /></Button>
@@ -64,8 +405,8 @@ export default function Analysis() {
                 <Button onClick={() => setPly((p) => Math.min(sans.length, p + 1))}><ChevronRight size={15} /></Button>
                 <Button onClick={() => setPly(sans.length)}><ChevronLast size={15} /></Button>
               </div>
-              <div className="text-[15px] font-semibold tabular-nums" style={{ color: currentEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
-                {evalLabel(currentEval)}
+              <div className="text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
+                {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
               </div>
             </div>
           </div>
@@ -76,7 +417,7 @@ export default function Analysis() {
           <Card title="Partie" pad={false} className="flex-1">
             <div className="max-h-[290px] overflow-y-auto p-3">
               <div className="flex flex-wrap gap-x-1 gap-y-1.5 text-[13.5px] leading-relaxed">
-                {featuredGame.moves.map((m, i) => (
+                {viewMoves.map((m, i) => (
                   <span key={i} className="inline-flex items-center">
                     {i % 2 === 0 && (
                       <span className="mr-1 text-[12px] text-ink3">{i / 2 + 1}.</span>
@@ -94,15 +435,20 @@ export default function Analysis() {
                     </button>
                   </span>
                 ))}
-                <span className="ml-1 self-center text-[12.5px] text-ink3">1–0</span>
               </div>
-              {currentMove?.comment && (
+              {live && !analyzedRows && (
+                <div className="mt-3 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12px] text-ink3">
+                  Diese Partie ist noch nicht analysiert — Annotationen und Bewertungskurve
+                  erscheinen nach der Stockfish-Analyse.
+                </div>
+              )}
+              {currentComment && (
                 <div className="mt-3 rounded-lg border-l-2 bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
-                  style={{ borderColor: currentMove.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
-                  <span className="font-medium" style={{ color: currentMove.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
-                    {Math.ceil(ply / 2)}.{ply % 2 === 0 ? ".." : ""} {currentMove.san}{currentMove.nag}
+                  style={{ borderColor: currentMove?.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
+                  <span className="font-medium" style={{ color: currentMove?.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
+                    {Math.ceil(ply / 2)}.{ply % 2 === 0 ? ".." : ""} {currentMove?.san}{currentMove?.nag}
                   </span>{" "}
-                  {currentMove.comment}
+                  {currentComment}
                 </div>
               )}
             </div>
@@ -110,61 +456,139 @@ export default function Analysis() {
 
           <Card title="Bewertungsverlauf" pad={false}>
             <div className="px-2 pb-1 pt-2">
-              <ResponsiveContainer width="100%" height={110}>
-                <AreaChart data={evalSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}
-                  onClick={(e) => e?.activeLabel != null && setPly(Number(e.activeLabel))}>
-                  <XAxis dataKey="ply" hide />
-                  <YAxis domain={[-6, 6]} hide />
-                  <ReferenceLine y={0} stroke="#3a3a37" />
-                  <Tooltip
-                    content={({ active, payload }) =>
-                      active && payload?.length ? (
-                        <div className="rounded-md border border-line2 bg-panel3 px-2 py-1 text-[12px]">
-                          Zug {Math.ceil(Number(payload[0].payload.ply) / 2)} · {evalLabel(Number(payload[0].value) * 100)}
-                        </div>
-                      ) : null
-                    }
-                  />
-                  <Area type="monotone" dataKey="eval" stroke="#22c08a" strokeWidth={2}
-                    fill="#22c08a" fillOpacity={0.12} />
-                </AreaChart>
-              </ResponsiveContainer>
+              {evalSeries.length >= 2 ? (
+                <ResponsiveContainer width="100%" height={110}>
+                  <AreaChart data={evalSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}
+                    onClick={(e) => e?.activeLabel != null && setPly(Number(e.activeLabel))}>
+                    <XAxis dataKey="ply" hide />
+                    <YAxis domain={[-6, 6]} hide />
+                    <ReferenceLine y={0} stroke="#3a3a37" />
+                    <Tooltip
+                      content={({ active, payload }) =>
+                        active && payload?.length ? (
+                          <div className="rounded-md border border-line2 bg-panel3 px-2 py-1 text-[12px]">
+                            Zug {Math.ceil(Number(payload[0].payload.ply) / 2)} · {evalLabel(Number(payload[0].value) * 100)}
+                          </div>
+                        ) : null
+                      }
+                    />
+                    <Area type="monotone" dataKey="eval" stroke="#22c08a" strokeWidth={2}
+                      fill="#22c08a" fillOpacity={0.12} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-[110px] items-center justify-center text-[12px] text-ink3">
+                  Noch keine Bewertungsdaten — Partie zuerst analysieren.
+                </div>
+              )}
             </div>
           </Card>
         </div>
 
-        {/* Engine-Panel */}
+        {/* Engine-Panel + Annotationen + Positionssuche */}
         <div className="flex flex-col gap-4">
-          <LiveEngine fen={fen} demoLines={featuredGame.pvLines} />
+          <LiveEngine
+            fen={fen}
+            demoLines={featuredGame.pvLines}
+            onEval={(cp, mate) => setLiveEval({ cp, mate })}
+          />
 
-          <Card title="Auto-Annotation">
+          <Card title={live ? "Meine Fehler (Auto-Analyse)" : "Auto-Annotation"}>
             <ul className="flex flex-col gap-2 text-[13px]">
               <li className="flex justify-between">
-                <span style={{ color: nagColor["!"] }}>! Starke Züge</span>
-                <span className="font-medium">{s.good}</span>
-              </li>
-              <li className="flex justify-between">
                 <span style={{ color: nagColor["?!"] }}>?! Ungenauigkeiten</span>
-                <span className="font-medium">{s.inaccuracy}</span>
+                <span className="font-medium">{summary.inaccuracy}</span>
               </li>
               <li className="flex justify-between">
                 <span style={{ color: nagColor["?"] }}>? Fehler</span>
-                <span className="font-medium">{s.mistake}</span>
+                <span className="font-medium">{summary.mistake}</span>
               </li>
               <li className="flex justify-between">
                 <span style={{ color: nagColor["??"] }}>?? Patzer</span>
-                <span className="font-medium">{s.blunder}</span>
+                <span className="font-medium">{summary.blunder}</span>
               </li>
             </ul>
             <div className="mt-3 border-t border-line pt-3 text-[12px] text-ink3">
-              Ø Centipawn-Verlust: <span className="text-ink2">Weiß {s.acplWhite}</span> ·{" "}
-              <span className="text-ink2">Schwarz {s.acplBlack}</span>
+              Ø Centipawn-Verlust: <span className="text-ink2">Weiß {live ? summary.acpl.white : featuredGame.summary.acplWhite}</span> ·{" "}
+              <span className="text-ink2">Schwarz {live ? summary.acpl.black : featuredGame.summary.acplBlack}</span>
             </div>
           </Card>
 
-          <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            Tipp: Mit ← → durch die Partie blättern. Klick auf einen Zug springt zur Stellung.
-          </div>
+          {desktop && (
+            <Card title="Diese Stellung in deinen Partien">
+              {posSearch && posSearch.total_games > 0 ? (
+                <>
+                  <div className="text-[12.5px] text-ink2">
+                    <Search size={13} className="mr-1.5 inline text-accent" />
+                    In <span className="font-medium text-ink">{posSearch.total_games}</span>{" "}
+                    {posSearch.total_games === 1 ? "Partie" : "Partien"} erreicht
+                  </div>
+                  <div className="mt-2.5 flex flex-col gap-1.5">
+                    {posSearch.next_moves.slice(0, 4).map((m) => (
+                      <div key={m.san} className="flex items-center gap-2 text-[12.5px]">
+                        <span className="w-14 font-medium">{m.san}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-panel3">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${m.score_pct}%`,
+                              background: m.score_pct >= 50 ? "var(--color-win)" : "var(--color-loss)",
+                            }}
+                          />
+                        </div>
+                        <span className="w-20 text-right tabular-nums text-ink3">
+                          {m.games}× · {Math.round(m.score_pct)} %
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {posSearch.sample.filter((h) => h.game_id !== selectedId).length > 0 && (
+                    <div className="mt-3 border-t border-line pt-2.5">
+                      {posSearch.sample
+                        .filter((h) => h.game_id !== selectedId)
+                        .slice(0, 4)
+                        .map((h) => (
+                          <button
+                            key={`${h.game_id}-${h.ply}`}
+                            onClick={() => {
+                              setSelectedId(h.game_id);
+                              setTimeout(() => setPly(h.ply), 0);
+                            }}
+                            className="flex w-full items-center justify-between rounded-md px-1.5 py-1 text-[12px] text-ink2 transition-colors hover:bg-panel2"
+                          >
+                            <span className="truncate">{h.played_at} · {h.opponent}</span>
+                            <span
+                              className="ml-2 shrink-0"
+                              style={{
+                                color:
+                                  h.result === "win"
+                                    ? "var(--color-win)"
+                                    : h.result === "loss"
+                                      ? "var(--color-loss)"
+                                      : "var(--color-draw)",
+                              }}
+                            >
+                              {h.result === "win" ? "1–0" : h.result === "loss" ? "0–1" : "½"}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-[12px] leading-relaxed text-ink3">
+                  Diese Stellung kam in keiner anderen importierten Partie vor.
+                </div>
+              )}
+            </Card>
+          )}
+
+          {!desktop && (
+            <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
+              <Cpu size={13} className="mr-1.5 inline" />
+              Demo-Ansicht. Auto-Analyse, Live-Engine und Positionssuche laufen in der Desktop-App.
+            </div>
+          )}
         </div>
       </div>
     </div>

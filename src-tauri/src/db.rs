@@ -38,6 +38,7 @@ pub struct UpsertResult {
 }
 
 pub fn init(conn: &Connection) -> Result<(), String> {
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS games (
             id          INTEGER PRIMARY KEY,
@@ -60,7 +61,86 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             analyzed    INTEGER NOT NULL DEFAULT 0,
             UNIQUE(source, source_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_games_played_at ON games(played_at DESC);",
+        CREATE INDEX IF NOT EXISTS idx_games_played_at ON games(played_at DESC);
+
+        -- v3: Auto-Analyse — ein Eintrag pro gespieltem Halbzug
+        CREATE TABLE IF NOT EXISTS move_evals (
+            game_id  INTEGER NOT NULL,
+            ply      INTEGER NOT NULL,          -- 1-basiert
+            san      TEXT NOT NULL DEFAULT '',
+            eval_cp  INTEGER,                   -- nach dem Zug, aus Weiß-Sicht
+            mate_in  INTEGER,                   -- gesetzt statt eval_cp bei Matt
+            best_uci TEXT NOT NULL DEFAULT '',  -- Engine-Empfehlung vor dem Zug
+            judgment TEXT NOT NULL DEFAULT '',  -- '', inaccuracy, mistake, blunder
+            phase    TEXT NOT NULL DEFAULT '',  -- opening, middlegame, endgame
+            PRIMARY KEY (game_id, ply)
+        );
+
+        -- v3: Positionsindex für die Stellungssuche
+        CREATE TABLE IF NOT EXISTS positions (
+            fen_key TEXT NOT NULL,
+            game_id INTEGER NOT NULL,
+            ply     INTEGER NOT NULL,           -- Stellung nach `ply` Halbzügen
+            PRIMARY KEY (fen_key, game_id, ply)
+        ) WITHOUT ROWID;
+        CREATE INDEX IF NOT EXISTS idx_positions_game ON positions(game_id);
+
+        -- v3: Eval-Cache über Partien hinweg (Eröffnungen wiederholen sich)
+        CREATE TABLE IF NOT EXISTS eval_cache (
+            fen_key  TEXT PRIMARY KEY,
+            eval_cp  INTEGER,                   -- aus Sicht des Spielers am Zug
+            mate_in  INTEGER,
+            best_uci TEXT NOT NULL DEFAULT '',
+            depth    INTEGER NOT NULL DEFAULT 0
+        );
+
+        -- v3: Eröffnungs-Repertoire als Zugbaum mit FSRS-Lernzustand
+        CREATE TABLE IF NOT EXISTS rep_nodes (
+            id         INTEGER PRIMARY KEY,
+            parent_id  INTEGER NOT NULL DEFAULT 0,  -- 0 = Wurzel
+            side       TEXT NOT NULL,               -- white | black
+            san        TEXT NOT NULL,
+            name       TEXT NOT NULL DEFAULT '',
+            fen_key    TEXT NOT NULL,
+            depth      INTEGER NOT NULL,            -- Halbzug des Zuges (1-basiert)
+            stability  REAL NOT NULL DEFAULT 0,
+            difficulty REAL NOT NULL DEFAULT 0,
+            reps       INTEGER NOT NULL DEFAULT 0,
+            lapses     INTEGER NOT NULL DEFAULT 0,
+            due_ts     INTEGER NOT NULL DEFAULT 0,
+            last_ts    INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(side, parent_id, san)
+        );
+        CREATE INDEX IF NOT EXISTS idx_rep_fen ON rep_nodes(fen_key);
+
+        -- v3: Lichess-Puzzle-Datenbank (lokal importiert)
+        CREATE TABLE IF NOT EXISTS puzzles (
+            id           TEXT PRIMARY KEY,
+            fen          TEXT NOT NULL,
+            moves        TEXT NOT NULL,          -- UCI, erster Zug ist der Gegnerzug
+            rating       INTEGER NOT NULL,
+            rd           INTEGER NOT NULL DEFAULT 0,
+            popularity   INTEGER NOT NULL DEFAULT 0,
+            nb_plays     INTEGER NOT NULL DEFAULT 0,
+            themes       TEXT NOT NULL DEFAULT '',
+            opening_tags TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_puzzles_rating ON puzzles(rating);
+
+        CREATE TABLE IF NOT EXISTS puzzle_attempts (
+            id            INTEGER PRIMARY KEY,
+            puzzle_id     TEXT NOT NULL,
+            ts            INTEGER NOT NULL,
+            solved        INTEGER NOT NULL,
+            rating_before INTEGER NOT NULL,
+            rating_after  INTEGER NOT NULL,
+            themes        TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );",
     )
     .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;
 
@@ -69,6 +149,21 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN played_ts INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    Ok(())
+}
+
+pub fn meta_get(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0))
+        .ok()
+}
+
+pub fn meta_set(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

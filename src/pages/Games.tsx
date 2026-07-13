@@ -4,12 +4,13 @@ import { games as demoGames, profile, type Result, type Source } from "../data/d
 import { useBackendInfo } from "../lib/backend";
 import { listGames, setGameNote, upsertGames, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
+import { indexPositions } from "../lib/analysis";
 import { toUi, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
 
-export default function Games() {
+export default function Games({ openAnalysis }: { openAnalysis: (gameId: number) => void }) {
   const backend = useBackendInfo();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
   const [importing, setImporting] = useState(false);
@@ -60,6 +61,8 @@ export default function Games() {
       });
       const res = await upsertGames(fetched as GameRecord[]);
       await reload();
+      // Positionsindex im Hintergrund auffrischen (für die Stellungssuche).
+      indexPositions().catch(() => {});
       let msg = `${res.inserted} neue Partien · abgerufen: chess.com ${summary.fetched.cc}, Lichess ${summary.fetched.li} · ${deInt(res.total)} in der Datenbank`;
       if (summary.errors.length) msg += ` · Fehler: ${summary.errors.join("; ")}`;
       setImportMsg(msg);
@@ -251,10 +254,15 @@ export default function Games() {
               />
               <div className="mt-3 flex items-center gap-2">
                 {selected.dbId ? (
-                  <Button primary onClick={saveNote} className="flex-1">
-                    <Save size={15} />
-                    {noteSaved ? "Gespeichert ✓" : "Notiz speichern"}
-                  </Button>
+                  <>
+                    <Button primary onClick={saveNote} className="flex-1">
+                      <Save size={15} />
+                      {noteSaved ? "Gespeichert ✓" : "Notiz speichern"}
+                    </Button>
+                    <Button onClick={() => openAnalysis(selected.dbId!)}>
+                      {selected.analyzed ? "Analyse öffnen" : "Analysieren"}
+                    </Button>
+                  </>
                 ) : (
                   <Button primary className="flex-1">
                     {selected.analyzed ? "Analyse öffnen" : "Mit Stockfish analysieren"}
