@@ -231,11 +231,12 @@ export default function Endgame() {
       )}
 
       <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[auto_1fr]">
-        {/* Brett + Statuszeile */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[13.5px]">
-              <Crown size={15} className="text-accent" />
+        {/* Brett + Statuszeile — auf Brettbreite begrenzt, damit lange
+            Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
+        <div className="max-w-[420px]">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
+              <Crown size={15} className="shrink-0 text-accent" />
               <span className="font-medium">{drill.name[locale]}</span>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10.5px] ${
@@ -245,7 +246,7 @@ export default function Endgame() {
                 {drill.goal === "win" ? t("eg.goalWin") : t("eg.goalDraw")}
               </span>
             </div>
-            <span className="text-[12.5px] text-ink3">
+            <span className="shrink-0 text-[12.5px] text-ink3">
               {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
             </span>
           </div>
@@ -262,10 +263,10 @@ export default function Endgame() {
             shake={shake}
           />
 
-          <div className="mt-3 flex min-h-[52px] items-center">
+          <div className="mt-3 min-h-[52px]">
             {status === "solved" || status === "failed" ? (
               <div
-                className={`flex w-full items-center justify-between rounded-lg px-4 py-2.5 ${
+                className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5 ${
                   status === "solved"
                     ? "border border-accent-dim bg-accent-soft"
                     : "border border-[#8a3535] bg-[#2a1414]"
@@ -291,9 +292,8 @@ export default function Endgame() {
                 </div>
               </div>
             ) : (
-              <div className="flex w-full items-center justify-between">
-                <span className="text-[13px] text-ink3">{drill.hint[locale]}</span>
-                <div className="flex shrink-0 gap-2 pl-3">
+              <>
+                <div className="flex justify-end gap-2">
                   {desktop && status === "playing" && (
                     <Button onClick={showHint}>
                       {hintLoading ? (
@@ -308,7 +308,10 @@ export default function Endgame() {
                     <RotateCcw size={14} /> {t("eg.restart")}
                   </Button>
                 </div>
-              </div>
+                <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
+                  {drill.hint[locale]}
+                </p>
+              </>
             )}
           </div>
 
