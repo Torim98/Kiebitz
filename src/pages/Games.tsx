@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Database, Download, History, Loader2, Save, Search, StickyNote } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Download,
+  History,
+  Loader2,
+  Save,
+  Search,
+  StickyNote,
+} from "lucide-react";
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
@@ -25,6 +35,8 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
   const [result, setResult] = useState<Result | "alle">("alle");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
 
   const reload = () =>
     listGames()
@@ -54,6 +66,14 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
 
   const selected: UiGame | undefined =
     filtered.find((g) => g.id === selectedId) ?? filtered[0];
+
+  // Paginierung: bei Filter-/Seitengröße-Wechsel zurück auf Seite 1.
+  useEffect(() => setPage(1), [source, result, query, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const rangeFrom = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const rangeTo = Math.min(safePage * pageSize, filtered.length);
 
   const runImport = async (full: boolean) => {
     setImporting(true);
@@ -178,6 +198,7 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
       </div>
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[1fr_320px]">
+        <div className="flex flex-col gap-3">
         <Card pad={false}>
           <table className="w-full text-[13px]">
             <thead>
@@ -193,7 +214,7 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
               </tr>
             </thead>
             <tbody>
-              {filtered.map((g) => (
+              {paged.map((g) => (
                 <tr
                   key={g.id}
                   onClick={() => {
@@ -235,6 +256,46 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
             </tbody>
           </table>
         </Card>
+
+        {filtered.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-[12.5px] text-ink3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>{t("games.perPage")}</span>
+              {[10, 25, 50, 100].map((n) => (
+                <Chip key={n} active={pageSize === n} onClick={() => setPageSize(n)}>
+                  {n}
+                </Chip>
+              ))}
+              <span className="ml-1 tabular-nums">
+                {t("games.rangeInfo", {
+                  from: deInt(rangeFrom),
+                  to: deInt(rangeTo),
+                  total: deInt(filtered.length),
+                })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(safePage - 1)}
+                disabled={safePage <= 1}
+                className="flex items-center gap-1 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={15} /> {t("games.prev")}
+              </button>
+              <span className="tabular-nums">
+                {t("games.pageOf", { page: safePage, pages: totalPages })}
+              </span>
+              <button
+                onClick={() => setPage(safePage + 1)}
+                disabled={safePage >= totalPages}
+                className="flex items-center gap-1 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("games.next")} <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
+        </div>
 
         {selected && (
           <div className="flex flex-col gap-4">
