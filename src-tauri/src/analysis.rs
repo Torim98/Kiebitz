@@ -10,6 +10,7 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{Emitter, Manager, State};
 
 pub struct AnalysisState {
@@ -27,9 +28,8 @@ impl Default for AnalysisState {
 }
 
 /// Pfad zur Datenbank — Hintergrund-Threads öffnen eigene Verbindungen.
-pub struct DbPath(pub PathBuf);
-
-const DEFAULT_DEPTH: u32 = 14;
+/// Mutex, weil der Speicherort in den Einstellungen änderbar ist.
+pub struct DbPath(pub Mutex<PathBuf>);
 
 // ── Win-Prob & Judgments ─────────────────────────────────────────────────────
 
@@ -214,7 +214,13 @@ pub fn start_analysis(
             return Err("Keine Engine gefunden".into());
         }
     };
-    let depth = depth.unwrap_or(DEFAULT_DEPTH).clamp(6, 30);
+    let batch_depth = app
+        .state::<crate::settings::SettingsState>()
+        .0
+        .lock()
+        .map(|s| s.batch_depth)
+        .unwrap_or(14);
+    let depth = depth.unwrap_or(batch_depth).clamp(6, 30);
 
     let app2 = app.clone();
     std::thread::spawn(move || {
@@ -251,7 +257,12 @@ fn run_worker(
     depth: u32,
     limit: Option<u32>,
 ) -> Result<usize, String> {
-    let db_path = app.state::<DbPath>().0.clone();
+    let db_path = app
+        .state::<DbPath>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
 
@@ -295,9 +306,21 @@ fn run_worker(
         return Ok(0);
     }
 
+    let (threads, hash_mb) = {
+        let s = app.state::<crate::settings::SettingsState>();
+        let s = s.0.lock().map_err(|e| e.to_string())?;
+        (
+            if s.engine_threads == 0 {
+                UciEngine::worker_threads()
+            } else {
+                s.engine_threads as usize
+            },
+            s.engine_hash_mb,
+        )
+    };
     let mut engine = UciEngine::spawn(&engine_path.to_string_lossy())?;
-    let _ = engine.set_option("Threads", &UciEngine::worker_threads().to_string());
-    let _ = engine.set_option("Hash", "256");
+    let _ = engine.set_option("Threads", &threads.to_string());
+    let _ = engine.set_option("Hash", &hash_mb.to_string());
 
     let state = app.state::<AnalysisState>();
     let total = targets.len();

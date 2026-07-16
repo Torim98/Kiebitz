@@ -140,6 +140,13 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS meta (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        -- v4: Cache für chessdb.cn-Antworten (Cloud-Eröffnungsbuch)
+        CREATE TABLE IF NOT EXISTS chessdb_cache (
+            fen_key TEXT PRIMARY KEY,
+            json    TEXT NOT NULL,
+            ts      INTEGER NOT NULL
         );",
     )
     .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;

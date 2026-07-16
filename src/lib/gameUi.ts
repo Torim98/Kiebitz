@@ -1,4 +1,5 @@
 import type { Game } from "../data/demo";
+import type { Locale } from "./i18n";
 import type { GameRecord } from "./db";
 
 /** UI-Form einer Partie: Demo-Partien und DB-Partien teilen diese Struktur. */
@@ -8,23 +9,38 @@ export interface UiGame extends Omit<Game, "tc"> {
   url?: string;
 }
 
-export const TC_LABEL: Record<string, string> = {
-  bullet: "Bullet",
-  blitz: "Blitz",
-  rapid: "Rapid",
-  daily: "Täglich",
-  classical: "Klassisch",
+const TC_LABEL: Record<Locale, Record<string, string>> = {
+  de: {
+    bullet: "Bullet",
+    blitz: "Blitz",
+    rapid: "Rapid",
+    daily: "Täglich",
+    classical: "Klassisch",
+  },
+  en: {
+    bullet: "Bullet",
+    blitz: "Blitz",
+    rapid: "Rapid",
+    daily: "Daily",
+    classical: "Classical",
+  },
 };
 
-export function toUi(r: GameRecord): UiGame {
+export function tcLabel(timeClass: string, locale: Locale): string {
+  return TC_LABEL[locale][timeClass] ?? timeClass;
+}
+
+export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
   const [y, m, d] = r.played_at.split("-");
+  const date =
+    d && m && y ? (locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`) : r.played_at;
   return {
     id: `db-${r.id}`,
     dbId: r.id ?? undefined,
     url: r.url,
-    date: d && m && y ? `${d}.${m}.${y}` : r.played_at,
+    date,
     source: r.source,
-    tc: TC_LABEL[r.time_class] ?? r.time_class,
+    tc: tcLabel(r.time_class, locale),
     color: r.color,
     opponent: r.opponent,
     oppElo: r.opp_elo,

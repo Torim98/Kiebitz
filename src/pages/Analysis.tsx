@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useI18n, type TFunc } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
+import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
   cancelAnalysis,
   gameAnalysis,
@@ -31,7 +33,7 @@ import {
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ResultBadge } from "../components/ui";
-import { evalLabel, fenAfter, nagColor, winProb } from "../lib/util";
+import { de, evalLabel, fenAfter, nagColor, winProb } from "../lib/util";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
@@ -44,11 +46,14 @@ interface ViewMove {
 }
 
 const NAG: Record<string, string> = { inaccuracy: "?!", mistake: "?", blunder: "??" };
-const JUDGMENT_DE: Record<string, string> = {
-  inaccuracy: "Ungenauigkeit",
-  mistake: "Fehler",
-  blunder: "Patzer",
-};
+
+function judgmentLabel(t: TFunc, judgment: string): string {
+  return judgment === "inaccuracy"
+    ? t("an.inaccuracy")
+    : judgment === "mistake"
+      ? t("an.mistake")
+      : t("an.blunder");
+}
 
 /** Zahl fürs Chart / die Eval-Bar: Matt zählt wie ±10 Bauern. */
 function evalNum(cp: number | null, mate: number | null): number {
@@ -88,7 +93,7 @@ function acpl(moves: ViewMove[]): { white: number; black: number } {
 }
 
 /** Kommentar zu einem annotierten Zug: Bewertungssprung + bessere Alternative. */
-function commentFor(sansBefore: string[], m: ViewMove, prevEval: number): string | null {
+function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: number): string | null {
   if (!m.judgment) return null;
   let best = "";
   if (m.bestUci) {
@@ -107,12 +112,13 @@ function commentFor(sansBefore: string[], m: ViewMove, prevEval: number): string
   }
   const from = evalLabel(prevEval);
   const to = m.mateIn != null ? `#${m.mateIn}` : evalLabel(m.evalCp ?? 0);
-  const base = `${JUDGMENT_DE[m.judgment]}. Die Bewertung springt von ${from} auf ${to}.`;
-  return best ? `${base} Besser war ${best}.` : base;
+  const base = t("an.comment", { judgment: judgmentLabel(t, m.judgment), from, to });
+  return best ? base + t("an.commentBetter", { san: best }) : base;
 }
 
 export default function Analysis({ targetGameId }: { targetGameId: number | null }) {
   const backend = useBackendInfo();
+  const { t } = useI18n();
   const desktop = backend.mode === "desktop";
 
   const [games, setGames] = useState<GameRecord[]>([]);
@@ -124,6 +130,9 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [posSearch, setPosSearch] = useState<PositionSearch | null>(null);
+  const [chessdbOn, setChessdbOn] = useState(false);
+  const [book, setBook] = useState<ChessDbResult | null>(null);
+  const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
 
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selectedId;
@@ -175,10 +184,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         reloadGames();
         setNotice(
           p.error
-            ? `Analyse abgebrochen: ${p.error}`
+            ? t("an.aborted", { e: p.error })
             : p.canceled
-              ? `Analyse gestoppt — ${p.analyzed} Partien fertig.`
-              : `Analyse abgeschlossen: ${p.analyzed} Partien.`
+              ? t("an.stopped", { n: p.analyzed })
+              : t("an.finished", { n: p.analyzed })
         );
       })
     );
@@ -186,7 +195,15 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       disposed = true;
       cleanups.forEach((u) => u());
     };
-  }, [desktop, reloadGames]);
+  }, [desktop, reloadGames, t]);
+
+  // ChessDB-Einstellung einmalig lesen.
+  useEffect(() => {
+    if (!desktop) return;
+    getSettings()
+      .then((s) => setChessdbOn(s.chessdb_enabled))
+      .catch(() => {});
+  }, [desktop]);
 
   const game = useMemo(
     () => games.find((g) => g.id === selectedId) ?? null,
@@ -243,11 +260,37 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   // Positionssuche (entprellt).
   useEffect(() => {
     if (!desktop) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       searchPosition(fen).then(setPosSearch).catch(() => setPosSearch(null));
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [desktop, fen]);
+
+  // ChessDB-Eröffnungsbuch (entprellt, cache-gestützt im Backend).
+  useEffect(() => {
+    if (!desktop || !chessdbOn) return;
+    setBookState("loading");
+    let stale = false;
+    const timer = setTimeout(() => {
+      chessdbQuery(fen)
+        .then((r) => {
+          if (!stale) {
+            setBook(r);
+            setBookState("idle");
+          }
+        })
+        .catch(() => {
+          if (!stale) {
+            setBook(null);
+            setBookState("error");
+          }
+        });
+    }, 400);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [desktop, chessdbOn, fen]);
 
   // Eval an der aktuellen Stellung: live von der Engine, sonst gespeichert.
   const storedEval = ply === 0 ? 20 : evalNum(viewMoves[ply - 1]?.evalCp ?? null, viewMoves[ply - 1]?.mateIn ?? null);
@@ -258,8 +301,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     if (!currentMove) return null;
     if (!live) return featuredGame.moves[ply - 1]?.comment ?? null;
     const prevEval = ply <= 1 ? 20 : evalNum(viewMoves[ply - 2]?.evalCp ?? null, viewMoves[ply - 2]?.mateIn ?? null);
-    return commentFor(sans.slice(0, ply - 1), currentMove, prevEval);
-  }, [live, currentMove, ply, sans, viewMoves]);
+    return commentFor(t, sans.slice(0, ply - 1), currentMove, prevEval);
+  }, [live, currentMove, ply, sans, viewMoves, t]);
 
   const evalSeries = viewMoves
     .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
@@ -278,14 +321,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
   const unanalyzed = games.filter((g) => !g.analyzed);
   const headerSub = live
-    ? `${game.color === "white" ? "Ich" : game.opponent} vs. ${game.color === "white" ? game.opponent : "ich"} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    ? `${game.color === "white" ? t("an.me") : game.opponent} vs. ${game.color === "white" ? game.opponent : t("an.meLower")} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-4 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Analyse</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
         </div>
         {live && <ResultBadge result={game.result} />}
@@ -301,7 +344,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             {games.map((g) => (
               <option key={g.id} value={g.id ?? undefined}>
                 {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
-                {g.result === "win" ? "Sieg" : g.result === "loss" ? "Niederlage" : "Remis"}
+                {g.result === "win" ? t("common.win") : g.result === "loss" ? t("common.loss") : t("common.draw")}
               </option>
             ))}
           </select>
@@ -311,8 +354,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               <div className="flex min-w-[220px] flex-1 items-center gap-2 text-[12px] text-ink2">
                 <Loader2 size={14} className="animate-spin text-accent" />
                 {progress
-                  ? `Partie ${progress.game_index}/${progress.games_total} · ${progress.opponent} · Zug ${Math.ceil(progress.ply / 2)}/${Math.ceil(progress.plies / 2)}`
-                  : "Analyse läuft …"}
+                  ? t("an.progress", {
+                      i: progress.game_index,
+                      n: progress.games_total,
+                      opp: progress.opponent,
+                      a: Math.ceil(progress.ply / 2),
+                      b: Math.ceil(progress.plies / 2),
+                    })
+                  : t("an.running")}
                 {progress && (
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel3">
                     <div
@@ -323,7 +372,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 )}
               </div>
               <Button onClick={() => cancelAnalysis()}>
-                <Square size={13} /> Stopp
+                <Square size={13} /> {t("an.stop")}
               </Button>
             </>
           ) : (
@@ -334,14 +383,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   onClick={() => {
                     setNotice(null);
                     setRunning(true);
-                    startAnalysis({ gameIds: [selectedId], depth: 18 }).catch((e) => {
+                    startAnalysis({ gameIds: [selectedId] }).catch((e) => {
                       setRunning(false);
                       setNotice(String(e));
                     });
                   }}
                 >
                   <Zap size={14} />
-                  {analyzedRows ? "Neu analysieren" : "Diese Partie analysieren"}
+                  {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
                 </Button>
               )}
               {unanalyzed.length > 0 && (
@@ -349,13 +398,13 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   onClick={() => {
                     setNotice(null);
                     setRunning(true);
-                    startAnalysis({ limit: 10, depth: 14 }).catch((e) => {
+                    startAnalysis({ limit: 10 }).catch((e) => {
                       setRunning(false);
                       setNotice(String(e));
                     });
                   }}
                 >
-                  <ListChecks size={14} /> Nächste 10 ({unanalyzed.length} offen)
+                  <ListChecks size={14} /> {t("an.nextTen", { n: unanalyzed.length })}
                 </Button>
               )}
               {unanalyzed.length > 10 && (
@@ -363,13 +412,13 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   onClick={() => {
                     setNotice(null);
                     setRunning(true);
-                    startAnalysis({ depth: 14 }).catch((e) => {
+                    startAnalysis({}).catch((e) => {
                       setRunning(false);
                       setNotice(String(e));
                     });
                   }}
                 >
-                  Alle analysieren
+                  {t("an.analyzeAll")}
                 </Button>
               )}
             </>
@@ -385,7 +434,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
       {desktop && games.length === 0 && (
         <div className="mb-4 rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[13px] text-ink3">
-          Noch keine Partien mit Zügen in der Datenbank — importiere zuerst unter „Partien".
+          {t("an.noGames")}
         </div>
       )}
 
@@ -414,7 +463,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
         {/* Zugliste + Eval-Graph */}
         <div className="flex min-w-0 flex-col gap-4">
-          <Card title="Partie" pad={false} className="flex-1">
+          <Card title={t("an.game")} pad={false} className="flex-1">
             <div className="max-h-[290px] overflow-y-auto p-3">
               <div className="flex flex-wrap gap-x-1 gap-y-1.5 text-[13.5px] leading-relaxed">
                 {viewMoves.map((m, i) => (
@@ -438,8 +487,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               </div>
               {live && !analyzedRows && (
                 <div className="mt-3 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12px] text-ink3">
-                  Diese Partie ist noch nicht analysiert — Annotationen und Bewertungskurve
-                  erscheinen nach der Stockfish-Analyse.
+                  {t("an.notAnalyzed")}
                 </div>
               )}
               {currentComment && (
@@ -454,7 +502,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             </div>
           </Card>
 
-          <Card title="Bewertungsverlauf" pad={false}>
+          <Card title={t("an.evalChart")} pad={false}>
             <div className="px-2 pb-1 pt-2">
               {evalSeries.length >= 2 ? (
                 <ResponsiveContainer width="100%" height={110}>
@@ -467,7 +515,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                       content={({ active, payload }) =>
                         active && payload?.length ? (
                           <div className="rounded-md border border-line2 bg-panel3 px-2 py-1 text-[12px]">
-                            Zug {Math.ceil(Number(payload[0].payload.ply) / 2)} · {evalLabel(Number(payload[0].value) * 100)}
+                            {t("an.moveTooltip", {
+                              n: Math.ceil(Number(payload[0].payload.ply) / 2),
+                              e: evalLabel(Number(payload[0].value) * 100),
+                            })}
                           </div>
                         ) : null
                       }
@@ -478,7 +529,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 </ResponsiveContainer>
               ) : (
                 <div className="flex h-[110px] items-center justify-center text-[12px] text-ink3">
-                  Noch keine Bewertungsdaten — Partie zuerst analysieren.
+                  {t("an.noEvalData")}
                 </div>
               )}
             </div>
@@ -493,35 +544,70 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             onEval={(cp, mate) => setLiveEval({ cp, mate })}
           />
 
-          <Card title={live ? "Meine Fehler (Auto-Analyse)" : "Auto-Annotation"}>
+          <Card title={live ? t("an.myErrors") : t("an.autoAnnotation")}>
             <ul className="flex flex-col gap-2 text-[13px]">
               <li className="flex justify-between">
-                <span style={{ color: nagColor["?!"] }}>?! Ungenauigkeiten</span>
+                <span style={{ color: nagColor["?!"] }}>{t("an.inaccuracies")}</span>
                 <span className="font-medium">{summary.inaccuracy}</span>
               </li>
               <li className="flex justify-between">
-                <span style={{ color: nagColor["?"] }}>? Fehler</span>
+                <span style={{ color: nagColor["?"] }}>{t("an.mistakes")}</span>
                 <span className="font-medium">{summary.mistake}</span>
               </li>
               <li className="flex justify-between">
-                <span style={{ color: nagColor["??"] }}>?? Patzer</span>
+                <span style={{ color: nagColor["??"] }}>{t("an.blunders")}</span>
                 <span className="font-medium">{summary.blunder}</span>
               </li>
             </ul>
             <div className="mt-3 border-t border-line pt-3 text-[12px] text-ink3">
-              Ø Centipawn-Verlust: <span className="text-ink2">Weiß {live ? summary.acpl.white : featuredGame.summary.acplWhite}</span> ·{" "}
-              <span className="text-ink2">Schwarz {live ? summary.acpl.black : featuredGame.summary.acplBlack}</span>
+              {t("an.acpl")}{" "}
+              <span className="text-ink2">{t("common.white")} {live ? summary.acpl.white : featuredGame.summary.acplWhite}</span> ·{" "}
+              <span className="text-ink2">{t("common.black")} {live ? summary.acpl.black : featuredGame.summary.acplBlack}</span>
             </div>
           </Card>
 
+          {desktop && chessdbOn && (
+            <Card title={t("an.book")}>
+              {bookState === "loading" && !book ? (
+                <div className="text-[12px] text-ink3">{t("an.bookLoading")}</div>
+              ) : bookState === "error" ? (
+                <div className="text-[12px] text-ink3">{t("an.bookError")}</div>
+              ) : book && book.status === "ok" && book.moves.length > 0 ? (
+                <div className="flex flex-col gap-1.5">
+                  {book.moves.slice(0, 5).map((m) => (
+                    <div key={m.uci} className="flex items-center justify-between text-[12.5px]">
+                      <span className="w-14 font-medium">{m.san || m.uci}</span>
+                      <span className="tabular-nums text-ink2">
+                        {m.score != null
+                          ? `${m.score >= 0 ? "+" : "−"}${de(Math.abs(m.score) / 100, 2)}`
+                          : "—"}
+                      </span>
+                      <span className="w-16 text-right text-[11.5px] text-ink3">
+                        {m.winrate != null ? `${m.winrate} %` : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {book.cached && (
+                    <div className="mt-1 border-t border-line pt-1.5 text-[11px] text-ink3">
+                      {t("an.bookCached")}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[12px] text-ink3">{t("an.bookUnknown")}</div>
+              )}
+            </Card>
+          )}
+
           {desktop && (
-            <Card title="Diese Stellung in deinen Partien">
+            <Card title={t("an.posInGames")}>
               {posSearch && posSearch.total_games > 0 ? (
                 <>
                   <div className="text-[12.5px] text-ink2">
                     <Search size={13} className="mr-1.5 inline text-accent" />
-                    In <span className="font-medium text-ink">{posSearch.total_games}</span>{" "}
-                    {posSearch.total_games === 1 ? "Partie" : "Partien"} erreicht
+                    {t(posSearch.total_games === 1 ? "an.reachedIn.one" : "an.reachedIn.many", {
+                      n: posSearch.total_games,
+                    })}
                   </div>
                   <div className="mt-2.5 flex flex-col gap-1.5">
                     {posSearch.next_moves.slice(0, 4).map((m) => (
@@ -577,7 +663,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 </>
               ) : (
                 <div className="text-[12px] leading-relaxed text-ink3">
-                  Diese Stellung kam in keiner anderen importierten Partie vor.
+                  {t("an.posNotFound")}
                 </div>
               )}
             </Card>
@@ -586,7 +672,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
           {!desktop && (
             <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
               <Cpu size={13} className="mr-1.5 inline" />
-              Demo-Ansicht. Auto-Analyse, Live-Engine und Positionssuche laufen in der Desktop-App.
+              {t("an.demoNote")}
             </div>
           )}
         </div>

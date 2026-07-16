@@ -12,32 +12,43 @@ import {
 import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-react";
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useI18n } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
+import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
 import { buildDashboard } from "../lib/stats";
 import type { UiGame } from "../lib/gameUi";
 import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { chart, DarkTooltip } from "../components/chartTheme";
-import { de, deInt } from "../lib/util";
+import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
 export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const backend = useBackendInfo();
+  const { locale, t } = useI18n();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
+  const [users, setUsers] = useState({ cc: profile.ccUser, li: profile.liUser });
 
   useEffect(() => {
     if (backend.mode === "desktop") {
       listGames().then(setRecords).catch(() => setRecords(null));
       repStats().then(setRep).catch(() => {});
       fetchPuzzleStats().then(setPz).catch(() => {});
+      getSettings()
+        .then((s) => setUsers({ cc: s.cc_user, li: s.li_user }))
+        .catch(() => {});
     }
   }, [backend.mode]);
 
   const live = records !== null && records.length > 0;
-  const dash = useMemo(() => (live ? buildDashboard(records!) : null), [live, records]);
+  const dash = useMemo(
+    () =>
+      live ? buildDashboard(records!, { locale, ccUser: users.cc, liUser: users.li }) : null,
+    [live, records, locale, users]
+  );
 
   const cards = dash
     ? dash.cards
@@ -49,25 +60,24 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 
   const greeting = (() => {
     const h = new Date().getHours();
-    return h < 11 ? "Guten Morgen" : h < 18 ? "Guten Tag" : "Guten Abend";
+    return h < 11 ? t("dash.goodMorning") : h < 18 ? t("dash.goodDay") : t("dash.goodEvening");
   })();
+  const name = backend.mode === "desktop" ? users.cc : profile.name;
 
   return (
     <div className="mx-auto max-w-[1200px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">{greeting}, {profile.name}</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{greeting}, {name}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            {new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            {live
-              ? ` · ${deInt(records!.length)} Partien in der Datenbank`
-              : " · Demo-Daten (Web-Preview)"}
+            {new Date().toLocaleDateString(dateLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            {live ? t("dash.gamesInDb", { n: deInt(records!.length) }) : t("dash.demoData")}
           </p>
         </div>
         <div className="flex gap-2">
-          <ExtLink href="https://www.chess.com/member/Torim98" label="chess.com" />
+          <ExtLink href={`https://www.chess.com/member/${users.cc}`} label="chess.com" />
           <span className="text-line2">·</span>
-          <ExtLink href="https://lichess.org/@/Torim98" label="lichess" />
+          <ExtLink href={`https://lichess.org/@/${users.li}`} label="lichess" />
         </div>
       </header>
 
@@ -93,7 +103,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                 >
                   {r.delta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                   {r.delta >= 0 ? "+" : ""}
-                  {r.delta} · 30 Tage
+                  {r.delta} · {t("dash.days30")}
                 </div>
               </div>
               <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
@@ -104,7 +114,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
         <Card
-          title={live ? "Rating-Verlauf · Rapid & Blitz · 26 Wochen" : "Rating-Verlauf · Rapid · 26 Wochen"}
+          title={live ? t("dash.ratingHistoryLive") : t("dash.ratingHistoryDemo")}
           className="min-[1100px]:col-span-2"
         >
           <ResponsiveContainer width="100%" height={230}>
@@ -131,19 +141,19 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 text-[13px] text-ink2">
-                  <BookOpen size={15} className="text-accent" /> Repertoire-Training
+                  <BookOpen size={15} className="text-accent" /> {t("dash.repTraining")}
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
                   {rep ? rep.due_now : repertoireStats.dueToday}
-                  <span className="ml-1.5 text-[13px] font-normal text-ink3">fällige Wiederholungen</span>
+                  <span className="ml-1.5 text-[13px] font-normal text-ink3">{t("dash.dueReviews")}</span>
                 </div>
                 <div className="mt-1 text-[12px] text-ink3">
                   {rep
-                    ? `${rep.my_positions} Züge im Buch · Abdeckung ${de(rep.coverage_pct)} %`
-                    : `Serie: ${repertoireStats.streak} Tage`}
+                    ? t("dash.repSummary", { n: rep.my_positions, p: de(rep.coverage_pct) })
+                    : t("dash.streak", { n: repertoireStats.streak })}
                 </div>
               </div>
-              <Button primary onClick={() => go("repertoire")}>Trainieren</Button>
+              <Button primary onClick={() => go("repertoire")}>{t("dash.train")}</Button>
             </div>
           </Card>
 
@@ -151,15 +161,15 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 text-[13px] text-ink2">
-                  <Cpu size={15} className="text-violet" /> Analyse-Warteschlange
+                  <Cpu size={15} className="text-violet" /> {t("dash.analysisQueue")}
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
                   {deInt(unanalyzed)}
-                  <span className="ml-1.5 text-[13px] font-normal text-ink3">Partien ohne Analyse</span>
+                  <span className="ml-1.5 text-[13px] font-normal text-ink3">{t("dash.gamesWithoutAnalysis")}</span>
                 </div>
-                <div className="mt-1 text-[12px] text-ink3">Stockfish 18 · nativ</div>
+                <div className="mt-1 text-[12px] text-ink3">{t("dash.stockfishNative")}</div>
               </div>
-              <Button onClick={() => go("analysis")}>Starten</Button>
+              <Button onClick={() => go("analysis")}>{t("dash.start")}</Button>
             </div>
           </Card>
 
@@ -167,7 +177,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 text-[13px] text-ink2">
-                  <Puzzle size={15} className="text-gold" /> Tagesziel Puzzles
+                  <Puzzle size={15} className="text-gold" /> {t("dash.puzzleGoal")}
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
                   {pz ? pz.today_solved : puzzleStats.todaySolved}
@@ -182,14 +192,14 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                   />
                 </div>
               </div>
-              <Button onClick={() => go("puzzles")}>Lösen</Button>
+              <Button onClick={() => go("puzzles")}>{t("dash.solve")}</Button>
             </div>
           </Card>
         </div>
       </div>
 
-      <Card title="Letzte Partien" className="mt-4" pad={false}
-        action={<button onClick={() => go("games")} className="text-[12.5px] text-ink3 hover:text-accent">Alle anzeigen →</button>}
+      <Card title={t("dash.recentGames")} className="mt-4" pad={false}
+        action={<button onClick={() => go("games")} className="text-[12.5px] text-ink3 hover:text-accent">{t("dash.showAll")}</button>}
       >
         <table className="w-full text-[13px]">
           <tbody>
@@ -212,8 +222,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                     href={
                       g.url ??
                       (g.source === "chess.com"
-                        ? "https://www.chess.com/games/archive/Torim98"
-                        : "https://lichess.org/@/Torim98/all")
+                        ? `https://www.chess.com/games/archive/${users.cc}`
+                        : `https://lichess.org/@/${users.li}/all`)
                     }
                   />
                 </td>

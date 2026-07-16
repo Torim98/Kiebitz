@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { insights as demo } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useI18n } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
 import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { buildInsights, type LiveInsights } from "../lib/stats";
@@ -32,14 +33,9 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
   );
 }
 
-const PHASE_DE: Record<string, string> = {
-  opening: "Eröffnung",
-  middlegame: "Mittelspiel",
-  endgame: "Endspiel",
-};
-
 export default function Insights() {
   const backend = useBackendInfo();
+  const { locale, t } = useI18n();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [errors, setErrors] = useState<PhaseErrors[] | null>(null);
 
@@ -51,8 +47,8 @@ export default function Insights() {
   }, [backend.mode]);
 
   const liveData: LiveInsights | null = useMemo(
-    () => (records && records.length > 0 ? buildInsights(records) : null),
-    [records]
+    () => (records && records.length > 0 ? buildInsights(records, locale) : null),
+    [records, locale]
   );
   const live = liveData !== null;
 
@@ -62,41 +58,48 @@ export default function Insights() {
   const accuracyTrend = live ? liveData.accuracyTrend : demo.accuracyTrend;
   const maxActivity = Math.max(1, ...activity.values.flat());
 
+  const phaseLabel = (p: string) =>
+    p === "opening"
+      ? t("ins.phase.opening")
+      : p === "middlegame"
+        ? t("ins.phase.middlegame")
+        : t("ins.phase.endgame");
+
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5">
-        <h1 className="text-[21px] font-semibold tracking-tight">Insights</h1>
+        <h1 className="text-[21px] font-semibold tracking-tight">{t("ins.title")}</h1>
         <p className="mt-0.5 text-[13px] text-ink3">
           {live
-            ? `Datenbankweite Analyse über alle ${deInt(liveData.totalGames)} importierten Partien · chess.com + Lichess`
-            : "Demo-Daten — nach dem Import rechnet diese Seite mit deiner echten Datenbank"}
+            ? t("ins.subtitleLive", { n: deInt(liveData.totalGames) })
+            : t("ins.subtitleDemo")}
         </p>
       </header>
 
       <div className="mb-4 grid grid-cols-2 gap-4 min-[1100px]:grid-cols-4">
         {live ? (
           <>
-            <Kpi label="Partien gesamt" value={deInt(liveData.totalGames)} sub="lokale Datenbank" />
-            <Kpi label="Siegquote" value={`${de(liveData.winRate)} %`} sub="über alle Partien" />
+            <Kpi label={t("ins.totalGames")} value={deInt(liveData.totalGames)} sub={t("ins.localDb")} />
+            <Kpi label={t("ins.winRate")} value={`${de(liveData.winRate)} %`} sub={t("ins.allGames")} />
             <Kpi
-              label="Ø Genauigkeit"
+              label={t("ins.avgAccuracy")}
               value={liveData.avgAccuracy != null ? `${de(liveData.avgAccuracy)} %` : "—"}
-              sub={liveData.avgAccuracy != null ? "chess.com-Analysen" : "noch keine Analysedaten"}
+              sub={liveData.avgAccuracy != null ? t("ins.ccAnalyses") : t("ins.noAnalysisData")}
             />
-            <Kpi label="Ø Gegner-Elo" value={deInt(liveData.avgOppElo)} sub="gewichtete Spielstärke" />
+            <Kpi label={t("ins.avgOppElo")} value={deInt(liveData.avgOppElo)} sub={t("ins.weightedStrength")} />
           </>
         ) : (
           <>
-            <Kpi label="Partien gesamt" value={deInt(demo.totalGames)} sub="seit Januar 2024" />
-            <Kpi label="Siegquote" value={`${de(demo.winRate)} %`} sub="+1,8 Punkte ggü. Vorjahr" />
-            <Kpi label="Ø Genauigkeit" value={`${de(demo.avgAccuracy)} %`} sub="Stockfish-Analyse, Tiefe 20" />
-            <Kpi label="Spielzeit" value={`${demo.hoursPlayed} h`} sub="≈ 13 volle Tage am Brett" />
+            <Kpi label={t("ins.totalGames")} value={deInt(demo.totalGames)} sub={t("ins.sinceJan")} />
+            <Kpi label={t("ins.winRate")} value={`${de(demo.winRate)} %`} sub={t("ins.vsLastYear")} />
+            <Kpi label={t("ins.avgAccuracy")} value={`${de(demo.avgAccuracy)} %`} sub={t("ins.sfDepth")} />
+            <Kpi label={t("ins.playTime")} value={`${demo.hoursPlayed} h`} sub={t("ins.fullDays")} />
           </>
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-2">
-        <Card title="Siegquote nach Eröffnung · Top 6 nach Häufigkeit">
+        <Card title={t("ins.openingsTitle")}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={openings} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 8 }} barSize={16}>
               <XAxis type="number" domain={[0, 100]} hide />
@@ -114,7 +117,7 @@ export default function Insights() {
                     <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 text-[12.5px]">
                       <div className="text-ink">{payload[0].payload.name}</div>
                       <div className="mt-0.5 text-ink2">
-                        {payload[0].payload.games} Partien · {payload[0].payload.win} % Siege
+                        {t("ins.openingTooltip", { n: payload[0].payload.games, p: payload[0].payload.win })}
                       </div>
                     </div>
                   ) : null
@@ -137,11 +140,11 @@ export default function Insights() {
         </Card>
 
         {live && (
-          <Card title="Meine Fehler nach Spielphase · aus der Auto-Analyse">
+          <Card title={t("ins.errorsTitle")}>
             {errors && errors.some((e) => e.inaccuracy + e.mistake + e.blunder > 0) ? (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart
-                  data={errors.map((e) => ({ ...e, phase: PHASE_DE[e.phase] ?? e.phase }))}
+                  data={errors.map((e) => ({ ...e, phase: phaseLabel(e.phase) }))}
                   margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
                   barSize={22}
                   barGap={6}
@@ -158,22 +161,21 @@ export default function Insights() {
                     iconSize={8}
                     formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
                   />
-                  <Bar dataKey="inaccuracy" name="Ungenauigkeiten" fill={chart.inaccuracy} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="mistake" name="Fehler" fill={chart.mistake} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="blunder" name="Patzer" fill={chart.blunder} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="inaccuracy" name={t("ins.legInaccuracies")} fill={chart.inaccuracy} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="mistake" name={t("ins.legMistakes")} fill={chart.mistake} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="blunder" name={t("ins.legBlunders")} fill={chart.blunder} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
               <div className="flex h-[240px] items-center justify-center px-6 text-center text-[12.5px] leading-relaxed text-ink3">
-                Noch keine analysierten Partien — starte die Auto-Analyse auf der Analyse-Seite,
-                dann füllt sich dieses Chart mit deinen echten Fehlern.
+                {t("ins.noErrors")}
               </div>
             )}
           </Card>
         )}
 
         {live ? (
-          <Card title="Siegquote nach Gegnerstärke · relativ zum eigenen Rating">
+          <Card title={t("ins.oppStrengthTitle")}>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={liveData.byOppStrength} margin={{ top: 8, right: 8, bottom: 0, left: -20 }} barSize={40}>
                 <CartesianGrid stroke={chart.grid} vertical={false} />
@@ -185,7 +187,7 @@ export default function Insights() {
                       <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 text-[12.5px]">
                         <div className="text-ink">{payload[0].payload.bucket}</div>
                         <div className="mt-0.5 text-ink2">
-                          {payload[0].payload.games} Partien · {payload[0].payload.winRate} % Siege
+                          {t("ins.openingTooltip", { n: payload[0].payload.games, p: payload[0].payload.winRate })}
                         </div>
                       </div>
                     ) : null
@@ -207,7 +209,7 @@ export default function Insights() {
             </ResponsiveContainer>
           </Card>
         ) : (
-          <Card title="Fehler nach Spielphase · alle analysierten Partien">
+          <Card title={t("ins.errorsDemoTitle")}>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={demo.errorsByPhase} margin={{ top: 8, right: 8, bottom: 0, left: -20 }} barSize={22} barGap={6}>
                 <CartesianGrid stroke={chart.grid} vertical={false} />
@@ -222,15 +224,15 @@ export default function Insights() {
                   iconSize={8}
                   formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
                 />
-                <Bar dataKey="inaccuracy" name="Ungenauigkeiten" fill={chart.inaccuracy} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="mistake" name="Fehler" fill={chart.mistake} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="blunder" name="Patzer" fill={chart.blunder} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="inaccuracy" name={t("ins.legInaccuracies")} fill={chart.inaccuracy} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="mistake" name={t("ins.legMistakes")} fill={chart.mistake} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="blunder" name={t("ins.legBlunders")} fill={chart.blunder} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
         )}
 
-        <Card title="Ergebnisse nach Farbe">
+        <Card title={t("ins.byColorTitle")}>
           <div className="flex flex-col gap-5 pt-2">
             {byColor.map((c) => {
               const total = c.win + c.draw + c.loss;
@@ -239,7 +241,9 @@ export default function Insights() {
                 <div key={c.color}>
                   <div className="mb-1.5 flex justify-between text-[12.5px]">
                     <span className="font-medium text-ink">{c.color}</span>
-                    <span className="text-ink3">{deInt(total)} Partien · {de((c.win / total) * 100)} % Siege</span>
+                    <span className="text-ink3">
+                      {t("ins.colorSummary", { n: deInt(total), p: de((c.win / total) * 100) })}
+                    </span>
                   </div>
                   <div className="flex h-5 gap-0.5 overflow-hidden rounded-md">
                     {c.win > 0 && <div style={{ width: `${(c.win / total) * 100}%`, background: chart.win }} />}
@@ -250,25 +254,21 @@ export default function Insights() {
               );
             })}
             <div className="flex items-center gap-4 text-[12px] text-ink3">
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.win }} /> Sieg</span>
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.draw }} /> Remis</span>
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.loss }} /> Niederlage</span>
+              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.win }} /> {t("common.win")}</span>
+              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.draw }} /> {t("common.draw")}</span>
+              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: chart.loss }} /> {t("common.loss")}</span>
             </div>
             <div className="border-t border-line pt-3 text-[12.5px] leading-relaxed text-ink3">
-              {live ? (
-                liveData.whiteAdvantagePts >= 0 ? (
-                  <>Mit Weiß punktest du <span className="text-ink2">{de(Math.abs(liveData.whiteAdvantagePts))} Punkte</span> besser als mit Schwarz.</>
-                ) : (
-                  <>Mit Schwarz punktest du <span className="text-ink2">{de(Math.abs(liveData.whiteAdvantagePts))} Punkte</span> besser als mit Weiß.</>
-                )
-              ) : (
-                <>Mit Weiß punktest du <span className="text-ink2">4,1 Punkte</span> besser — dein 1.e4-Repertoire trägt. Als Schwarz kosten dich vor allem <span className="text-ink2">Londoner-Aufbauten</span> Punkte.</>
-              )}
+              {live
+                ? liveData.whiteAdvantagePts >= 0
+                  ? t("ins.whiteBetter", { p: de(Math.abs(liveData.whiteAdvantagePts)) })
+                  : t("ins.blackBetter", { p: de(Math.abs(liveData.whiteAdvantagePts)) })
+                : t("ins.demoColorNote")}
             </div>
           </div>
         </Card>
 
-        <Card title={live ? "Genauigkeit nach Monat" : "Genauigkeit · 12 Monate"}>
+        <Card title={live ? t("ins.accuracyTitleLive") : t("ins.accuracyTitleDemo")}>
           {accuracyTrend.length >= 2 ? (
             <ResponsiveContainer width="100%" height={228}>
               <LineChart data={accuracyTrend} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
@@ -279,7 +279,7 @@ export default function Insights() {
                 <Line
                   type="monotone"
                   dataKey="acc"
-                  name="Ø Genauigkeit %"
+                  name={t("ins.accuracySeries")}
                   stroke={chart.accent}
                   strokeWidth={2}
                   dot={accuracyTrend.length < 8}
@@ -289,17 +289,17 @@ export default function Insights() {
             </ResponsiveContainer>
           ) : (
             <div className="flex h-[228px] items-center justify-center text-[12.5px] text-ink3">
-              Noch zu wenige Analysedaten — chess.com liefert Genauigkeiten nur für ausgewertete Partien.
+              {t("ins.tooFewData")}
             </div>
           )}
         </Card>
 
-        <Card title="Aktivität · Partien nach Wochentag und Uhrzeit" className="min-[1000px]:col-span-2">
+        <Card title={t("ins.activityTitle")} className="min-[1000px]:col-span-2">
           <div className="flex gap-4">
             <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `44px repeat(${activity.slots.length}, 1fr)` }}>
               <div />
               {activity.slots.map((s) => (
-                <div key={s} className="pb-1 text-center text-[11px] text-ink3">{s} Uhr</div>
+                <div key={s} className="pb-1 text-center text-[11px] text-ink3">{s} {t("ins.oclock")}</div>
               ))}
               {activity.days.map((d, di) => (
                 <Fragment key={d}>
@@ -307,7 +307,7 @@ export default function Insights() {
                   {activity.values[di].map((v, si) => (
                     <div
                       key={`${d}-${si}`}
-                      title={`${d}, ${activity.slots[si]} Uhr: ${v} Partien`}
+                      title={t("ins.activityCell", { d, s: activity.slots[si], n: v })}
                       className="flex h-9 items-center justify-center rounded-md text-[11px]"
                       style={{
                         background: v === 0 ? "var(--color-panel2)" : `rgba(34,192,138,${0.12 + (v / maxActivity) * 0.75})`,
@@ -321,15 +321,11 @@ export default function Insights() {
               ))}
             </div>
             <div className="w-56 shrink-0 border-l border-line pl-4 text-[12.5px] leading-relaxed text-ink3">
-              {live ? (
-                liveData.topSlot ? (
-                  <>Deine aktivste Zeit: <span className="text-ink2">{liveData.topSlot.label}</span> ({liveData.topSlot.games} Partien).</>
-                ) : (
-                  "Noch keine Zeitdaten — nach dem nächsten Import füllt sich die Heatmap."
-                )
-              ) : (
-                <>Deine beste Zeit: <span className="text-ink2">Samstagabend</span> (58 % Siege). Nach 23 Uhr fällt deine Genauigkeit um <span className="text-loss">−6,2 Punkte</span> — Tilt-Gefahr.</>
-              )}
+              {live
+                ? liveData.topSlot
+                  ? t("ins.topSlot", { label: liveData.topSlot.label, n: liveData.topSlot.games })
+                  : t("ins.noTimeData")
+                : t("ins.demoActivityNote")}
             </div>
           </div>
         </Card>

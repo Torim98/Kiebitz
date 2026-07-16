@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import type { Result, Source } from "../data/demo";
-import { resultColor, resultLabel } from "../lib/util";
+import { useT } from "../lib/i18n";
+import { resultColor } from "../lib/util";
 
 export function Card({
   title,
@@ -61,13 +62,16 @@ export function Tag({ children }: { children: ReactNode }) {
 }
 
 export function ResultBadge({ result }: { result: Result }) {
+  const t = useT();
+  const label =
+    result === "win" ? t("common.win") : result === "loss" ? t("common.loss") : t("common.draw");
   return (
     <span className="inline-flex items-center gap-1.5 text-[12.5px]" style={{ color: resultColor[result] }}>
       <span
         className="inline-block h-2 w-2 rounded-full"
         style={{ background: resultColor[result] }}
       />
-      {resultLabel[result]}
+      {label}
     </span>
   );
 }

@@ -1,5 +1,6 @@
 import type { GameRecord } from "./db";
-import { toUi, type UiGame } from "./gameUi";
+import type { Locale } from "./i18n";
+import { tcLabel, toUi, type UiGame } from "./gameUi";
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -26,21 +27,29 @@ export interface LiveDashboard {
   unanalyzed: number;
 }
 
-const PROFILE_URL: Record<string, string> = {
-  "chess.com": "https://www.chess.com/member/Torim98",
-  lichess: "https://lichess.org/@/Torim98",
-};
+export interface DashboardOptions {
+  locale: Locale;
+  ccUser: string;
+  liUser: string;
+}
 
-function isoWeek(d: Date): string {
+function isoWeek(d: Date, locale: Locale): string {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const day = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `KW ${week}`;
+  return locale === "en" ? `W ${week}` : `KW ${week}`;
 }
 
-export function buildDashboard(records: GameRecord[]): LiveDashboard {
+export function buildDashboard(
+  records: GameRecord[],
+  opts: DashboardOptions = { locale: "de", ccUser: "Torim98", liUser: "Torim98" }
+): LiveDashboard {
+  const profileUrl: Record<string, string> = {
+    "chess.com": `https://www.chess.com/member/${opts.ccUser}`,
+    lichess: `https://lichess.org/@/${opts.liUser}`,
+  };
   const asc = [...records].sort((a, b) => a.played_ts - b.played_ts);
   const now = Math.floor(Date.now() / 1000);
   const cutoff30d = now - 30 * 86400;
@@ -60,11 +69,11 @@ export function buildDashboard(records: GameRecord[]): LiveDashboard {
       cards.push({
         id: `${platform}-${tc}`,
         platform,
-        tc: tc === "daily" ? "Täglich" : tc[0].toUpperCase() + tc.slice(1),
+        tc: tcLabel(tc, opts.locale),
         value,
         delta: value - ref,
         spark,
-        url: PROFILE_URL[platform],
+        url: profileUrl[platform],
       });
     }
   }
@@ -92,7 +101,7 @@ export function buildDashboard(records: GameRecord[]): LiveDashboard {
     const cc = inWeek("chess.com");
     const li = inWeek("lichess");
     history.push({
-      week: isoWeek(new Date(end * 1000)),
+      week: isoWeek(new Date(end * 1000), opts.locale),
       cc: cc.length ? cc[cc.length - 1].my_elo : null,
       li: li.length ? li[li.length - 1].my_elo : null,
     });
@@ -101,7 +110,7 @@ export function buildDashboard(records: GameRecord[]): LiveDashboard {
   return {
     cards: cards.slice(0, 4),
     history,
-    recent: records.slice(0, 5).map(toUi),
+    recent: records.slice(0, 5).map((r) => toUi(r, opts.locale)),
     unanalyzed: records.filter((g) => !g.analyzed).length,
   };
 }
@@ -123,17 +132,21 @@ export interface LiveInsights {
   topSlot: { label: string; games: number } | null;
 }
 
-const MONTHS_DE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-const DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MONTHS: Record<Locale, string[]> = {
+  de: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+};
+const DAYS: Record<Locale, string[]> = {
+  de: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+};
 const SLOTS = ["0–4", "4–8", "8–12", "12–16", "16–20", "20–24"];
 
 const TC_ORDER = ["bullet", "blitz", "rapid", "classical", "daily"];
-const TC_DE: Record<string, string> = {
-  bullet: "Bullet",
-  blitz: "Blitz",
-  rapid: "Rapid",
-  classical: "Klassisch",
-  daily: "Täglich",
+
+const STRENGTH_LABELS: Record<Locale, [string, string, string]> = {
+  de: ["Gegner ≥ 100 schwächer", "ähnlich stark (±100)", "Gegner ≥ 100 stärker"],
+  en: ["opp. ≥ 100 weaker", "similar (±100)", "opp. ≥ 100 stronger"],
 };
 
 function winPct(games: GameRecord[]): number {
@@ -141,7 +154,9 @@ function winPct(games: GameRecord[]): number {
   return (games.filter((g) => g.result === "win").length / games.length) * 100;
 }
 
-export function buildInsights(records: GameRecord[]): LiveInsights {
+export function buildInsights(records: GameRecord[], locale: Locale = "de"): LiveInsights {
+  const months = MONTHS[locale];
+  const dayNames = DAYS[locale];
   const total = records.length;
 
   const withAcc = records.filter((g) => g.accuracy != null);
@@ -173,7 +188,7 @@ export function buildInsights(records: GameRecord[]): LiveInsights {
   const byColor = (["white", "black"] as const).map((c) => {
     const gs = records.filter((g) => g.color === c);
     return {
-      color: c === "white" ? "Weiß" : "Schwarz",
+      color: c === "white" ? (locale === "en" ? "White" : "Weiß") : locale === "en" ? "Black" : "Schwarz",
       win: gs.filter((g) => g.result === "win").length,
       draw: gs.filter((g) => g.result === "draw").length,
       loss: gs.filter((g) => g.result === "loss").length,
@@ -186,15 +201,16 @@ export function buildInsights(records: GameRecord[]): LiveInsights {
   const byTimeControl = TC_ORDER.filter((tc) => records.some((g) => g.time_class === tc)).map(
     (tc) => {
       const gs = records.filter((g) => g.time_class === tc);
-      return { tc: TC_DE[tc] ?? tc, games: gs.length, winRate: Math.round(winPct(gs)) };
+      return { tc: tcLabel(tc, locale), games: gs.length, winRate: Math.round(winPct(gs)) };
     }
   );
 
   // Gegnerstärke relativ zum eigenen Rating
+  const [weaker, similar, stronger] = STRENGTH_LABELS[locale];
   const strengthBuckets: [string, (d: number) => boolean][] = [
-    ["Gegner ≥ 100 schwächer", (d) => d <= -100],
-    ["ähnlich stark (±100)", (d) => d > -100 && d < 100],
-    ["Gegner ≥ 100 stärker", (d) => d >= 100],
+    [weaker, (d) => d <= -100],
+    [similar, (d) => d > -100 && d < 100],
+    [stronger, (d) => d >= 100],
   ];
   const byOppStrength = strengthBuckets.map(([bucket, match]) => {
     const gs = rated.filter((g) => g.my_elo > 0 && match(g.opp_elo - g.my_elo));
@@ -214,13 +230,13 @@ export function buildInsights(records: GameRecord[]): LiveInsights {
     .map(([key, accs]) => {
       const monthIdx = Number(key.split("-")[1]);
       return {
-        month: MONTHS_DE[monthIdx],
+        month: months[monthIdx],
         acc: Math.round((accs.reduce((s, a) => s + a, 0) / accs.length) * 10) / 10,
       };
     });
 
   // Aktivität: Wochentag × 4h-Slot (lokale Zeit)
-  const values = DAYS_DE.map(() => SLOTS.map(() => 0));
+  const values = dayNames.map(() => SLOTS.map(() => 0));
   for (const g of records) {
     if (g.played_ts <= 0) continue;
     const d = new Date(g.played_ts * 1000);
@@ -234,7 +250,13 @@ export function buildInsights(records: GameRecord[]): LiveInsights {
     for (let si = 0; si < 6; si++) {
       if (values[di][si] > max) {
         max = values[di][si];
-        topSlot = { label: `${DAYS_DE[di]} ${SLOTS[si]} Uhr`, games: max };
+        topSlot = {
+          label:
+            locale === "en"
+              ? `${dayNames[di]} ${SLOTS[si]}h`
+              : `${dayNames[di]} ${SLOTS[si]} Uhr`,
+          games: max,
+        };
       }
     }
   }
@@ -249,7 +271,7 @@ export function buildInsights(records: GameRecord[]): LiveInsights {
     byTimeControl,
     byOppStrength,
     accuracyTrend,
-    activity: { days: DAYS_DE, slots: SLOTS, values },
+    activity: { days: dayNames, slots: SLOTS, values },
     whiteAdvantagePts: Math.round((wWhite - wBlack) * 10) / 10,
     topSlot,
   };

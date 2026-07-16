@@ -63,7 +63,12 @@ pub fn import_puzzles(
 }
 
 fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64), String> {
-    let db_path = app.state::<crate::analysis::DbPath>().0.clone();
+    let db_path = app
+        .state::<crate::analysis::DbPath>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
     let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
     let _ = conn.pragma_update(None, "synchronous", "NORMAL");
@@ -145,6 +150,12 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
         }
     }
     tx.commit().map_err(|e| e.to_string())?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let _ = db::meta_set(&conn, "puzzle_imported_at", &now.to_string());
 
     let total: i64 = conn
         .query_row("SELECT COUNT(*) FROM puzzles", [], |r| r.get(0))
@@ -292,6 +303,8 @@ pub struct PuzzleStats {
     pub history: Vec<i64>,
     pub themes: Vec<ThemeStat>,
     pub importing: bool,
+    /// Unix-Sekunden des letzten Dump-Imports (None = nie importiert).
+    pub imported_at: Option<i64>,
 }
 
 #[tauri::command]
@@ -398,5 +411,6 @@ pub fn puzzle_stats(
         history,
         themes,
         importing: import_state.0.load(Ordering::SeqCst),
+        imported_at: db::meta_get(&conn, "puzzle_imported_at").and_then(|v| v.parse().ok()),
     })
 }

@@ -13,15 +13,28 @@ export function fenAfter(sans: string[] | undefined, count?: number): string {
   return chess.fen();
 }
 
+// Aktive Anzeige-Locale für Zahlen/Daten; der LocaleProvider setzt sie.
+let formatLocale = "de-DE";
+
+export function setFormatLocale(locale: "de" | "en"): void {
+  formatLocale = locale === "en" ? "en-US" : "de-DE";
+}
+
+export function dateLocale(): string {
+  return formatLocale;
+}
+
+/** Zahl mit fester Nachkommastellen-Zahl in der aktiven Locale. */
 export function de(n: number, digits = 1): string {
-  return n.toLocaleString("de-DE", {
+  return n.toLocaleString(formatLocale, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
+/** Ganzzahl mit Tausendertrennung in der aktiven Locale. */
 export function deInt(n: number): string {
-  return n.toLocaleString("de-DE");
+  return n.toLocaleString(formatLocale);
 }
 
 export function evalLabel(cp: number): string {
@@ -33,12 +46,6 @@ export function evalLabel(cp: number): string {
 export function winProb(cp: number): number {
   return 100 / (1 + Math.exp(-0.004 * cp));
 }
-
-export const resultLabel: Record<Result, string> = {
-  win: "Sieg",
-  loss: "Niederlage",
-  draw: "Remis",
-};
 
 export const resultColor: Record<Result, string> = {
   win: "var(--color-win)",

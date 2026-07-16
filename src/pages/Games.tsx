@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Database, Download, History, Loader2, Save, Search, StickyNote } from "lucide-react";
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useI18n } from "../lib/i18n";
 import { listGames, setGameNote, upsertGames, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
+import { getSettings } from "../lib/settings";
 import { toUi, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
@@ -12,6 +14,7 @@ import { de, deInt, fenAfter } from "../lib/util";
 
 export default function Games({ openAnalysis }: { openAnalysis: (gameId: number) => void }) {
   const backend = useBackendInfo();
+  const { locale, t } = useI18n();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
@@ -25,12 +28,13 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
 
   const reload = () =>
     listGames()
-      .then((rs) => setDbGames(rs.map(toUi)))
+      .then((rs) => setDbGames(rs.map((r) => toUi(r, locale))))
       .catch(() => setDbGames(null));
 
   useEffect(() => {
     if (backend.mode === "desktop") reload();
-  }, [backend.mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend.mode, locale]);
 
   const live = dbGames !== null && dbGames.length > 0;
   const allGames: UiGame[] = live ? dbGames! : demoGames;
@@ -53,21 +57,30 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
 
   const runImport = async (full: boolean) => {
     setImporting(true);
-    setImportMsg(full ? "Komplette Historie wird geladen …" : "Neueste Partien werden geladen …");
+    setImportMsg(full ? t("games.loadingFull") : t("games.loadingLatest"));
     try {
-      const { games: fetched, summary } = await fetchAll(profile.ccUser, profile.liUser, {
+      const settings = await getSettings().catch(() => null);
+      const ccUser = settings?.cc_user || profile.ccUser;
+      const liUser = settings?.li_user || profile.liUser;
+      const { games: fetched, summary } = await fetchAll(ccUser, liUser, {
         full,
-        onProgress: (msg) => setImportMsg(msg),
+        months: settings?.import_months,
+        onProgress: (i, n) => setImportMsg(t("games.ccProgress", { i, n })),
       });
       const res = await upsertGames(fetched as GameRecord[]);
       await reload();
       // Positionsindex im Hintergrund auffrischen (für die Stellungssuche).
       indexPositions().catch(() => {});
-      let msg = `${res.inserted} neue Partien · abgerufen: chess.com ${summary.fetched.cc}, Lichess ${summary.fetched.li} · ${deInt(res.total)} in der Datenbank`;
-      if (summary.errors.length) msg += ` · Fehler: ${summary.errors.join("; ")}`;
+      let msg = t("games.importResult", {
+        ins: res.inserted,
+        cc: summary.fetched.cc,
+        li: summary.fetched.li,
+        total: deInt(res.total),
+      });
+      if (summary.errors.length) msg += t("games.importErrors", { e: summary.errors.join("; ") });
       setImportMsg(msg);
     } catch (e) {
-      setImportMsg(`Import fehlgeschlagen: ${e}`);
+      setImportMsg(t("games.importFailed", { e: String(e) }));
     } finally {
       setImporting(false);
     }
@@ -83,35 +96,44 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
     setTimeout(() => setNoteSaved(false), 1500);
   };
 
+  const [myUser, setMyUser] = useState(profile.ccUser);
+  useEffect(() => {
+    if (backend.mode === "desktop") {
+      getSettings()
+        .then((s) => setMyUser(s.cc_user || profile.ccUser))
+        .catch(() => {});
+    }
+  }, [backend.mode]);
+
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Partien-Datenbank</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("games.title")}</h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink3">
             {live ? (
               <>
                 <Database size={13} className="text-accent" />
-                {deInt(allGames.length)} Partien in der lokalen SQLite-Datenbank
+                {t("games.dbCount", { n: deInt(allGames.length) })}
               </>
             ) : (
-              "Demo-Daten — Import läuft über die Desktop-App"
+              t("games.demoHint")
             )}
           </p>
         </div>
         {backend.mode === "desktop" && (
           <div className="flex gap-2">
             <Button onClick={() => !importing && runImport(true)}>
-              <History size={15} /> Alles importieren
+              <History size={15} /> {t("games.importAll")}
             </Button>
             <Button primary onClick={() => !importing && runImport(false)}>
               {importing ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" /> Importiere …
+                  <Loader2 size={15} className="animate-spin" /> {t("games.importing")}
                 </>
               ) : (
                 <>
-                  <Download size={15} /> Neueste importieren
+                  <Download size={15} /> {t("games.importLatest")}
                 </>
               )}
             </Button>
@@ -131,22 +153,22 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Gegner oder Eröffnung suchen …"
+            placeholder={t("games.searchPlaceholder")}
             className="w-64 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
           />
         </div>
         {(["alle", "chess.com", "lichess"] as const).map((s) => (
           <Chip key={s} active={source === s} onClick={() => setSource(s)}>
-            {s === "alle" ? "Alle Quellen" : s}
+            {s === "alle" ? t("games.allSources") : s}
           </Chip>
         ))}
         <span className="mx-1 h-4 w-px bg-line2" />
         {(
           [
-            ["alle", "Alle Ergebnisse"],
-            ["win", "Siege"],
-            ["loss", "Niederlagen"],
-            ["draw", "Remis"],
+            ["alle", t("games.allResults")],
+            ["win", t("games.wins")],
+            ["loss", t("games.losses")],
+            ["draw", t("games.draws")],
           ] as const
         ).map(([val, label]) => (
           <Chip key={val} active={result === val} onClick={() => setResult(val)}>
@@ -160,14 +182,14 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-line text-left text-[11.5px] uppercase tracking-wide text-ink3">
-                <th className="py-2.5 pl-4 pr-2 font-medium">Datum</th>
-                <th className="px-2 font-medium">Quelle</th>
-                <th className="px-2 font-medium">Modus</th>
-                <th className="px-2 font-medium">Gegner</th>
-                <th className="px-2 font-medium">Eröffnung</th>
-                <th className="px-2 font-medium">Ergebnis</th>
-                <th className="px-2 text-right font-medium">Genauigkeit</th>
-                <th className="py-2.5 pl-2 pr-4 text-right font-medium">Tags</th>
+                <th className="py-2.5 pl-4 pr-2 font-medium">{t("games.colDate")}</th>
+                <th className="px-2 font-medium">{t("games.colSource")}</th>
+                <th className="px-2 font-medium">{t("games.colMode")}</th>
+                <th className="px-2 font-medium">{t("games.colOpponent")}</th>
+                <th className="px-2 font-medium">{t("games.colOpening")}</th>
+                <th className="px-2 font-medium">{t("games.colResult")}</th>
+                <th className="px-2 text-right font-medium">{t("games.colAccuracy")}</th>
+                <th className="py-2.5 pl-2 pr-4 text-right font-medium">{t("games.colTags")}</th>
               </tr>
             </thead>
             <tbody>
@@ -197,7 +219,7 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
                   </td>
                   <td className="py-2.5 pl-2 pr-4 text-right">
                     <div className="flex justify-end gap-1">
-                      {g.tags.slice(0, 2).map((t) => <Tag key={t}>{t}</Tag>)}
+                      {g.tags.slice(0, 2).map((tag) => <Tag key={tag}>{tag}</Tag>)}
                       {g.note && <StickyNote size={14} className="ml-1 inline text-gold" />}
                     </div>
                   </td>
@@ -206,7 +228,7 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-ink3">
-                    Keine Partien gefunden.
+                    {t("games.noneFound")}
                   </td>
                 </tr>
               )}
@@ -224,31 +246,32 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
                 <div className="flex items-center justify-between">
                   <div className="text-[13.5px] font-medium">
                     {selected.color === "white"
-                      ? `${profile.ccUser} – ${selected.opponent}`
-                      : `${selected.opponent} – ${profile.ccUser}`}
+                      ? `${myUser} – ${selected.opponent}`
+                      : `${selected.opponent} – ${myUser}`}
                   </div>
                   <ResultBadge result={selected.result} />
                 </div>
                 <div className="mt-1 text-[12px] text-ink3">
-                  {selected.opening} {selected.eco && `(${selected.eco})`} · {selected.moves} Züge · {selected.tc}
+                  {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
+                  {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {selected.tags.length > 0
-                    ? selected.tags.map((t) => <Tag key={t}>{t}</Tag>)
-                    : <span className="text-[12px] text-ink3">Keine Tags</span>}
+                    ? selected.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)
+                    : <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
                   <button className="rounded-md border border-dashed border-line2 px-2 py-0.5 text-[11.5px] text-ink3 hover:text-accent">
-                    + Tag
+                    {t("games.addTag")}
                   </button>
                 </div>
               </div>
             </Card>
 
-            <Card title="Notizen">
+            <Card title={t("games.notes")}>
               <textarea
                 key={selected.id}
                 defaultValue={selected.note ?? ""}
                 onChange={(e) => setNoteDraft(e.target.value)}
-                placeholder="Gedanken zur Partie festhalten …"
+                placeholder={t("games.notesPlaceholder")}
                 rows={4}
                 className="w-full resize-none rounded-lg border border-line bg-panel2 p-3 text-[13px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
               />
@@ -257,25 +280,25 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
                   <>
                     <Button primary onClick={saveNote} className="flex-1">
                       <Save size={15} />
-                      {noteSaved ? "Gespeichert ✓" : "Notiz speichern"}
+                      {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
                     </Button>
                     <Button onClick={() => openAnalysis(selected.dbId!)}>
-                      {selected.analyzed ? "Analyse öffnen" : "Analysieren"}
+                      {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
                     </Button>
                   </>
                 ) : (
                   <Button primary className="flex-1">
-                    {selected.analyzed ? "Analyse öffnen" : "Mit Stockfish analysieren"}
+                    {selected.analyzed ? t("games.openAnalysis") : t("games.analyzeStockfish")}
                   </Button>
                 )}
                 <ExtLink
                   href={
                     selected.url ??
                     (selected.source === "chess.com"
-                      ? "https://www.chess.com/games/archive/Torim98"
-                      : "https://lichess.org/@/Torim98/all")
+                      ? `https://www.chess.com/games/archive/${myUser}`
+                      : `https://lichess.org/@/${myUser}/all`)
                   }
-                  label="Original"
+                  label={t("games.original")}
                 />
               </div>
             </Card>

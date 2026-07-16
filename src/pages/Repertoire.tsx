@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { repertoire as demoRepertoire, repertoireStats, type RepNode as DemoNode } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useT, type TFunc } from "../lib/i18n";
 import {
   repAddLine,
   repDelete,
@@ -44,15 +45,16 @@ function moveLabel(n: RepNode): string {
   return n.name ? `${san} · ${n.name}` : san;
 }
 
-function dueLabel(n: RepNode, now: number): string {
+function dueLabel(t: TFunc, n: RepNode, now: number): string {
   if (!n.my_move) return "";
-  if (n.reps === 0) return "neu";
-  if (n.due_ts <= now) return "fällig";
+  if (n.reps === 0) return t("rep.new");
+  if (n.due_ts <= now) return t("rep.due");
   const days = Math.ceil((n.due_ts - now) / 86_400);
-  return `in ${days} ${days === 1 ? "Tag" : "Tagen"}`;
+  return t(days === 1 ? "rep.inDays.one" : "rep.inDays.many", { n: days });
 }
 
 function LiveRepertoire() {
+  const t = useT();
   const [nodes, setNodes] = useState<RepNode[]>([]);
   const [stats, setStats] = useState<RepStats | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -146,17 +148,21 @@ function LiveRepertoire() {
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Eröffnungs-Repertoire</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
             {stats
-              ? `${stats.my_positions} eigene Züge im Buch · Abdeckung ${de(stats.coverage_pct)} % deiner letzten ${stats.games_checked} Partien bis Zug 4`
-              : "Lade …"}
+              ? t("rep.summary", {
+                  n: stats.my_positions,
+                  p: de(stats.coverage_pct),
+                  g: stats.games_checked,
+                })
+              : t("common.loading")}
           </p>
         </div>
         {mode !== "train" && (
           <Button primary onClick={() => setMode("train")} className={dueTotal === 0 ? "opacity-60" : ""}>
             <GraduationCap size={16} />
-            Training starten ({dueTotal} fällig)
+            {t("rep.startTraining", { n: dueTotal })}
           </Button>
         )}
       </header>
@@ -176,12 +182,12 @@ function LiveRepertoire() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_auto_1fr]">
-          <Card title="Varianten" pad={false}>
+          <Card title={t("rep.variants")} pad={false}>
             <div className="p-2">
               {(["white", "black"] as const).map((side) => (
                 <div key={side} className="mb-2">
                   <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-                    Als {side === "white" ? "Weiß" : "Schwarz"}
+                    {side === "white" ? t("common.asWhite") : t("common.asBlack")}
                   </div>
                   {(children.get(`${side}:0`) ?? []).map((n) => (
                     <TreeNode
@@ -201,14 +207,15 @@ function LiveRepertoire() {
                   onClick={seedStarter}
                   className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-accent-dim px-3 py-2 text-[12.5px] text-accent transition-colors hover:bg-accent-soft"
                 >
-                  <Sparkles size={14} /> Starter-Repertoire übernehmen
+                  <Sparkles size={14} /> {t("rep.seedStarter")}
                 </button>
               )}
               <button
                 onClick={() => setMode("add")}
                 className="mt-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
               >
-                <Plus size={14} /> Variante hinzufügen {selected ? `(ab ${moveLabel(selected)})` : ""}
+                <Plus size={14} />{" "}
+                {selected ? t("rep.addLineFrom", { label: moveLabel(selected) }) : t("rep.addLine")}
               </button>
             </div>
           </Card>
@@ -228,7 +235,7 @@ function LiveRepertoire() {
               <div>
                 <Board boardId="repertoire" fen={fen} width={380} orientation={selected?.side ?? "white"} />
                 <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-                  {moveText || "Grundstellung — wähle links eine Variante."}
+                  {moveText || t("rep.startPos")}
                 </div>
               </div>
 
@@ -238,57 +245,55 @@ function LiveRepertoire() {
                     <Card
                       title={moveLabel(selected)}
                       action={
-                        <button onClick={() => remove(selected.id)} className="text-ink3 transition-colors hover:text-loss" title="Variante löschen">
+                        <button onClick={() => remove(selected.id)} className="text-ink3 transition-colors hover:text-loss" title={t("rep.deleteVariant")}>
                           <Trash2 size={15} />
                         </button>
                       }
                     >
                       <div className="grid grid-cols-2 gap-3">
                         <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                          <div className="text-[11.5px] text-ink3">Wiederholungen</div>
+                          <div className="text-[11.5px] text-ink3">{t("rep.reps")}</div>
                           <div className="mt-1 text-[20px] font-semibold">
                             {selected.reps}
                             {selected.lapses > 0 && (
-                              <span className="ml-1.5 text-[12px] font-normal text-loss">({selected.lapses}× falsch)</span>
+                              <span className="ml-1.5 text-[12px] font-normal text-loss">{t("rep.lapses", { n: selected.lapses })}</span>
                             )}
                           </div>
                         </div>
                         <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                          <div className="text-[11.5px] text-ink3">Nächste Abfrage</div>
+                          <div className="text-[11.5px] text-ink3">{t("rep.nextReview")}</div>
                           <div className="mt-1 text-[20px] font-semibold">
-                            {selected.my_move ? dueLabel(selected, now) : "—"}
+                            {selected.my_move ? dueLabel(t, selected, now) : "—"}
                           </div>
                         </div>
                       </div>
                       <div className="mt-3 text-[12.5px] leading-relaxed text-ink3">
-                        {selected.my_move ? (
-                          <>
-                            FSRS-Stabilität:{" "}
-                            <span className="text-ink2">{de(Math.max(selected.stability, 0))} Tage</span> — steigt mit
-                            jeder korrekten Antwort.
-                          </>
-                        ) : (
-                          <>Gegnerzug — trainiert werden deine eigenen Antworten darauf.</>
-                        )}
+                        {selected.my_move
+                          ? t("rep.stability", { n: de(Math.max(selected.stability, 0)) })
+                          : t("rep.opponentMove")}
                       </div>
                     </Card>
 
-                    <Card title="Abgleich mit deinen Partien">
+                    <Card title={t("rep.gamesCard")}>
                       {nodeStats && nodeStats.games > 0 ? (
                         <ul className="flex flex-col gap-2.5 text-[13px] leading-relaxed">
                           <li className="flex gap-2">
                             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-win" />
                             <span className="text-ink2">
-                              Stellung in <span className="text-ink">{nodeStats.games} {nodeStats.games === 1 ? "Partie" : "Partien"}</span>{" "}
-                              erreicht · {de(nodeStats.score_pct)} % Punkte
+                              {t("rep.reachedIn", {
+                                games: `${nodeStats.games} ${t(nodeStats.games === 1 ? "common.games.one" : "common.games.many")}`,
+                                p: de(nodeStats.score_pct),
+                              })}
                             </span>
                           </li>
                           {nodeStats.book_sans.length > 0 && (
                             <li className="flex gap-2">
                               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
                               <span className="text-ink2">
-                                Buch-Fortsetzung {nodeStats.book_sans.join(" / ")} —{" "}
-                                <span className="text-ink">{nodeStats.followed_book}× gefolgt</span>
+                                {t("rep.bookContinuation", {
+                                  sans: nodeStats.book_sans.join(" / "),
+                                  n: nodeStats.followed_book,
+                                })}
                               </span>
                             </li>
                           )}
@@ -296,31 +301,28 @@ function LiveRepertoire() {
                             <li className="flex gap-2">
                               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-loss" />
                               <span className="text-ink2">
-                                Vom Buch abgewichen:{" "}
-                                <span className="text-ink">
-                                  {nodeStats.deviations.map((d) => `${d.san} (${d.count}×)`).join(", ")}
-                                </span>
+                                {t("rep.deviations", {
+                                  list: nodeStats.deviations.map((d) => `${d.san} (${d.count}×)`).join(", "),
+                                })}
                               </span>
                             </li>
                           )}
                         </ul>
                       ) : (
                         <div className="text-[12.5px] leading-relaxed text-ink3">
-                          Diese Stellung kam in deinen importierten Partien noch nicht vor.
-                          {nodeStats == null ? "" : " Tipp: Auf der Analyse-Seite den Positionsindex füllen (läuft bei der Auto-Analyse automatisch mit)."}
+                          {t("rep.posNotInGames")}
                         </div>
                       )}
                     </Card>
                   </>
                 ) : (
                   <div className="rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[12.5px] leading-relaxed text-ink3">
-                    Wähle links eine Variante — oder lege mit „Variante hinzufügen" los.
+                    {t("rep.selectHint")}
                   </div>
                 )}
 
                 <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-                  Im Training zeigt Kiebitz die Stellung — du spielst den Repertoire-Zug auf dem Brett. Richtige
-                  Antworten verlängern das Wiederholungsintervall (FSRS).
+                  {t("rep.trainHint")}
                 </div>
               </div>
             </>
@@ -406,6 +408,7 @@ function AddLine({
   baseSide: "white" | "black" | null;
   onDone: (err?: string) => void;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [side, setSide] = useState<"white" | "black">(baseSide ?? "white");
@@ -449,11 +452,11 @@ function AddLine({
         <div>
           <Board boardId="rep-add" fen={fen} width={380} draggable onPieceDrop={tryMove} orientation={side} />
           <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-            {moveText || "Züge direkt auf dem Brett spielen …"}
+            {moveText || t("rep.playOnBoard")}
           </div>
         </div>
         <div className="flex max-w-[420px] flex-col gap-3">
-          <Card title="Neue Variante">
+          <Card title={t("rep.newVariant")}>
             {baseSide == null && (
               <div className="mb-3 flex gap-2">
                 {(["white", "black"] as const).map((s) => (
@@ -466,7 +469,7 @@ function AddLine({
                         : "border-line bg-panel2 text-ink2 hover:border-line2"
                     }`}
                   >
-                    Als {s === "white" ? "Weiß" : "Schwarz"}
+                    {s === "white" ? t("common.asWhite") : t("common.asBlack")}
                   </button>
                 ))}
               </div>
@@ -474,15 +477,16 @@ function AddLine({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Name der Variante (optional)"
+              placeholder={t("rep.namePlaceholder")}
               className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
             />
             <div className="mt-3 flex gap-2">
               <Button onClick={() => setDraft((d) => d.slice(0, -1))} className={draft.length === 0 ? "opacity-50" : ""}>
-                <CornerUpLeft size={14} /> Zug zurück
+                <CornerUpLeft size={14} /> {t("rep.undoMove")}
               </Button>
               <Button primary onClick={save} className={draft.length === 0 ? "opacity-50" : "flex-1"}>
-                <Check size={14} /> Speichern ({draft.length} {draft.length === 1 ? "Zug" : "Züge"})
+                <Check size={14} />{" "}
+                {t(draft.length === 1 ? "rep.saveMoves.one" : "rep.saveMoves.many", { n: draft.length })}
               </Button>
               <Button onClick={() => onDone()}>
                 <X size={14} />
@@ -490,8 +494,7 @@ function AddLine({
             </div>
           </Card>
           <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            Spiele beide Seiten der Variante nach — trainiert werden später nur deine eigenen Züge
-            ({side === "white" ? "Weiß" : "Schwarz"}).
+            {t("rep.playBothSides", { side: side === "white" ? t("common.white") : t("common.black") })}
           </div>
         </div>
       </div>
@@ -502,6 +505,7 @@ function AddLine({
 // ── FSRS-Training ────────────────────────────────────────────────────────────
 
 function Trainer({ onExit }: { onExit: () => void }) {
+  const t = useT();
   const [items, setItems] = useState<DueItem[] | null>(null);
   const [idx, setIdx] = useState(0);
   const [state, setState] = useState<"ask" | "correct" | "wrong">("ask");
@@ -564,15 +568,15 @@ function Trainer({ onExit }: { onExit: () => void }) {
       <div className="mx-auto max-w-[480px] rounded-xl border border-line bg-panel px-6 py-10 text-center">
         <GraduationCap size={28} className="mx-auto text-accent" />
         <div className="mt-3 text-[17px] font-semibold">
-          {doneCount.ok + doneCount.fail > 0 ? "Training abgeschlossen!" : "Nichts fällig."}
+          {doneCount.ok + doneCount.fail > 0 ? t("rep.trainingDone") : t("rep.nothingDue")}
         </div>
         <div className="mt-1.5 text-[13px] text-ink3">
           {doneCount.ok + doneCount.fail > 0
-            ? `${doneCount.ok} richtig · ${doneCount.fail} falsch — falsche Züge kommen in ~10 Minuten wieder.`
-            : "Alle Repertoire-Züge sind gelernt. Komm später wieder oder ergänze neue Varianten."}
+            ? t("rep.sessionResult", { ok: doneCount.ok, fail: doneCount.fail })
+            : t("rep.allLearned")}
         </div>
         <Button primary onClick={onExit} className="mt-5">
-          Zurück zum Repertoire
+          {t("rep.backToRep")}
         </Button>
       </div>
     );
@@ -584,10 +588,10 @@ function Trainer({ onExit }: { onExit: () => void }) {
       <div>
         <div className="mb-3 flex items-center justify-between text-[13px]">
           <span className="font-medium">
-            {item.line || "Repertoire"} · {item.side === "white" ? "Weiß" : "Schwarz"}
+            {item.line || t("rep.fallbackLine")} · {item.side === "white" ? t("common.white") : t("common.black")}
           </span>
           <span className="text-ink3">
-            {idx + 1} / {items.length} {item.is_new && "· neu"}
+            {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
           </span>
         </div>
         <Board
@@ -602,12 +606,12 @@ function Trainer({ onExit }: { onExit: () => void }) {
         <div className="mt-3 flex h-[52px] items-center">
           {state === "correct" ? (
             <div className="flex w-full items-center gap-2 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[13.5px] font-medium text-accent">
-              <Check size={17} /> Richtig: {item.expected_san}
+              <Check size={17} /> {t("rep.correct", { san: item.expected_san })}
             </div>
           ) : state === "wrong" ? (
             <div className="flex w-full items-center justify-between rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
               <span className="text-[13.5px] text-loss">
-                Der Buchzug ist <span className="font-semibold">{item.expected_san}</span>.
+                {t("rep.bookMoveIs", { san: item.expected_san })}
               </span>
               <Button
                 onClick={() => {
@@ -616,23 +620,26 @@ function Trainer({ onExit }: { onExit: () => void }) {
                   setTimeout(next, 900);
                 }}
               >
-                Zeigen & weiter
+                {t("rep.showAndNext")}
               </Button>
             </div>
           ) : (
             <span className="text-[13px] text-ink3">
-              Zug {moveNo}: Was spielst du hier als {item.side === "white" ? "Weiß" : "Schwarz"}?
+              {t("rep.whatToPlay", {
+                n: moveNo,
+                side: item.side === "white" ? t("common.white") : t("common.black"),
+              })}
             </span>
           )}
         </div>
       </div>
 
       <div className="flex max-w-[420px] flex-col gap-4">
-        <Card title="Sitzung">
+        <Card title={t("rep.session")}>
           <div className="flex items-center justify-between text-[13px]">
-            <span className="text-win">{doneCount.ok} richtig</span>
-            <span className="text-loss">{doneCount.fail} falsch</span>
-            <span className="text-ink3">{items.length - idx} übrig</span>
+            <span className="text-win">{t("rep.nCorrect", { n: doneCount.ok })}</span>
+            <span className="text-loss">{t("rep.nWrong", { n: doneCount.fail })}</span>
+            <span className="text-ink3">{t("rep.nLeft", { n: items.length - idx })}</span>
           </div>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-panel3">
             <div
@@ -641,7 +648,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
             />
           </div>
         </Card>
-        <Button onClick={onExit}>Training beenden</Button>
+        <Button onClick={onExit}>{t("rep.endTraining")}</Button>
       </div>
     </div>
   );
@@ -706,6 +713,7 @@ function DemoTreeNode({
 }
 
 function DemoRepertoire() {
+  const t = useT();
   const [selectedId, setSelectedId] = useState("w1a");
   const node = useMemo(() => allDemoNodes.find((n) => n.id === selectedId)!, [selectedId]);
   const fen = useMemo(() => fenAfter(node.moveSeq), [node]);
@@ -718,24 +726,24 @@ function DemoRepertoire() {
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Eröffnungs-Repertoire</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            Demo-Daten — {repertoireStats.positions} Stellungen · das echte Repertoire lebt in der Desktop-App
+            {t("rep.demoSummary", { n: repertoireStats.positions })}
           </p>
         </div>
         <Button primary>
           <GraduationCap size={16} />
-          Training starten ({repertoireStats.dueToday} fällig)
+          {t("rep.startTraining", { n: repertoireStats.dueToday })}
         </Button>
       </header>
 
       <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_auto_1fr]">
-        <Card title="Varianten" pad={false}>
+        <Card title={t("rep.variants")} pad={false}>
           <div className="p-2">
             {demoRepertoire.map((side) => (
               <div key={side.side} className="mb-2">
                 <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-                  Als {side.side}
+                  {side.side === "Weiß" ? t("common.asWhite") : t("common.asBlack")}
                 </div>
                 {side.nodes.map((n) => (
                   <DemoTreeNode key={n.id} node={n} depth={0} selected={selectedId} onSelect={setSelectedId} />
@@ -756,23 +764,23 @@ function DemoRepertoire() {
           <Card title={node.label}>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                <div className="text-[11.5px] text-ink3">Trainingserfolg</div>
+                <div className="text-[11.5px] text-ink3">{t("rep.trainSuccess")}</div>
                 <div className="mt-1 text-[20px] font-semibold" style={{ color: node.score >= 85 ? "var(--color-win)" : node.score >= 70 ? "var(--color-gold)" : "var(--color-loss)" }}>
                   {node.score} %
                 </div>
               </div>
               <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                <div className="text-[11.5px] text-ink3">Fällig</div>
+                <div className="text-[11.5px] text-ink3">{t("rep.dueLabel")}</div>
                 <div className="mt-1 text-[20px] font-semibold">
                   {node.due}
-                  <span className="ml-1 text-[12px] font-normal text-ink3">Positionen</span>
+                  <span className="ml-1 text-[12px] font-normal text-ink3">{t("rep.positions")}</span>
                 </div>
               </div>
             </div>
           </Card>
 
           <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            Demo-Ansicht: Baum-Verwaltung, FSRS-Training und Partien-Abgleich laufen in der Desktop-App.
+            {t("rep.demoNote")}
           </div>
         </div>
       </div>

@@ -19,6 +19,9 @@ Done so far:
   position search, persistent repertoire with FSRS training, and the local
   Lichess puzzle database. The browser build keeps demo fallbacks; everything
   real runs in the desktop app.
+- **Phase 2 complete:** a real Settings page — German/English i18n, configurable
+  database location (Nextcloud-ready), engine binary + tuning, optional
+  chessdb.cn opening book, puzzle-DB management, and account/import defaults.
 
 ---
 
@@ -48,22 +51,34 @@ The features that currently show demo data become backed by the database.
   opponent replies, theme filter, and an Elo-based personal rating with per-theme
   accuracy tracked in `puzzle_attempts`.
 
-## Phase 2 — Settings & configuration
+## Phase 2 — Settings & configuration ✅
 
-- [ ] **Design a Settings page.** A proper configuration surface, not scattered
-  defaults.
-  - [ ] **Language switch (German / English).** Introduce i18n; the UI is currently
-    German-only. Extract strings, add a locale toggle, persist the choice.
-  - [ ] **Database location.** Let the user pick where `kiebitz.db` lives (e.g. a
-    Nextcloud folder for cross-device sync). Move/relink safely.
-  - [ ] **Chess engine.** Choose the UCI engine binary and tune it (threads, hash,
-    MultiPV, depth/skill). Today the engine is resolved from a fixed path /
-    `KIEBITZ_ENGINE`; make it user-configurable.
-  - [ ] **ChessDB integration.** Optional online move/opening database (e.g.
-    chessdb.cn) for opening moves and cloud evals, toggleable and cache-backed.
-  - [ ] **Puzzle database source.** Configure/refresh the puzzle DB (Lichess dump
-    path, re-import, size).
-  - [ ] Account handles (chess.com / Lichess usernames), import defaults, theme.
+- [x] **Design a Settings page.** `Settings.tsx` behind the sidebar gear button;
+  settings live in `settings.json` in the app-config dir (`settings.rs`), applied
+  live (the persistent engine restarts on save). The web preview only exposes the
+  language toggle.
+  - [x] **Language switch (German / English).** Custom type-safe i18n
+    (`src/lib/i18n.tsx`, ~280 keys per language) with a locale context, `t()`
+    interpolation, and locale-aware number/date formatting. All UI chrome is
+    extracted; demo content and backend error strings intentionally stay German.
+  - [x] **Database location.** Settings shows the current path/size; "move"
+    creates a consistent copy via `VACUUM INTO` and switches all states, "use"
+    relinks to (or creates) a database elsewhere — e.g. a Nextcloud folder. The
+    old file stays as a backup; a missing custom path falls back to the default
+    at startup.
+  - [x] **Chess engine.** Configurable UCI binary (with a test button showing the
+    engine name), threads (0 = auto), hash, MultiPV, live-analysis depth, and
+    auto-analysis depth. Resolution order: settings path → `KIEBITZ_ENGINE` →
+    bundled Stockfish.
+  - [x] **ChessDB integration.** Toggleable chessdb.cn opening book (`chessdb.rs`):
+    the Analysis page shows known moves with cloud evals; responses are cached
+    locally for 30 days (`chessdb_cache`).
+  - [x] **Puzzle database source.** Settings shows puzzle count and last-import
+    date, with re-download or import-from-file (progress events shared with the
+    Puzzles page).
+  - [x] Account handles (chess.com / Lichess usernames) feed the importer,
+    dashboard links, and greetings; quick-import month window is configurable.
+    (A theme picker was skipped — the app ships one dark theme.)
 
 ## Phase 3 — Training & learning
 
@@ -110,8 +125,20 @@ The features that currently show demo data become backed by the database.
   This is deliberately last and optional: the desktop app is the primary product,
   and this only pays off if a browser-accessible version is actually wanted.
 
+## Phase 6 — LLM coach (hyper optional)
+
+- [ ] **Local LLM as a coach.** Wire up a language model that can answer questions
+  about the player's own data — "what are my weaknesses?", "what should I train
+  next?", "explain this position", "adjust my training plan" — grounded in the
+  Insights/analysis data already in the database. Explore doing it with a small
+  **local** model so nothing leaves the machine. Very much a stretch goal, last in
+  line after everything else.
+
 ## Cross-cutting / nice-to-have
 
+- [ ] Per-phase accuracy. In addition to the overall accuracy, compute and show
+  separate accuracy scores for opening, middlegame, and endgame — reusing the
+  existing game-phase split from the analysis pipeline.
 - [ ] PGN import/export for manual games (over-the-board play).
 - [ ] Tags UI (the schema supports notes; tags are still demo-only).
 - [ ] Backup/restore of the database.

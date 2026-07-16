@@ -1,10 +1,12 @@
 mod analysis;
 mod chess;
+mod chessdb;
 mod db;
 mod engine;
 mod live;
 mod puzzles;
 mod repertoire;
+mod settings;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -31,10 +33,22 @@ struct EngineInfo {
     path: String,
 }
 
-/// Sucht die gebündelte Stockfish-Engine. Im Dev-Modus liegt sie unter
-/// `src-tauri/binaries/`, im Release neben den App-Ressourcen.
-/// Eine Umgebungsvariable `KIEBITZ_ENGINE` hat Vorrang.
+/// Sucht die Engine: konfigurierter Pfad aus den Einstellungen zuerst,
+/// dann `KIEBITZ_ENGINE`, dann die gebündelte Stockfish (Dev-Ordner
+/// `src-tauri/binaries/` bzw. App-Ressourcen im Release).
 pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let configured = app
+        .state::<settings::SettingsState>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|s| s.engine_path.clone());
+    if let Some(custom) = configured {
+        let p = PathBuf::from(custom);
+        if p.exists() {
+            return Some(p);
+        }
+    }
     if let Ok(custom) = std::env::var("KIEBITZ_ENGINE") {
         let p = PathBuf::from(custom);
         if p.exists() {
@@ -131,7 +145,18 @@ fn analyze_live(
     depth: Option<u32>,
 ) -> Result<u64, String> {
     let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
-    state.analyze(&app, &path.to_string_lossy(), &fen, depth.unwrap_or(24).clamp(6, 40))
+    let live_depth = app
+        .state::<settings::SettingsState>()
+        .0
+        .lock()
+        .map(|s| s.live_depth)
+        .unwrap_or(24);
+    state.analyze(
+        &app,
+        &path.to_string_lossy(),
+        &fen,
+        depth.unwrap_or(live_depth).clamp(6, 40),
+    )
 }
 
 #[tauri::command]
@@ -152,11 +177,27 @@ pub fn run() {
             }
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let db_file = data_dir.join("kiebitz.db");
-            let conn = rusqlite::Connection::open(&db_file)?;
+
+            let loaded = settings::load(app.handle());
+            // Konfigurierter DB-Pfad, mit Fallback auf den Standardort, falls
+            // er nicht erreichbar ist (z. B. Nextcloud-Ordner nicht gemountet).
+            let mut db_file = loaded
+                .db_path
+                .as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| data_dir.join("kiebitz.db"));
+            let conn = match rusqlite::Connection::open(&db_file) {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("Datenbank unter {db_file:?} nicht erreichbar ({e}); nutze Standardort");
+                    db_file = data_dir.join("kiebitz.db");
+                    rusqlite::Connection::open(&db_file)?
+                }
+            };
             db::init(&conn).map_err(std::io::Error::other)?;
+            app.manage(settings::SettingsState(std::sync::Mutex::new(loaded)));
             app.manage(db::Db(std::sync::Mutex::new(conn)));
-            app.manage(analysis::DbPath(db_file));
+            app.manage(analysis::DbPath(std::sync::Mutex::new(db_file)));
             app.manage(analysis::AnalysisState::default());
             app.manage(live::LiveEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
@@ -189,7 +230,14 @@ pub fn run() {
             puzzles::import_puzzles,
             puzzles::next_puzzle,
             puzzles::record_attempt,
-            puzzles::puzzle_stats
+            puzzles::puzzle_stats,
+            settings::get_settings,
+            settings::set_settings,
+            settings::test_engine,
+            settings::move_database,
+            settings::use_database,
+            settings::db_info,
+            chessdb::chessdb_query
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

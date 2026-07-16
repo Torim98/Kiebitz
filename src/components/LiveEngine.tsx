@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Cpu, Pause, Play } from "lucide-react";
 import { engineInfo, type EngineInfo } from "../lib/backend";
+import { useT } from "../lib/i18n";
 import { analyzeLive, onEngineDone, onEngineInfo, stopLive, type LiveInfo } from "../lib/analysis";
 
 type EngineState =
@@ -54,6 +55,7 @@ export default function LiveEngine({
   /** Bewertung aus Weiß-Sicht, sobald die Engine Tiefe gewinnt. */
   onEval?: (evalCp: number | null, mateIn: number | null) => void;
 }) {
+  const t = useT();
   const [engine, setEngine] = useState<EngineState>({ mode: "checking" });
   const [running, setRunning] = useState(true);
   const [lines, setLines] = useState<Map<number, LiveInfo>>(new Map());
@@ -109,7 +111,7 @@ export default function LiveEngine({
     setLines(new Map());
     if (!running) return;
     let stale = false;
-    analyzeLive(fen, 24)
+    analyzeLive(fen)
       .then((generation) => {
         if (!stale) genRef.current = generation;
       })
@@ -137,7 +139,7 @@ export default function LiveEngine({
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <h2 className="flex items-center gap-2 text-[13px] font-medium text-ink2">
           <Cpu size={15} className={available ? "text-accent" : "text-ink3"} />
-          Engine-Analyse
+          {t("eng.title")}
         </h2>
         <span
           className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
@@ -154,7 +156,7 @@ export default function LiveEngine({
             ? "…"
             : available
               ? (engine as { info: EngineInfo }).info.name
-              : "nicht verbunden"}
+              : t("eng.notConnected")}
         </span>
       </header>
 
@@ -167,14 +169,14 @@ export default function LiveEngine({
                 className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink"
               >
                 {running ? <Pause size={13} /> : <Play size={13} />}
-                {running ? "Pause" : "Analysieren"}
+                {running ? t("eng.pause") : t("eng.analyze")}
               </button>
               <span className="text-[11.5px] tabular-nums text-ink3">
                 {running && depth > 0
-                  ? `Tiefe ${depth}${nps ? ` · ${(nps / 1_000_000).toFixed(1)} Mn/s` : ""}`
+                  ? `${t("eng.depth", { d: depth })}${nps ? ` · ${t("eng.mnps", { x: (nps / 1_000_000).toFixed(1) })}` : ""}`
                   : running
-                    ? "rechnet …"
-                    : "pausiert"}
+                    ? t("eng.thinking")
+                    : t("eng.paused")}
               </span>
             </div>
 
@@ -186,7 +188,7 @@ export default function LiveEngine({
                         <span className="text-[14px] font-semibold tabular-nums text-accent">
                           {lineEvalLabel(blackToMove, l)}
                         </span>
-                        <span className="text-[11px] text-ink3">Tiefe {l.depth}</span>
+                        <span className="text-[11px] text-ink3">{t("eng.depth", { d: l.depth })}</span>
                       </div>
                       <div className="mt-1 truncate text-[12px] leading-relaxed text-ink2">
                         {pvToSan(fen, l.pv)}
@@ -195,7 +197,7 @@ export default function LiveEngine({
                   ))
                 : running && (
                     <div className="rounded-lg border border-dashed border-line2 px-3 py-4 text-center text-[12px] text-ink3">
-                      Stockfish rechnet …
+                      {t("eng.calculating")}
                     </div>
                   )}
             </div>
@@ -207,16 +209,14 @@ export default function LiveEngine({
                 <div key={i} className="rounded-lg border border-line bg-panel2 px-3 py-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[14px] font-semibold text-accent">{l.eval}</span>
-                    <span className="text-[11px] text-ink3">Tiefe {l.depth}</span>
+                    <span className="text-[11px] text-ink3">{t("eng.depth", { d: l.depth })}</span>
                   </div>
                   <div className="mt-1 text-[12px] leading-relaxed text-ink2">{l.line}</div>
                 </div>
               ))}
             </div>
             <p className="mt-3 border-t border-line pt-3 text-[11.5px] leading-relaxed text-ink3">
-              {engine.mode === "web"
-                ? "Vorschau-Werte. Die Live-Analyse mit Stockfish läuft in der Desktop-App."
-                : "Engine nicht gefunden — stockfish.exe unter src-tauri/binaries/ ablegen."}
+              {engine.mode === "web" ? t("eng.webHint") : t("eng.notFound")}
             </p>
           </>
         )}

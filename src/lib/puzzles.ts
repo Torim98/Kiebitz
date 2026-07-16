@@ -33,6 +33,8 @@ export interface PuzzleStats {
   history: number[];
   themes: ThemeStat[];
   importing: boolean;
+  /** Unix-Sekunden des letzten Dump-Imports (null = nie importiert). */
+  imported_at: number | null;
 }
 
 export interface PuzzleImportProgress {
@@ -82,7 +84,7 @@ export function onPuzzleImportDone(cb: (p: PuzzleImportDone) => void): Promise<U
 }
 
 /** Deutsche Namen für die häufigsten Lichess-Motive. */
-export const THEME_DE: Record<string, string> = {
+const THEME_DE: Record<string, string> = {
   fork: "Gabel",
   pin: "Fesselung",
   skewer: "Spieß",
@@ -133,6 +135,59 @@ export const THEME_DE: Record<string, string> = {
   superGM: "Super-GM",
 };
 
-export function themeLabel(theme: string): string {
-  return THEME_DE[theme] ?? theme;
+/** Englische Namen (Lichess-Originalbezeichnungen, lesbar formatiert). */
+const THEME_EN: Record<string, string> = {
+  fork: "Fork",
+  pin: "Pin",
+  skewer: "Skewer",
+  discoveredAttack: "Discovered attack",
+  backRankMate: "Back-rank mate",
+  mate: "Mate",
+  mateIn1: "Mate in 1",
+  mateIn2: "Mate in 2",
+  mateIn3: "Mate in 3",
+  smotheredMate: "Smothered mate",
+  endgame: "Endgame",
+  middlegame: "Middlegame",
+  opening: "Opening",
+  rookEndgame: "Rook endgame",
+  pawnEndgame: "Pawn endgame",
+  queenEndgame: "Queen endgame",
+  knightEndgame: "Knight endgame",
+  bishopEndgame: "Bishop endgame",
+  zugzwang: "Zugzwang",
+  sacrifice: "Sacrifice",
+  attraction: "Attraction",
+  deflection: "Deflection",
+  clearance: "Clearance",
+  interference: "Interference",
+  intermezzo: "Intermezzo",
+  quietMove: "Quiet move",
+  xRayAttack: "X-ray attack",
+  doubleCheck: "Double check",
+  promotion: "Promotion",
+  underPromotion: "Underpromotion",
+  enPassant: "En passant",
+  castling: "Castling",
+  trappedPiece: "Trapped piece",
+  hangingPiece: "Hanging piece",
+  exposedKing: "Exposed king",
+  kingsideAttack: "Kingside attack",
+  queensideAttack: "Queenside attack",
+  defensiveMove: "Defensive move",
+  equality: "Equality",
+  advantage: "Advantage",
+  crushing: "Crushing",
+  short: "Short",
+  long: "Long",
+  veryLong: "Very long",
+  oneMove: "One move",
+  master: "Master game",
+  masterVsMaster: "Master vs. master",
+  superGM: "Super GM",
+};
+
+export function themeLabel(theme: string, locale: "de" | "en" = "de"): string {
+  const map = locale === "en" ? THEME_EN : THEME_DE;
+  return map[theme] ?? theme;
 }

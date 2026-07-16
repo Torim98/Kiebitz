@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 pub struct LiveEngine {
     inner: Mutex<Option<LiveProc>>,
@@ -84,6 +84,17 @@ impl LiveEngine {
         }
     }
 
+    /// Beendet die Engine vollständig — z. B. nach geänderten Einstellungen.
+    /// Die nächste Analyse startet sie mit den aktuellen Optionen neu.
+    pub fn shutdown(&self) {
+        if let Ok(mut guard) = self.inner.lock() {
+            if let Some(proc) = guard.as_mut() {
+                let _ = proc.stdin.write_all(b"quit\n");
+            }
+            *guard = None;
+        }
+    }
+
     fn spawn(&self, app: &tauri::AppHandle, path: &str) -> Result<LiveProc, String> {
         let mut child = Command::new(path)
             .stdin(Stdio::piped())
@@ -95,10 +106,22 @@ impl LiveEngine {
         let stdout = child.stdout.take().ok_or("stdout nicht verfügbar")?;
         let mut stdin = child.stdin.take().ok_or("stdin nicht verfügbar")?;
 
-        let threads = crate::engine::UciEngine::worker_threads();
+        let (threads, hash_mb, multipv) = {
+            let s = app.state::<crate::settings::SettingsState>();
+            let s = s.0.lock().map_err(|e| e.to_string())?;
+            (
+                if s.engine_threads == 0 {
+                    crate::engine::UciEngine::worker_threads()
+                } else {
+                    s.engine_threads as usize
+                },
+                s.engine_hash_mb,
+                s.engine_multipv,
+            )
+        };
         write!(
             stdin,
-            "uci\nsetoption name MultiPV value 3\nsetoption name Threads value {threads}\nsetoption name Hash value 256\nisready\n"
+            "uci\nsetoption name MultiPV value {multipv}\nsetoption name Threads value {threads}\nsetoption name Hash value {hash_mb}\nisready\n"
         )
         .map_err(|e| format!("Engine-Handshake fehlgeschlagen: {e}"))?;
 

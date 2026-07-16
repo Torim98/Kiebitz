@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { puzzles as demoPuzzles, puzzleStats as demoStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
+import { useI18n, useT } from "../lib/i18n";
 import {
   importPuzzles,
   nextPuzzle,
@@ -53,6 +54,7 @@ function LivePuzzles() {
 // ── Import-Ansicht ───────────────────────────────────────────────────────────
 
 function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () => void }) {
+  const t = useT();
   const [running, setRunning] = useState(stats.importing);
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
@@ -88,40 +90,31 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
   return (
     <div className="mx-auto max-w-[720px] px-6 py-6">
       <header className="mb-5">
-        <h1 className="text-[21px] font-semibold tracking-tight">Puzzle-Training</h1>
-        <p className="mt-0.5 text-[13px] text-ink3">
-          Einmalige Einrichtung: die Lichess-Puzzle-Datenbank (CC0, ~5 Mio. Aufgaben) lokal importieren.
-        </p>
+        <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
+        <p className="mt-0.5 text-[13px] text-ink3">{t("pz.setupTitle")}</p>
       </header>
 
-      <Card title="Puzzle-Datenbank importieren">
+      <Card title={t("pz.importCard")}>
         {running ? (
           <div className="flex items-center gap-3 py-4">
             <Loader2 size={18} className="animate-spin text-accent" />
             <div>
               <div className="text-[14px] font-medium">
-                {progress > 0 ? `${deInt(progress)} Puzzles importiert …` : "Download läuft …"}
+                {progress > 0 ? t("pz.importedN", { n: deInt(progress) }) : t("pz.downloading")}
               </div>
-              <div className="mt-0.5 text-[12px] text-ink3">
-                Läuft im Hintergrund — du kannst währenddessen andere Bereiche nutzen.
-              </div>
+              <div className="mt-0.5 text-[12px] text-ink3">{t("pz.background")}</div>
             </div>
           </div>
         ) : (
           <>
-            <p className="text-[13px] leading-relaxed text-ink2">
-              Kiebitz lädt den offiziellen Dump von database.lichess.org (~250 MB komprimiert) und
-              speichert ihn in der lokalen SQLite-Datenbank. Danach läuft das Training komplett offline.
-            </p>
+            <p className="text-[13px] leading-relaxed text-ink2">{t("pz.importIntro")}</p>
             <div className="mt-4 flex gap-2">
               <Button primary onClick={() => start()}>
-                <Download size={15} /> Herunterladen & importieren
+                <Download size={15} /> {t("pz.downloadImport")}
               </Button>
             </div>
             <div className="mt-4 border-t border-line pt-4">
-              <div className="mb-2 text-[12px] text-ink3">
-                Alternativ aus lokaler Datei (lichess_db_puzzle.csv oder .csv.zst):
-              </div>
+              <div className="mb-2 text-[12px] text-ink3">{t("pz.fromFile")}</div>
               <div className="flex gap-2">
                 <input
                   value={path}
@@ -129,7 +122,7 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
                   placeholder="C:\Downloads\lichess_db_puzzle.csv.zst"
                   className="flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
                 />
-                <Button onClick={() => path.trim() && start(path.trim())}>Importieren</Button>
+                <Button onClick={() => path.trim() && start(path.trim())}>{t("common.import")}</Button>
               </div>
             </div>
           </>
@@ -149,6 +142,7 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
 type Status = "loading" | "playing" | "solved" | "empty";
 
 function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: () => void }) {
+  const { locale, t } = useI18n();
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [fen, setFen] = useState("");
@@ -305,15 +299,17 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Puzzle-Training</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            Lichess-Puzzle-Datenbank · {deInt(stats.db_total)} Aufgaben offline · {deInt(stats.solved)} gelöst
+            {t("pz.subtitle", { n: deInt(stats.db_total), m: deInt(stats.solved) })}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
           <Flame size={15} className="text-gold" />
-          <span className="font-medium">{stats.streak_days} {stats.streak_days === 1 ? "Tag" : "Tage"}</span>
-          <span className="text-ink3">Serie · heute {stats.today_solved}</span>
+          <span className="font-medium">
+            {stats.streak_days} {t(stats.streak_days === 1 ? "common.days.one" : "common.days.many")}
+          </span>
+          <span className="text-ink3">{t("pz.streakToday", { n: stats.today_solved })}</span>
         </div>
       </header>
 
@@ -322,11 +318,15 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
               <Target size={15} className="text-accent" />
-              <span className="font-medium">{mainTheme ? themeLabel(mainTheme) : "…"}</span>
+              <span className="font-medium">{mainTheme ? themeLabel(mainTheme, locale) : "…"}</span>
               {puzzle && <span className="text-ink3">· Rating {puzzle.rating}</span>}
             </div>
             <span className="text-[12.5px] text-ink3">
-              {status === "loading" ? "lade …" : orientation === "white" ? "Weiß am Zug" : "Schwarz am Zug"}
+              {status === "loading"
+                ? t("pz.loading")
+                : orientation === "white"
+                  ? t("pz.whiteToMove")
+                  : t("pz.blackToMove")}
             </span>
           </div>
 
@@ -347,24 +347,25 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
               <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
                 <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
                   <CheckCircle2 size={17} />
-                  {failedRef.current ? "Gelöst (mit Hilfe)." : "Richtig!"}
-                  {ratingDelta != null && ` Rating ${ratingDelta >= 0 ? "+" : ""}${ratingDelta}`}
+                  {failedRef.current ? t("pz.solvedWithHelp") : t("pz.correct")}
+                  {ratingDelta != null &&
+                    t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
                 </div>
                 <Button primary onClick={() => load()}>
-                  <SkipForward size={15} /> Weiter
+                  <SkipForward size={15} /> {t("common.next")}
                 </Button>
               </div>
             ) : wrong ? (
               <div className="flex w-full items-center justify-between rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
                 <span className="text-[13.5px] text-loss">
-                  Leider falsch{ratingDelta != null ? ` (Rating ${ratingDelta})` : ""} — versuch es noch einmal.
+                  {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
                 </span>
                 <div className="flex gap-2">
                   <Button onClick={() => setShowHint(true)}>
-                    <Lightbulb size={15} /> Tipp
+                    <Lightbulb size={15} /> {t("pz.hint")}
                   </Button>
                   <Button onClick={revealSolution}>
-                    <Eye size={15} /> Lösung
+                    <Eye size={15} /> {t("pz.solution")}
                   </Button>
                 </div>
               </div>
@@ -372,14 +373,14 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
               <div className="flex w-full items-center justify-between">
                 <span className="text-[13px] text-ink3">
                   {status === "loading"
-                    ? "Nächstes Puzzle wird geladen …"
+                    ? t("pz.loadingNext")
                     : status === "empty"
-                      ? "Kein Puzzle mit diesem Filter gefunden."
-                      : "Finde die beste Fortsetzung — ggf. mehrere Züge."}
+                      ? t("pz.noneFound")
+                      : t("pz.findBest")}
                 </span>
                 {status === "playing" && (
                   <Button onClick={() => setShowHint(true)}>
-                    <Lightbulb size={15} /> Tipp
+                    <Lightbulb size={15} /> {t("pz.hint")}
                   </Button>
                 )}
               </div>
@@ -387,13 +388,15 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
           </div>
           {showHint && status === "playing" && (
             <div className="rounded-lg border border-line bg-panel px-4 py-2.5 text-[12.5px] text-ink2">
-              Die markierte Figur zieht{mainTheme ? ` — Motiv: ${themeLabel(mainTheme)}` : ""}.
+              {t("pz.hintText", {
+                theme: mainTheme ? t("pz.hintTheme", { m: themeLabel(mainTheme, locale) }) : "",
+              })}
             </div>
           )}
         </div>
 
         <div className="flex max-w-[420px] flex-col gap-4">
-          <Card title="Puzzle-Rating">
+          <Card title={t("pz.rating")}>
             <div className="flex items-end justify-between">
               <div>
                 <div className="text-[30px] font-semibold leading-none tracking-tight">
@@ -401,22 +404,25 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
                 </div>
                 <div className="mt-1.5 text-[12px] text-ink3">
                   {stats.attempts > 0
-                    ? `${deInt(stats.attempts)} Versuche · ${Math.round((stats.solved / stats.attempts) * 100)} % gelöst`
-                    : "Elo-basiert · startet bei 1500"}
+                    ? t("pz.attempts", {
+                        n: deInt(stats.attempts),
+                        p: Math.round((stats.solved / stats.attempts) * 100),
+                      })
+                    : t("pz.eloStart")}
                 </div>
               </div>
               <Spark data={history.map(Number)} width={140} height={44} />
             </div>
           </Card>
 
-          <Card title="Trefferquote nach Motiv">
+          <Card title={t("pz.themeAccuracy")}>
             {themeStats.length > 0 ? (
               <div className="flex flex-col gap-2.5">
-                {themeStats.map((t) => {
-                  const acc = Math.round((t.solved / t.attempts) * 100);
+                {themeStats.map((th) => {
+                  const acc = Math.round((th.solved / th.attempts) * 100);
                   return (
-                    <div key={t.theme} className="flex items-center gap-3">
-                      <span className="w-28 shrink-0 truncate text-[12.5px] text-ink2">{themeLabel(t.theme)}</span>
+                    <div key={th.theme} className="flex items-center gap-3">
+                      <span className="w-28 shrink-0 truncate text-[12.5px] text-ink2">{themeLabel(th.theme, locale)}</span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-panel3">
                         <div
                           className="h-full rounded-full"
@@ -432,25 +438,23 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
                 })}
               </div>
             ) : (
-              <div className="text-[12.5px] text-ink3">
-                Noch keine Versuche — die Statistik füllt sich mit jedem gelösten Puzzle.
-              </div>
+              <div className="text-[12.5px] text-ink3">{t("pz.noAttempts")}</div>
             )}
           </Card>
 
-          <Card title="Filter">
+          <Card title={t("pz.filter")}>
             <div className="flex flex-wrap gap-2">
               <Chip active={theme === ""} onClick={() => { setTheme(""); load(""); }}>
-                Alle Motive
+                {t("pz.allThemes")}
               </Chip>
-              {FILTER_THEMES.map((t) => (
-                <Chip key={t} active={theme === t} onClick={() => { setTheme(t); load(t); }}>
-                  {themeLabel(t)}
+              {FILTER_THEMES.map((ft) => (
+                <Chip key={ft} active={theme === ft} onClick={() => { setTheme(ft); load(ft); }}>
+                  {themeLabel(ft, locale)}
                 </Chip>
               ))}
             </div>
             <div className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-ink3">
-              Aufgaben kommen aus dem Band ±75 um dein Rating; bereits gelöste werden übersprungen.
+              {t("pz.bandInfo")}
             </div>
           </Card>
         </div>
@@ -462,6 +466,7 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
 // ── Demo-Ansicht (Web-Preview) ───────────────────────────────────────────────
 
 function DemoPuzzles() {
+  const t = useT();
   const [idx, setIdx] = useState(0);
   const [status, setStatus] = useState<"open" | "solved" | "wrong">("open");
   const [shake, setShake] = useState(false);
@@ -517,15 +522,13 @@ function DemoPuzzles() {
     <div className="mx-auto max-w-[1240px] px-6 py-6">
       <header className="mb-5 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">Puzzle-Training</h1>
-          <p className="mt-0.5 text-[13px] text-ink3">
-            Demo-Puzzles — die Lichess-Datenbank (~5 Mio. Aufgaben) importiert die Desktop-App
-          </p>
+          <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
+          <p className="mt-0.5 text-[13px] text-ink3">{t("pz.demoSubtitle")}</p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
           <Flame size={15} className="text-gold" />
-          <span className="font-medium">{demoStats.streak} Tage</span>
-          <span className="text-ink3">Serie</span>
+          <span className="font-medium">{demoStats.streak} {t("common.days.many")}</span>
+          <span className="text-ink3">{t("pz.streakToday", { n: demoStats.todaySolved })}</span>
         </div>
       </header>
 
@@ -538,7 +541,7 @@ function DemoPuzzles() {
               <span className="text-ink3">· Rating {puzzle.rating}</span>
             </div>
             <span className="text-[12.5px] text-ink3">
-              {puzzle.sideToMove === "white" ? "Weiß" : "Schwarz"} am Zug
+              {puzzle.sideToMove === "white" ? t("pz.whiteToMove") : t("pz.blackToMove")}
             </span>
           </div>
 
@@ -559,34 +562,34 @@ function DemoPuzzles() {
               <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
                 <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
                   <CheckCircle2 size={17} />
-                  Richtig! {puzzle.solutionSan} — {puzzle.theme}
+                  {t("pz.correct")} {puzzle.solutionSan} — {puzzle.theme}
                 </div>
                 <Button primary onClick={next}>
-                  <SkipForward size={15} /> Weiter
+                  <SkipForward size={15} /> {t("common.next")}
                 </Button>
               </div>
             ) : status === "wrong" ? (
               <div className="flex w-full items-center rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
-                <span className="text-[13.5px] text-loss">Leider falsch — versuch es noch einmal.</span>
+                <span className="text-[13.5px] text-loss">{t("pz.wrong", { d: "" })}</span>
               </div>
             ) : (
-              <span className="text-[13px] text-ink3">Finde den besten Zug — Figur einfach ziehen.</span>
+              <span className="text-[13px] text-ink3">{t("pz.findBestDemo")}</span>
             )}
           </div>
         </div>
 
         <div className="flex max-w-[420px] flex-col gap-4">
-          <Card title="Puzzle-Rating">
+          <Card title={t("pz.rating")}>
             <div className="flex items-end justify-between">
               <div>
                 <div className="text-[30px] font-semibold leading-none tracking-tight">{deInt(demoStats.rating)}</div>
-                <div className="mt-1.5 text-[12px] text-win">+120 in 3 Monaten</div>
+                <div className="mt-1.5 text-[12px] text-win">{t("pz.rating3m")}</div>
               </div>
               <Spark data={demoStats.history} width={140} height={44} />
             </div>
           </Card>
           <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            Demo-Ansicht: Puzzle-Import, Motiv-Filter und persönliches Rating laufen in der Desktop-App.
+            {t("pz.demoNote")}
           </div>
         </div>
       </div>

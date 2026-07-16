@@ -68,7 +68,7 @@ function ccResult(me: CcSide, opp: CcSide): "win" | "loss" | "draw" {
 export async function importChessCom(
   user: string,
   months?: number,
-  onProgress?: (msg: string) => void
+  onProgress?: (current: number, total: number) => void
 ): Promise<GameRecord[]> {
   const res = await fetch(`https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`);
   if (!res.ok) throw new Error(`chess.com: ${res.status}`);
@@ -77,7 +77,7 @@ export async function importChessCom(
 
   const games: GameRecord[] = [];
   for (const [i, url] of selected.entries()) {
-    onProgress?.(`chess.com: Monat ${i + 1}/${selected.length} …`);
+    onProgress?.(i + 1, selected.length);
     const monthRes = await fetch(url);
     if (!monthRes.ok) continue;
     const monthGames: CcGame[] = (await monthRes.json()).games ?? [];
@@ -188,9 +188,13 @@ export interface ImportSummary {
 export async function fetchAll(
   ccUser: string,
   liUser: string,
-  opts: { full?: boolean; onProgress?: (msg: string) => void } = {}
+  opts: {
+    full?: boolean;
+    months?: number;
+    onProgress?: (current: number, total: number) => void;
+  } = {}
 ): Promise<{ games: GameRecord[]; summary: ImportSummary }> {
-  const months = opts.full ? undefined : 3;
+  const months = opts.full ? undefined : (opts.months ?? 3);
   const liMax = opts.full ? undefined : 200;
   const [cc, li] = await Promise.allSettled([
     importChessCom(ccUser, months, opts.onProgress),
