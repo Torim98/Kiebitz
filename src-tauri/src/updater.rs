@@ -36,7 +36,9 @@ fn emit_state(app: &AppHandle, state: UpdateState) {
 /// Fragt den Update-Endpoint ab, ohne etwas herunterzuladen.
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
-    let current = env!("CARGO_PKG_VERSION").to_string();
+    // App-Version aus tauri.conf.json (nicht CARGO_PKG_VERSION) — genau die
+    // Version, gegen die auch der Updater vergleicht.
+    let current = app.package_info().version.to_string();
     let update = app
         .updater()
         .map_err(|e| e.to_string())?

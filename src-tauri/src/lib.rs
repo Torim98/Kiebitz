@@ -20,9 +20,11 @@ struct AppInfo {
 }
 
 #[tauri::command]
-fn app_info() -> AppInfo {
+fn app_info(app: tauri::AppHandle) -> AppInfo {
     AppInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        // Version aus tauri.conf.json (das Feld, das beim Release erhöht wird),
+        // nicht aus Cargo.toml — sonst driften Anzeige und Release auseinander.
+        version: app.package_info().version.to_string(),
         backend: "tauri".to_string(),
     }
 }

@@ -148,7 +148,10 @@ workflow are already committed.
 
 1. **Bump the version** in `src-tauri/tauri.conf.json` and `package.json` (keep
    them equal). It must be **higher** than what users have installed, or the
-   updater won't offer it — e.g. `0.1.0` → `0.2.0`.
+   updater won't offer it — e.g. `0.1.0` → `0.2.0`. This `tauri.conf.json`
+   version is also what the app shows (sidebar, Settings → Updates) and what the
+   updater compares against; `src-tauri/Cargo.toml`'s `version` is unrelated to
+   the app version and does not need bumping.
 2. **Commit** the bump:
 
    ```sh

@@ -1,6 +1,7 @@
 [package]
 name = "kiebitz"
-version = "0.1.0"
+# Hinweis: Die angezeigte App-Version kommt aus tauri.conf.json, nicht von hier.
+version = "0.1.1"
 description = "Kiebitz — local-first desktop chess companion"
 authors = ["Torim98"]
 edition = "2021"
