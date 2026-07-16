@@ -31,6 +31,8 @@ pub struct Settings {
     pub chessdb_enabled: bool,
     pub cc_user: String,
     pub li_user: String,
+    /// Anzeigename fürs Dashboard (leer = chess.com-/Lichess-Benutzername).
+    pub display_name: String,
     /// Monatsfenster für den Schnell-Import ("Neueste importieren").
     pub import_months: u32,
     /// Beim Start im Hintergrund nach Updates suchen und sie installieren.
@@ -51,6 +53,7 @@ impl Default for Settings {
             chessdb_enabled: false,
             cc_user: "Torim98".into(),
             li_user: "Torim98".into(),
+            display_name: String::new(),
             import_months: 3,
             auto_update: true,
         }
@@ -71,6 +74,7 @@ fn normalize(mut s: Settings) -> Settings {
     s.import_months = s.import_months.clamp(1, 240);
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
+    s.display_name = s.display_name.trim().to_string();
     s.engine_path = s.engine_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s.db_path = s.db_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s
@@ -334,5 +338,6 @@ mod tests {
         assert_eq!(back.engine_multipv, 3);
         assert_eq!(back.import_months, 3);
         assert!(back.auto_update);
+        assert_eq!(back.display_name, "");
     }
 }

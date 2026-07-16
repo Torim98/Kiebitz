@@ -30,7 +30,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
-  const [users, setUsers] = useState({ cc: profile.ccUser, li: profile.liUser });
+  const [users, setUsers] = useState({ cc: profile.ccUser, li: profile.liUser, name: "" });
 
   useEffect(() => {
     if (backend.mode === "desktop") {
@@ -38,7 +38,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
       repStats().then(setRep).catch(() => {});
       fetchPuzzleStats().then(setPz).catch(() => {});
       getSettings()
-        .then((s) => setUsers({ cc: s.cc_user, li: s.li_user }))
+        .then((s) => setUsers({ cc: s.cc_user, li: s.li_user, name: s.display_name }))
         .catch(() => {});
     }
   }, [backend.mode]);
@@ -62,7 +62,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
     const h = new Date().getHours();
     return h < 11 ? t("dash.goodMorning") : h < 18 ? t("dash.goodDay") : t("dash.goodEvening");
   })();
-  const name = backend.mode === "desktop" ? users.cc : profile.name;
+  const name =
+    backend.mode === "desktop" ? users.name || users.cc || users.li : profile.name;
 
   return (
     <div className="mx-auto max-w-[1200px] px-6 py-6">

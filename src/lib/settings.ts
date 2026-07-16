@@ -13,6 +13,8 @@ export interface Settings {
   chessdb_enabled: boolean;
   cc_user: string;
   li_user: string;
+  /** Anzeigename fürs Dashboard (leer = Benutzername). */
+  display_name: string;
   import_months: number;
   auto_update: boolean;
 }

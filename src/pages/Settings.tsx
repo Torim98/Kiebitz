@@ -342,6 +342,14 @@ export default function SettingsPage() {
         >
           {desktop && draft ? (
             <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-3">
+              <Field label={t("set.displayName")}>
+                <input
+                  value={draft.display_name}
+                  onChange={(e) => patch({ display_name: e.target.value })}
+                  placeholder={draft.cc_user || draft.li_user}
+                  className={inputCls}
+                />
+              </Field>
               <Field label={t("set.ccUser")}>
                 <input
                   value={draft.cc_user}

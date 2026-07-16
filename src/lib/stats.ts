@@ -77,11 +77,20 @@ export function buildDashboard(
       });
     }
   }
-  // Die vier aktivsten Karten zuerst (nach Partienzahl im Bucket)
+  // Die zuletzt aktivsten Kategorien zuerst: Partienzahl der letzten 30 Tage,
+  // bei Gleichstand (z. B. lange Pause) entscheidet die jüngste Partie.
+  const activity = new Map<string, { recent: number; last: number }>();
+  for (const g of records) {
+    const key = `${g.source}-${g.time_class}`;
+    const a = activity.get(key) ?? { recent: 0, last: 0 };
+    if (g.played_ts > cutoff30d) a.recent++;
+    if (g.played_ts > a.last) a.last = g.played_ts;
+    activity.set(key, a);
+  }
   cards.sort((a, b) => {
-    const count = (c: RatingCard) =>
-      records.filter((g) => `${g.source}-${g.time_class}` === c.id).length;
-    return count(b) - count(a);
+    const A = activity.get(a.id) ?? { recent: 0, last: 0 };
+    const B = activity.get(b.id) ?? { recent: 0, last: 0 };
+    return B.recent - A.recent || B.last - A.last;
   });
 
   // Wochenverlauf (letzte 26 Wochen): letztes Rapid-/Blitz-Rating pro Woche & Quelle
