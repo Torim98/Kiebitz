@@ -84,12 +84,9 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 
       <div className="mb-4 grid grid-cols-2 gap-4 min-[1100px]:grid-cols-4">
         {cards.map((r) => (
-          <a
+          <div
             key={r.id}
-            href={r.url}
-            target="_blank"
-            rel="noreferrer"
-            className="group rounded-xl border border-line bg-panel p-4 transition-colors hover:border-line2"
+            className="rounded-xl border border-line bg-panel p-4"
           >
             <div className="mb-2 flex items-center justify-between">
               <SourceBadge source={r.platform} />
@@ -109,7 +106,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
               </div>
               <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
             </div>
-          </a>
+          </div>
         ))}
       </div>
 
@@ -181,14 +178,14 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                   <Puzzle size={15} className="text-gold" /> {t("dash.puzzleGoal")}
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
-                  {pz ? pz.today_solved : puzzleStats.todaySolved}
+                  {pz ? pz.today_attempts : puzzleStats.todaySolved}
                   <span className="text-[15px] font-normal text-ink3"> / {puzzleStats.todayGoal}</span>
                 </div>
                 <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-panel3">
                   <div
                     className="h-full rounded-full bg-gold"
                     style={{
-                      width: `${Math.min(100, ((pz ? pz.today_solved : puzzleStats.todaySolved) / puzzleStats.todayGoal) * 100)}%`,
+                      width: `${Math.min(100, ((pz ? pz.today_attempts : puzzleStats.todaySolved) / puzzleStats.todayGoal) * 100)}%`,
                     }}
                   />
                 </div>

@@ -299,6 +299,8 @@ pub struct PuzzleStats {
     pub attempts: i64,
     pub solved: i64,
     pub today_solved: i64,
+    /// Alle heutigen Versuche (gelöst oder nicht) — fürs Tagesziel im Dashboard.
+    pub today_attempts: i64,
     pub streak_days: i64,
     pub history: Vec<i64>,
     pub themes: Vec<ThemeStat>,
@@ -333,6 +335,13 @@ pub fn puzzle_stats(
     let today_solved: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1",
+            params![day_start],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let today_attempts: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1",
             params![day_start],
             |r| r.get(0),
         )
@@ -407,6 +416,7 @@ pub fn puzzle_stats(
         attempts,
         solved,
         today_solved,
+        today_attempts,
         streak_days: streak,
         history,
         themes,

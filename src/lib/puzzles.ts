@@ -29,6 +29,8 @@ export interface PuzzleStats {
   attempts: number;
   solved: number;
   today_solved: number;
+  /** Alle heutigen Versuche (gelöst oder nicht) — fürs Tagesziel im Dashboard. */
+  today_attempts: number;
   streak_days: number;
   history: number[];
   themes: ThemeStat[];

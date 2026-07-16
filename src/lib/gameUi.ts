@@ -30,10 +30,27 @@ export function tcLabel(timeClass: string, locale: Locale): string {
   return TC_LABEL[locale][timeClass] ?? timeClass;
 }
 
-export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
+/**
+ * Anzeige-Datum einer Partie. Bevorzugt `played_ts` (Unix, überall die
+ * kanonische Sortier-Zeit — bei chess.com das Partie-ENDE), damit Anzeige und
+ * Reihenfolge übereinstimmen. Bei chess.com-Fernpartien weicht `played_at`
+ * (Start-Datum aus dem PGN) sonst von der Sortierung ab. Fallback auf
+ * `played_at` für Alt-Datensätze ohne Zeitstempel.
+ */
+function gameDate(r: GameRecord, locale: Locale): string {
+  if (r.played_ts > 0) {
+    const dt = new Date(r.played_ts * 1000);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
+  }
   const [y, m, d] = r.played_at.split("-");
-  const date =
-    d && m && y ? (locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`) : r.played_at;
+  return d && m && y ? (locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`) : r.played_at;
+}
+
+export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
+  const date = gameDate(r, locale);
   return {
     id: `db-${r.id}`,
     dbId: r.id ?? undefined,
