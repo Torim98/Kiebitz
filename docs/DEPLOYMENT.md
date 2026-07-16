@@ -121,41 +121,66 @@ first launch, **separate from the installed program** so updates never touch it:
 A configurable location is planned (see `ROADMAP.md`, Settings). Backing up the
 app means backing up this file.
 
-## CI/CD (optional)
+## Releasing a new version (the comfortable way)
 
-Cross-platform installers require building on each OS. The standard approach is
-GitHub Actions with the official Tauri action, which matrix-builds on
-Windows/macOS/Linux and attaches installers to a GitHub release:
+A GitHub Actions workflow (`.github/workflows/release.yml`) does the whole
+release for you. **Pushing a version tag is the only action you take** — the
+workflow then builds on a Windows runner, downloads Stockfish, signs the
+installer, creates the GitHub release, and uploads `latest.json`. Installed
+apps update themselves on their next start.
 
-```yaml
-# .github/workflows/release.yml (sketch)
-name: release
-on:
-  push:
-    tags: ["v*"]
-jobs:
-  build:
-    strategy:
-      matrix:
-        platform: [windows-latest, macos-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - uses: dtolnay/rust-toolchain@stable
-      - run: npm ci
-      # Fetch the platform-appropriate Stockfish binary into src-tauri/binaries here.
-      - uses: tauri-apps/tauri-action@v0
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Kiebitz ${{ github.ref_name }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+### One-time setup
+
+Add the updater's **private signing key** as a repository secret named
+`TAURI_SIGNING_PRIVATE_KEY` (the workflow reads it; the key has no password, so
+no second secret is needed). From the repo root, with the GitHub CLI:
+
+```sh
+gh secret set TAURI_SIGNING_PRIVATE_KEY < "$HOME/.tauri/kiebitz.key"
+# Windows path: C:\Users\tomma\.tauri\kiebitz.key
 ```
 
-Add a step to download/place the engine binary per platform before the Tauri
-build, and inject signing secrets where applicable.
+Or paste the file's contents under **GitHub → Settings → Secrets and variables
+→ Actions → New repository secret**. That's it — endpoint, public key, and
+workflow are already committed.
+
+### Every release — three steps
+
+1. **Bump the version** in `src-tauri/tauri.conf.json` and `package.json` (keep
+   them equal). It must be **higher** than what users have installed, or the
+   updater won't offer it — e.g. `0.1.0` → `0.2.0`.
+2. **Commit** the bump:
+
+   ```sh
+   git commit -am "Release v0.2.0"
+   ```
+
+3. **Tag and push** — the tag must be `v` + the version from step 1:
+
+   ```sh
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+
+Then watch **GitHub → Actions**; the run takes ~10–15 min. When it's green,
+the release is live with the installer, `.sig`, and `latest.json` attached, and
+every running Kiebitz picks the update up on its next launch. Nothing else to do.
+
+> **Tip:** if a build fails, fix it, delete the tag locally and remotely
+> (`git tag -d v0.2.0 && git push origin :refs/tags/v0.2.0`), and push it again.
+
+### What the workflow handles for you
+
+- **Engine**: fetches the current official Windows AVX2 Stockfish into
+  `src-tauri/binaries/stockfish.exe` before the build (the binary is gitignored,
+  so it never lives in the repo). `bundle.resources` then ships it inside the
+  installer. For older CPUs, change the asset pattern in the workflow.
+- **Signing**: passes `TAURI_SIGNING_PRIVATE_KEY`, so `.sig` files and
+  `latest.json` are produced and uploaded automatically.
+- **Scope**: Windows only, matching the primary target. To add macOS/Linux,
+  turn the job into a matrix over `windows-latest` / `macos-latest` /
+  `ubuntu-22.04`, add per-OS Stockfish fetch + resources, and (for macOS) signing
+  and notarization credentials.
 
 ## Auto-update
 
@@ -186,8 +211,13 @@ The pieces that make it work:
   TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/kiebitz.key npm run tauri build
   ```
 
-- **Manifest**: the CI route (tauri-action, see above) generates and uploads
-  `latest.json` automatically. For a manual release, write it yourself:
+- **Manifest**: the release workflow (see *Releasing a new version*) generates
+  and uploads `latest.json` for you — this is the normal path. The updater only
+  offers versions greater than the installed one, so publishing a release is all
+  it takes to roll everyone forward.
+
+  <details>
+  <summary>Manual manifest (fallback, only if you build without CI)</summary>
 
   ```json
   {
@@ -203,18 +233,21 @@ The pieces that make it work:
   }
   ```
 
-  and attach it (plus installer and `.sig`) to the GitHub release. The updater
-  only offers versions greater than the installed one, so publishing a release
-  is all it takes to roll everyone forward.
+  Attach it (plus installer and `.sig`) to the GitHub release yourself.
+  </details>
 
 ## Release checklist
 
-1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json`).
-2. Ensure the target Stockfish binary is present and bundled (see above).
-3. `npm run tauri build` on each target OS (or via CI) with
-   `TAURI_SIGNING_PRIVATE_KEY_PATH` set, so updater `.sig` files are produced.
-4. Sign / notarize the installers if distributing publicly.
-5. Smoke-test the installed app: import games, run a live analysis, confirm the
-   database is created in the app-data directory.
-6. Tag the release (`vX.Y.Z`) and attach the installers, `.sig` files, and
-   `latest.json` — installed apps then pick the update up on their next start.
+The automated flow (see *Releasing a new version*) is the short version of this:
+
+1. Bump `version` in `src-tauri/tauri.conf.json` **and** `package.json`.
+2. Commit, then tag `vX.Y.Z` and push (`git push origin main --tags`).
+3. Wait for the GitHub Actions run to go green.
+4. Smoke-test: install the new release (or let an existing copy auto-update),
+   import games, run a live analysis, confirm the database is untouched in the
+   app-data directory.
+
+Doing it by hand instead (no CI): build with
+`TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/kiebitz.key npm run tauri build`, sign /
+notarize if distributing publicly, then create the tag and attach the installer,
+`.sig`, and `latest.json` to the release yourself.
