@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import type { Result, Source } from "../data/demo";
 import { useT } from "../lib/i18n";
 import { resultColor } from "../lib/util";
+import { openExternal } from "../lib/ext";
 
 export function Card({
   title,
@@ -97,6 +98,10 @@ export function ExtLink({ href, label }: { href: string; label?: string }) {
       href={href}
       target="_blank"
       rel="noreferrer"
+      onClick={(e) => {
+        e.preventDefault();
+        openExternal(href);
+      }}
       className="inline-flex items-center gap-1 text-[12.5px] text-ink3 transition-colors hover:text-accent"
     >
       {label}

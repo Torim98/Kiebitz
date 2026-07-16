@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "chess.js": "^1.0.0",
     "lucide-react": "^0.454.0",
     "react": "^18.3.1",
