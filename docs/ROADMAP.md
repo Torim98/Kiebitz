@@ -90,9 +90,12 @@ The features that currently show demo data become backed by the database.
   combines due repertoire reviews (FSRS), a puzzle goal, and the analysis backlog
   into a single agenda. Calendar view, streaks, and reminders — meant to replace
   a separate calendar for chess study.
-- [ ] **Endgame trainer.** Theoretical endgame drills (Lucena, Philidor, K+P, basic
-  mates) with Syzygy tablebase support for perfect play, plus "play it out against
-  the engine" from key positions.
+- [x] **Endgame trainer.** Own tab between Repertoire and Puzzles: curated
+  theoretical drills (basic mates, K+P key squares/square rule/opposition, Lucena,
+  Philidor, Q vs pawn) played out against the engine (`endgame.rs`, own persistent
+  Stockfish instance). Win drills end at checkmate, draw drills at any draw;
+  attempts land in `endgame_attempts` with per-drill mastery shown in the list.
+  Optional Syzygy tablebase folder (Settings → Engine) for perfect defense.
 
 ## Phase 4 — Mobile
 

@@ -453,6 +453,17 @@ export default function SettingsPage() {
                   onChange={(v) => patch({ batch_depth: v })}
                 />
               </div>
+              <div className="mt-4">
+                <Field label={t("set.syzygyPath")}>
+                  <input
+                    value={draft.syzygy_path ?? ""}
+                    onChange={(e) => patch({ syzygy_path: e.target.value || null })}
+                    placeholder="D:\Schach\syzygy"
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-ink3">{t("set.syzygyNote")}</p>
+              </div>
               <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.engineNote")}</p>
             </>
           ) : (

@@ -10,6 +10,7 @@ export interface Settings {
   engine_multipv: number;
   live_depth: number;
   batch_depth: number;
+  syzygy_path: string | null;
   chessdb_enabled: boolean;
   cc_user: string;
   li_user: string;

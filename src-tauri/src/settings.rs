@@ -2,7 +2,7 @@
 //! Die Datei liegt bewusst NICHT in der SQLite-Datenbank, damit der
 //! Datenbank-Pfad selbst konfigurierbar bleibt (Henne-Ei-Problem).
 
-use crate::{analysis, db, live, puzzles};
+use crate::{analysis, db, endgame, live, puzzles};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -27,6 +27,9 @@ pub struct Settings {
     pub live_depth: u32,
     /// Tiefe der Hintergrund-Analyse (Auto-Analyse-Pipeline).
     pub batch_depth: u32,
+    /// Ordner mit Syzygy-Tablebases (None = keine); Endspiel-Trainer und
+    /// Engine nutzen sie für perfektes Endspiel.
+    pub syzygy_path: Option<String>,
     /// Online-Eröffnungsbuch chessdb.cn (Cloud-Evals), cache-gestützt.
     pub chessdb_enabled: bool,
     pub cc_user: String,
@@ -50,6 +53,7 @@ impl Default for Settings {
             engine_multipv: 3,
             live_depth: 24,
             batch_depth: 14,
+            syzygy_path: None,
             chessdb_enabled: false,
             cc_user: "Torim98".into(),
             li_user: "Torim98".into(),
@@ -77,6 +81,7 @@ fn normalize(mut s: Settings) -> Settings {
     s.display_name = s.display_name.trim().to_string();
     s.engine_path = s.engine_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s.db_path = s.db_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    s.syzygy_path = s.syzygy_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s
 }
 
@@ -121,6 +126,7 @@ pub fn set_settings(
     save(&app, &normalized)?;
     *state.0.lock().map_err(|e| e.to_string())? = normalized.clone();
     app.state::<live::LiveEngine>().shutdown();
+    app.state::<endgame::EndgameEngine>().shutdown();
     Ok(normalized)
 }
 

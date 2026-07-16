@@ -2,6 +2,7 @@ mod analysis;
 mod chess;
 mod chessdb;
 mod db;
+mod endgame;
 mod engine;
 mod live;
 mod puzzles;
@@ -205,6 +206,7 @@ pub fn run() {
             app.manage(analysis::DbPath(std::sync::Mutex::new(db_file)));
             app.manage(analysis::AnalysisState::default());
             app.manage(live::LiveEngine::default());
+            app.manage(endgame::EndgameEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
 
             // Auto-Update: Plugin immer registrieren (für den manuellen Check),
@@ -257,6 +259,9 @@ pub fn run() {
             settings::use_database,
             settings::db_info,
             chessdb::chessdb_query,
+            endgame::endgame_move,
+            endgame::endgame_record,
+            endgame::endgame_stats,
             updater::check_update,
             updater::install_update
         ])

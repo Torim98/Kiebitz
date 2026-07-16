@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bird,
   BookOpen,
+  Crown,
   Database,
   LayoutDashboard,
   Loader2,
@@ -19,6 +20,7 @@ import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
 import Repertoire from "./pages/Repertoire";
+import Endgame from "./pages/Endgame";
 import Puzzles from "./pages/Puzzles";
 import Insights from "./pages/Insights";
 import SettingsPage from "./pages/Settings";
@@ -29,6 +31,7 @@ export type PageId =
   | "games"
   | "analysis"
   | "repertoire"
+  | "endgame"
   | "puzzles"
   | "insights"
   | "settings";
@@ -38,6 +41,7 @@ const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
   { id: "games", labelKey: "nav.games", icon: Database },
   { id: "analysis", labelKey: "nav.analysis", icon: Activity },
   { id: "repertoire", labelKey: "nav.repertoire", icon: BookOpen },
+  { id: "endgame", labelKey: "nav.endgame", icon: Crown },
   { id: "puzzles", labelKey: "nav.puzzles", icon: PuzzleIcon },
   { id: "insights", labelKey: "nav.insights", icon: BarChart3 },
 ];
@@ -153,6 +157,7 @@ export default function App() {
         {page === "games" && <Games openAnalysis={openAnalysis} />}
         {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
         {page === "repertoire" && <Repertoire />}
+        {page === "endgame" && <Endgame />}
         {page === "puzzles" && <Puzzles />}
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}

@@ -147,7 +147,17 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             fen_key TEXT PRIMARY KEY,
             json    TEXT NOT NULL,
             ts      INTEGER NOT NULL
-        );",
+        );
+
+        -- v5: Endspiel-Trainer — ein Eintrag pro ausgespieltem Drill-Versuch
+        CREATE TABLE IF NOT EXISTS endgame_attempts (
+            id       INTEGER PRIMARY KEY,
+            drill_id TEXT NOT NULL,               -- ID aus src/data/endgames.ts
+            ts       INTEGER NOT NULL,
+            solved   INTEGER NOT NULL,
+            moves    INTEGER NOT NULL DEFAULT 0   -- Halbzüge bis zum Ende
+        );
+        CREATE INDEX IF NOT EXISTS idx_endgame_drill ON endgame_attempts(drill_id);",
     )
     .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;
 
