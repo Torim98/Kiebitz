@@ -33,6 +33,8 @@ pub struct Settings {
     pub li_user: String,
     /// Monatsfenster für den Schnell-Import ("Neueste importieren").
     pub import_months: u32,
+    /// Beim Start im Hintergrund nach Updates suchen und sie installieren.
+    pub auto_update: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +52,7 @@ impl Default for Settings {
             cc_user: "Torim98".into(),
             li_user: "Torim98".into(),
             import_months: 3,
+            auto_update: true,
         }
     }
 }
@@ -330,5 +333,6 @@ mod tests {
         assert_eq!(back.locale, "en");
         assert_eq!(back.engine_multipv, 3);
         assert_eq!(back.import_months, 3);
+        assert!(back.auto_update);
     }
 }

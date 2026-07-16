@@ -55,6 +55,8 @@ const de = {
   "app.desktopBackend": "Desktop · Rust-Backend v{v}",
   "app.webMode": "Browser-Modus · Web-Preview",
   "app.connecting": "Verbinde …",
+  "app.updateDownloading": "Update {v} wird geladen …",
+  "app.updateInstalling": "Update {v} wird installiert — Kiebitz startet gleich neu.",
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
   "dash.goodMorning": "Guten Morgen",
@@ -363,6 +365,17 @@ const de = {
   "set.puzzleImporting": "{n} Puzzles importiert …",
   "set.puzzleImportDone": "Import abgeschlossen: {n} Puzzles.",
   "set.puzzleImportFailed": "Import fehlgeschlagen: {e}",
+  "set.updates": "Updates",
+  "set.autoUpdateToggle": "Beim Start automatisch nach Updates suchen und installieren",
+  "set.autoUpdateNote": "Updates kommen als signierte GitHub-Releases. Der Check läuft im Hintergrund; wird ein Update installiert, startet Kiebitz neu. Die Datenbank bleibt davon unberührt.",
+  "set.updateCurrent": "Installierte Version: {v}",
+  "set.updateCheck": "Jetzt nach Updates suchen",
+  "set.updateUpToDate": "Kiebitz ist aktuell (v{v}).",
+  "set.updateAvailable": "Version {v} ist verfügbar.",
+  "set.updateInstall": "Herunterladen & neu starten",
+  "set.updateDownloading": "Lade Update {v} … {p}",
+  "set.updateInstalling": "Installiere — Kiebitz startet gleich neu …",
+  "set.updateFailed": "Update fehlgeschlagen: {e}",
   "set.desktopOnly": "Nur in der Desktop-App verfügbar.",
 } as const;
 
@@ -409,6 +422,8 @@ const en: Record<Key, string> = {
   "app.desktopBackend": "Desktop · Rust backend v{v}",
   "app.webMode": "Browser mode · web preview",
   "app.connecting": "Connecting …",
+  "app.updateDownloading": "Downloading update {v} …",
+  "app.updateInstalling": "Installing update {v} — Kiebitz will restart in a moment.",
 
   "dash.goodMorning": "Good morning",
   "dash.goodDay": "Good afternoon",
@@ -709,6 +724,17 @@ const en: Record<Key, string> = {
   "set.puzzleImporting": "{n} puzzles imported …",
   "set.puzzleImportDone": "Import complete: {n} puzzles.",
   "set.puzzleImportFailed": "Import failed: {e}",
+  "set.updates": "Updates",
+  "set.autoUpdateToggle": "Check for updates on startup and install them automatically",
+  "set.autoUpdateNote": "Updates ship as signed GitHub releases. The check runs in the background; when an update is installed, Kiebitz restarts. Your database is not touched.",
+  "set.updateCurrent": "Installed version: {v}",
+  "set.updateCheck": "Check for updates now",
+  "set.updateUpToDate": "Kiebitz is up to date (v{v}).",
+  "set.updateAvailable": "Version {v} is available.",
+  "set.updateInstall": "Download & restart",
+  "set.updateDownloading": "Downloading update {v} … {p}",
+  "set.updateInstalling": "Installing — Kiebitz will restart in a moment …",
+  "set.updateFailed": "Update failed: {e}",
   "set.desktopOnly": "Only available in the desktop app.",
 };
 

@@ -7,6 +7,7 @@ import {
   Globe,
   Loader2,
   Puzzle as PuzzleIcon,
+  RefreshCw,
   UserRound,
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
@@ -30,6 +31,13 @@ import {
   puzzleStats,
   type PuzzleStats,
 } from "../lib/puzzles";
+import {
+  checkUpdate,
+  installUpdate,
+  onUpdateState,
+  type UpdateCheck,
+  type UpdateState,
+} from "../lib/updater";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
 
@@ -90,6 +98,11 @@ export default function SettingsPage() {
   const [usePath, setUsePath] = useState("");
   const [dbBusy, setDbBusy] = useState(false);
 
+  const [updCheck, setUpdCheck] = useState<UpdateCheck | null>(null);
+  const [updChecking, setUpdChecking] = useState(false);
+  const [updState, setUpdState] = useState<UpdateState | null>(null);
+  const [updError, setUpdError] = useState<string | null>(null);
+
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [pzRunning, setPzRunning] = useState(false);
   const [pzProgress, setPzProgress] = useState(0);
@@ -137,6 +150,25 @@ export default function SettingsPage() {
       cleanups.forEach((u) => u());
     };
   }, [desktop, t]);
+
+  // Update-Fortschritt (kommt auch vom Hintergrund-Check beim Start).
+  useEffect(() => {
+    if (!desktop) return;
+    let dispose: (() => void) | null = null;
+    let disposed = false;
+    onUpdateState((s) => {
+      if (s.phase === "error") {
+        setUpdState(null);
+        setUpdError(s.error ?? "?");
+      } else {
+        setUpdState(s);
+      }
+    }).then((u) => (disposed ? u() : (dispose = u)));
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
+  }, [desktop]);
 
   const dirty = useMemo(
     () => draft != null && saved != null && JSON.stringify(draft) !== JSON.stringify(saved),
@@ -211,6 +243,28 @@ export default function SettingsPage() {
     } finally {
       setDbBusy(false);
     }
+  };
+
+  const runUpdateCheck = async () => {
+    setUpdChecking(true);
+    setUpdError(null);
+    setUpdCheck(null);
+    try {
+      setUpdCheck(await checkUpdate());
+    } catch (e) {
+      setUpdError(String(e));
+    } finally {
+      setUpdChecking(false);
+    }
+  };
+
+  /** Startet Download + Installation; bei Erfolg startet die App neu. */
+  const runUpdateInstall = () => {
+    setUpdError(null);
+    installUpdate().catch((e) => {
+      setUpdState(null);
+      setUpdError(String(e));
+    });
   };
 
   const startPuzzleImport = (path?: string) => {
@@ -543,6 +597,83 @@ export default function SettingsPage() {
                   {pzMsg}
                 </div>
               )}
+            </>
+          ) : (
+            <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
+          )}
+        </Card>
+
+        {/* Updates */}
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <RefreshCw size={14} className="text-accent" /> {t("set.updates")}
+            </span>
+          }
+        >
+          {desktop && draft ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={draft.auto_update}
+                  onChange={(e) => patch({ auto_update: e.target.checked })}
+                  className="h-4 w-4 accent-[#22c08a]"
+                />
+                <span className="text-[13px] text-ink">{t("set.autoUpdateToggle")}</span>
+              </label>
+              <div className="mt-4 flex items-center gap-3">
+                <Button onClick={() => !updChecking && !updState && runUpdateCheck()}>
+                  {updChecking ? <Loader2 size={14} className="animate-spin" /> : t("set.updateCheck")}
+                </Button>
+                <span className="text-[12px] text-ink3">
+                  {t("set.updateCurrent", { v: backend.info?.version ?? "?" })}
+                </span>
+              </div>
+              {updState && (
+                <div className="mt-3 flex items-center gap-2 text-[12.5px] text-ink2">
+                  <Loader2 size={14} className="animate-spin text-accent" />
+                  {updState.phase === "installing"
+                    ? t("set.updateInstalling")
+                    : t("set.updateDownloading", {
+                        v: updState.version,
+                        p: updState.total
+                          ? `${Math.round((updState.received / updState.total) * 100)} %`
+                          : formatBytes(updState.received),
+                      })}
+                </div>
+              )}
+              {!updState && updError && (
+                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                  {t("set.updateFailed", { e: updError })}
+                </div>
+              )}
+              {!updState && !updError && updCheck && (
+                <div
+                  className={`mt-3 rounded-lg px-3 py-2 text-[12.5px] ${
+                    updCheck.available
+                      ? "border border-gold/40 bg-[#2a2414] text-gold"
+                      : "border border-accent-dim bg-accent-soft text-accent"
+                  }`}
+                >
+                  {updCheck.available ? (
+                    <div className="flex flex-col gap-2">
+                      <span>{t("set.updateAvailable", { v: updCheck.available })}</span>
+                      {updCheck.notes && (
+                        <span className="whitespace-pre-wrap text-[12px] text-ink2">{updCheck.notes}</span>
+                      )}
+                      <div>
+                        <Button primary onClick={runUpdateInstall}>
+                          <Download size={14} /> {t("set.updateInstall")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    t("set.updateUpToDate", { v: updCheck.current })
+                  )}
+                </div>
+              )}
+              <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.autoUpdateNote")}</p>
             </>
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>

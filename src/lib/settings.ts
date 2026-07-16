@@ -14,6 +14,7 @@ export interface Settings {
   cc_user: string;
   li_user: string;
   import_months: number;
+  auto_update: boolean;
 }
 
 export interface EngineTest {

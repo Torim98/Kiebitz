@@ -7,6 +7,7 @@ mod live;
 mod puzzles;
 mod repertoire;
 mod settings;
+mod updater;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -201,6 +202,20 @@ pub fn run() {
             app.manage(analysis::AnalysisState::default());
             app.manage(live::LiveEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
+
+            // Auto-Update: Plugin immer registrieren (für den manuellen Check),
+            // den Hintergrund-Check nur, wenn er in den Einstellungen aktiv ist.
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            let auto_update = app
+                .state::<settings::SettingsState>()
+                .0
+                .lock()
+                .map(|s| s.auto_update)
+                .unwrap_or(false);
+            if auto_update {
+                updater::spawn_startup_check(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -237,7 +252,9 @@ pub fn run() {
             settings::move_database,
             settings::use_database,
             settings::db_info,
-            chessdb::chessdb_query
+            chessdb::chessdb_query,
+            updater::check_update,
+            updater::install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -142,17 +142,8 @@ The features that currently show demo data become backed by the database.
 - [ ] PGN import/export for manual games (over-the-board play).
 - [ ] Tags UI (the schema supports notes; tags are still demo-only).
 - [ ] Backup/restore of the database.
-- [ ] Auto-update (Tauri updater plugin) — see `DEPLOYMENT.md`.
+- [x] Auto-update (Tauri updater plugin). Signed GitHub releases as the update
+  feed; background check + install on startup (toggleable in Settings), plus a
+  manual check/install in Settings → Updates. Release mechanics in `DEPLOYMENT.md`.
 - [ ] Tests: expand Rust coverage (importer normalization, stats) and add frontend
   component tests.
-
----
-
-## Suggested order
-
-Phase 1 first — it turns the last demo surfaces into real features and unlocks the
-data the Trainer needs. Settings (Phase 2) can run in parallel since it's mostly
-independent. Trainer/Schedule/Endgame (Phase 3) build on Phase 1's analysis data.
-Mobile (Phase 4) is the largest single effort and is best tackled once the desktop
-feature set is stable. The real web version (Phase 5) is optional and only worth it
-if browser access is genuinely needed — the desktop app remains the primary product.

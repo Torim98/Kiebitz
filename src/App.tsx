@@ -6,12 +6,14 @@ import {
   BookOpen,
   Database,
   LayoutDashboard,
+  Loader2,
   Puzzle as PuzzleIcon,
   RefreshCw,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useBackendInfo } from "./lib/backend";
 import { dbStats } from "./lib/db";
+import { onUpdateState, type UpdateState } from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
@@ -57,6 +59,22 @@ export default function App() {
       dbStats().then((s) => setGameCount(s.total)).catch(() => {});
     }
   }, [backend.mode, page]);
+
+  // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
+  // kommentarlos passieren); Fehler zeigt die Settings-Seite.
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    let dispose: (() => void) | null = null;
+    let disposed = false;
+    onUpdateState((s) => setUpdate(s.phase === "error" ? null : s)).then((u) =>
+      disposed ? u() : (dispose = u)
+    );
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
+  }, [backend.mode]);
 
   return (
     <div className="flex h-full">
@@ -139,6 +157,15 @@ export default function App() {
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}
       </main>
+
+      {update && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">
+          <Loader2 size={15} className="animate-spin text-accent" />
+          {update.phase === "installing"
+            ? t("app.updateInstalling", { v: update.version })
+            : t("app.updateDownloading", { v: update.version })}
+        </div>
+      )}
     </div>
   );
 }
