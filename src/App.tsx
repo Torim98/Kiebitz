@@ -6,6 +6,7 @@ import {
   BookOpen,
   Crown,
   Database,
+  GraduationCap,
   LayoutDashboard,
   Loader2,
   Puzzle as PuzzleIcon,
@@ -22,6 +23,7 @@ import Analysis from "./pages/Analysis";
 import Repertoire from "./pages/Repertoire";
 import Endgame from "./pages/Endgame";
 import Puzzles from "./pages/Puzzles";
+import Study from "./pages/Study";
 import Insights from "./pages/Insights";
 import SettingsPage from "./pages/Settings";
 import { deInt } from "./lib/util";
@@ -33,6 +35,7 @@ export type PageId =
   | "repertoire"
   | "endgame"
   | "puzzles"
+  | "study"
   | "insights"
   | "settings";
 
@@ -43,6 +46,7 @@ const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
   { id: "repertoire", labelKey: "nav.repertoire", icon: BookOpen },
   { id: "endgame", labelKey: "nav.endgame", icon: Crown },
   { id: "puzzles", labelKey: "nav.puzzles", icon: PuzzleIcon },
+  { id: "study", labelKey: "nav.study", icon: GraduationCap },
   { id: "insights", labelKey: "nav.insights", icon: BarChart3 },
 ];
 
@@ -56,6 +60,13 @@ export default function App() {
   const openAnalysis = (gameId: number) => {
     setAnalysisGameId(gameId);
     setPage("analysis");
+  };
+
+  // Deep-Link vom Coach: Puzzles direkt mit Motiv-Filter öffnen.
+  const [puzzleTheme, setPuzzleTheme] = useState<string>("");
+  const openPuzzles = (theme?: string) => {
+    setPuzzleTheme(theme ?? "");
+    setPage("puzzles");
   };
 
   useEffect(() => {
@@ -158,7 +169,8 @@ export default function App() {
         {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
         {page === "repertoire" && <Repertoire />}
         {page === "endgame" && <Endgame />}
-        {page === "puzzles" && <Puzzles />}
+        {page === "puzzles" && <Puzzles initialTheme={puzzleTheme} />}
+        {page === "study" && <Study go={setPage} openPuzzles={openPuzzles} />}
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}
       </main>

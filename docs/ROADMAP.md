@@ -80,16 +80,20 @@ The features that currently show demo data become backed by the database.
     dashboard links, and greetings; quick-import month window is configurable.
     (A theme picker was skipped — the app ships one dark theme.)
 
-## Phase 3 — Training & learning
+## Phase 3 — Training & learning ✅
 
-- [ ] **Trainer / coach feature.** A guided "what should I work on next" view that
-  reads the Insights data and recommends focus areas — weakest openings, weakest
-  puzzle motifs, tilt-prone times of day, recurring blunder patterns — and links
-  straight into the relevant trainer.
-- [ ] **Learning schedule (calendar replacement).** A daily/weekly plan that
-  combines due repertoire reviews (FSRS), a puzzle goal, and the analysis backlog
-  into a single agenda. Calendar view, streaks, and reminders — meant to replace
-  a separate calendar for chess study.
+- [x] **Trainer / coach feature.** The Study tab (between Puzzles and Insights)
+  opens with coach recommendations computed from the local data (`lib/coach.ts`):
+  weakest openings by score, weakest puzzle motif by solve rate, tilt-prone
+  4-hour windows vs. the overall win rate, and the game phase where serious
+  errors cluster — each with a one-click jump into the matching trainer
+  (repertoire, puzzles pre-filtered to the motif, endgame trainer).
+- [x] **Learning schedule (calendar replacement).** Same tab, below the coach:
+  a "today" checklist (due FSRS reviews, configurable daily puzzle goal, analysis
+  backlog) with done-states, plus a Mon–Sun week strip showing completed study
+  units per day and the FSRS due-forecast for upcoming days, and a study streak
+  across puzzles, endgame drills, and reviews (`study.rs`). Reminders stay
+  in-app (the agenda itself); OS notifications were deliberately skipped.
 - [x] **Endgame trainer.** Own tab between Repertoire and Puzzles: curated
   theoretical drills (basic mates, K+P key squares/square rule/opposition, Lucena,
   Philidor, Q vs pawn) played out against the engine (`endgame.rs`, own persistent

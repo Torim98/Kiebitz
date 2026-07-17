@@ -17,6 +17,7 @@ export interface Settings {
   /** Anzeigename fürs Dashboard (leer = Benutzername). */
   display_name: string;
   import_months: number;
+  puzzle_goal: number;
   auto_update: boolean;
 }
 

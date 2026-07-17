@@ -31,6 +31,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [users, setUsers] = useState({ cc: profile.ccUser, li: profile.liUser, name: "" });
+  const [goal, setGoal] = useState(puzzleStats.todayGoal);
 
   useEffect(() => {
     if (backend.mode === "desktop") {
@@ -38,7 +39,10 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
       repStats().then(setRep).catch(() => {});
       fetchPuzzleStats().then(setPz).catch(() => {});
       getSettings()
-        .then((s) => setUsers({ cc: s.cc_user, li: s.li_user, name: s.display_name }))
+        .then((s) => {
+          setUsers({ cc: s.cc_user, li: s.li_user, name: s.display_name });
+          setGoal(s.puzzle_goal);
+        })
         .catch(() => {});
     }
   }, [backend.mode]);
@@ -179,13 +183,13 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
                 </div>
                 <div className="mt-2 text-[24px] font-semibold leading-none">
                   {pz ? pz.today_attempts : puzzleStats.todaySolved}
-                  <span className="text-[15px] font-normal text-ink3"> / {puzzleStats.todayGoal}</span>
+                  <span className="text-[15px] font-normal text-ink3"> / {pz ? goal : puzzleStats.todayGoal}</span>
                 </div>
                 <div className="mt-2 h-1.5 w-40 overflow-hidden rounded-full bg-panel3">
                   <div
                     className="h-full rounded-full bg-gold"
                     style={{
-                      width: `${Math.min(100, ((pz ? pz.today_attempts : puzzleStats.todaySolved) / puzzleStats.todayGoal) * 100)}%`,
+                      width: `${Math.min(100, ((pz ? pz.today_attempts : puzzleStats.todaySolved) / (pz ? goal : puzzleStats.todayGoal)) * 100)}%`,
                     }}
                   />
                 </div>

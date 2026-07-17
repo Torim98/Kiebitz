@@ -28,17 +28,17 @@ import Board from "../components/Board";
 import { Button, Card, Chip, Spark } from "../components/ui";
 import { deInt } from "../lib/util";
 
-export default function Puzzles() {
+export default function Puzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const backend = useBackendInfo();
   if (backend.mode === "pending") return null;
-  return backend.mode === "desktop" ? <LivePuzzles /> : <DemoPuzzles />;
+  return backend.mode === "desktop" ? <LivePuzzles initialTheme={initialTheme} /> : <DemoPuzzles />;
 }
 
 // ── Echte Seite (Desktop) ────────────────────────────────────────────────────
 
 const FILTER_THEMES = ["mateIn1", "mateIn2", "fork", "pin", "skewer", "backRankMate", "discoveredAttack", "endgame"];
 
-function LivePuzzles() {
+function LivePuzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const [stats, setStats] = useState<PuzzleStats | null>(null);
   const reloadStats = () => puzzleStats().then(setStats).catch(() => {});
 
@@ -48,7 +48,7 @@ function LivePuzzles() {
 
   if (!stats) return null;
   if (stats.db_total === 0) return <ImportView stats={stats} onImported={reloadStats} />;
-  return <TrainerView stats={stats} reloadStats={reloadStats} />;
+  return <TrainerView stats={stats} reloadStats={reloadStats} initialTheme={initialTheme} />;
 }
 
 // ── Import-Ansicht ───────────────────────────────────────────────────────────
@@ -141,7 +141,15 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
 
 type Status = "loading" | "playing" | "solved" | "empty";
 
-function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: () => void }) {
+function TrainerView({
+  stats,
+  reloadStats,
+  initialTheme = "",
+}: {
+  stats: PuzzleStats;
+  reloadStats: () => void;
+  initialTheme?: string;
+}) {
   const { locale, t } = useI18n();
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
   const [status, setStatus] = useState<Status>("loading");
@@ -151,7 +159,8 @@ function TrainerView({ stats, reloadStats }: { stats: PuzzleStats; reloadStats: 
   const [showHint, setShowHint] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
-  const [theme, setTheme] = useState<string>("");
+  // Vorbelegt z. B. vom Coach ("schwächstes Motiv trainieren").
+  const [theme, setTheme] = useState<string>(initialTheme);
 
   const chessRef = useRef(new Chess());
   const idxRef = useRef(0);

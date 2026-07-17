@@ -371,6 +371,13 @@ export default function SettingsPage() {
                 max={240}
                 onChange={(v) => patch({ import_months: v })}
               />
+              <NumberField
+                label={t("set.puzzleGoal")}
+                value={draft.puzzle_goal}
+                min={1}
+                max={200}
+                onChange={(v) => patch({ puzzle_goal: v })}
+              />
               <p className="text-[12px] leading-relaxed text-ink3 min-[640px]:col-span-3">
                 {t("set.importMonthsNote", { n: draft.import_months })}
               </p>

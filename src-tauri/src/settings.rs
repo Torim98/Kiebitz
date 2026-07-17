@@ -38,6 +38,8 @@ pub struct Settings {
     pub display_name: String,
     /// Monatsfenster für den Schnell-Import ("Neueste importieren").
     pub import_months: u32,
+    /// Puzzle-Tagesziel (Versuche pro Tag) für Dashboard und Lernplan.
+    pub puzzle_goal: u32,
     /// Beim Start im Hintergrund nach Updates suchen und sie installieren.
     pub auto_update: bool,
 }
@@ -59,6 +61,7 @@ impl Default for Settings {
             li_user: "Torim98".into(),
             display_name: String::new(),
             import_months: 3,
+            puzzle_goal: 20,
             auto_update: true,
         }
     }
@@ -76,6 +79,7 @@ fn normalize(mut s: Settings) -> Settings {
     s.batch_depth = s.batch_depth.clamp(6, 30);
     s.engine_threads = s.engine_threads.min(128);
     s.import_months = s.import_months.clamp(1, 240);
+    s.puzzle_goal = s.puzzle_goal.clamp(1, 200);
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
     s.display_name = s.display_name.trim().to_string();

@@ -8,6 +8,7 @@ mod live;
 mod puzzles;
 mod repertoire;
 mod settings;
+mod study;
 mod updater;
 
 use serde::Serialize;
@@ -262,6 +263,7 @@ pub fn run() {
             endgame::endgame_move,
             endgame::endgame_record,
             endgame::endgame_stats,
+            study::study_data,
             updater::check_update,
             updater::install_update
         ])
