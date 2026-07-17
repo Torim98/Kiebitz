@@ -1,10 +1,12 @@
 //! Auto-Update über signierte GitHub-Releases (tauri-plugin-updater).
 //!
-//! Zwei Wege zum selben Code: der Hintergrund-Check beim Start (wenn in den
-//! Einstellungen aktiviert) und der manuelle Check auf der Settings-Seite.
-//! Fortschritt läuft als `update://state`-Events ans Frontend; nach der
-//! Installation startet die App neu (unter Windows beendet der Installer
-//! die App selbst).
+//! Beim Start wird immer geprüft: ist die Einstellung aktiv, wird das Update
+//! direkt geladen und installiert; ist sie aus, meldet ein
+//! `update://available`-Event dem Frontend nur, dass eine neue Version
+//! bereitsteht (Toast unten rechts mit „Jetzt aktualisieren“). Daneben gibt es
+//! den manuellen Check auf der Settings-Seite. Fortschritt läuft als
+//! `update://state`-Events ans Frontend; nach der Installation startet die App
+//! neu (unter Windows beendet der Installer die App selbst).
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -27,6 +29,13 @@ pub struct UpdateState {
     /// Gesamtgröße, falls der Server sie mitschickt.
     pub total: Option<u64>,
     pub error: Option<String>,
+}
+
+/// Meldung „neue Version verfügbar“ an das Frontend (Toggle aus).
+#[derive(Serialize, Clone)]
+pub struct UpdateAvailable {
+    pub version: String,
+    pub notes: Option<String>,
 }
 
 fn emit_state(app: &AppHandle, state: UpdateState) {
@@ -62,13 +71,37 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Hintergrund-Check beim App-Start: prüfen, laden, installieren, neu starten.
+/// Check beim App-Start. Ist `auto` gesetzt, wird das Update direkt geladen,
+/// installiert und die App neu gestartet; sonst wird nur geprüft und bei einer
+/// neuen Version das Frontend über `update://available` benachrichtigt.
 /// Fehler (z. B. offline, noch kein Release) werden nur geloggt.
-pub fn spawn_startup_check(app: &AppHandle) {
+pub fn spawn_startup_check(app: &AppHandle, auto: bool) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = download_and_install(&app).await {
-            log::warn!("Auto-Update übersprungen: {e}");
+        if auto {
+            if let Err(e) = download_and_install(&app).await {
+                log::warn!("Auto-Update übersprungen: {e}");
+            }
+            return;
+        }
+        // Toggle aus: nur prüfen und ggf. das Frontend benachrichtigen.
+        let found = async {
+            let updater = app.updater().map_err(|e| e.to_string())?;
+            updater.check().await.map_err(|e| e.to_string())
+        }
+        .await;
+        match found {
+            Ok(Some(update)) => {
+                let _ = app.emit(
+                    "update://available",
+                    UpdateAvailable {
+                        version: update.version.clone(),
+                        notes: update.body.clone(),
+                    },
+                );
+            }
+            Ok(None) => {}
+            Err(e) => log::warn!("Update-Check übersprungen: {e}"),
         }
     });
 }

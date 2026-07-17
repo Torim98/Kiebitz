@@ -6,16 +6,24 @@ import {
   BookOpen,
   Crown,
   Database,
+  Download,
   GraduationCap,
   LayoutDashboard,
   Loader2,
   Puzzle as PuzzleIcon,
   RefreshCw,
   Settings as SettingsIcon,
+  X,
 } from "lucide-react";
 import { useBackendInfo } from "./lib/backend";
 import { dbStats } from "./lib/db";
-import { onUpdateState, type UpdateState } from "./lib/updater";
+import {
+  installUpdate,
+  onUpdateAvailable,
+  onUpdateState,
+  type UpdateAvailable,
+  type UpdateState,
+} from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
@@ -27,6 +35,7 @@ import Study from "./pages/Study";
 import Insights from "./pages/Insights";
 import SettingsPage from "./pages/Settings";
 import { deInt } from "./lib/util";
+import type { GamesFilter } from "./lib/gameUi";
 
 export type PageId =
   | "dashboard"
@@ -62,6 +71,14 @@ export default function App() {
     setPage("analysis");
   };
 
+  // Deep-Link vom Dashboard: Games mit einem Vorfilter öffnen (Datum, Quelle,
+  // Modus, Gegner, Eröffnung oder Ergebnis).
+  const [gamesFilter, setGamesFilter] = useState<GamesFilter | null>(null);
+  const openGames = (filter?: GamesFilter) => {
+    setGamesFilter(filter ?? null);
+    setPage("games");
+  };
+
   // Deep-Link vom Coach: Puzzles direkt mit Motiv-Filter öffnen.
   const [puzzleTheme, setPuzzleTheme] = useState<string>("");
   const openPuzzles = (theme?: string) => {
@@ -78,18 +95,28 @@ export default function App() {
   // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
   // kommentarlos passieren); Fehler zeigt die Settings-Seite.
   const [update, setUpdate] = useState<UpdateState | null>(null);
+  // Bei deaktiviertem Auto-Update meldet das Backend nur, dass eine Version
+  // bereitsteht — wir zeigen dann unten rechts einen Hinweis mit Aktion.
+  const [available, setAvailable] = useState<UpdateAvailable | null>(null);
   useEffect(() => {
     if (backend.mode !== "desktop") return;
-    let dispose: (() => void) | null = null;
+    const cleanups: (() => void)[] = [];
     let disposed = false;
-    onUpdateState((s) => setUpdate(s.phase === "error" ? null : s)).then((u) =>
-      disposed ? u() : (dispose = u)
-    );
+    const track = (u: () => void) => (disposed ? u() : cleanups.push(u));
+    onUpdateState((s) => setUpdate(s.phase === "error" ? null : s)).then(track);
+    onUpdateAvailable(setAvailable).then(track);
     return () => {
       disposed = true;
-      dispose?.();
+      cleanups.forEach((u) => u());
     };
   }, [backend.mode]);
+
+  // Der Nutzer startet das Update aus der Benachrichtigung; ab da übernimmt
+  // der Fortschritts-Toast (update://state). Fehler zeigt die Settings-Seite.
+  const startUpdate = () => {
+    setAvailable(null);
+    installUpdate().catch(() => {});
+  };
 
   return (
     <div className="flex h-full">
@@ -108,7 +135,7 @@ export default function App() {
           {nav.map(({ id, labelKey, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setPage(id)}
+              onClick={() => (id === "games" ? openGames() : setPage(id))}
               className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
                 page === id
                   ? "bg-panel3 font-medium text-ink"
@@ -164,8 +191,10 @@ export default function App() {
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto">
-        {page === "dashboard" && <Dashboard go={setPage} />}
-        {page === "games" && <Games openAnalysis={openAnalysis} />}
+        {page === "dashboard" && (
+          <Dashboard go={setPage} openAnalysis={openAnalysis} openGames={openGames} />
+        )}
+        {page === "games" && <Games openAnalysis={openAnalysis} initialFilter={gamesFilter} />}
         {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
         {page === "repertoire" && <Repertoire />}
         {page === "endgame" && <Endgame />}
@@ -175,13 +204,45 @@ export default function App() {
         {page === "settings" && <SettingsPage />}
       </main>
 
-      {update && (
+      {update ? (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">
           <Loader2 size={15} className="animate-spin text-accent" />
           {update.phase === "installing"
             ? t("app.updateInstalling", { v: update.version })
             : t("app.updateDownloading", { v: update.version })}
         </div>
+      ) : (
+        available && (
+          <div className="fixed bottom-4 right-4 z-50 flex w-[288px] flex-col gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 shadow-xl">
+            <div className="flex items-start gap-2.5">
+              <RefreshCw size={15} className="mt-0.5 shrink-0 text-accent" />
+              <div className="min-w-0 text-[12.5px] text-ink2">
+                {t("app.updateAvailable", { v: available.version })}
+              </div>
+              <button
+                onClick={() => setAvailable(null)}
+                aria-label={t("app.updateLater")}
+                className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-ink3 transition-colors hover:text-ink"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setAvailable(null)}
+                className="rounded-md px-2.5 py-1 text-[12px] text-ink3 transition-colors hover:text-ink"
+              >
+                {t("app.updateLater")}
+              </button>
+              <button
+                onClick={startUpdate}
+                className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
+              >
+                <Download size={13} /> {t("app.updateNow")}
+              </button>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

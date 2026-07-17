@@ -17,6 +17,12 @@ export interface UpdateState {
   error: string | null;
 }
 
+/** `update://available`: beim Start gefunden, Auto-Install aber deaktiviert. */
+export interface UpdateAvailable {
+  version: string;
+  notes: string | null;
+}
+
 export function checkUpdate(): Promise<UpdateCheck> {
   return invoke<UpdateCheck>("check_update");
 }
@@ -28,4 +34,8 @@ export function installUpdate(): Promise<void> {
 
 export function onUpdateState(cb: (s: UpdateState) => void): Promise<UnlistenFn> {
   return listen<UpdateState>("update://state", (e) => cb(e.payload));
+}
+
+export function onUpdateAvailable(cb: (u: UpdateAvailable) => void): Promise<UnlistenFn> {
+  return listen<UpdateAvailable>("update://available", (e) => cb(e.payload));
 }

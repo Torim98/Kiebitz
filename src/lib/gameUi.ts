@@ -1,4 +1,4 @@
-import type { Game } from "../data/demo";
+import type { Game, Result, Source } from "../data/demo";
 import type { Locale } from "./i18n";
 import type { GameRecord } from "./db";
 
@@ -7,6 +7,21 @@ export interface UiGame extends Omit<Game, "tc"> {
   tc: string;
   dbId?: number;
   url?: string;
+}
+
+/**
+ * Vorfilter für die Partien-Liste (z. B. von einem Klick im Dashboard).
+ * Alle Felder matchen exakt gegen die jeweiligen `UiGame`-Felder — `date` und
+ * `tc` sind bereits lokalisierte Anzeige-Strings, die zwischen Dashboard und
+ * Games übereinstimmen, solange dieselbe Locale gilt.
+ */
+export interface GamesFilter {
+  source?: Source;
+  result?: Result;
+  tc?: string;
+  date?: string;
+  opponent?: string;
+  opening?: string;
 }
 
 const TC_LABEL: Record<Locale, Record<string, string>> = {

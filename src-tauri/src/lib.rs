@@ -210,8 +210,9 @@ pub fn run() {
             app.manage(endgame::EndgameEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
 
-            // Auto-Update: Plugin immer registrieren (für den manuellen Check),
-            // den Hintergrund-Check nur, wenn er in den Einstellungen aktiv ist.
+            // Auto-Update: Plugin immer registrieren. Beim Start immer prüfen;
+            // ist die Einstellung aktiv, wird direkt installiert, sonst nur eine
+            // Benachrichtigung ans Frontend geschickt.
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             let auto_update = app
@@ -220,9 +221,7 @@ pub fn run() {
                 .lock()
                 .map(|s| s.auto_update)
                 .unwrap_or(false);
-            if auto_update {
-                updater::spawn_startup_check(app.handle());
-            }
+            updater::spawn_startup_check(app.handle(), auto_update);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

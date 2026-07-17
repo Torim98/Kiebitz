@@ -9,6 +9,7 @@ import {
   Save,
   Search,
   StickyNote,
+  X,
 } from "lucide-react";
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
@@ -17,12 +18,18 @@ import { listGames, setGameNote, upsertGames, type GameRecord } from "../lib/db"
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
-import { toUi, type UiGame } from "../lib/gameUi";
+import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
 
-export default function Games({ openAnalysis }: { openAnalysis: (gameId: number) => void }) {
+export default function Games({
+  openAnalysis,
+  initialFilter,
+}: {
+  openAnalysis: (gameId: number) => void;
+  initialFilter?: GamesFilter | null;
+}) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
@@ -31,9 +38,14 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
 
-  const [source, setSource] = useState<Source | "alle">("alle");
-  const [result, setResult] = useState<Result | "alle">("alle");
+  const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
+  const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
   const [query, setQuery] = useState("");
+  // Exakt-Filter (aus dem Dashboard vorbelegt, per Pill wieder entfernbar).
+  const [tc, setTc] = useState(initialFilter?.tc ?? "");
+  const [dateKey, setDateKey] = useState(initialFilter?.date ?? "");
+  const [opponent, setOpponent] = useState(initialFilter?.opponent ?? "");
+  const [opening, setOpening] = useState(initialFilter?.opening ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
@@ -57,18 +69,22 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
         (g) =>
           (source === "alle" || g.source === source) &&
           (result === "alle" || g.result === result) &&
+          (tc === "" || g.tc === tc) &&
+          (dateKey === "" || g.date === dateKey) &&
+          (opponent === "" || g.opponent === opponent) &&
+          (opening === "" || g.opening === opening) &&
           (query === "" ||
             g.opponent.toLowerCase().includes(query.toLowerCase()) ||
             g.opening.toLowerCase().includes(query.toLowerCase()))
       ),
-    [allGames, source, result, query]
+    [allGames, source, result, tc, dateKey, opponent, opening, query]
   );
 
   const selected: UiGame | undefined =
     filtered.find((g) => g.id === selectedId) ?? filtered[0];
 
   // Paginierung: bei Filter-/Seitengröße-Wechsel zurück auf Seite 1.
-  useEffect(() => setPage(1), [source, result, query, pageSize]);
+  useEffect(() => setPage(1), [source, result, query, pageSize, tc, dateKey, opponent, opening]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
@@ -196,6 +212,46 @@ export default function Games({ openAnalysis }: { openAnalysis: (gameId: number)
           </Chip>
         ))}
       </div>
+
+      {(dateKey || tc || opponent || opening) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {(
+            [
+              [dateKey, t("games.filterDate", { v: dateKey }), () => setDateKey("")],
+              [tc, t("games.filterMode", { v: tc }), () => setTc("")],
+              [opponent, t("games.filterOpponent", { v: opponent }), () => setOpponent("")],
+              [opening, t("games.filterOpening", { v: opening }), () => setOpening("")],
+            ] as const
+          )
+            .filter(([val]) => val)
+            .map(([val, label, clear]) => (
+              <span
+                key={label}
+                className="flex items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft py-1 pl-3 pr-1.5 text-[12px] text-accent"
+              >
+                {label as string}
+                <button
+                  onClick={clear}
+                  aria-label={t("games.clearFilter")}
+                  className="rounded-full p-0.5 text-accent/70 transition-colors hover:bg-accent/15 hover:text-accent"
+                >
+                  <X size={13} />
+                </button>
+              </span>
+            ))}
+          <button
+            onClick={() => {
+              setDateKey("");
+              setTc("");
+              setOpponent("");
+              setOpening("");
+            }}
+            className="text-[12px] text-ink3 transition-colors hover:text-accent"
+          >
+            {t("games.clearAll")}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-3">

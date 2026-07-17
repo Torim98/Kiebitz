@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   Line,
   LineChart,
@@ -18,13 +18,21 @@ import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
 import { buildDashboard } from "../lib/stats";
-import type { UiGame } from "../lib/gameUi";
+import type { GamesFilter, UiGame } from "../lib/gameUi";
 import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { chart, DarkTooltip } from "../components/chartTheme";
 import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
-export default function Dashboard({ go }: { go: (p: PageId) => void }) {
+export default function Dashboard({
+  go,
+  openAnalysis,
+  openGames,
+}: {
+  go: (p: PageId) => void;
+  openAnalysis: (gameId: number) => void;
+  openGames: (filter?: GamesFilter) => void;
+}) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
@@ -201,36 +209,90 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
       </div>
 
       <Card title={t("dash.recentGames")} className="mt-4" pad={false}
-        action={<button onClick={() => go("games")} className="text-[12.5px] text-ink3 hover:text-accent">{t("dash.showAll")}</button>}
+        action={<button onClick={() => openGames()} className="text-[12.5px] text-ink3 hover:text-accent">{t("dash.showAll")}</button>}
       >
         <table className="w-full text-[13px]">
           <tbody>
-            {recent.map((g) => (
-              <tr key={g.id} className="border-b border-line last:border-0 hover:bg-panel2">
-                <td className="py-2.5 pl-4 pr-2 text-ink3">{g.date}</td>
-                <td className="px-2"><SourceBadge source={g.source} /></td>
-                <td className="px-2 text-ink3">{g.tc}</td>
-                <td className="px-2">
-                  <span className="text-ink">{g.opponent}</span>
-                  <span className="ml-1.5 text-ink3">({g.oppElo})</span>
-                </td>
-                <td className="px-2 text-ink2">{g.opening}</td>
-                <td className="px-2"><ResultBadge result={g.result} /></td>
-                <td className="px-2 text-right text-ink2">
-                  {g.accuracy != null ? `${de(g.accuracy)} %` : "—"}
-                </td>
-                <td className="py-2.5 pl-2 pr-4 text-right">
-                  <ExtLink
-                    href={
-                      g.url ??
-                      (g.source === "chess.com"
-                        ? `https://www.chess.com/games/archive/${users.cc}`
-                        : `https://lichess.org/@/${users.li}/all`)
-                    }
-                  />
-                </td>
-              </tr>
-            ))}
+            {recent.map((g) => {
+              const filterTo = (e: MouseEvent, f: GamesFilter) => {
+                e.stopPropagation();
+                openGames(f);
+              };
+              const openable = g.dbId != null;
+              return (
+                <tr
+                  key={g.id}
+                  onClick={() => openable && openAnalysis(g.dbId!)}
+                  title={openable ? t("dash.openInAnalysis") : undefined}
+                  className={`border-b border-line last:border-0 hover:bg-panel2 ${
+                    openable ? "cursor-pointer" : ""
+                  }`}
+                >
+                  <td className="py-2.5 pl-4 pr-2">
+                    <button
+                      onClick={(e) => filterTo(e, { date: g.date })}
+                      className="text-ink3 transition-colors hover:text-accent"
+                    >
+                      {g.date}
+                    </button>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, { source: g.source })}
+                      className="transition-opacity hover:opacity-80"
+                    >
+                      <SourceBadge source={g.source} />
+                    </button>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, { tc: g.tc })}
+                      className="text-ink3 transition-colors hover:text-accent"
+                    >
+                      {g.tc}
+                    </button>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, { opponent: g.opponent })}
+                      className="text-ink transition-colors hover:text-accent"
+                    >
+                      {g.opponent}
+                    </button>
+                    <span className="ml-1.5 text-ink3">({g.oppElo})</span>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, { opening: g.opening })}
+                      className="text-left text-ink2 transition-colors hover:text-accent"
+                    >
+                      {g.opening}
+                    </button>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, { result: g.result })}
+                      className="transition-opacity hover:opacity-80"
+                    >
+                      <ResultBadge result={g.result} />
+                    </button>
+                  </td>
+                  <td className="px-2 text-right text-ink2">
+                    {g.accuracy != null ? `${de(g.accuracy)} %` : "—"}
+                  </td>
+                  <td className="py-2.5 pl-2 pr-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <ExtLink
+                      href={
+                        g.url ??
+                        (g.source === "chess.com"
+                          ? `https://www.chess.com/games/archive/${users.cc}`
+                          : `https://lichess.org/@/${users.li}/all`)
+                      }
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
