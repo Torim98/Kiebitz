@@ -63,6 +63,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Kiebitz ${{ github.ref_name }}"
-          releaseBody: "Automatisch aus ${{ github.ref_name }} gebaut. Bestehende Installationen aktualisieren sich beim nächsten Start."
+          releaseBody: "Automatically built from ${{ github.ref_name }}. Existing installations update on the next start."
           releaseDraft: false
           prerelease: false
