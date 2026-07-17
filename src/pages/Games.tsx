@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -270,7 +270,12 @@ export default function Games({
               </tr>
             </thead>
             <tbody>
-              {paged.map((g) => (
+              {paged.map((g) => {
+                const filterTo = (e: MouseEvent, fn: () => void) => {
+                  e.stopPropagation();
+                  fn();
+                };
+                return (
                 <tr
                   key={g.id}
                   onClick={() => {
@@ -281,16 +286,56 @@ export default function Games({
                     selected?.id === g.id ? "bg-panel2" : "hover:bg-panel2/60"
                   }`}
                 >
-                  <td className="py-2.5 pl-4 pr-2 text-ink3">{g.date}</td>
-                  <td className="px-2"><SourceBadge source={g.source} /></td>
-                  <td className="px-2 text-ink3">{g.tc}</td>
+                  <td className="py-2.5 pl-4 pr-2">
+                    <button
+                      onClick={(e) => filterTo(e, () => setDateKey(g.date))}
+                      className="text-ink3 transition-colors hover:text-accent"
+                    >
+                      {g.date}
+                    </button>
+                  </td>
                   <td className="px-2">
-                    {g.opponent} <span className="text-ink3">({g.oppElo})</span>
+                    <button
+                      onClick={(e) => filterTo(e, () => setSource(g.source))}
+                      className="transition-opacity hover:opacity-80"
+                    >
+                      <SourceBadge source={g.source} />
+                    </button>
                   </td>
-                  <td className="px-2 text-ink2">
-                    {g.opening} {g.eco && <span className="text-ink3">· {g.eco}</span>}
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, () => setTc(g.tc))}
+                      className="text-ink3 transition-colors hover:text-accent"
+                    >
+                      {g.tc}
+                    </button>
                   </td>
-                  <td className="px-2"><ResultBadge result={g.result} /></td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, () => setOpponent(g.opponent))}
+                      className="text-ink transition-colors hover:text-accent"
+                    >
+                      {g.opponent}
+                    </button>{" "}
+                    <span className="text-ink3">({g.oppElo})</span>
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, () => setOpening(g.opening))}
+                      className="text-left text-ink2 transition-colors hover:text-accent"
+                    >
+                      {g.opening}
+                    </button>{" "}
+                    {g.eco && <span className="text-ink3">· {g.eco}</span>}
+                  </td>
+                  <td className="px-2">
+                    <button
+                      onClick={(e) => filterTo(e, () => setResult(g.result))}
+                      className="transition-opacity hover:opacity-80"
+                    >
+                      <ResultBadge result={g.result} />
+                    </button>
+                  </td>
                   <td className="px-2 text-right text-ink2">
                     {g.accuracy != null ? `${de(g.accuracy)} %` : "—"}
                   </td>
@@ -301,7 +346,8 @@ export default function Games({
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-ink3">
