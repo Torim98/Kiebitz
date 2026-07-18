@@ -8,6 +8,7 @@ import {
   Loader2,
   Puzzle as PuzzleIcon,
   RefreshCw,
+  Smartphone,
   UserRound,
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
@@ -38,6 +39,8 @@ import {
   type UpdateCheck,
   type UpdateState,
 } from "../lib/updater";
+import { syncInfo, syncNow, syncServerStart, type SyncInfo } from "../lib/sync";
+import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
 
@@ -103,6 +106,13 @@ export default function SettingsPage() {
   const [updState, setUpdState] = useState<UpdateState | null>(null);
   const [updError, setUpdError] = useState<string | null>(null);
 
+  const [sync, setSync] = useState<SyncInfo | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncErr, setSyncErr] = useState<string | null>(null);
+  /** Mobile = Sync-Client; Desktop = Sync-Hub. */
+  const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [pzRunning, setPzRunning] = useState(false);
   const [pzProgress, setPzProgress] = useState(0);
@@ -118,6 +128,7 @@ export default function SettingsPage() {
       })
       .catch((e) => setError(String(e)));
     dbInfo().then(setInfo).catch(() => {});
+    syncInfo().then(setSync).catch(() => {});
     puzzleStats()
       .then((s) => {
         setPz(s);
@@ -265,6 +276,50 @@ export default function SettingsPage() {
       setUpdState(null);
       setUpdError(String(e));
     });
+  };
+
+  /** Desktop: Server sofort starten; dauerhaft aktiv wird er über Speichern. */
+  const enableSyncServer = async (on: boolean) => {
+    patch({ sync_enabled: on });
+    setSyncErr(null);
+    if (on) {
+      try {
+        setSync(await syncServerStart());
+      } catch (e) {
+        setSyncErr(String(e));
+      }
+    }
+  };
+
+  /** Mobile: erst ungespeicherte Adresse/Code sichern, dann Sync-Roundtrip. */
+  const runSync = async () => {
+    setSyncBusy(true);
+    setSyncMsg(null);
+    setSyncErr(null);
+    try {
+      if (dirty && draft) {
+        const applied = await setSettings(draft);
+        setSaved(applied);
+        setDraft(applied);
+      }
+      const s = await syncNow();
+      setSyncMsg(
+        t("set.syncDone", {
+          g: deInt(s.games_pulled),
+          r: deInt(s.rep_merged),
+          p: deInt(s.puzzle_attempts_pulled),
+          e: deInt(s.endgame_attempts_pulled),
+        })
+      );
+      // Stellungsindex und Anzeigen im Hintergrund auffrischen.
+      indexPositions().catch(() => {});
+      syncInfo().then(setSync).catch(() => {});
+      dbInfo().then(setInfo).catch(() => {});
+    } catch (e) {
+      setSyncErr(String(e));
+    } finally {
+      setSyncBusy(false);
+    }
   };
 
   const startPuzzleImport = (path?: string) => {
@@ -624,6 +679,110 @@ export default function SettingsPage() {
                 </div>
               )}
             </>
+          ) : (
+            <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
+          )}
+        </Card>
+
+        {/* Geräte-Sync */}
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <Smartphone size={14} className="text-accent" /> {t("set.sync")}
+            </span>
+          }
+        >
+          {desktop && draft ? (
+            !mobile ? (
+              <>
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={draft.sync_enabled}
+                    onChange={(e) => enableSyncServer(e.target.checked)}
+                    className="h-4 w-4 accent-[#22c08a]"
+                  />
+                  <span className="text-[13px] text-ink">{t("set.syncEnableToggle")}</span>
+                </label>
+                {sync && (
+                  <div className="mt-3 rounded-lg border border-line bg-panel2 px-3 py-2.5 text-[12.5px]">
+                    <div className="flex items-center gap-2 text-ink2">
+                      <span
+                        className="inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ background: sync.running ? "var(--color-win)" : "var(--color-draw)" }}
+                      />
+                      {sync.running && sync.addr
+                        ? t("set.syncServerRunning", { addr: sync.addr })
+                        : t("set.syncServerStopped")}
+                    </div>
+                    <div className="mt-1.5 text-ink3">
+                      {t("set.syncCode")}:{" "}
+                      <span className="font-mono text-[14px] font-semibold tracking-[0.2em] text-ink">
+                        {sync.code}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {syncErr && (
+                  <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                    {t("set.syncFailed", { e: syncErr })}
+                  </div>
+                )}
+                <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.syncDesktopNote")}</p>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-2">
+                  <Field label={t("set.syncHostLabel")}>
+                    <input
+                      value={draft.sync_host}
+                      onChange={(e) => patch({ sync_host: e.target.value })}
+                      placeholder="192.168.1.5:47323"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t("set.syncCodeLabel")}>
+                    <input
+                      value={draft.sync_code}
+                      onChange={(e) => patch({ sync_code: e.target.value })}
+                      placeholder="123456"
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button primary onClick={() => !syncBusy && runSync()}>
+                    {syncBusy ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" /> {t("set.syncing")}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={14} /> {t("set.syncNow")}
+                      </>
+                    )}
+                  </Button>
+                  <span className="text-[12px] text-ink3">
+                    {sync && sync.last_sync > 0
+                      ? t("set.syncLast", {
+                          d: new Date(sync.last_sync * 1000).toLocaleString(dateLocale()),
+                        })
+                      : t("set.syncNever")}
+                  </span>
+                </div>
+                {syncMsg && (
+                  <div className="mt-3 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2 text-[12.5px] text-accent">
+                    {syncMsg}
+                  </div>
+                )}
+                {syncErr && (
+                  <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                    {t("set.syncFailed", { e: syncErr })}
+                  </div>
+                )}
+                <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.syncMobileNote")}</p>
+              </>
+            )
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}

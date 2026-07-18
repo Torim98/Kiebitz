@@ -9,6 +9,7 @@ mod puzzles;
 mod repertoire;
 mod settings;
 mod study;
+mod sync;
 mod updater;
 
 use serde::Serialize;
@@ -19,6 +20,8 @@ use tauri::Manager;
 struct AppInfo {
     version: String,
     backend: String,
+    /// Betriebssystem ("windows", "android", …) — steuert u. a. die Sync-UI.
+    platform: String,
 }
 
 #[tauri::command]
@@ -28,6 +31,7 @@ fn app_info(app: tauri::AppHandle) -> AppInfo {
         // nicht aus Cargo.toml — sonst driften Anzeige und Release auseinander.
         version: app.package_info().version.to_string(),
         backend: "tauri".to_string(),
+        platform: std::env::consts::OS.to_string(),
     }
 }
 
@@ -231,6 +235,24 @@ pub fn run() {
             app.manage(live::LiveEngine::default());
             app.manage(endgame::EndgameEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
+            app.manage(sync::SyncServer::default());
+
+            // Sync-Server (Desktop-Hub) automatisch starten, wenn aktiviert.
+            // Nur auf dem Desktop sinnvoll — das Handy ist im v1-Modell Client.
+            #[cfg(desktop)]
+            {
+                let sync_enabled = app
+                    .state::<settings::SettingsState>()
+                    .0
+                    .lock()
+                    .map(|s| s.sync_enabled)
+                    .unwrap_or(false);
+                if sync_enabled {
+                    if let Err(e) = sync::start_server(app.handle()) {
+                        log::warn!("Sync-Server nicht gestartet: {e}");
+                    }
+                }
+            }
 
             // Auto-Update (nur Desktop): Plugin registrieren und beim Start
             // prüfen; ist die Einstellung aktiv, wird direkt installiert, sonst
@@ -289,6 +311,9 @@ pub fn run() {
             endgame::endgame_record,
             endgame::endgame_stats,
             study::study_data,
+            sync::sync_info,
+            sync::sync_server_start,
+            sync::sync_now,
             updater::check_update,
             updater::install_update
         ])

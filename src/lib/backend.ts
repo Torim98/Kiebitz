@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 export interface BackendInfo {
   version: string;
   backend: string;
+  /** Betriebssystem des Backends ("windows", "android", …). */
+  platform?: string;
 }
 
 export interface AnalysisResult {

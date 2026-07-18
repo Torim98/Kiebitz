@@ -156,8 +156,20 @@ Remaining work:
   horizontally; page headers wrap; Insights activity note stacks. Verified at
   375 px in the browser: all nine pages without horizontal overflow, board
   343 px. On-device check pending.
-- [ ] Sync v1: pairing + event-log merge as described above; sync history/status
-  in Settings.
+- [x] Sync v1 (2026-07-18): `sync.rs` — desktop hub serves POST /sync on port
+  47323 (tiny_http, pairing code in settings, auto-start toggleable in
+  Settings); the phone does a one-tap single-roundtrip sync (Settings → Device
+  sync: enter desktop IP:port + code). Merge exactly as designed: games upsert
+  by (source, source_id) with new `updated_ts`/`note_ts` columns (migration
+  v6), notes LWW, analyses adopted when the other side has them, repertoire
+  united by SAN path with FSRS state LWW per `last_ts`, attempts append-only
+  deduped on (id, ts). Cursor via meta `sync_last_ts` with a clock-drift slack;
+  all merges idempotent (covered by unit tests + an HTTP-roundtrip test).
+  Not in v1: mDNS discovery/QR pairing (manual IP:port entry), repertoire
+  deletion propagation, puzzle-rating recompute across devices (ratings stay
+  per-device). Caveats: Windows Firewall prompts on first server start;
+  Android allows the cleartext-HTTP sync only in debug builds (release APKs
+  need `usesCleartextTraffic` or TLS — revisit with the release-signing work).
 - [ ] Distribution: Play Store account, signing, review overhead (or sideload APK
   via GitHub releases first).
 

@@ -1,0 +1,986 @@
+//! Geräte-Sync v1 — direkter Abgleich im lokalen Netz, Desktop als Hub.
+//!
+//! Das Handy stößt den Sync an (ein POST-Roundtrip): es schickt seine lokalen
+//! Änderungen und bekommt die Desktop-Änderungen seit dem letzten Sync zurück.
+//! Kein Server, keine Cloud — der Desktop lauscht nur solange die App läuft
+//! auf Port 47323, abgesichert über einen Pairing-Code aus den Einstellungen.
+//!
+//! Merge-Regeln (idempotent, wiederholbar):
+//! - Partien: Upsert per Natural Key (source, source_id); `analyzed` wird nie
+//!   zurückgesetzt, `accuracy` per COALESCE; Analyse-Züge (move_evals) werden
+//!   übernommen, wenn die Gegenseite analysiert hat und wir nicht.
+//! - Notizen: Last-Write-Wins über `note_ts`.
+//! - Repertoire: Knoten werden per Pfad (side + SAN-Kette) additiv vereinigt;
+//!   der FSRS-Zustand pro Knoten gewinnt nach `last_ts` (die frischere Review).
+//!   Löschungen propagieren in v1 nicht.
+//! - Puzzle-/Endspiel-Versuche: append-only-Union, Duplikate über
+//!   (puzzle_id|drill_id, ts) erkannt.
+//! - Nicht gesynct: Puzzle-DB, positions-Index (wird lokal neu aufgebaut),
+//!   Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
+//!
+//! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
+//! `sync_last_ts`) und beide Seiten filtern mit einem Sicherheitsfenster
+//! (SLACK) — Doppel-Übertragungen sind durch die idempotenten Merges gratis.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
+use rusqlite::{params, Connection};
+use tauri::Manager;
+
+use crate::{db, settings};
+
+pub const SYNC_PORT: u16 = 47323;
+/// Sicherheitsfenster gegen Uhren-Drift zwischen den Geräten (Sekunden).
+const SLACK: i64 = 600;
+/// Obergrenze für den Request-Body (Schutz gegen Unsinn auf dem Port).
+const MAX_BODY: usize = 256 * 1024 * 1024;
+
+// ── Payload-Typen ────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncEval {
+    pub ply: i64,
+    pub san: String,
+    pub eval_cp: Option<i64>,
+    pub mate_in: Option<i64>,
+    pub best_uci: String,
+    pub judgment: String,
+    pub phase: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncGame {
+    pub source: String,
+    pub source_id: String,
+    pub url: String,
+    pub played_at: String,
+    pub played_ts: i64,
+    pub time_class: String,
+    pub color: String,
+    pub opponent: String,
+    pub opp_elo: i64,
+    pub my_elo: i64,
+    pub result: String,
+    pub opening: String,
+    pub eco: String,
+    pub moves_count: i64,
+    pub accuracy: Option<f64>,
+    pub moves: String,
+    pub note: String,
+    pub note_ts: i64,
+    pub analyzed: bool,
+    pub evals: Vec<SyncEval>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncRepNode {
+    pub side: String,
+    /// SAN-Kette von der Wurzel bis zu diesem Knoten, mit ' ' verbunden.
+    pub path: String,
+    pub name: String,
+    pub fen_key: String,
+    pub depth: i64,
+    pub stability: f64,
+    pub difficulty: f64,
+    pub reps: i64,
+    pub lapses: i64,
+    pub due_ts: i64,
+    pub last_ts: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncPuzzleAttempt {
+    pub puzzle_id: String,
+    pub ts: i64,
+    pub solved: bool,
+    pub rating_before: i64,
+    pub rating_after: i64,
+    pub themes: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncEndgameAttempt {
+    pub drill_id: String,
+    pub ts: i64,
+    pub solved: bool,
+    pub moves: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SyncRequest {
+    pub code: String,
+    /// Serverzeit des letzten erfolgreichen Syncs (0 = erster Sync).
+    pub since: i64,
+    pub games: Vec<SyncGame>,
+    pub rep_nodes: Vec<SyncRepNode>,
+    pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
+    pub endgame_attempts: Vec<SyncEndgameAttempt>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SyncResponse {
+    pub now: i64,
+    pub games: Vec<SyncGame>,
+    pub rep_nodes: Vec<SyncRepNode>,
+    pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
+    pub endgame_attempts: Vec<SyncEndgameAttempt>,
+}
+
+// ── Collect: lokale Daten für die Gegenseite einsammeln ─────────────────────
+
+fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String> {
+    let cutoff = since.saturating_sub(SLACK);
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
+                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                    moves, note, note_ts, analyzed
+             FROM games WHERE updated_ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(i64, SyncGame)> = stmt
+        .query_map(params![cutoff], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                SyncGame {
+                    source: r.get(1)?,
+                    source_id: r.get(2)?,
+                    url: r.get(3)?,
+                    played_at: r.get(4)?,
+                    played_ts: r.get(5)?,
+                    time_class: r.get(6)?,
+                    color: r.get(7)?,
+                    opponent: r.get(8)?,
+                    opp_elo: r.get(9)?,
+                    my_elo: r.get(10)?,
+                    result: r.get(11)?,
+                    opening: r.get(12)?,
+                    eco: r.get(13)?,
+                    moves_count: r.get(14)?,
+                    accuracy: r.get(15)?,
+                    moves: r.get(16)?,
+                    note: r.get(17)?,
+                    note_ts: r.get(18)?,
+                    analyzed: r.get::<_, i64>(19)? != 0,
+                    evals: Vec::new(),
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut eval_stmt = conn
+        .prepare(
+            "SELECT ply, san, eval_cp, mate_in, best_uci, judgment, phase
+             FROM move_evals WHERE game_id = ?1 ORDER BY ply",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(rows.len());
+    for (id, mut g) in rows {
+        if g.analyzed {
+            g.evals = eval_stmt
+                .query_map(params![id], |r| {
+                    Ok(SyncEval {
+                        ply: r.get(0)?,
+                        san: r.get(1)?,
+                        eval_cp: r.get(2)?,
+                        mate_in: r.get(3)?,
+                        best_uci: r.get(4)?,
+                        judgment: r.get(5)?,
+                        phase: r.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<_, _>>()
+                .map_err(|e| e.to_string())?;
+        }
+        out.push(g);
+    }
+    Ok(out)
+}
+
+/// Kompletter Repertoire-Baum mit berechneten Pfaden (klein genug für "immer alles").
+fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
+    struct Row {
+        id: i64,
+        parent_id: i64,
+        side: String,
+        san: String,
+        name: String,
+        fen_key: String,
+        depth: i64,
+        stability: f64,
+        difficulty: f64,
+        reps: i64,
+        lapses: i64,
+        due_ts: i64,
+        last_ts: i64,
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, parent_id, side, san, name, fen_key, depth, stability, difficulty,
+                    reps, lapses, due_ts, last_ts
+             FROM rep_nodes ORDER BY depth, id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<Row> = stmt
+        .query_map([], |r| {
+            Ok(Row {
+                id: r.get(0)?,
+                parent_id: r.get(1)?,
+                side: r.get(2)?,
+                san: r.get(3)?,
+                name: r.get(4)?,
+                fen_key: r.get(5)?,
+                depth: r.get(6)?,
+                stability: r.get(7)?,
+                difficulty: r.get(8)?,
+                reps: r.get(9)?,
+                lapses: r.get(10)?,
+                due_ts: r.get(11)?,
+                last_ts: r.get(12)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Pfade aufbauen: dank ORDER BY depth sind Eltern immer vor Kindern dran.
+    let mut paths: HashMap<i64, String> = HashMap::new();
+    let mut out = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let path = if r.parent_id == 0 {
+            r.san.clone()
+        } else {
+            match paths.get(&r.parent_id) {
+                Some(p) => format!("{p} {}", r.san),
+                None => continue, // verwaister Knoten — überspringen
+            }
+        };
+        paths.insert(r.id, path.clone());
+        out.push(SyncRepNode {
+            side: r.side.clone(),
+            path,
+            name: r.name.clone(),
+            fen_key: r.fen_key.clone(),
+            depth: r.depth,
+            stability: r.stability,
+            difficulty: r.difficulty,
+            reps: r.reps,
+            lapses: r.lapses,
+            due_ts: r.due_ts,
+            last_ts: r.last_ts,
+        });
+    }
+    Ok(out)
+}
+
+fn collect_puzzle_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncPuzzleAttempt>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT puzzle_id, ts, solved, rating_before, rating_after, themes
+             FROM puzzle_attempts WHERE ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncPuzzleAttempt {
+                puzzle_id: r.get(0)?,
+                ts: r.get(1)?,
+                solved: r.get::<_, i64>(2)? != 0,
+                rating_before: r.get(3)?,
+                rating_after: r.get(4)?,
+                themes: r.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+fn collect_endgame_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncEndgameAttempt>, String> {
+    let mut stmt = conn
+        .prepare("SELECT drill_id, ts, solved, moves FROM endgame_attempts WHERE ts >= ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncEndgameAttempt {
+                drill_id: r.get(0)?,
+                ts: r.get(1)?,
+                solved: r.get::<_, i64>(2)? != 0,
+                moves: r.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+// ── Apply: Daten der Gegenseite einmergen ───────────────────────────────────
+
+fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, String> {
+    let now = db::now_ts();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut applied = 0usize;
+    for g in games {
+        let existing: Option<(i64, i64, bool)> = tx
+            .query_row(
+                "SELECT id, note_ts, analyzed FROM games WHERE source = ?1 AND source_id = ?2",
+                params![g.source, g.source_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)),
+            )
+            .ok();
+        let game_id = match existing {
+            None => {
+                tx.execute(
+                    "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
+                        color, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
+                        accuracy, moves, note, note_ts, analyzed, updated_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                    params![
+                        g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
+                        g.color, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
+                        g.moves_count, g.accuracy, g.moves, g.note, g.note_ts,
+                        g.analyzed as i64, now
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                applied += 1;
+                tx.last_insert_rowid()
+            }
+            Some((id, local_note_ts, _)) => {
+                tx.execute(
+                    "UPDATE games SET
+                        accuracy = COALESCE(accuracy, ?2),
+                        analyzed = MAX(analyzed, ?3),
+                        updated_ts = ?4
+                     WHERE id = ?1",
+                    params![id, g.accuracy, g.analyzed as i64, now],
+                )
+                .map_err(|e| e.to_string())?;
+                if g.note_ts > local_note_ts {
+                    tx.execute(
+                        "UPDATE games SET note = ?2, note_ts = ?3 WHERE id = ?1",
+                        params![id, g.note, g.note_ts],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                applied += 1;
+                id
+            }
+        };
+        // Analyse übernehmen, wenn die Gegenseite sie hat und wir (noch) nicht.
+        let locally_analyzed = existing.map(|(_, _, a)| a).unwrap_or(false);
+        if !g.evals.is_empty() && !locally_analyzed {
+            tx.execute("DELETE FROM move_evals WHERE game_id = ?1", params![game_id])
+                .map_err(|e| e.to_string())?;
+            let mut ins = tx
+                .prepare(
+                    "INSERT INTO move_evals (game_id, ply, san, eval_cp, mate_in, best_uci, judgment, phase)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                )
+                .map_err(|e| e.to_string())?;
+            for e in &g.evals {
+                ins.execute(params![
+                    game_id, e.ply, e.san, e.eval_cp, e.mate_in, e.best_uci, e.judgment, e.phase
+                ])
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(applied)
+}
+
+fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, String> {
+    // Lokale Pfade aufbauen (side + "\n" + Pfad → id, last_ts).
+    let mut local_ids: HashMap<String, (i64, i64)> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, parent_id, side, san, last_ts FROM rep_nodes ORDER BY depth, id")
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, i64, String, String, i64)> = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        let mut paths: HashMap<i64, String> = HashMap::new();
+        for (id, parent_id, side, san, last_ts) in rows {
+            let path = if parent_id == 0 {
+                san
+            } else {
+                match paths.get(&parent_id) {
+                    Some(p) => format!("{p} {san}"),
+                    None => continue,
+                }
+            };
+            paths.insert(id, path.clone());
+            local_ids.insert(format!("{side}\n{path}"), (id, last_ts));
+        }
+    }
+
+    // Eltern vor Kindern anlegen.
+    let mut sorted: Vec<&SyncRepNode> = nodes.iter().collect();
+    sorted.sort_by_key(|n| n.depth);
+    let mut merged = 0usize;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for n in sorted {
+        let key = format!("{}\n{}", n.side, n.path);
+        match local_ids.get(&key) {
+            None => {
+                let parent_key = match n.path.rsplit_once(' ') {
+                    Some((prefix, _)) => Some(format!("{}\n{}", n.side, prefix)),
+                    None => None,
+                };
+                let parent_id = match &parent_key {
+                    None => 0,
+                    Some(k) => match local_ids.get(k) {
+                        Some((id, _)) => *id,
+                        None => continue, // Elternknoten fehlt (übersprungen) — Kind auslassen
+                    },
+                };
+                let san = n.path.rsplit(' ').next().unwrap_or(&n.path);
+                tx.execute(
+                    "INSERT INTO rep_nodes (parent_id, side, san, name, fen_key, depth,
+                        stability, difficulty, reps, lapses, due_ts, last_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                    params![
+                        parent_id, n.side, san, n.name, n.fen_key, n.depth,
+                        n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                local_ids.insert(key, (tx.last_insert_rowid(), n.last_ts));
+                merged += 1;
+            }
+            Some((id, local_last)) => {
+                if n.last_ts > *local_last {
+                    tx.execute(
+                        "UPDATE rep_nodes SET stability = ?2, difficulty = ?3, reps = ?4,
+                            lapses = ?5, due_ts = ?6, last_ts = ?7 WHERE id = ?1",
+                        params![id, n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    merged += 1;
+                }
+            }
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(merged)
+}
+
+fn apply_puzzle_attempts(conn: &Connection, attempts: &[SyncPuzzleAttempt]) -> Result<usize, String> {
+    let mut n = 0usize;
+    for a in attempts {
+        n += conn
+            .execute(
+                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6
+                 WHERE NOT EXISTS (SELECT 1 FROM puzzle_attempts WHERE puzzle_id = ?1 AND ts = ?2)",
+                params![a.puzzle_id, a.ts, a.solved as i64, a.rating_before, a.rating_after, a.themes],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+fn apply_endgame_attempts(conn: &Connection, attempts: &[SyncEndgameAttempt]) -> Result<usize, String> {
+    let mut n = 0usize;
+    for a in attempts {
+        n += conn
+            .execute(
+                "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
+                 SELECT ?1, ?2, ?3, ?4
+                 WHERE NOT EXISTS (SELECT 1 FROM endgame_attempts WHERE drill_id = ?1 AND ts = ?2)",
+                params![a.drill_id, a.ts, a.solved as i64, a.moves],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(n)
+}
+
+/// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
+fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
+    apply_games(conn, &req.games)?;
+    apply_rep(conn, &req.rep_nodes)?;
+    apply_puzzle_attempts(conn, &req.puzzle_attempts)?;
+    apply_endgame_attempts(conn, &req.endgame_attempts)?;
+    Ok(SyncResponse {
+        now: db::now_ts(),
+        games: collect_games(conn, req.since)?,
+        rep_nodes: collect_rep(conn)?,
+        puzzle_attempts: collect_puzzle_attempts(conn, req.since)?,
+        endgame_attempts: collect_endgame_attempts(conn, req.since)?,
+    })
+}
+
+// ── Server (Desktop-Hub) ────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct SyncServer(pub AtomicBool);
+
+/// Lokale LAN-Adresse ermitteln (UDP-Trick, es wird nichts gesendet).
+fn local_ip() -> Option<String> {
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.connect("8.8.8.8:80").ok()?;
+    Some(sock.local_addr().ok()?.ip().to_string())
+}
+
+fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<settings::SettingsState>();
+    let mut s = state.0.lock().map_err(|e| e.to_string())?;
+    if s.sync_code.is_empty() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64 + d.as_secs())
+            .unwrap_or(0);
+        s.sync_code = format!("{:06}", (nanos ^ (std::process::id() as u64) * 2654435761) % 1_000_000);
+        settings::save(app, &s)?;
+    }
+    Ok(s.sync_code.clone())
+}
+
+pub fn start_server(app: &tauri::AppHandle) -> Result<(), String> {
+    let flag = &app.state::<SyncServer>().0;
+    if flag.swap(true, Ordering::SeqCst) {
+        return Ok(()); // läuft schon
+    }
+    ensure_code(app)?;
+    let server = tiny_http::Server::http(("0.0.0.0", SYNC_PORT)).map_err(|e| {
+        app.state::<SyncServer>().0.store(false, Ordering::SeqCst);
+        format!("Sync-Server startet nicht (Port {SYNC_PORT}): {e}")
+    })?;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        log::info!("Sync-Server lauscht auf Port {SYNC_PORT}");
+        for mut request in server.incoming_requests() {
+            let respond_json = |req: tiny_http::Request, status: u16, body: String| {
+                let header =
+                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                        .unwrap();
+                let _ = req.respond(
+                    tiny_http::Response::from_string(body)
+                        .with_status_code(status)
+                        .with_header(header),
+                );
+            };
+            let url = request.url().to_string();
+            if request.method() == &tiny_http::Method::Get && url == "/ping" {
+                respond_json(request, 200, "{\"app\":\"kiebitz\"}".into());
+                continue;
+            }
+            if request.method() != &tiny_http::Method::Post || url != "/sync" {
+                respond_json(request, 404, "{\"error\":\"not found\"}".into());
+                continue;
+            }
+            let mut body = Vec::new();
+            if request
+                .as_reader()
+                .take(MAX_BODY as u64)
+                .read_to_end(&mut body)
+                .is_err()
+            {
+                respond_json(request, 400, "{\"error\":\"read\"}".into());
+                continue;
+            }
+            let parsed: Result<SyncRequest, _> = serde_json::from_slice(&body);
+            let req_data = match parsed {
+                Ok(r) => r,
+                Err(e) => {
+                    respond_json(request, 400, format!("{{\"error\":\"json: {e}\"}}"));
+                    continue;
+                }
+            };
+            let expected = app
+                .state::<settings::SettingsState>()
+                .0
+                .lock()
+                .map(|s| s.sync_code.clone())
+                .unwrap_or_default();
+            if expected.is_empty() || req_data.code != expected {
+                respond_json(request, 403, "{\"error\":\"code\"}".into());
+                continue;
+            }
+            let result = {
+                let db = app.state::<db::Db>();
+                let mut conn = match db.0.lock() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        respond_json(request, 500, format!("{{\"error\":\"lock: {e}\"}}"));
+                        continue;
+                    }
+                };
+                handle_sync(&mut conn, &req_data)
+            };
+            match result.and_then(|r| serde_json::to_string(&r).map_err(|e| e.to_string())) {
+                Ok(json) => respond_json(request, 200, json),
+                Err(e) => respond_json(request, 500, format!("{{\"error\":\"{e}\"}}")),
+            }
+        }
+    });
+    Ok(())
+}
+
+// ── Tauri-Commands ──────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct SyncInfo {
+    pub running: bool,
+    pub addr: Option<String>,
+    pub code: String,
+    pub host: String,
+    pub last_sync: i64,
+}
+
+#[tauri::command]
+pub fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
+    let code = ensure_code(&app)?;
+    let (host, running) = {
+        let s = app.state::<settings::SettingsState>();
+        let host = s.0.lock().map(|s| s.sync_host.clone()).unwrap_or_default();
+        (host, app.state::<SyncServer>().0.load(Ordering::SeqCst))
+    };
+    let last_sync = {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::meta_get(&conn, "sync_last_ts")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    };
+    Ok(SyncInfo {
+        running,
+        addr: local_ip().map(|ip| format!("{ip}:{SYNC_PORT}")),
+        code,
+        host,
+        last_sync,
+    })
+}
+
+#[tauri::command]
+pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
+    start_server(&app)?;
+    sync_info(app)
+}
+
+#[derive(Serialize)]
+pub struct SyncSummary {
+    pub games_pulled: usize,
+    pub rep_merged: usize,
+    pub puzzle_attempts_pulled: usize,
+    pub endgame_attempts_pulled: usize,
+}
+
+/// Client-Seite: kompletter Sync-Roundtrip gegen den Desktop-Hub.
+#[tauri::command]
+pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (host, code) = {
+            let s = app.state::<settings::SettingsState>();
+            let s = s.0.lock().map_err(|e| e.to_string())?;
+            (s.sync_host.clone(), s.sync_code.clone())
+        };
+        if host.is_empty() {
+            return Err("Keine Sync-Adresse konfiguriert.".into());
+        }
+
+        // Lokalen Stand einsammeln (kurz locken, dann Netz ohne Lock).
+        let (since, request) = {
+            let db = app.state::<db::Db>();
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            let since: i64 = db::meta_get(&conn, "sync_last_ts")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            let req = SyncRequest {
+                code,
+                since,
+                games: collect_games(&conn, since)?,
+                rep_nodes: collect_rep(&conn)?,
+                puzzle_attempts: collect_puzzle_attempts(&conn, since)?,
+                endgame_attempts: collect_endgame_attempts(&conn, since)?,
+            };
+            (since, req)
+        };
+        let _ = since;
+
+        let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(5))
+            .timeout_read(std::time::Duration::from_secs(600))
+            .build();
+        let resp = agent
+            .post(&format!("http://{host}/sync"))
+            .set("Content-Type", "application/json")
+            .send_string(&body)
+            .map_err(|e| format!("Sync fehlgeschlagen: {e}"))?;
+        let resp: SyncResponse = serde_json::from_reader(resp.into_reader().take(MAX_BODY as u64))
+            .map_err(|e| format!("Antwort unlesbar: {e}"))?;
+
+        let db = app.state::<db::Db>();
+        let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+        let games_pulled = apply_games(&mut conn, &resp.games)?;
+        let rep_merged = apply_rep(&mut conn, &resp.rep_nodes)?;
+        let pz = apply_puzzle_attempts(&conn, &resp.puzzle_attempts)?;
+        let eg = apply_endgame_attempts(&conn, &resp.endgame_attempts)?;
+        db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
+        Ok(SyncSummary {
+            games_pulled,
+            rep_merged,
+            puzzle_attempts_pulled: pz,
+            endgame_attempts_pulled: eg,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::init(&conn).unwrap();
+        conn
+    }
+
+    fn sample_game(id: &str) -> SyncGame {
+        SyncGame {
+            source: "lichess".into(),
+            source_id: id.into(),
+            url: String::new(),
+            played_at: "2026-07-01".into(),
+            played_ts: 100,
+            time_class: "rapid".into(),
+            color: "white".into(),
+            opponent: "opp".into(),
+            opp_elo: 1500,
+            my_elo: 1490,
+            result: "win".into(),
+            opening: "Italian".into(),
+            eco: "C50".into(),
+            moves_count: 30,
+            accuracy: None,
+            moves: "e4 e5".into(),
+            note: String::new(),
+            note_ts: 0,
+            analyzed: false,
+            evals: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn games_merge_is_idempotent_and_lww_notes_win() {
+        let mut conn = mem_db();
+        let mut g = sample_game("g1");
+        g.note = "vom Handy".into();
+        g.note_ts = 50;
+        apply_games(&mut conn, &[g.clone()]).unwrap();
+        apply_games(&mut conn, &[g.clone()]).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Ältere Notiz verliert, neuere gewinnt.
+        let mut older = g.clone();
+        older.note = "alt".into();
+        older.note_ts = 10;
+        apply_games(&mut conn, &[older]).unwrap();
+        let note: String = conn
+            .query_row("SELECT note FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(note, "vom Handy");
+
+        let mut newer = g;
+        newer.note = "neu".into();
+        newer.note_ts = 99;
+        apply_games(&mut conn, &[newer]).unwrap();
+        let note: String = conn
+            .query_row("SELECT note FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(note, "neu");
+    }
+
+    #[test]
+    fn evals_adopted_only_when_not_locally_analyzed() {
+        let mut conn = mem_db();
+        let mut g = sample_game("g2");
+        g.analyzed = true;
+        g.evals = vec![SyncEval {
+            ply: 1,
+            san: "e4".into(),
+            eval_cp: Some(30),
+            mate_in: None,
+            best_uci: "e2e4".into(),
+            judgment: String::new(),
+            phase: "opening".into(),
+        }];
+        apply_games(&mut conn, &[g.clone()]).unwrap();
+        let evals: i64 = conn
+            .query_row("SELECT COUNT(*) FROM move_evals", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(evals, 1);
+        let analyzed: i64 = conn
+            .query_row("SELECT analyzed FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(analyzed, 1);
+
+        // Zweiter Sync mit anderen Evals überschreibt die lokale Analyse nicht.
+        g.evals[0].eval_cp = Some(999);
+        apply_games(&mut conn, &[g]).unwrap();
+        let cp: i64 = conn
+            .query_row("SELECT eval_cp FROM move_evals", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cp, 30);
+    }
+
+    #[test]
+    fn rep_merge_adds_paths_and_lww_fsrs() {
+        let mut conn = mem_db();
+        let node = |path: &str, depth: i64, last_ts: i64, reps: i64| SyncRepNode {
+            side: "white".into(),
+            path: path.into(),
+            name: String::new(),
+            fen_key: format!("fen-{path}"),
+            depth,
+            stability: 1.0,
+            difficulty: 5.0,
+            reps,
+            lapses: 0,
+            due_ts: 0,
+            last_ts,
+        };
+        apply_rep(&mut conn, &[node("e4", 1, 10, 1), node("e4 e5", 2, 10, 1)]).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Frischere Review gewinnt, ältere nicht.
+        apply_rep(&mut conn, &[node("e4", 1, 20, 5)]).unwrap();
+        let reps: i64 = conn
+            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(reps, 5);
+        apply_rep(&mut conn, &[node("e4", 1, 15, 3)]).unwrap();
+        let reps: i64 = conn
+            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(reps, 5);
+    }
+
+    #[test]
+    fn attempts_dedupe_on_natural_key() {
+        let conn = mem_db();
+        let a = SyncPuzzleAttempt {
+            puzzle_id: "p1".into(),
+            ts: 1000,
+            solved: true,
+            rating_before: 1500,
+            rating_after: 1512,
+            themes: "fork".into(),
+        };
+        assert_eq!(apply_puzzle_attempts(&conn, &[a.clone()]).unwrap(), 1);
+        assert_eq!(apply_puzzle_attempts(&conn, &[a]).unwrap(), 0);
+
+        let e = SyncEndgameAttempt {
+            drill_id: "lucena".into(),
+            ts: 2000,
+            solved: true,
+            moves: 14,
+        };
+        assert_eq!(apply_endgame_attempts(&conn, &[e.clone()]).unwrap(), 1);
+        assert_eq!(apply_endgame_attempts(&conn, &[e]).unwrap(), 0);
+    }
+
+    #[test]
+    fn http_roundtrip_over_localhost() {
+        // Echter tiny_http-Server + ureq-Client — dieselben Bausteine wie in
+        // start_server/sync_now, nur ohne Tauri-AppHandle drumherum.
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let mut request = server.recv().unwrap();
+            let mut body = Vec::new();
+            request.as_reader().read_to_end(&mut body).unwrap();
+            let req: SyncRequest = serde_json::from_slice(&body).unwrap();
+            assert_eq!(req.code, "424242");
+            let mut conn = mem_db();
+            let resp = handle_sync(&mut conn, &req).unwrap();
+            let json = serde_json::to_string(&resp).unwrap();
+            request
+                .respond(tiny_http::Response::from_string(json))
+                .unwrap();
+        });
+
+        let req = SyncRequest {
+            code: "424242".into(),
+            since: 0,
+            games: vec![sample_game("http1")],
+            rep_nodes: vec![],
+            puzzle_attempts: vec![],
+            endgame_attempts: vec![],
+        };
+        let resp = ureq::post(&format!("http://127.0.0.1:{port}/sync"))
+            .send_string(&serde_json::to_string(&req).unwrap())
+            .unwrap();
+        let resp: SyncResponse = serde_json::from_reader(resp.into_reader()).unwrap();
+        assert!(resp.now > 0);
+        // Der Server hat unsere Partie gemergt und liefert sie im Delta zurück.
+        assert_eq!(resp.games.len(), 1);
+        assert_eq!(resp.games[0].source_id, "http1");
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn roundtrip_via_handle_sync() {
+        // "Desktop" hat eine analysierte Partie, "Handy" schickt einen Versuch.
+        let mut desktop = mem_db();
+        let mut g = sample_game("rt1");
+        g.analyzed = true;
+        g.evals = vec![SyncEval {
+            ply: 1,
+            san: "e4".into(),
+            eval_cp: Some(20),
+            mate_in: None,
+            best_uci: "e2e4".into(),
+            judgment: String::new(),
+            phase: "opening".into(),
+        }];
+        apply_games(&mut desktop, &[g]).unwrap();
+
+        let req = SyncRequest {
+            code: "000000".into(),
+            since: 0,
+            games: vec![],
+            rep_nodes: vec![],
+            puzzle_attempts: vec![SyncPuzzleAttempt {
+                puzzle_id: "p9".into(),
+                ts: 500,
+                solved: false,
+                rating_before: 1400,
+                rating_after: 1390,
+                themes: String::new(),
+            }],
+            endgame_attempts: vec![],
+        };
+        let resp = handle_sync(&mut desktop, &req).unwrap();
+        assert_eq!(resp.games.len(), 1);
+        assert_eq!(resp.games[0].evals.len(), 1);
+        assert_eq!(resp.puzzle_attempts.len(), 1); // enthält den gerade gepushten
+
+        // Der Versuch ist beim Desktop angekommen.
+        let n: i64 = desktop
+            .query_row("SELECT COUNT(*) FROM puzzle_attempts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+    }
+}

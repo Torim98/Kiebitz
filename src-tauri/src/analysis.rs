@@ -333,7 +333,10 @@ fn run_worker(
         let walked = chess::walk_sans(&moves);
         if walked.is_empty() {
             // Nichts zu analysieren (abgebrochene/leere Partie) — aus der Queue nehmen.
-            conn.execute("UPDATE games SET analyzed = 1 WHERE id = ?1", params![game_id])
+            conn.execute(
+                "UPDATE games SET analyzed = 1, updated_ts = ?2 WHERE id = ?1",
+                params![game_id, crate::db::now_ts()],
+            )
                 .map_err(|e| e.to_string())?;
             continue;
         }
@@ -425,8 +428,8 @@ fn run_worker(
         }
         index_game_positions(&conn, game_id, &walked)?;
         conn.execute(
-            "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2) WHERE id = ?1",
-            params![game_id, accuracy],
+            "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2), updated_ts = ?3 WHERE id = ?1",
+            params![game_id, accuracy, crate::db::now_ts()],
         )
         .map_err(|e| e.to_string())?;
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;

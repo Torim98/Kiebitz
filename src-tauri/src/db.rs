@@ -166,7 +166,26 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN played_ts INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    // Migration v6 (Sync): Änderungs-Zeitstempel für den Delta-Sync und
+    // Last-Write-Wins bei Notizen. DEFAULT 0 = "vor Einführung des Syncs" —
+    // der erste Sync (Cursor 0) überträgt damit den kompletten Bestand.
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE games ADD COLUMN note_ts INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(())
+}
+
+/// Unix-Zeit in Sekunden — der gemeinsame Zeitstempel für Sync-Spalten.
+pub fn now_ts() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 pub fn meta_get(conn: &Connection, key: &str) -> Option<String> {
@@ -208,15 +227,16 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
         let mut upsert_stmt = tx
             .prepare(
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
-                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves, updated_ts)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
                     played_ts = excluded.played_ts,
                     accuracy = COALESCE(excluded.accuracy, games.accuracy),
                     moves = excluded.moves,
-                    moves_count = excluded.moves_count",
+                    moves_count = excluded.moves_count,
+                    updated_ts = excluded.updated_ts",
             )
             .map_err(|e| e.to_string())?;
 
@@ -241,7 +261,8 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.eco,
                     g.moves_count,
                     g.accuracy,
-                    g.moves
+                    g.moves,
+                    now_ts()
                 ])
                 .map_err(|e| e.to_string())?;
             if !existed {
@@ -295,7 +316,10 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
 }
 
 pub fn set_note(conn: &Connection, id: i64, note: &str) -> Result<(), String> {
-    conn.execute("UPDATE games SET note = ?1 WHERE id = ?2", params![note, id])
+    conn.execute(
+        "UPDATE games SET note = ?1, note_ts = ?3, updated_ts = ?3 WHERE id = ?2",
+        params![note, id, now_ts()],
+    )
         .map_err(|e| e.to_string())?;
     Ok(())
 }

@@ -42,6 +42,13 @@ pub struct Settings {
     pub puzzle_goal: u32,
     /// Beim Start im Hintergrund nach Updates suchen und sie installieren.
     pub auto_update: bool,
+    /// Sync-Server (Desktop als Hub) beim Start mitstarten.
+    pub sync_enabled: bool,
+    /// Pairing-Code für den Geräte-Sync (leer = noch nie aktiviert;
+    /// wird beim ersten Aktivieren generiert).
+    pub sync_code: String,
+    /// Mobile: Adresse des Desktop-Hubs ("host:port").
+    pub sync_host: String,
 }
 
 impl Default for Settings {
@@ -69,6 +76,9 @@ impl Default for Settings {
             import_months: 3,
             puzzle_goal: 20,
             auto_update: true,
+            sync_enabled: false,
+            sync_code: String::new(),
+            sync_host: String::new(),
         }
     }
 }
@@ -113,7 +123,7 @@ pub fn load(app: &tauri::AppHandle) -> Settings {
         .unwrap_or_default()
 }
 
-fn save(app: &tauri::AppHandle, s: &Settings) -> Result<(), String> {
+pub(crate) fn save(app: &tauri::AppHandle, s: &Settings) -> Result<(), String> {
     let path = config_file(app)?;
     let json = serde_json::to_string_pretty(s).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| format!("Einstellungen nicht speicherbar: {e}"))

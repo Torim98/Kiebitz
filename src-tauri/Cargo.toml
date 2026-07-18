@@ -27,6 +27,8 @@ shakmaty = "0.27.3"
 csv = "1.4.0"
 ureq = "2"
 zstd = "0.13.3"
+# Sync-Server (Desktop als Hub) — bewusst minimal, kein async-Stack.
+tiny_http = "0.12"
 
 # Auto-Update über GitHub Releases — nur Desktop. Mobile aktualisiert über
 # Store/Sideload; updater.rs stellt dort Stub-Commands bereit.
