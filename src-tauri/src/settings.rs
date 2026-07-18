@@ -46,15 +46,21 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
+        // Mobile: konservative Engine-Defaults (Akku/Thermik) — weniger
+        // Threads, kleiner Hash, geringere Tiefe als auf dem Desktop.
+        #[cfg(target_os = "android")]
+        let (threads, hash, live, batch) = (2, 64, 14, 10);
+        #[cfg(not(target_os = "android"))]
+        let (threads, hash, live, batch) = (0, 256, 24, 14);
         Self {
             locale: "de".into(),
             db_path: None,
             engine_path: None,
-            engine_threads: 0,
-            engine_hash_mb: 256,
+            engine_threads: threads,
+            engine_hash_mb: hash,
             engine_multipv: 3,
-            live_depth: 24,
-            batch_depth: 14,
+            live_depth: live,
+            batch_depth: batch,
             syzygy_path: None,
             chessdb_enabled: false,
             cc_user: "Torim98".into(),

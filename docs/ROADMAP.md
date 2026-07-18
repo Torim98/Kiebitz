@@ -101,16 +101,59 @@ The features that currently show demo data become backed by the database.
   attempts land in `endgame_attempts` with per-drill mastery shown in the list.
   Optional Syzygy tablebase folder (Settings → Engine) for perfect defense.
 
-## Phase 4 — Mobile
+## Phase 4 — Mobile (Android first)
 
-- [ ] **Android + iOS app.** Tauri 2 supports mobile targets, so the React frontend
-  can largely be reused. Open questions to resolve first:
-  - Engine on mobile: native Stockfish per-arch binary (sidecar) vs. a WASM build;
-    battery/thermal limits mean lower default depth.
-  - SQLite works on mobile; decide on sync (shared DB via Nextcloud vs. a sync layer).
-  - Responsive/touch pass on the UI (board drag, tables, charts) — some layouts are
-    already responsive, but the desktop grids need mobile variants.
-  - Distribution: Play Store / App Store accounts, signing, review overhead.
+Tauri 2 supports mobile targets; the React frontend and the Rust core are both
+reused on Android. The two open questions are decided:
+
+**Decision — engine: native per-ABI Stockfish, not WASM.** Tauri sidecars don't
+exist on mobile, but Android allows executing files from the app's
+`nativeLibraryDir`: Stockfish is packaged per ABI (arm64-v8a first) as
+`libstockfish.so` in `jniLibs` and spawned as a child process (the DroidFish
+pattern). This reuses the entire existing Rust UCI stack (`engine.rs`,
+`live.rs`, `analysis.rs`, `endgame.rs`) unchanged, runs ~2-3× faster than WASM
+at lower energy per node, and avoids the SharedArrayBuffer/threading fragility
+of WASM in the Android WebView. Mobile defaults: 1-2 threads, 32-64 MB hash,
+lower live depth; batch analysis stays off on the phone (or charging-only) —
+heavy analysis lives on the desktop and arrives via sync. (iOS later: child
+processes are forbidden there, so Stockfish would be linked in-process as a
+static library; out of scope for the Android phase.)
+
+**Decision — sync: direct device-to-device over the local network, desktop as
+hub.** No cloud, no server, no third-party requirement (Nextcloud/Syncthing
+stay possible for power users via the existing DB-location setting, app
+closed). The sync module is written once in Rust and compiled into both apps.
+Pairing via QR code (desktop shows, phone scans → token), mDNS discovery,
+one-tap "sync now" when both are on the same Wi-Fi. Merge is application-level
+(no WAL file copying) and mostly trivial by design: games are duplicate-safe
+upserts by natural key; puzzle/endgame attempts and FSRS reviews are
+append-only event logs — union them, then recompute Elo/FSRS state
+deterministically from the merged log (conflict-free); notes are
+last-write-wins by timestamp; analysis results flow desktop → phone. The
+puzzle DB is not synced — the phone imports its own (optionally
+rating-filtered) subset.
+
+Remaining work:
+
+- [x] Android build scaffold (`tauri android init`), per-ABI engine packaging,
+  engine-path resolution from `nativeLibraryDir`, mobile engine defaults.
+  Done 2026-07-17: toolchain (JDK 17 portable, SDK, NDK r28, Rust android
+  targets — paths in the toolchain memory note), `gen/android` committed
+  (build outputs stay gitignored), `tauri.android.conf.json` keeps the
+  Windows engine out of the APK, updater plugin is desktop-only (mobile
+  stubs), Stockfish 18 android-armv8 ships as
+  `jniLibs/arm64-v8a/libstockfish.so` (gitignored, staged manually for now —
+  CI download step still pending), `resolve_engine` finds it via
+  `/proc/self/maps`, mobile defaults 2 threads/64 MB/depth 14/10. Debug APK
+  builds end-to-end (~278 MB debug; release will shrink the Rust lib).
+  Windows builds require Developer Mode (symlinks). **On-device engine test
+  still pending.**
+- [ ] Responsive/touch pass on the UI (board drag, tables, charts) — some layouts
+  are already responsive, but the desktop grids need mobile variants.
+- [ ] Sync v1: pairing + event-log merge as described above; sync history/status
+  in Settings.
+- [ ] Distribution: Play Store account, signing, review overhead (or sideload APK
+  via GitHub releases first).
 
 ## Phase 5 — Real web version (optional)
 

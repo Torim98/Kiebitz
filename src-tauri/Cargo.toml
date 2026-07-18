@@ -20,13 +20,15 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
-# Auto-Update über GitHub Releases; unterstützt nur Desktop — bei einem
-# späteren Mobile-Build (Phase 4) hinter ein target-cfg ziehen.
-tauri-plugin-updater = "2"
-# Öffnet externe Links im System-Standardbrowser (Desktop).
+# Öffnet externe Links im System-Standardbrowser (auch Mobile-tauglich).
 tauri-plugin-opener = "2"
 rusqlite = { version = "0.33", features = ["bundled"] }
 shakmaty = "0.27.3"
 csv = "1.4.0"
 ureq = "2"
 zstd = "0.13.3"
+
+# Auto-Update über GitHub Releases — nur Desktop. Mobile aktualisiert über
+# Store/Sideload; updater.rs stellt dort Stub-Commands bereit.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

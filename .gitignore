@@ -8,7 +8,9 @@ dist-ssr/
 # Rust / Tauri
 target/
 **/*.rs.bk
-src-tauri/gen/
+# gen/android (Android-Studio-Projekt) gehört ins Repo — seine Build-Outputs
+# filtern die von Tauri generierten .gitignores in gen/android selbst.
+src-tauri/gen/schemas/
 
 # Stockfish binaries (bundled separately)
 src-tauri/binaries/

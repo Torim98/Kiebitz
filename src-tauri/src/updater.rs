@@ -9,7 +9,10 @@
 //! neu (unter Windows beendet der Installer die App selbst).
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+#[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Serialize)]
@@ -20,6 +23,7 @@ pub struct UpdateCheck {
     pub notes: Option<String>,
 }
 
+#[cfg(desktop)]
 #[derive(Serialize, Clone)]
 pub struct UpdateState {
     /// "downloading" | "installing" | "error"
@@ -32,17 +36,20 @@ pub struct UpdateState {
 }
 
 /// Meldung „neue Version verfügbar“ an das Frontend (Toggle aus).
+#[cfg(desktop)]
 #[derive(Serialize, Clone)]
 pub struct UpdateAvailable {
     pub version: String,
     pub notes: Option<String>,
 }
 
+#[cfg(desktop)]
 fn emit_state(app: &AppHandle, state: UpdateState) {
     let _ = app.emit("update://state", state);
 }
 
 /// Fragt den Update-Endpoint ab, ohne etwas herunterzuladen.
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
     // App-Version aus tauri.conf.json (nicht CARGO_PKG_VERSION) — genau die
@@ -62,6 +69,7 @@ pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
 }
 
 /// Lädt das verfügbare Update herunter, installiert es und startet neu.
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     match download_and_install(&app).await {
@@ -71,10 +79,32 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     }
 }
 
+// ── Mobile-Stubs ─────────────────────────────────────────────────────────────
+// In-App-Updates gibt es nur auf dem Desktop; Mobile aktualisiert über
+// Store/Sideload. Die Commands existieren trotzdem, damit das Frontend
+// dieselben invoke-Aufrufe machen darf.
+
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
+    Ok(UpdateCheck {
+        current: app.package_info().version.to_string(),
+        available: None,
+        notes: None,
+    })
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn install_update(_app: AppHandle) -> Result<(), String> {
+    Err("In-App-Updates gibt es nur in der Desktop-App.".into())
+}
+
 /// Check beim App-Start. Ist `auto` gesetzt, wird das Update direkt geladen,
 /// installiert und die App neu gestartet; sonst wird nur geprüft und bei einer
 /// neuen Version das Frontend über `update://available` benachrichtigt.
 /// Fehler (z. B. offline, noch kein Release) werden nur geloggt.
+#[cfg(desktop)]
 pub fn spawn_startup_check(app: &AppHandle, auto: bool) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -108,6 +138,7 @@ pub fn spawn_startup_check(app: &AppHandle, auto: bool) {
 
 /// Gemeinsamer Kern: liefert Ok(false), wenn kein Update ansteht. Bei Erfolg
 /// kehrt die Funktion in der Regel nicht zurück (App-Neustart).
+#[cfg(desktop)]
 async fn download_and_install(app: &AppHandle) -> Result<bool, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {

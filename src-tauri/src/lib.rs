@@ -60,6 +60,28 @@ pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
             return Some(p);
         }
     }
+    // Android: Stockfish liegt als libstockfish.so im nativeLibraryDir der
+    // App — dem einzigen Ort, aus dem Android das Ausführen erlaubt. Den
+    // Ordner liefert der Ladepfad unserer eigenen Bibliothek (libapp_lib.so)
+    // in /proc/self/maps.
+    #[cfg(target_os = "android")]
+    if let Ok(maps) = std::fs::read_to_string("/proc/self/maps") {
+        for line in maps.lines() {
+            let Some(idx) = line.find('/') else { continue };
+            let path = line[idx..].trim();
+            if path.ends_with("/libapp_lib.so") {
+                if let Some(p) = std::path::Path::new(path)
+                    .parent()
+                    .map(|dir| dir.join("libstockfish.so"))
+                    .filter(|p| p.exists())
+                {
+                    return Some(p);
+                }
+                break;
+            }
+        }
+    }
+
     let exe = if cfg!(windows) { "stockfish.exe" } else { "stockfish" };
 
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -210,18 +232,22 @@ pub fn run() {
             app.manage(endgame::EndgameEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
 
-            // Auto-Update: Plugin immer registrieren. Beim Start immer prüfen;
-            // ist die Einstellung aktiv, wird direkt installiert, sonst nur eine
-            // Benachrichtigung ans Frontend geschickt.
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
-            let auto_update = app
-                .state::<settings::SettingsState>()
-                .0
-                .lock()
-                .map(|s| s.auto_update)
-                .unwrap_or(false);
-            updater::spawn_startup_check(app.handle(), auto_update);
+            // Auto-Update (nur Desktop): Plugin registrieren und beim Start
+            // prüfen; ist die Einstellung aktiv, wird direkt installiert, sonst
+            // nur eine Benachrichtigung ans Frontend geschickt. Mobile
+            // aktualisiert über Store/Sideload (Stubs in updater.rs).
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                let auto_update = app
+                    .state::<settings::SettingsState>()
+                    .0
+                    .lock()
+                    .map(|s| s.auto_update)
+                    .unwrap_or(false);
+                updater::spawn_startup_check(app.handle(), auto_update);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
