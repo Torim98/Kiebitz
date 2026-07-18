@@ -148,8 +148,14 @@ Remaining work:
   builds end-to-end (~278 MB debug; release will shrink the Rust lib).
   Windows builds require Developer Mode (symlinks). **On-device engine test
   still pending.**
-- [ ] Responsive/touch pass on the UI (board drag, tables, charts) — some layouts
-  are already responsive, but the desktop grids need mobile variants.
+- [x] Responsive/touch pass on the UI. Done 2026-07-17: below `md` the sidebar
+  becomes a hamburger topbar + slide-in drawer (safe-area insets wired);
+  `Board` treats its width prop as a max and shrinks to the container
+  (ResizeObserver — board-column grids use fixed max widths instead of `auto`
+  to avoid a measure feedback loop); wide tables (Dashboard, Games) scroll
+  horizontally; page headers wrap; Insights activity note stacks. Verified at
+  375 px in the browser: all nine pages without horizontal overflow, board
+  343 px. On-device check pending.
 - [ ] Sync v1: pairing + event-log merge as described above; sync history/status
   in Settings.
 - [ ] Distribution: Play Store account, signing, review overhead (or sideload APK

@@ -145,8 +145,8 @@ function LiveRepertoire() {
   const moveText = baseSans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
@@ -181,7 +181,7 @@ function LiveRepertoire() {
           }}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_auto_1fr]">
+        <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_380px_1fr]">
           <Card title={t("rep.variants")} pad={false}>
             <div className="p-2">
               {(["white", "black"] as const).map((side) => (
@@ -448,7 +448,7 @@ function AddLine({
 
   return (
     <div className="min-[1240px]:col-span-2">
-      <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-[auto_1fr]">
+      <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-[380px_1fr]">
         <div>
           <Board boardId="rep-add" fen={fen} width={380} draggable onPieceDrop={tryMove} orientation={side} />
           <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
@@ -584,7 +584,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
 
   const moveNo = Math.floor(item.prompt_sans.length / 2) + 1;
   return (
-    <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[auto_1fr]">
+    <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
       <div>
         <div className="mb-3 flex items-center justify-between text-[13px]">
           <span className="font-medium">
@@ -723,8 +723,8 @@ function DemoRepertoire() {
     .join(" ");
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
@@ -737,7 +737,7 @@ function DemoRepertoire() {
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_auto_1fr]">
+      <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_380px_1fr]">
         <Card title={t("rep.variants")} pad={false}>
           <div className="p-2">
             {demoRepertoire.map((side) => (

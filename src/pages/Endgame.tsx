@@ -208,8 +208,8 @@ export default function Endgame() {
   };
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("eg.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("eg.subtitle")}</p>
@@ -230,7 +230,7 @@ export default function Endgame() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[auto_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
         {/* Brett + Statuszeile — auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
         <div className="max-w-[420px]">

@@ -66,7 +66,7 @@ export default function Insights() {
         : t("ins.phase.endgame");
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-5">
         <h1 className="text-[21px] font-semibold tracking-tight">{t("ins.title")}</h1>
         <p className="mt-0.5 text-[13px] text-ink3">
@@ -295,7 +295,7 @@ export default function Insights() {
         </Card>
 
         <Card title={t("ins.activityTitle")} className="min-[1000px]:col-span-2">
-          <div className="flex gap-4">
+          <div className="flex flex-col gap-4 min-[700px]:flex-row">
             <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `44px repeat(${activity.slots.length}, 1fr)` }}>
               <div />
               {activity.slots.map((s) => (
@@ -320,7 +320,7 @@ export default function Insights() {
                 </Fragment>
               ))}
             </div>
-            <div className="w-56 shrink-0 border-l border-line pl-4 text-[12.5px] leading-relaxed text-ink3">
+            <div className="border-t border-line pt-3 text-[12.5px] leading-relaxed text-ink3 min-[700px]:w-56 min-[700px]:shrink-0 min-[700px]:border-l min-[700px]:border-t-0 min-[700px]:pl-4 min-[700px]:pt-0">
               {live
                 ? liveData.topSlot
                   ? t("ins.topSlot", { label: liveData.topSlot.label, n: liveData.topSlot.games })

@@ -325,7 +325,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-4 flex items-end justify-between">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
@@ -339,7 +339,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
           <select
             value={selectedId ?? ""}
             onChange={(e) => setSelectedId(Number(e.target.value))}
-            className="max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+            className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
           >
             {games.map((g) => (
               <option key={g.id} value={g.id ?? undefined}>
@@ -439,24 +439,26 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       )}
 
       <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[auto_1fr_300px]">
-        {/* Brett + Eval-Bar */}
-        <div className="flex gap-3">
-          <div className="flex w-5 flex-col overflow-hidden rounded-md border border-line" style={{ height: 400 }}>
-            <div className="w-full" style={{ height: `${100 - whitePct}%`, background: "#3a3a37", transition: "height 0.3s" }} />
-            <div className="w-full bg-[#e6e3d3]" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
+        {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
+        <div className="min-[1240px]:w-[432px]">
+          <div className="flex gap-3">
+            <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
+              <div className="w-full" style={{ height: `${100 - whitePct}%`, background: "#3a3a37", transition: "height 0.3s" }} />
+              <div className="w-full bg-[#e6e3d3]" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Board boardId="analysis" fen={fen} width={400} orientation={live && game.color === "black" ? "black" : "white"} />
+            </div>
           </div>
-          <div>
-            <Board boardId="analysis" fen={fen} width={400} orientation={live && game.color === "black" ? "black" : "white"} />
-            <div className="mt-3 flex items-center justify-between">
-              <div className="flex gap-1">
-                <Button onClick={() => setPly(0)}><ChevronFirst size={15} /></Button>
-                <Button onClick={() => setPly((p) => Math.max(0, p - 1))}><ChevronLeft size={15} /></Button>
-                <Button onClick={() => setPly((p) => Math.min(sans.length, p + 1))}><ChevronRight size={15} /></Button>
-                <Button onClick={() => setPly(sans.length)}><ChevronLast size={15} /></Button>
-              </div>
-              <div className="text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
-                {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
-              </div>
+          <div className="mt-3 flex items-center justify-between pl-8">
+            <div className="flex gap-1">
+              <Button onClick={() => setPly(0)}><ChevronFirst size={15} /></Button>
+              <Button onClick={() => setPly((p) => Math.max(0, p - 1))}><ChevronLeft size={15} /></Button>
+              <Button onClick={() => setPly((p) => Math.min(sans.length, p + 1))}><ChevronRight size={15} /></Button>
+              <Button onClick={() => setPly(sans.length)}><ChevronLast size={15} /></Button>
+            </div>
+            <div className="text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
+              {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
             </div>
           </div>
         </div>

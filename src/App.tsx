@@ -10,6 +10,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   Loader2,
+  Menu,
   Puzzle as PuzzleIcon,
   RefreshCw,
   Settings as SettingsIcon,
@@ -118,79 +119,130 @@ export default function App() {
     installUpdate().catch(() => {});
   };
 
-  return (
-    <div className="flex h-full">
-      <aside className="flex w-[228px] shrink-0 flex-col border-r border-line bg-panel">
-        <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
-            <Bird size={20} />
-          </span>
-          <div>
-            <div className="text-[15px] font-semibold tracking-tight">Kiebitz</div>
-            <div className="text-[11px] text-ink3">{t("app.tagline")}</div>
-          </div>
+  // Mobile: Sidebar wird zum Slide-in-Drawer hinter einem Hamburger-Button.
+  const [navOpen, setNavOpen] = useState(false);
+  const navigate = (id: PageId) => {
+    if (id === "games") openGames();
+    else setPage(id);
+    setNavOpen(false);
+  };
+
+  // Inhalt der Sidebar — identisch für Desktop-Aside und Mobile-Drawer.
+  const sidebarContent = (
+    <>
+      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          <Bird size={20} />
+        </span>
+        <div>
+          <div className="text-[15px] font-semibold tracking-tight">Kiebitz</div>
+          <div className="text-[11px] text-ink3">{t("app.tagline")}</div>
         </div>
+      </div>
 
-        <nav className="flex flex-col gap-0.5 px-3">
-          {nav.map(({ id, labelKey, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => (id === "games" ? openGames() : setPage(id))}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
-                page === id
-                  ? "bg-panel3 font-medium text-ink"
-                  : "text-ink2 hover:bg-panel2 hover:text-ink"
-              }`}
-            >
-              <Icon size={17} className={page === id ? "text-accent" : "text-ink3"} />
-              {t(labelKey)}
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-auto px-3 pb-5">
-          <div className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5">
-            <div className="flex items-center gap-2 text-[12px] text-ink2">
-              <RefreshCw size={13} className="text-accent" />
-              {backend.mode === "desktop" ? t("app.localDb") : t("app.synced")}
-            </div>
-            <div className="mt-0.5 text-[11px] text-ink3">
-              {backend.mode === "desktop"
-                ? gameCount != null
-                  ? t("app.dbCount", { n: deInt(gameCount) })
-                  : t("app.dbReady")
-                : t("app.demoSync")}
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 border-t border-line pt-1.5 text-[11px] text-ink3">
-              <span
-                className="inline-block h-1.5 w-1.5 rounded-full"
-                style={{
-                  background:
-                    backend.mode === "desktop" ? "var(--color-win)" : backend.mode === "web" ? "var(--color-gold)" : "var(--color-draw)",
-                }}
-              />
-              {backend.mode === "desktop"
-                ? t("app.desktopBackend", { v: backend.info?.version ?? "?" })
-                : backend.mode === "web"
-                  ? t("app.webMode")
-                  : t("app.connecting")}
-            </div>
-          </div>
+      <nav className="flex flex-col gap-0.5 px-3">
+        {nav.map(({ id, labelKey, icon: Icon }) => (
           <button
-            onClick={() => setPage("settings")}
-            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-              page === "settings"
+            key={id}
+            onClick={() => navigate(id)}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
+              page === id
                 ? "bg-panel3 font-medium text-ink"
                 : "text-ink2 hover:bg-panel2 hover:text-ink"
             }`}
           >
-            <SettingsIcon size={17} className={page === "settings" ? "text-accent" : "text-ink3"} />
-            {t("nav.settings")}
+            <Icon size={17} className={page === id ? "text-accent" : "text-ink3"} />
+            {t(labelKey)}
           </button>
+        ))}
+      </nav>
+
+      <div className="mt-auto px-3 pb-5">
+        <div className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5">
+          <div className="flex items-center gap-2 text-[12px] text-ink2">
+            <RefreshCw size={13} className="text-accent" />
+            {backend.mode === "desktop" ? t("app.localDb") : t("app.synced")}
+          </div>
+          <div className="mt-0.5 text-[11px] text-ink3">
+            {backend.mode === "desktop"
+              ? gameCount != null
+                ? t("app.dbCount", { n: deInt(gameCount) })
+                : t("app.dbReady")
+              : t("app.demoSync")}
+          </div>
+          <div className="mt-1.5 flex items-center gap-1.5 border-t border-line pt-1.5 text-[11px] text-ink3">
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                background:
+                  backend.mode === "desktop" ? "var(--color-win)" : backend.mode === "web" ? "var(--color-gold)" : "var(--color-draw)",
+              }}
+            />
+            {backend.mode === "desktop"
+              ? t("app.desktopBackend", { v: backend.info?.version ?? "?" })
+              : backend.mode === "web"
+                ? t("app.webMode")
+                : t("app.connecting")}
+          </div>
         </div>
+        <button
+          onClick={() => navigate("settings")}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
+            page === "settings"
+              ? "bg-panel3 font-medium text-ink"
+              : "text-ink2 hover:bg-panel2 hover:text-ink"
+          }`}
+        >
+          <SettingsIcon size={17} className={page === "settings" ? "text-accent" : "text-ink3"} />
+          {t("nav.settings")}
+        </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full flex-col md:flex-row">
+      <aside className="hidden w-[228px] shrink-0 flex-col border-r border-line bg-panel md:flex">
+        {sidebarContent}
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      {/* Mobile-Topbar (unter md) */}
+      <header
+        className="flex shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2 md:hidden"
+        style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+            <Bird size={17} />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+        </div>
+        <button
+          onClick={() => setNavOpen(true)}
+          aria-label={t("app.menu")}
+          className="rounded-lg p-2 text-ink2 transition-colors hover:bg-panel2 hover:text-ink"
+        >
+          <Menu size={20} />
+        </button>
+      </header>
+
+      {/* Mobile-Drawer */}
+      {navOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setNavOpen(false)} />
+          <aside
+            className="absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      <main
+        className="min-w-0 flex-1 overflow-y-auto"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
         {page === "dashboard" && (
           <Dashboard go={setPage} openAnalysis={openAnalysis} openGames={openGames} />
         )}

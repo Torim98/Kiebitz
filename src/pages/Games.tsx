@@ -142,8 +142,8 @@ export default function Games({
   }, [backend.mode]);
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("games.title")}</h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink3">
@@ -253,10 +253,11 @@ export default function Games({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[1fr_320px]">
-        <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-3">
         <Card pad={false}>
-          <table className="w-full text-[13px]">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-[13px]">
             <thead>
               <tr className="border-b border-line text-left text-[11.5px] uppercase tracking-wide text-ink3">
                 <th className="py-2.5 pl-4 pr-2 font-medium">{t("games.colDate")}</th>
@@ -357,6 +358,7 @@ export default function Games({
               )}
             </tbody>
           </table>
+          </div>
         </Card>
 
         {filtered.length > 0 && (

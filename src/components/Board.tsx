@@ -1,5 +1,5 @@
 import { Chessboard } from "react-chessboard";
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 const boardTheme = {
   customDarkSquareStyle: { backgroundColor: "#6f8155" },
@@ -11,6 +11,10 @@ const boardTheme = {
   },
 };
 
+/**
+ * Schachbrett mit responsiver Breite: `width` ist die Maximalbreite; auf
+ * schmalen Screens (Mobile) schrumpft das Brett auf die Containerbreite.
+ */
 export default function Board({
   fen,
   width,
@@ -23,6 +27,7 @@ export default function Board({
   shake = false,
 }: {
   fen: string;
+  /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
   width: number;
   draggable?: boolean;
   onPieceDrop?: (from: string, to: string) => boolean;
@@ -32,12 +37,32 @@ export default function Board({
   boardId: string;
   shake?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(width);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const avail = el.clientWidth;
+      setW(avail > 0 ? Math.min(width, avail) : width);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width]);
+
   return (
-    <div className={shake ? "animate-shake" : ""} style={{ width }}>
+    <div
+      ref={ref}
+      className={shake ? "animate-shake" : ""}
+      style={{ width: "100%", maxWidth: width }}
+    >
       <Chessboard
         id={boardId}
         position={fen}
-        boardWidth={width}
+        boardWidth={w}
         arePiecesDraggable={draggable}
         onPieceDrop={onPieceDrop ? (s, t) => onPieceDrop(s, t) : undefined}
         onSquareClick={onSquareClick}

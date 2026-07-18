@@ -60,6 +60,7 @@ const de = {
   "app.updateAvailable": "Version {v} ist verfügbar.",
   "app.updateNow": "Jetzt aktualisieren",
   "app.updateLater": "Später",
+  "app.menu": "Menü",
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
   "dash.goodMorning": "Guten Morgen",
@@ -511,6 +512,7 @@ const en: Record<Key, string> = {
   "app.updateAvailable": "Version {v} is available.",
   "app.updateNow": "Update now",
   "app.updateLater": "Later",
+  "app.menu": "Menu",
 
   "dash.goodMorning": "Good morning",
   "dash.goodDay": "Good afternoon",

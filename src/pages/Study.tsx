@@ -220,8 +220,8 @@ export default function Study({
   }, [data]);
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("st.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("st.subtitle")}</p>

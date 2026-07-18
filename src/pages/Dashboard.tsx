@@ -78,8 +78,8 @@ export default function Dashboard({
     backend.mode === "desktop" ? users.name || users.cc || users.li : profile.name;
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{greeting}, {name}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
@@ -116,7 +116,9 @@ export default function Dashboard({
                   {r.delta} · {t("dash.days30")}
                 </div>
               </div>
-              <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
+              <span className="hidden min-[440px]:block">
+                <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
+              </span>
             </div>
           </div>
         ))}
@@ -211,7 +213,8 @@ export default function Dashboard({
       <Card title={t("dash.recentGames")} className="mt-4" pad={false}
         action={<button onClick={() => openGames()} className="text-[12.5px] text-ink3 hover:text-accent">{t("dash.showAll")}</button>}
       >
-        <table className="w-full text-[13px]">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-[13px]">
           <tbody>
             {recent.map((g) => {
               const filterTo = (e: MouseEvent, f: GamesFilter) => {
@@ -295,6 +298,7 @@ export default function Dashboard({
             })}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

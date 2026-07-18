@@ -88,7 +88,7 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
   };
 
   return (
-    <div className="mx-auto max-w-[720px] px-6 py-6">
+    <div className="mx-auto max-w-[720px] px-4 py-6 sm:px-6">
       <header className="mb-5">
         <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
         <p className="mt-0.5 text-[13px] text-ink3">{t("pz.setupTitle")}</p>
@@ -305,8 +305,8 @@ function TrainerView({
     .slice(0, 5);
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
@@ -322,7 +322,7 @@ function TrainerView({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[auto_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
@@ -528,8 +528,8 @@ function DemoPuzzles() {
   };
 
   return (
-    <div className="mx-auto max-w-[1240px] px-6 py-6">
-      <header className="mb-5 flex items-end justify-between">
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("pz.demoSubtitle")}</p>
@@ -541,7 +541,7 @@ function DemoPuzzles() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[auto_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
