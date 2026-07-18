@@ -1,12 +1,14 @@
 # Kiebitz — Deployment
 
-How to build, package, and distribute Kiebitz. The app is a Tauri 2 desktop
-application: a Rust core plus a Vite/React frontend, bundled into a single native
-installer per platform.
+How to build, package, and distribute Kiebitz. The app is a Tauri 2 project: a
+Rust core plus a Vite/React frontend. The **desktop** build is the primary
+product (a native installer per OS, with auto-update). An **Android** build
+exists too (Phase 4) — currently a manually built, sideloaded APK; see
+*Android build* below.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
-- Current version: `0.1.0` (`src-tauri/tauri.conf.json` → `version`)
+- Current version: `0.3.2` (`src-tauri/tauri.conf.json` → `version`)
 
 ## Prerequisites
 
@@ -26,6 +28,39 @@ Install project dependencies once:
 ```sh
 npm install
 ```
+
+### One-time setup for the Android build
+
+Only needed if you build the Android APK. On this machine it is already
+installed (2026-07-17); these are the steps to reproduce it elsewhere. No
+Android Studio required — the command-line tools are enough.
+
+1. **JDK 17** (Temurin). Portable zip is fine; set `JAVA_HOME` to it. On this
+   machine: `C:\Users\tomma\AppData\Local\Java\jdk-17.0.19+10`.
+2. **Android SDK** via the command-line tools. Unzip Google's
+   `commandlinetools` into `<sdk>\cmdline-tools\latest\`, set `ANDROID_HOME`
+   to `<sdk>` (here: `C:\Users\tomma\AppData\Local\Android\Sdk`), then:
+
+   ```sh
+   sdkmanager --licenses
+   sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "ndk;28.2.13676358"
+   ```
+
+   Set `NDK_HOME` to `<sdk>\ndk\28.2.13676358`.
+3. **Rust Android targets**:
+
+   ```sh
+   rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+   ```
+
+4. **Windows only — enable Developer Mode** (Settings → System → For
+   developers). The Tarui CLI symlinks the built `libapp_lib.so` into the
+   Gradle project, which needs the symlink privilege.
+
+`JAVA_HOME`, `ANDROID_HOME`, and `NDK_HOME` are persisted as user environment
+variables, but tools that keep a long-lived shell don't always inherit them —
+export all three inline in the same command when invoking `tauri android` (see
+*Android build*).
 
 ## Local build & run
 
@@ -88,14 +123,63 @@ Notes:
   Alternatively, ship without an engine and let users point `KIEBITZ_ENGINE` at
   their own install.
 
+## Android build (APK)
+
+The Android app reuses the same Rust core and React frontend. Today it is built
+locally and **sideloaded** — it is not part of the release CI and does **not**
+auto-update (the updater plugin is desktop-only; mobile updates by reinstalling
+a newer APK).
+
+Build a debug APK (arm64), exporting the toolchain paths inline:
+
+```sh
+JAVA_HOME=".../jdk-17.0.19+10" \
+ANDROID_HOME=".../Android/Sdk" \
+NDK_HOME=".../Android/Sdk/ndk/28.2.13676358" \
+npx tauri android build --debug --apk --target aarch64
+```
+
+Output: `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+(~130 MB debug; a release build strips the Rust lib and is much smaller).
+
+Install on a device (USB debugging on): `adb install -r <apk>`. A newer APK
+with the **same signature** installs over the old one and keeps the on-device
+database; `-r` is the reinstall flag. Or copy the APK to the phone (e.g. via a
+synced folder) and tap it, allowing "install from unknown sources".
+
+Android-specific pieces (already wired in `src-tauri/gen/android`, which is
+committed; build outputs and the engine `.so` stay gitignored):
+
+- **Engine**: Stockfish ships per ABI as
+  `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). It is **staged
+  manually** — download the official `stockfish-android-armv8` and copy it in;
+  there is no CI download step yet. `resolve_engine` (`src-tauri/src/lib.rs`)
+  finds it in the app's `nativeLibraryDir` via `/proc/self/maps`.
+- **Native lib packaging**: `useLegacyPackaging = true` in
+  `app/build.gradle.kts` sets `extractNativeLibs`, so the engine `.so` is
+  unpacked as a real, executable file — required to launch it as a UCI child
+  process (and it shrinks the APK).
+- **Config**: `src-tauri/tauri.android.conf.json` drops the desktop
+  `stockfish.exe` resource and the updater artifacts from the mobile bundle.
+
+Not done yet: signed **release** APKs (a keystore for Play Store / stable
+sideload), multi-ABI packaging, and CI integration — see `ROADMAP.md`, Phase 4.
+
 ## Icons
 
-App icons are generated from a single source and committed under
-`src-tauri/icons/`. To regenerate after changing the artwork:
+App icons for **all** targets — desktop (`.ico`/`.icns`/`.png`), iOS, and the
+Android launcher (`gen/android/.../res/mipmap-*`) — are generated from a single
+source and committed. To regenerate after changing the artwork:
 
 ```sh
 npx tauri icon src-tauri/icons/source-icon.png
 ```
+
+This is Android-aware when `gen/android` exists and writes the launcher icons
+there too. Note: it sets the adaptive-icon background to white — for Kiebitz it
+must be the dark green `#103528` in
+`gen/android/app/src/main/res/values/ic_launcher_background.xml` (otherwise
+square-mask launchers show white corners), so re-apply that after regenerating.
 
 ## Code signing & notarization
 
@@ -128,6 +212,11 @@ release for you. **Pushing a version tag is the only action you take** — the
 workflow then builds on a Windows runner, downloads Stockfish, signs the
 installer, creates the GitHub release, and uploads `latest.json`. Installed
 apps update themselves on their next start.
+
+> **Scope:** this covers the **desktop** app only. The Android APK is not built
+> by CI — it is a separate manual step (see *Android build*), and mobile does
+> not auto-update. The version bump below still applies (Android reads the same
+> `tauri.conf.json` version), but pushing a tag does not produce an APK.
 
 ### One-time setup
 
