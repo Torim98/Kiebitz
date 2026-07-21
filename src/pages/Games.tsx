@@ -28,7 +28,7 @@ import { de, deInt, fenAfter } from "../lib/util";
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 
-/** Gemerkte Seitengröße lesen; auf 25 zurückfallen, wenn ungültig/leer. */
+/** Gemerkte Seitengröße lesen; beim ersten Öffnen auf 10 (ungültig/leer). */
 function readStoredPageSize(): number {
   try {
     const n = Number(localStorage.getItem(PAGE_SIZE_KEY));
@@ -36,7 +36,7 @@ function readStoredPageSize(): number {
   } catch {
     /* Storage nicht verfügbar */
   }
-  return 25;
+  return 10;
 }
 
 export default function Games({
