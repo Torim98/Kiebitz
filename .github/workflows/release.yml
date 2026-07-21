@@ -108,14 +108,14 @@ jobs:
 
       - name: JDK 17 einrichten
         if: steps.guard.outputs.has_keystore == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Android-SDK/NDK einrichten
         if: steps.guard.outputs.has_keystore == 'true'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: NDK + Plattform installieren
         if: steps.guard.outputs.has_keystore == 'true'
@@ -176,6 +176,19 @@ jobs:
             echo "keyAlias=$ANDROID_KEY_ALIAS"
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
           } > keystore.properties
+
+      # Schnell scheitern, bevor der lange Build läuft: prüft, ob Store-Passwort
+      # und Alias zum Keystore passen (häufigster Stolperstein: Passwort-Mismatch
+      # oder eine ANDROID_KEYSTORE_BASE64 aus einem anderen Keystore).
+      - name: Keystore prüfen
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: |
+          cd src-tauri/gen/android
+          if ! keytool -list -keystore keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::Keystore, Alias oder Store-Passwort passen nicht zusammen. ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS prüfen (docs/DEPLOYMENT.md)."
+            exit 1
+          fi
+          echo "Keystore ok: Alias '$ANDROID_KEY_ALIAS' gefunden, Store-Passwort passt."
 
       - name: Android-APK bauen (release, arm64)
         if: steps.guard.outputs.has_keystore == 'true'
