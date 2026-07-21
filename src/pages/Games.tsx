@@ -514,7 +514,7 @@ export default function Games({
                 rows={4}
                 className="w-full resize-none rounded-lg border border-line bg-panel2 p-3 text-[13px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
               />
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {selected.dbId ? (
                   <>
                     <Button primary onClick={saveNote} className="flex-1">
