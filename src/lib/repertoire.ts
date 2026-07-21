@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitDataChange } from "./changes";
 
 /** Spiegelt repertoire::RepNodeOut aus dem Rust-Backend. */
 export interface RepNode {
@@ -54,11 +55,14 @@ export function repList(): Promise<RepNode[]> {
 }
 
 export function repAddLine(side: "white" | "black", name: string, sans: string[]): Promise<number> {
-  return invoke<number>("rep_add_line", { side, name, sans });
+  return invoke<number>("rep_add_line", { side, name, sans }).then((r) => {
+    emitDataChange();
+    return r;
+  });
 }
 
 export function repDelete(id: number): Promise<void> {
-  return invoke("rep_delete", { id });
+  return invoke<void>("rep_delete", { id }).then(() => emitDataChange());
 }
 
 export function repDue(): Promise<DueItem[]> {
@@ -67,7 +71,10 @@ export function repDue(): Promise<DueItem[]> {
 
 /** Grade: 1 = falsch, 2 = schwer, 3 = gut, 4 = leicht. */
 export function repReview(nodeId: number, grade: 1 | 2 | 3 | 4): Promise<ReviewResult> {
-  return invoke<ReviewResult>("rep_review", { nodeId, grade });
+  return invoke<ReviewResult>("rep_review", { nodeId, grade }).then((r) => {
+    emitDataChange();
+    return r;
+  });
 }
 
 export function repStats(): Promise<RepStats> {

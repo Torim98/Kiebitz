@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitDataChange } from "./changes";
 
 /** Spiegelt db::GameRecord aus dem Rust-Backend (snake_case wie serialisiert). */
 export interface GameRecord {
@@ -33,11 +34,14 @@ export function listGames(): Promise<GameRecord[]> {
 }
 
 export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {
-  return invoke<UpsertResult>("upsert_games", { games });
+  return invoke<UpsertResult>("upsert_games", { games }).then((r) => {
+    emitDataChange();
+    return r;
+  });
 }
 
 export function setGameNote(id: number, note: string): Promise<void> {
-  return invoke("set_game_note", { id, note });
+  return invoke<void>("set_game_note", { id, note }).then(() => emitDataChange());
 }
 
 export function dbStats(): Promise<{ total: number }> {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitDataChange } from "./changes";
 
 /** Ein Puzzle aus der lokalen Lichess-Datenbank. */
 export interface PuzzleOut {
@@ -68,7 +69,10 @@ export function nextPuzzle(opts: {
 }
 
 export function recordAttempt(puzzleId: string, solved: boolean): Promise<AttemptResult> {
-  return invoke<AttemptResult>("record_attempt", { puzzleId, solved });
+  return invoke<AttemptResult>("record_attempt", { puzzleId, solved }).then((r) => {
+    emitDataChange();
+    return r;
+  });
 }
 
 export function puzzleStats(): Promise<PuzzleStats> {

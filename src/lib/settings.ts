@@ -25,6 +25,8 @@ export interface Settings {
   sync_code: string;
   /** Mobile: Adresse des Desktop-Hubs ("host:port"). */
   sync_host: string;
+  /** Mobile: automatisch im Hintergrund synchronisieren (Änderungen/Timer/Fokus). */
+  sync_auto: boolean;
 }
 
 export interface EngineTest {

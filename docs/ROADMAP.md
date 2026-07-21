@@ -91,12 +91,15 @@ Stockfish staged automatically in CI (2026-07-21).
 
 Open:
 
-- [ ] **Automatic background sync.** Once sync is enabled in Settings, it should
-  run on its own in the background — triggered by changes (new import, note edit,
-  finished analysis, puzzle/endgame attempt, repertoire change) and/or on a
-  timer/app-focus, so the user never has to open Settings to sync manually. Needs
-  debouncing/coalescing so bursts of changes collapse into one roundtrip, quiet
-  handling when the peer is unreachable, and a small status/last-synced indicator.
+- [x] **Automatic background sync** (2026-07-21). New `sync_auto` setting; when
+  on (mobile, hub configured) `AutoSyncManager` (`lib/syncManager.ts`) runs
+  `sync_now` on its own: on local changes via a data-change event
+  (`lib/changes.ts`, wired into note/import/puzzle/endgame/repertoire mutations,
+  debounced/coalesced), on a periodic timer and on app focus/visibility. A
+  min-gap throttle and exponential backoff keep an unreachable peer quiet;
+  status (`syncing` / last-synced / offline) shows in the sidebar footer, with a
+  toggle in Settings → Device sync. Unit-tested; end-to-end device run still
+  covered by the on-device smoke test above.
 - [ ] **On-device smoke test** — engine launch + live analysis on a real phone
   (still pending after the build/packaging work).
 - [ ] **Match the Android launcher icon to the desktop icon 1:1** — the green

@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { useBackendInfo } from "./lib/backend";
 import { dbStats } from "./lib/db";
+import { getSettings } from "./lib/settings";
+import { syncInfo } from "./lib/sync";
+import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
 import {
   installUpdate,
   onUpdateAvailable,
@@ -35,7 +38,7 @@ import Puzzles from "./pages/Puzzles";
 import Study from "./pages/Study";
 import Insights from "./pages/Insights";
 import SettingsPage from "./pages/Settings";
-import { deInt } from "./lib/util";
+import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
 
 export type PageId =
@@ -92,6 +95,24 @@ export default function App() {
       dbStats().then((s) => setGameCount(s.total)).catch(() => {});
     }
   }, [backend.mode, page]);
+
+  // Auto-Sync (Mobile-Client) nach den Einstellungen scharfschalten. Läuft nur,
+  // wenn wir mobil sind, es aktiviert ist und ein Hub konfiguriert wurde.
+  const isMobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  const syncStatus = useSyncStatus();
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    Promise.all([getSettings(), syncInfo().catch(() => null)])
+      .then(([s, info]) =>
+        configureAutoSync({
+          isMobile,
+          syncAuto: s.sync_auto,
+          syncHost: s.sync_host,
+          lastSync: info?.last_sync,
+        })
+      )
+      .catch(() => {});
+  }, [backend.mode, isMobile]);
 
   // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
   // kommentarlos passieren); Fehler zeigt die Settings-Seite.
@@ -160,8 +181,34 @@ export default function App() {
       <div className="mt-auto px-3 pb-5">
         <div className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5">
           <div className="flex items-center gap-2 text-[12px] text-ink2">
-            <RefreshCw size={13} className="text-accent" />
-            {backend.mode === "desktop" ? t("app.localDb") : t("app.synced")}
+            {syncStatus.active ? (
+              <>
+                <RefreshCw
+                  size={13}
+                  className={
+                    syncStatus.phase === "syncing"
+                      ? "animate-spin text-accent"
+                      : syncStatus.phase === "error"
+                        ? "text-ink3"
+                        : "text-accent"
+                  }
+                />
+                {syncStatus.phase === "syncing"
+                  ? t("app.syncing")
+                  : syncStatus.phase === "error"
+                    ? t("app.syncOffline")
+                    : syncStatus.lastSync > 0
+                      ? t("app.syncedAt", {
+                          t: new Date(syncStatus.lastSync * 1000).toLocaleTimeString(dateLocale()),
+                        })
+                      : t("app.synced")}
+              </>
+            ) : (
+              <>
+                <RefreshCw size={13} className="text-accent" />
+                {backend.mode === "desktop" ? t("app.localDb") : t("app.synced")}
+              </>
+            )}
           </div>
           <div className="mt-0.5 text-[11px] text-ink3">
             {backend.mode === "desktop"

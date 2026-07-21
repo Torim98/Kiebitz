@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitDataChange } from "./changes";
 
 /** Fortschritt eines Drills aus endgame_attempts. */
 export interface DrillStat {
@@ -14,7 +15,7 @@ export function endgameMove(fen: string): Promise<string> {
 }
 
 export function endgameRecord(drillId: string, solved: boolean, moves: number): Promise<void> {
-  return invoke("endgame_record", { drillId, solved, moves });
+  return invoke<void>("endgame_record", { drillId, solved, moves }).then(() => emitDataChange());
 }
 
 export function endgameStats(): Promise<DrillStat[]> {

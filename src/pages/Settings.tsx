@@ -40,6 +40,7 @@ import {
   type UpdateState,
 } from "../lib/updater";
 import { syncDiscover, syncInfo, syncNow, syncServerStart, type SyncInfo } from "../lib/sync";
+import { configureAutoSync } from "../lib/syncManager";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
@@ -197,6 +198,13 @@ export default function SettingsPage() {
       setSaved(applied);
       setDraft(applied);
       setLocale(applied.locale);
+      // Auto-Sync an die gespeicherten Werte anpassen (Mobile-Client).
+      configureAutoSync({
+        isMobile: mobile,
+        syncAuto: applied.sync_auto,
+        syncHost: applied.sync_host,
+        lastSync: sync?.last_sync,
+      });
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
     } catch (e) {
@@ -775,6 +783,18 @@ export default function SettingsPage() {
                     />
                   </Field>
                 </div>
+                <label className="mt-3 flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={draft.sync_auto}
+                    onChange={(e) => patch({ sync_auto: e.target.checked })}
+                    className="h-4 w-4 accent-[#22c08a]"
+                  />
+                  <span className="text-[13px] text-ink">{t("set.syncAutoToggle")}</span>
+                </label>
+                <p className="mt-1 text-[12px] leading-relaxed text-ink3">
+                  {t("set.syncAutoNote")}
+                </p>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <Button primary onClick={() => !syncBusy && runSync()}>
                     {syncBusy ? (

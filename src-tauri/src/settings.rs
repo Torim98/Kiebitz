@@ -49,6 +49,9 @@ pub struct Settings {
     pub sync_code: String,
     /// Mobile: Adresse des Desktop-Hubs ("host:port").
     pub sync_host: String,
+    /// Mobile: automatisch im Hintergrund synchronisieren (bei Änderungen,
+    /// per Timer und bei App-Fokus), statt manuell in den Settings.
+    pub sync_auto: bool,
 }
 
 impl Default for Settings {
@@ -79,6 +82,7 @@ impl Default for Settings {
             sync_enabled: false,
             sync_code: String::new(),
             sync_host: String::new(),
+            sync_auto: false,
         }
     }
 }
