@@ -19,9 +19,9 @@ Shipped:
   trainer (curated drills vs. engine, optional Syzygy), Puzzles (Lichess CC0 DB,
   Elo + per-theme), Study/coach (weakness recommendations + learning schedule),
   Insights (live stats).
-- **Settings:** German/English i18n, configurable DB location (Nextcloud-ready),
-  engine binary + tuning, optional chessdb.cn book, puzzle-DB management,
-  account/import defaults. (One dark theme by choice.)
+- **Settings:** German/English i18n, configurable DB location, engine binary +
+  tuning, optional chessdb.cn book, puzzle-DB management, account/import
+  defaults. (One dark theme by choice.)
 - **Mobile & sync:** Android build (per-ABI native Stockfish), responsive/touch
   UI, LAN device-to-device sync with the desktop as hub.
 - **Release:** auto-update via signed GitHub releases (desktop) and CI that also
@@ -56,7 +56,7 @@ Condensed; the implementation lives in the code.
   (`positions` table), real repertoire (FSRS-4.5 scheduler in Rust), real puzzles
   (streamed Lichess CC0 dump, multi-move trainer, Elo + per-theme accuracy).
 - **Phase 2 — settings & config:** `Settings.tsx` / `settings.rs` applied live;
-  type-safe i18n (`i18n.tsx`); DB move/use via `VACUUM INTO` (Nextcloud-ready);
+  type-safe i18n (`i18n.tsx`); DB move/use via `VACUUM INTO`;
   engine config with test button; chessdb.cn opening book with local cache;
   puzzle-DB management; account handles + import window.
 - **Phase 3 — training & learning:** Study/coach tab (data-driven weakness
@@ -99,6 +99,9 @@ Open:
   handling when the peer is unreachable, and a small status/last-synced indicator.
 - [ ] **On-device smoke test** — engine launch + live analysis on a real phone
   (still pending after the build/packaging work).
+- [ ] **Match the Android launcher icon to the desktop icon 1:1** — the green
+  bird is far too large in the current adaptive icon; rework the foreground so it
+  sits at the same scale/padding as the desktop icon.
 - [ ] **Sync QR pairing.** Collapse address + 6-digit code into one scan: the
   desktop renders a QR encoding `kiebitz://sync?host=…&code=…`, the phone scans
   it (camera permission + QR decoder) and fills both fields. Nice-to-have; manual
