@@ -7,7 +7,9 @@ import {
   Globe,
   Loader2,
   Puzzle as PuzzleIcon,
+  QrCode,
   RefreshCw,
+  ScanLine,
   Smartphone,
   UserRound,
 } from "lucide-react";
@@ -39,7 +41,16 @@ import {
   type UpdateCheck,
   type UpdateState,
 } from "../lib/updater";
-import { syncDiscover, syncInfo, syncNow, syncServerStart, type SyncInfo } from "../lib/sync";
+import {
+  scanPairingQr,
+  syncDiscover,
+  syncInfo,
+  syncNow,
+  syncPair,
+  syncServerStart,
+  type PairInfo,
+  type SyncInfo,
+} from "../lib/sync";
 import { configureAutoSync } from "../lib/syncManager";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
@@ -112,6 +123,8 @@ export default function SettingsPage() {
   const [discovering, setDiscovering] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncErr, setSyncErr] = useState<string | null>(null);
+  const [pair, setPair] = useState<PairInfo | null>(null);
+  const [scanning, setScanning] = useState(false);
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
 
@@ -131,6 +144,8 @@ export default function SettingsPage() {
       .catch((e) => setError(String(e)));
     dbInfo().then(setInfo).catch(() => {});
     syncInfo().then(setSync).catch(() => {});
+    // QR-Pairing-Infos nur auf dem Desktop-Hub (das Handy scannt sie nur).
+    if (!mobile) syncPair().then(setPair).catch(() => {});
     puzzleStats()
       .then((s) => {
         setPz(s);
@@ -297,6 +312,30 @@ export default function SettingsPage() {
       } catch (e) {
         setSyncErr(String(e));
       }
+    }
+  };
+
+  /** Mobile: QR-Code des Desktops scannen und Adresse + Code übernehmen. */
+  const runScan = async () => {
+    setScanning(true);
+    setSyncMsg(null);
+    setSyncErr(null);
+    try {
+      const paired = await scanPairingQr();
+      if (!paired) {
+        setSyncErr(t("set.syncScanNoCode"));
+        return;
+      }
+      patch({ sync_host: paired.host, sync_code: paired.code });
+      setSyncMsg(t("set.syncScanDone"));
+    } catch (e) {
+      setSyncErr(
+        String(e).includes("no-camera-permission")
+          ? t("set.syncScanNoPermission")
+          : t("set.syncScanFailed", { e: String(e) })
+      );
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -747,6 +786,23 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+                {pair && (
+                  <div className="mt-3 rounded-lg border border-line bg-panel2 px-3 py-3">
+                    <div className="mb-2 flex items-center gap-2 text-[12.5px] font-medium text-ink2">
+                      <QrCode size={14} className="text-accent" /> {t("set.syncPairTitle")}
+                    </div>
+                    <div className="flex flex-col items-start gap-3 min-[420px]:flex-row min-[420px]:items-center">
+                      <img
+                        src={`data:image/svg+xml;utf8,${encodeURIComponent(pair.qr_svg)}`}
+                        alt="Kiebitz Sync QR"
+                        width={148}
+                        height={148}
+                        className="h-[148px] w-[148px] shrink-0 rounded-md bg-white p-1.5"
+                      />
+                      <p className="text-[12px] leading-relaxed text-ink3">{t("set.syncQrHint")}</p>
+                    </div>
+                  </div>
+                )}
                 {syncErr && (
                   <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
                     {t("set.syncFailed", { e: syncErr })}
@@ -756,6 +812,22 @@ export default function SettingsPage() {
               </>
             ) : (
               <>
+                <Button primary onClick={() => !scanning && runScan()}>
+                  {scanning ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> {t("set.syncScanning")}
+                    </>
+                  ) : (
+                    <>
+                      <ScanLine size={14} /> {t("set.syncScanQr")}
+                    </>
+                  )}
+                </Button>
+                <div className="my-3 flex items-center gap-3 text-[11px] uppercase tracking-wide text-ink3">
+                  <span className="h-px flex-1 bg-line" />
+                  {t("set.syncOr")}
+                  <span className="h-px flex-1 bg-line" />
+                </div>
                 <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-2">
                   <Field label={t("set.syncHostLabel")}>
                     <div className="flex gap-2">

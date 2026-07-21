@@ -187,10 +187,22 @@ npx tauri icon src-tauri/icons/source-icon.png
 ```
 
 This is Android-aware when `gen/android` exists and writes the launcher icons
-there too. Note: it sets the adaptive-icon background to white — for Kiebitz it
-must be the dark green `#103528` in
-`gen/android/app/src/main/res/values/ic_launcher_background.xml` (otherwise
-square-mask launchers show white corners), so re-apply that after regenerating.
+there too. Two things must be re-applied after regenerating, because `tauri icon`
+overwrites them:
+
+- **Adaptive background** — `tauri icon` sets it to white; for Kiebitz it must be
+  the dark green `#103528` in
+  `gen/android/app/src/main/res/values/ic_launcher_background.xml` (otherwise
+  square-mask launchers show white corners).
+- **Adaptive foreground scale** — `tauri icon` bleeds the whole source to the
+  foreground edge, which square-mask launchers zoom in so the bird looks far too
+  large. The committed `ic_launcher_foreground.png` (all densities, in both
+  `icons/android/` and `gen/android/.../mipmap-*`) are instead the source tile
+  scaled to ~88 % of the 108 dp canvas on a transparent background, so the bird
+  keeps its desktop proportion inside the adaptive safe zone. Regenerate with a
+  short script rather than by hand — for each density canvas `N` (mdpi 108 →
+  xxxhdpi 432), paste `source-icon.png` resized to `round(N*0.88)` centred on a
+  transparent `N×N` image.
 
 ## Code signing & notarization
 

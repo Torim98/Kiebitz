@@ -98,17 +98,27 @@ Open:
   debounced/coalesced), on a periodic timer and on app focus/visibility. A
   min-gap throttle and exponential backoff keep an unreachable peer quiet;
   status (`syncing` / last-synced / offline) shows in the sidebar footer, with a
-  toggle in Settings → Device sync. Unit-tested; end-to-end device run still
-  covered by the on-device smoke test above.
-- [ ] **On-device smoke test** — engine launch + live analysis on a real phone
-  (still pending after the build/packaging work).
-- [ ] **Match the Android launcher icon to the desktop icon 1:1** — the green
-  bird is far too large in the current adaptive icon; rework the foreground so it
-  sits at the same scale/padding as the desktop icon.
-- [ ] **Sync QR pairing.** Collapse address + 6-digit code into one scan: the
-  desktop renders a QR encoding `kiebitz://sync?host=…&code=…`, the phone scans
-  it (camera permission + QR decoder) and fills both fields. Nice-to-have; manual
-  entry already works. Revisit with TLS so the payload can also carry a cert
+  toggle in Settings → Device sync. Unit-tested and verified end-to-end on device
+  (2026-07-21).
+- [x] **On-device smoke test** (2026-07-21) — engine launch + live analysis
+  confirmed on a real phone, and the full sync roundtrip against the desktop hub.
+- [x] **Match the Android launcher icon to the desktop icon 1:1** (2026-07-21).
+  The adaptive foreground previously bled the bird to the canvas edge, so
+  square-mask launchers zoomed it in and it read far too large. The foreground is
+  now the desktop tile scaled to ~88 % of the 108 dp canvas (bird ≈ 0.6 of the
+  canvas), keeping the desktop's bird-to-tile proportion while leaving safe-zone
+  margin under both circle and squircle masks. Regenerated from `source-icon.png`
+  for all densities in both `icons/android/` and `gen/android/.../mipmap-*`; the
+  legacy `ic_launcher(_round).png` already matched and were left as is.
+- [x] **Sync QR pairing** (2026-07-21). The desktop hub shows a QR encoding
+  `kiebitz://sync?host=<lan-ip>:47323&code=<code>` (Settings → Device sync); the
+  phone taps **Scan QR**, the camera reads it (`tauri-plugin-barcode-scanner`,
+  `CAMERA` permission) and both fields are filled. Manual entry and Wi-Fi
+  discovery stay. Note on reach: the embedded LAN IP works both on the home Wi-Fi
+  **and over the FRITZ!Box WireGuard VPN** (the box routes the home subnet into
+  the tunnel), so pairing no longer depends on the same-broadcast-domain UDP
+  discovery, which never crossed subnets. On-device camera scan still wants a
+  real-phone check. Revisit with TLS so the payload can also carry a cert
   fingerprint.
 - [ ] **TLS on the sync channel** (currently cleartext LAN, `usesCleartextTraffic
   =true`). Caveat: Windows Firewall prompts on first server start.

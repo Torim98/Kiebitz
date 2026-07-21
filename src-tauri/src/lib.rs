@@ -208,6 +208,10 @@ pub fn run() {
             }
             app.handle().plugin(tauri_plugin_opener::init())?;
 
+            // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.
+            #[cfg(mobile)]
+            app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
+
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
 
@@ -315,6 +319,7 @@ pub fn run() {
             sync::sync_server_start,
             sync::sync_now,
             sync::sync_discover,
+            sync::sync_pair,
             updater::check_update,
             updater::install_update
         ])

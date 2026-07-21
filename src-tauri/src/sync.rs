@@ -865,6 +865,73 @@ pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
     sync_info(app)
 }
 
+/// Pairing per QR-Code: Adresse + Code in eine `kiebitz://sync?...`-URI packen,
+/// die das Handy scannt und daraus Host + Code füllt. Die eingebettete Adresse
+/// ist die LAN-IP des Desktops — sie ist im Heim-WLAN *und* über das
+/// Fritzbox-WireGuard erreichbar (die Fritzbox routet das Heimnetz in den
+/// Tunnel), anders als die UDP-Broadcast-Discovery, die Subnetzgrenzen nicht
+/// überschreitet. Deshalb funktioniert QR-Pairing auch entfernt über VPN.
+#[derive(Serialize)]
+pub struct PairInfo {
+    /// Vollständige `kiebitz://sync?host=…&code=…`-URI (im QR kodiert).
+    pub uri: String,
+    /// Kodierte Adresse "ip:port".
+    pub addr: String,
+    pub code: String,
+    /// Fertiges SVG des QR-Codes (schwarz auf weiß, mit Quiet-Zone).
+    pub qr_svg: String,
+}
+
+/// Baut die Pairing-URI aus Adresse und Code.
+pub fn pair_uri(addr: &str, code: &str) -> String {
+    format!("kiebitz://sync?host={addr}&code={code}")
+}
+
+/// Erzeugt ein eigenständiges QR-SVG (nur die Kernkodierung von `qrcode`,
+/// kein optionales Renderer-Feature): ein Pfad aus 1×1-Modulen auf weißem Grund.
+#[cfg(desktop)]
+fn qr_svg(data: &str) -> Result<String, String> {
+    use qrcode::{Color, QrCode};
+    let code = QrCode::new(data.as_bytes()).map_err(|e| e.to_string())?;
+    let w = code.width();
+    let quiet = 4usize;
+    let n = w + quiet * 2;
+    let colors = code.to_colors();
+    let mut path = String::new();
+    for (i, c) in colors.iter().enumerate() {
+        if *c == Color::Dark {
+            let x = i % w + quiet;
+            let y = i / w + quiet;
+            path.push_str(&format!("M{x} {y}h1v1h-1z"));
+        }
+    }
+    Ok(format!(
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 {n} {n}' \
+         shape-rendering='crispEdges'><rect width='{n}' height='{n}' fill='#ffffff'/>\
+         <path d='{path}' fill='#0b0b0b'/></svg>"
+    ))
+}
+
+/// Desktop-Hub: Pairing-Infos inkl. QR-SVG. Mobile ist Client — dort Stub.
+#[cfg(desktop)]
+#[tauri::command]
+pub fn sync_pair(app: tauri::AppHandle) -> Result<PairInfo, String> {
+    let code = ensure_code(&app)?;
+    let addr = local_ip()
+        .map(|ip| format!("{ip}:{SYNC_PORT}"))
+        .ok_or("Keine LAN-Adresse gefunden.")?;
+    let uri = pair_uri(&addr, &code);
+    let qr_svg = qr_svg(&uri)?;
+    Ok(PairInfo { uri, addr, code, qr_svg })
+}
+
+/// Mobile-Stub: das Handy zeigt keinen QR (es scannt ihn nur).
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn sync_pair(_app: tauri::AppHandle) -> Result<PairInfo, String> {
+    Err("QR-Pairing wird nur auf dem Desktop-Hub angezeigt.".into())
+}
+
 /// Handy: sucht den Desktop-Hub per UDP-Broadcast im lokalen Netz.
 /// Liefert "ip:port" oder None, wenn nichts antwortet.
 #[tauri::command]
@@ -1212,6 +1279,34 @@ mod tests {
         let r2 = final_rating(&b_set, &a_set);
         assert_eq!(r1, r2, "Merge-Reihenfolge darf das Rating nicht ändern");
         assert_ne!(r1, "1500", "Replay muss die Versuche einrechnen");
+    }
+
+    #[test]
+    fn pair_uri_roundtrips_through_parser() {
+        let uri = pair_uri("192.168.178.30:47323", "123456");
+        assert_eq!(uri, "kiebitz://sync?host=192.168.178.30:47323&code=123456");
+        // dieselbe Zerlegung wie im Frontend (parsePairUri).
+        let q = &uri[uri.find('?').unwrap() + 1..];
+        let mut host = "";
+        let mut code = "";
+        for kv in q.split('&') {
+            match kv.split_once('=') {
+                Some(("host", v)) => host = v,
+                Some(("code", v)) => code = v,
+                _ => {}
+            }
+        }
+        assert_eq!(host, "192.168.178.30:47323");
+        assert_eq!(code, "123456");
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn qr_svg_encodes_pairing_uri() {
+        let svg = qr_svg(&pair_uri("192.168.178.30:47323", "123456")).unwrap();
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("<path d='M")); // mindestens ein dunkles Modul
+        assert!(svg.contains("viewBox='0 0 "));
     }
 
     #[test]

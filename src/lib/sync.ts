@@ -1,5 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 
+/** Pairing-Infos des Desktop-Hubs für den QR-Code. */
+export interface PairInfo {
+  /** Vollständige `kiebitz://sync?host=…&code=…`-URI (im QR kodiert). */
+  uri: string;
+  /** Kodierte Adresse "ip:port". */
+  addr: string;
+  code: string;
+  /** Fertiges SVG des QR-Codes. */
+  qr_svg: string;
+}
+
 /** Status des Geräte-Syncs (Desktop-Hub bzw. Mobile-Client). */
 export interface SyncInfo {
   /** Läuft der Sync-Server (Desktop) gerade? */
@@ -38,4 +49,43 @@ export function syncNow(): Promise<SyncSummary> {
 /** Mobile: sucht den Desktop-Hub per UDP-Broadcast ("ip:port" oder null). */
 export function syncDiscover(): Promise<string | null> {
   return invoke<string | null>("sync_discover");
+}
+
+/** Desktop-Hub: Pairing-URI + QR-SVG zum Scannen auf dem Handy. */
+export function syncPair(): Promise<PairInfo> {
+  return invoke<PairInfo>("sync_pair");
+}
+
+/**
+ * Zerlegt eine gescannte `kiebitz://sync?host=…&code=…`-URI in Host + Code.
+ * Gibt `null` zurück, wenn es kein Kiebitz-Pairing-Link ist.
+ */
+export function parsePairUri(raw: string): { host: string; code: string } | null {
+  const s = raw.trim();
+  if (!s.toLowerCase().startsWith("kiebitz://sync")) return null;
+  const q = s.indexOf("?");
+  if (q < 0) return null;
+  const params = new URLSearchParams(s.slice(q + 1));
+  const host = params.get("host")?.trim() ?? "";
+  const code = params.get("code")?.trim() ?? "";
+  if (!host || !code) return null;
+  return { host, code };
+}
+
+/**
+ * Mobile: öffnet die Kamera, scannt einen QR und liefert Host + Code aus einem
+ * gültigen Kiebitz-Pairing-Link. Fragt bei Bedarf die Kamera-Berechtigung ab.
+ * `null`, wenn abgebrochen wurde oder kein passender Code erkannt wurde.
+ */
+export async function scanPairingQr(): Promise<{ host: string; code: string } | null> {
+  const bs = await import("@tauri-apps/plugin-barcode-scanner");
+  let perm = await bs.checkPermissions();
+  if (perm !== "granted") {
+    perm = await bs.requestPermissions();
+  }
+  if (perm !== "granted") {
+    throw new Error("no-camera-permission");
+  }
+  const res = await bs.scan({ windowed: false, formats: [bs.Format.QRCode] });
+  return parsePairUri(res.content);
 }
