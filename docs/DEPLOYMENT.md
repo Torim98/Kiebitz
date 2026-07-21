@@ -284,6 +284,35 @@ $kt = (Get-ChildItem "C:\Program Files\Eclipse Adoptium\jdk-17*\bin\keytool.exe"
 > confusing "not recognized as ... program" error even though the path looks
 > right. The `Get-ChildItem` resolver above sidesteps it.
 
+> **PKCS12 keystores (keytool's default since JDK 9) use one password** — the
+> store and key password must be **identical**. If `ANDROID_KEY_PASSWORD` differs
+> from `ANDROID_KEYSTORE_PASSWORD`, the signing step fails with `Get Key failed:
+> Given final block not properly padded`. Set both secrets to the same value. The
+> most robust way (no mismatch, no echo) is to capture the password once and feed
+> everything from it — see the atomic PowerShell block below.
+
+<details>
+<summary>Atomic, mismatch-proof setup (PowerShell) — recommended</summary>
+
+Creates the keystore and sets all four secrets from a single password entered
+once (never echoed, never on the command line as a literal):
+
+```powershell
+$sec = Read-Host "Keystore password" -AsSecureString
+$PW  = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+
+Remove-Item .\kiebitz-release.jks -ErrorAction SilentlyContinue
+$kt = (Get-ChildItem "C:\Program Files\Eclipse Adoptium\jdk-17*\bin\keytool.exe" | Select-Object -First 1).FullName
+& $kt -genkeypair -v -keystore kiebitz-release.jks -alias kiebitz -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Kiebitz, O=Torim, C=DE" -storepass $PW -keypass $PW
+
+[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path .\kiebitz-release.jks))) | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEY_ALIAS -b kiebitz
+$PW | gh secret set ANDROID_KEYSTORE_PASSWORD
+$PW | gh secret set ANDROID_KEY_PASSWORD
+```
+
+</details>
+
 Then set four repository secrets. The keystore is binary, so base64-encode it
 (`gh` reads the encoded value from the pipe; CI decodes it with `base64 -d`):
 

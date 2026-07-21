@@ -177,18 +177,20 @@ jobs:
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
           } > keystore.properties
 
-      # Schnell scheitern, bevor der lange Build läuft: prüft, ob Store-Passwort
-      # und Alias zum Keystore passen (häufigster Stolperstein: Passwort-Mismatch
-      # oder eine ANDROID_KEYSTORE_BASE64 aus einem anderen Keystore).
+      # Schnell scheitern, bevor der lange Build läuft. -certreq greift wirklich
+      # auf den privaten Schlüssel zu und prüft damit Store- UND Key-Passwort
+      # (genau der Mismatch, der sonst erst nach Minuten beim Signieren auffliegt)
+      # sowie Alias und Keystore-Inhalt in einem Rutsch.
       - name: Keystore prüfen
         if: steps.guard.outputs.has_keystore == 'true'
         run: |
           cd src-tauri/gen/android
-          if ! keytool -list -keystore keystore.jks -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
-            echo "::error::Keystore, Alias oder Store-Passwort passen nicht zusammen. ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS prüfen (docs/DEPLOYMENT.md)."
+          if ! keytool -certreq -alias "$ANDROID_KEY_ALIAS" -keystore keystore.jks \
+                -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Keystore-Check fehlgeschlagen: Alias, Store- oder Key-Passwort passen nicht zum Keystore. ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD prüfen — bei PKCS12 (keytool-Default) müssen Store- und Key-Passwort identisch sein. Siehe docs/DEPLOYMENT.md."
             exit 1
           fi
-          echo "Keystore ok: Alias '$ANDROID_KEY_ALIAS' gefunden, Store-Passwort passt."
+          echo "Keystore ok: Alias '$ANDROID_KEY_ALIAS', Store- und Key-Passwort passen."
 
       - name: Android-APK bauen (release, arm64)
         if: steps.guard.outputs.has_keystore == 'true'
