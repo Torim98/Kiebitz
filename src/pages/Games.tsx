@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Database,
   Download,
   History,
@@ -22,6 +24,20 @@ import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
+
+const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
+const PAGE_SIZES = [10, 25, 50, 100] as const;
+
+/** Gemerkte Seitengröße lesen; auf 25 zurückfallen, wenn ungültig/leer. */
+function readStoredPageSize(): number {
+  try {
+    const n = Number(localStorage.getItem(PAGE_SIZE_KEY));
+    if ((PAGE_SIZES as readonly number[]).includes(n)) return n;
+  } catch {
+    /* Storage nicht verfügbar */
+  }
+  return 25;
+}
 
 export default function Games({
   openAnalysis,
@@ -47,8 +63,19 @@ export default function Games({
   const [opponent, setOpponent] = useState(initialFilter?.opponent ?? "");
   const [opening, setOpening] = useState(initialFilter?.opening ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(readStoredPageSize);
   const [page, setPage] = useState(1);
+  // Inline-Eingabe zum direkten Springen auf eine bestimmte Seite.
+  const [pageInput, setPageInput] = useState<string | null>(null);
+
+  // Gewählte Seitengröße merken (nur UI-Präferenz → localStorage).
+  useEffect(() => {
+    try {
+      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+    } catch {
+      /* Storage nicht verfügbar — gilt nur für die Sitzung */
+    }
+  }, [pageSize]);
 
   const reload = () =>
     listGames()
@@ -90,6 +117,13 @@ export default function Games({
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const rangeFrom = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const rangeTo = Math.min(safePage * pageSize, filtered.length);
+
+  // Eingetippte Zielseite übernehmen (auf gültigen Bereich begrenzt).
+  const commitPageJump = () => {
+    const n = parseInt(pageInput ?? "", 10);
+    if (!Number.isNaN(n)) setPage(Math.min(Math.max(n, 1), totalPages));
+    setPageInput(null);
+  };
 
   const runImport = async (full: boolean) => {
     setImporting(true);
@@ -365,7 +399,7 @@ export default function Games({
           <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-[12.5px] text-ink3">
             <div className="flex flex-wrap items-center gap-2">
               <span>{t("games.perPage")}</span>
-              {[10, 25, 50, 100].map((n) => (
+              {PAGE_SIZES.map((n) => (
                 <Chip key={n} active={pageSize === n} onClick={() => setPageSize(n)}>
                   {n}
                 </Chip>
@@ -380,21 +414,61 @@ export default function Games({
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setPage(1)}
+                disabled={safePage <= 1}
+                title={t("games.firstPage")}
+                aria-label={t("games.firstPage")}
+                className="flex items-center rounded-lg border border-line bg-panel px-2 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronsLeft size={15} />
+              </button>
+              <button
                 onClick={() => setPage(safePage - 1)}
                 disabled={safePage <= 1}
                 className="flex items-center gap-1 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft size={15} /> {t("games.prev")}
               </button>
-              <span className="tabular-nums">
-                {t("games.pageOf", { page: safePage, pages: totalPages })}
-              </span>
+              {pageInput !== null ? (
+                <input
+                  autoFocus
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onBlur={commitPageJump}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitPageJump();
+                    else if (e.key === "Escape") setPageInput(null);
+                  }}
+                  aria-label={t("games.goToPage")}
+                  className="w-14 rounded-lg border border-accent-dim bg-panel px-2 py-1 text-center tabular-nums text-ink focus:border-accent focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              ) : (
+                <button
+                  onClick={() => setPageInput(String(safePage))}
+                  title={t("games.goToPage")}
+                  className="rounded-lg px-1.5 py-1 tabular-nums transition-colors hover:text-accent"
+                >
+                  {t("games.pageOf", { page: safePage, pages: totalPages })}
+                </button>
+              )}
               <button
                 onClick={() => setPage(safePage + 1)}
                 disabled={safePage >= totalPages}
                 className="flex items-center gap-1 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t("games.next")} <ChevronRight size={15} />
+              </button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={safePage >= totalPages}
+                title={t("games.lastPage")}
+                aria-label={t("games.lastPage")}
+                className="flex items-center rounded-lg border border-line bg-panel px-2 py-1.5 text-ink2 transition-colors hover:border-line2 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronsRight size={15} />
               </button>
             </div>
           </div>
