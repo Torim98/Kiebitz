@@ -1,0 +1,125 @@
+import { describe, it, expect } from "vitest";
+import { buildDashboard, buildInsights } from "./stats";
+import type { GameRecord } from "./db";
+
+const NOW = Math.floor(Date.now() / 1000);
+
+function g(partial: Partial<GameRecord> = {}): GameRecord {
+  return {
+    id: 1,
+    source: "chess.com",
+    source_id: "abc",
+    url: "https://example.com/1",
+    played_at: "2026-07-01",
+    played_ts: NOW,
+    time_class: "rapid",
+    color: "white",
+    opponent: "villain",
+    opp_elo: 1400,
+    my_elo: 1500,
+    result: "win",
+    opening: "Italian Game",
+    eco: "C50",
+    moves_count: 20,
+    accuracy: null,
+    moves: "",
+    note: "",
+    analyzed: true,
+    ...partial,
+  };
+}
+
+describe("buildDashboard", () => {
+  it("takes the latest rating per platform/time-control bucket", () => {
+    const d = buildDashboard(
+      [
+        g({ played_ts: NOW - 3600, my_elo: 1500 }),
+        g({ played_ts: NOW - 60, my_elo: 1520 }),
+      ],
+      { locale: "en", ccUser: "u", liUser: "u" }
+    );
+    const rapid = d.cards.find((c) => c.id === "chess.com-rapid");
+    expect(rapid).toBeDefined();
+    expect(rapid!.value).toBe(1520);
+    // both games are within 30d, so the reference is the bucket's first rating
+    expect(rapid!.delta).toBe(20);
+    expect(rapid!.spark).toEqual([1500, 1520]);
+  });
+
+  it("ignores games without a rating and counts unanalyzed games", () => {
+    const d = buildDashboard(
+      [g({ my_elo: 0 }), g({ analyzed: false }), g({ analyzed: false })],
+      { locale: "en", ccUser: "u", liUser: "u" }
+    );
+    expect(d.cards.find((c) => c.id === "chess.com-rapid" && c.value === 0)).toBeUndefined();
+    expect(d.unanalyzed).toBe(2);
+  });
+
+  it("caps cards at four and recent at five", () => {
+    const many = Array.from({ length: 8 }, (_, i) => g({ id: i, my_elo: 1500 + i }));
+    const d = buildDashboard(many, { locale: "en", ccUser: "u", liUser: "u" });
+    expect(d.cards.length).toBeLessThanOrEqual(4);
+    expect(d.recent.length).toBe(5);
+  });
+});
+
+describe("buildInsights", () => {
+  it("computes totals, win rate and average opponent Elo", () => {
+    const ins = buildInsights(
+      [
+        g({ result: "win", opp_elo: 1400 }),
+        g({ result: "win", opp_elo: 1600 }),
+        g({ result: "loss", opp_elo: 1500 }),
+      ],
+      "en"
+    );
+    expect(ins.totalGames).toBe(3);
+    expect(ins.winRate).toBeCloseTo((2 / 3) * 100, 5);
+    expect(ins.avgOppElo).toBe(1500);
+  });
+
+  it("averages accuracy only over rated-accuracy games", () => {
+    const ins = buildInsights(
+      [g({ accuracy: 90 }), g({ accuracy: 80 }), g({ accuracy: null })],
+      "en"
+    );
+    expect(ins.avgAccuracy).toBeCloseTo(85, 5);
+  });
+
+  it("returns null accuracy when no game has one", () => {
+    expect(buildInsights([g({ accuracy: null })], "en").avgAccuracy).toBeNull();
+  });
+
+  it("ranks openings by frequency with per-opening win rate", () => {
+    const ins = buildInsights(
+      [
+        g({ opening: "Italian Game", result: "win" }),
+        g({ opening: "Italian Game", result: "loss" }),
+        g({ opening: "Sicilian Defense", result: "win" }),
+      ],
+      "en"
+    );
+    expect(ins.openings[0]).toMatchObject({ name: "Italian Game", games: 2, win: 50 });
+  });
+
+  it("splits results by color", () => {
+    const ins = buildInsights(
+      [
+        g({ color: "white", result: "win" }),
+        g({ color: "white", result: "draw" }),
+        g({ color: "black", result: "loss" }),
+      ],
+      "en"
+    );
+    const white = ins.byColor.find((c) => c.color === "White")!;
+    const black = ins.byColor.find((c) => c.color === "Black")!;
+    expect(white).toMatchObject({ win: 1, draw: 1, loss: 0 });
+    expect(black).toMatchObject({ win: 0, draw: 0, loss: 1 });
+  });
+
+  it("produces a 7x6 activity matrix", () => {
+    const ins = buildInsights([g()], "en");
+    expect(ins.activity.values.length).toBe(7);
+    expect(ins.activity.values.every((row) => row.length === 6)).toBe(true);
+  });
+});
