@@ -27,8 +27,9 @@ shakmaty = "0.27.3"
 csv = "1.4.0"
 ureq = "2"
 zstd = "0.13.3"
-# Sync-Server (Desktop als Hub) — bewusst minimal, kein async-Stack.
-tiny_http = "0.12"
+# Sync-Client: Zertifikats-Pinning im QR-Pairing.
+rustls = "0.23"
+sha2 = "0.10"
 
 # Auto-Update über GitHub Releases — nur Desktop. Mobile aktualisiert über
 # Store/Sideload; updater.rs stellt dort Stub-Commands bereit.
@@ -36,6 +37,10 @@ tiny_http = "0.12"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 qrcode = { version = "0.14", default-features = false }
+# Sync-Server (Desktop als Hub) — HTTPS mit dauerhaftem selbstsigniertem Zertifikat.
+tiny_http = { version = "0.12", features = ["ssl-rustls"] }
+rcgen = "0.13.2"
+rustls-pemfile = "2"
 
 # QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops per Kamera.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

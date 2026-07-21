@@ -23,8 +23,10 @@
 //! (SLACK) — Doppel-Übertragungen sind durch die idempotenten Merges gratis.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use rusqlite::{params, Connection};
 use tauri::Manager;
@@ -700,6 +702,160 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
 #[derive(Default)]
 pub struct SyncServer(pub AtomicBool);
 
+/// Zertifikat und Schlüssel des lokalen HTTPS-Hubs. Der Fingerprint wird beim
+/// Pairing in den QR-Code geschrieben und vom Handy gepinnt.
+#[cfg(desktop)]
+struct TlsMaterial {
+    certificate_pem: Vec<u8>,
+    private_key_pem: Vec<u8>,
+    fingerprint: String,
+}
+
+#[cfg(desktop)]
+fn hex_fingerprint(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+#[cfg(desktop)]
+fn fingerprint_from_pem(certificate_pem: &[u8]) -> Result<String, String> {
+    let mut reader = std::io::BufReader::new(certificate_pem);
+    let cert = rustls_pemfile::certs(&mut reader)
+        .next()
+        .transpose()
+        .map_err(|e| format!("Zertifikat nicht lesbar: {e}"))?
+        .ok_or("Zertifikat enthält keine PEM-Codierung.")?;
+    Ok(hex_fingerprint(cert.as_ref()))
+}
+
+/// Lädt das dauerhaft gespeicherte Hub-Zertifikat oder erstellt es beim ersten
+/// Start. Es bleibt bewusst im App-Konfigurationsordner (nicht im Repository)
+/// erhalten, damit bereits gekoppelte Geräte ihren Pin nicht verlieren.
+#[cfg(desktop)]
+fn tls_material(app: &tauri::AppHandle) -> Result<TlsMaterial, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let certificate_path = dir.join("sync-cert.pem");
+    let private_key_path = dir.join("sync-key.pem");
+
+    if let (Ok(certificate_pem), Ok(private_key_pem)) = (
+        std::fs::read(&certificate_path),
+        std::fs::read(&private_key_path),
+    ) {
+        let fingerprint = fingerprint_from_pem(&certificate_pem)?;
+        return Ok(TlsMaterial {
+            certificate_pem,
+            private_key_pem,
+            fingerprint,
+        });
+    }
+
+    let mut names = vec!["localhost".to_string(), "kiebitz.local".to_string()];
+    if let Some(ip) = local_ip() {
+        names.push(ip);
+    }
+    let rcgen::CertifiedKey { cert, key_pair } = rcgen::generate_simple_self_signed(names)
+        .map_err(|e| format!("TLS-Zertifikat nicht erzeugbar: {e}"))?;
+    let certificate_pem = cert.pem().into_bytes();
+    let private_key_pem = key_pair.serialize_pem().into_bytes();
+    let fingerprint = hex_fingerprint(cert.der().as_ref());
+    std::fs::write(&certificate_path, &certificate_pem)
+        .map_err(|e| format!("TLS-Zertifikat nicht speicherbar: {e}"))?;
+    std::fs::write(&private_key_path, &private_key_pem)
+        .map_err(|e| format!("TLS-Schlüssel nicht speicherbar: {e}"))?;
+    Ok(TlsMaterial {
+        certificate_pem,
+        private_key_pem,
+        fingerprint,
+    })
+}
+
+/// Prüft den im Pairing gespeicherten SHA-256-Fingerprint. Zertifikats-Pinning
+/// ersetzt hier eine öffentliche CA: Nur genau der beim QR-Scan übernommene Hub
+/// darf die TLS-Verbindung beenden.
+#[derive(Debug)]
+struct PinnedCertVerifier {
+    fingerprint: [u8; 32],
+    algorithms: rustls::crypto::WebPkiSupportedAlgorithms,
+}
+
+impl PinnedCertVerifier {
+    fn new(fingerprint: &str) -> Result<Self, String> {
+        // ureq bringt rustls bereits mit AWS-LC; tiny_http benötigt parallel
+        // rustls/ring. Deshalb den Provider hier explizit einmal pro Prozess
+        // festlegen, statt die Feature-Auswahl raten zu lassen.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        if fingerprint.len() != 64 || !fingerprint.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("Kein gültiger TLS-Fingerprint konfiguriert. Bitte den Desktop erneut per QR-Code koppeln.".into());
+        }
+        let mut bytes = [0u8; 32];
+        for (slot, pair) in bytes.iter_mut().zip(fingerprint.as_bytes().chunks_exact(2)) {
+            let hex = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
+            *slot = u8::from_str_radix(hex, 16).map_err(|e| e.to_string())?;
+        }
+        Ok(Self {
+            fingerprint: bytes,
+            algorithms: rustls::crypto::aws_lc_rs::default_provider()
+                .signature_verification_algorithms,
+        })
+    }
+}
+
+impl rustls::client::danger::ServerCertVerifier for PinnedCertVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        if Sha256::digest(end_entity.as_ref()).as_slice() == self.fingerprint {
+            Ok(rustls::client::danger::ServerCertVerified::assertion())
+        } else {
+            Err(rustls::Error::InvalidCertificate(
+                rustls::CertificateError::ApplicationVerificationFailure,
+            ))
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &rustls::pki_types::CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.algorithms.supported_schemes()
+    }
+}
+
+fn pinned_tls_config(fingerprint: &str) -> Result<Arc<rustls::ClientConfig>, String> {
+    // `PinnedCertVerifier::new` installiert den expliziten CryptoProvider,
+    // bevor `ClientConfig::builder` ihn abfragt.
+    let verifier = PinnedCertVerifier::new(fingerprint)?;
+    Ok(Arc::new(
+        rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(verifier))
+            .with_no_client_auth(),
+    ))
+}
+
 /// Lokale LAN-Adresse ermitteln (UDP-Trick, es wird nichts gesendet).
 fn local_ip() -> Option<String> {
     let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
@@ -722,6 +878,7 @@ fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
 }
 
 /// Beantwortet Discovery-Broadcasts vom Handy mit "KIEBITZ_HERE <port>".
+/// Der eigentliche Sync auf diesem Port erfolgt ausschließlich per HTTPS.
 fn start_discovery_responder() {
     std::thread::spawn(|| {
         let sock = match std::net::UdpSocket::bind(("0.0.0.0", DISCOVERY_PORT)) {
@@ -742,20 +899,38 @@ fn start_discovery_responder() {
     });
 }
 
+#[cfg(desktop)]
 pub fn start_server(app: &tauri::AppHandle) -> Result<(), String> {
     let flag = &app.state::<SyncServer>().0;
     if flag.swap(true, Ordering::SeqCst) {
         return Ok(()); // läuft schon
     }
-    ensure_code(app)?;
-    start_discovery_responder();
-    let server = tiny_http::Server::http(("0.0.0.0", SYNC_PORT)).map_err(|e| {
+    if let Err(e) = ensure_code(app) {
+        app.state::<SyncServer>().0.store(false, Ordering::SeqCst);
+        return Err(e);
+    }
+    let tls = match tls_material(app) {
+        Ok(tls) => tls,
+        Err(e) => {
+            app.state::<SyncServer>().0.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+    let server = tiny_http::Server::https(
+        ("0.0.0.0", SYNC_PORT),
+        tiny_http::SslConfig {
+            certificate: tls.certificate_pem,
+            private_key: tls.private_key_pem,
+        },
+    )
+    .map_err(|e| {
         app.state::<SyncServer>().0.store(false, Ordering::SeqCst);
         format!("Sync-Server startet nicht (Port {SYNC_PORT}): {e}")
     })?;
+    start_discovery_responder();
     let app = app.clone();
     std::thread::spawn(move || {
-        log::info!("Sync-Server lauscht auf Port {SYNC_PORT}");
+        log::info!("Sync-Server lauscht per HTTPS auf Port {SYNC_PORT}");
         for mut request in server.incoming_requests() {
             let respond_json = |req: tiny_http::Request, status: u16, body: String| {
                 let header =
@@ -824,6 +999,11 @@ pub fn start_server(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(desktop))]
+pub fn start_server(_app: &tauri::AppHandle) -> Result<(), String> {
+    Err("Der Sync-Server läuft nur auf dem Desktop-Hub.".into())
+}
+
 // ── Tauri-Commands ──────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -831,6 +1011,7 @@ pub struct SyncInfo {
     pub running: bool,
     pub addr: Option<String>,
     pub code: String,
+    pub fingerprint: String,
     pub host: String,
     pub last_sync: i64,
 }
@@ -838,6 +1019,10 @@ pub struct SyncInfo {
 #[tauri::command]
 pub fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
     let code = ensure_code(&app)?;
+    #[cfg(desktop)]
+    let fingerprint = tls_material(&app)?.fingerprint;
+    #[cfg(not(desktop))]
+    let fingerprint = String::new();
     let (host, running) = {
         let s = app.state::<settings::SettingsState>();
         let host = s.0.lock().map(|s| s.sync_host.clone()).unwrap_or_default();
@@ -854,6 +1039,7 @@ pub fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
         running,
         addr: local_ip().map(|ip| format!("{ip}:{SYNC_PORT}")),
         code,
+        fingerprint,
         host,
         last_sync,
     })
@@ -865,26 +1051,28 @@ pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
     sync_info(app)
 }
 
-/// Pairing per QR-Code: Adresse + Code in eine `kiebitz://sync?...`-URI packen,
-/// die das Handy scannt und daraus Host + Code füllt. Die eingebettete Adresse
+/// Pairing per QR-Code: Adresse, Code und Zertifikats-Fingerprint in eine
+/// `kiebitz://sync?...`-URI packen, die das Handy scannt. Die eingebettete Adresse
 /// ist die LAN-IP des Desktops — sie ist im Heim-WLAN *und* über das
 /// Fritzbox-WireGuard erreichbar (die Fritzbox routet das Heimnetz in den
 /// Tunnel), anders als die UDP-Broadcast-Discovery, die Subnetzgrenzen nicht
 /// überschreitet. Deshalb funktioniert QR-Pairing auch entfernt über VPN.
 #[derive(Serialize)]
 pub struct PairInfo {
-    /// Vollständige `kiebitz://sync?host=…&code=…`-URI (im QR kodiert).
+    /// URI mit Adresse, Code und TLS-Fingerprint (im QR kodiert).
     pub uri: String,
     /// Kodierte Adresse "ip:port".
     pub addr: String,
     pub code: String,
+    /// SHA-256-Fingerprint des selbstsignierten Hub-Zertifikats.
+    pub fingerprint: String,
     /// Fertiges SVG des QR-Codes (schwarz auf weiß, mit Quiet-Zone).
     pub qr_svg: String,
 }
 
-/// Baut die Pairing-URI aus Adresse und Code.
-pub fn pair_uri(addr: &str, code: &str) -> String {
-    format!("kiebitz://sync?host={addr}&code={code}")
+/// Baut die Pairing-URI aus Adresse, Code und TLS-Fingerprint.
+pub fn pair_uri(addr: &str, code: &str, fingerprint: &str) -> String {
+    format!("kiebitz://sync?host={addr}&code={code}&fingerprint={fingerprint}")
 }
 
 /// Erzeugt ein eigenständiges QR-SVG (nur die Kernkodierung von `qrcode`,
@@ -917,12 +1105,13 @@ fn qr_svg(data: &str) -> Result<String, String> {
 #[tauri::command]
 pub fn sync_pair(app: tauri::AppHandle) -> Result<PairInfo, String> {
     let code = ensure_code(&app)?;
+    let fingerprint = tls_material(&app)?.fingerprint;
     let addr = local_ip()
         .map(|ip| format!("{ip}:{SYNC_PORT}"))
         .ok_or("Keine LAN-Adresse gefunden.")?;
-    let uri = pair_uri(&addr, &code);
+    let uri = pair_uri(&addr, &code, &fingerprint);
     let qr_svg = qr_svg(&uri)?;
-    Ok(PairInfo { uri, addr, code, qr_svg })
+    Ok(PairInfo { uri, addr, code, fingerprint, qr_svg })
 }
 
 /// Mobile-Stub: das Handy zeigt keinen QR (es scannt ihn nur).
@@ -968,14 +1157,15 @@ pub struct SyncSummary {
 #[tauri::command]
 pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (host, code) = {
+        let (host, code, fingerprint) = {
             let s = app.state::<settings::SettingsState>();
             let s = s.0.lock().map_err(|e| e.to_string())?;
-            (s.sync_host.clone(), s.sync_code.clone())
+            (s.sync_host.clone(), s.sync_code.clone(), s.sync_fingerprint.clone())
         };
         if host.is_empty() {
             return Err("Keine Sync-Adresse konfiguriert.".into());
         }
+        let tls_config = pinned_tls_config(&fingerprint)?;
 
         // Lokalen Stand einsammeln (kurz locken, dann Netz ohne Lock).
         let (since, request) = {
@@ -999,11 +1189,13 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
 
         let body = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         let agent = ureq::AgentBuilder::new()
+            .https_only(true)
+            .tls_config(tls_config)
             .timeout_connect(std::time::Duration::from_secs(5))
             .timeout_read(std::time::Duration::from_secs(600))
             .build();
         let resp = agent
-            .post(&format!("http://{host}/sync"))
+            .post(&format!("https://{host}/sync"))
             .set("Content-Type", "application/json")
             .send_string(&body)
             .map_err(|e| format!("Sync fehlgeschlagen: {e}"))?;
@@ -1283,37 +1475,54 @@ mod tests {
 
     #[test]
     fn pair_uri_roundtrips_through_parser() {
-        let uri = pair_uri("192.168.178.30:47323", "123456");
-        assert_eq!(uri, "kiebitz://sync?host=192.168.178.30:47323&code=123456");
+        let fingerprint = "0".repeat(64);
+        let uri = pair_uri("192.168.178.30:47323", "123456", &fingerprint);
+        assert_eq!(
+            uri,
+            "kiebitz://sync?host=192.168.178.30:47323&code=123456&fingerprint=0000000000000000000000000000000000000000000000000000000000000000"
+        );
         // dieselbe Zerlegung wie im Frontend (parsePairUri).
         let q = &uri[uri.find('?').unwrap() + 1..];
         let mut host = "";
         let mut code = "";
+        let mut parsed_fingerprint = "";
         for kv in q.split('&') {
             match kv.split_once('=') {
                 Some(("host", v)) => host = v,
                 Some(("code", v)) => code = v,
+                Some(("fingerprint", v)) => parsed_fingerprint = v,
                 _ => {}
             }
         }
         assert_eq!(host, "192.168.178.30:47323");
         assert_eq!(code, "123456");
+        assert_eq!(parsed_fingerprint, fingerprint);
     }
 
     #[cfg(desktop)]
     #[test]
     fn qr_svg_encodes_pairing_uri() {
-        let svg = qr_svg(&pair_uri("192.168.178.30:47323", "123456")).unwrap();
+        let svg = qr_svg(&pair_uri("192.168.178.30:47323", "123456", &"a".repeat(64))).unwrap();
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("<path d='M")); // mindestens ein dunkles Modul
         assert!(svg.contains("viewBox='0 0 "));
     }
 
     #[test]
-    fn http_roundtrip_over_localhost() {
-        // Echter tiny_http-Server + ureq-Client — dieselben Bausteine wie in
-        // start_server/sync_now, nur ohne Tauri-AppHandle drumherum.
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+    fn https_roundtrip_over_localhost_with_pinned_certificate() {
+        // Echter TLS-tiny_http-Server + gepinnter ureq-Client — dieselben
+        // Transportbausteine wie in start_server/sync_now, ohne Tauri-AppHandle.
+        let rcgen::CertifiedKey { cert, key_pair } =
+            rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let fingerprint = hex_fingerprint(cert.der().as_ref());
+        let server = tiny_http::Server::https(
+            "127.0.0.1:0",
+            tiny_http::SslConfig {
+                certificate: cert.pem().into_bytes(),
+                private_key: key_pair.serialize_pem().into_bytes(),
+            },
+        )
+        .unwrap();
         let port = server.server_addr().to_ip().unwrap().port();
         let handle = std::thread::spawn(move || {
             let mut request = server.recv().unwrap();
@@ -1338,7 +1547,13 @@ mod tests {
             puzzle_attempts: vec![],
             endgame_attempts: vec![],
         };
-        let resp = ureq::post(&format!("http://127.0.0.1:{port}/sync"))
+        let tls_config = pinned_tls_config(&fingerprint).unwrap();
+        let agent = ureq::AgentBuilder::new()
+            .https_only(true)
+            .tls_config(tls_config)
+            .build();
+        let resp = agent
+            .post(&format!("https://localhost:{port}/sync"))
             .send_string(&serde_json::to_string(&req).unwrap())
             .unwrap();
         let resp: SyncResponse = serde_json::from_reader(resp.into_reader()).unwrap();

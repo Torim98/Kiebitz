@@ -326,7 +326,11 @@ export default function SettingsPage() {
         setSyncErr(t("set.syncScanNoCode"));
         return;
       }
-      patch({ sync_host: paired.host, sync_code: paired.code });
+      patch({
+        sync_host: paired.host,
+        sync_code: paired.code,
+        sync_fingerprint: paired.fingerprint,
+      });
       setSyncMsg(t("set.syncScanDone"));
     } catch (e) {
       setSyncErr(
@@ -784,6 +788,9 @@ export default function SettingsPage() {
                         {sync.code}
                       </span>
                     </div>
+                    <div className="mt-1.5 break-all font-mono text-[10.5px] text-ink3">
+                      {t("set.syncFingerprint")}: {sync.fingerprint}
+                    </div>
                   </div>
                 )}
                 {pair && (
@@ -851,6 +858,14 @@ export default function SettingsPage() {
                       value={draft.sync_code}
                       onChange={(e) => patch({ sync_code: e.target.value })}
                       placeholder="123456"
+                      className={inputCls}
+                    />
+                  </Field>
+                  <Field label={t("set.syncFingerprintLabel")}>
+                    <input
+                      value={draft.sync_fingerprint}
+                      onChange={(e) => patch({ sync_fingerprint: e.target.value })}
+                      placeholder="SHA-256"
                       className={inputCls}
                     />
                   </Field>

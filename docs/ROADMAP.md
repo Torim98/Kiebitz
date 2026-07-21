@@ -120,8 +120,10 @@ Open:
   discovery, which never crossed subnets. On-device camera scan still wants a
   real-phone check. Revisit with TLS so the payload can also carry a cert
   fingerprint.
-- [ ] **TLS on the sync channel** (currently cleartext LAN, `usesCleartextTraffic
-  =true`). Caveat: Windows Firewall prompts on first server start.
+- [x] **TLS on the sync channel** (2026-07-21). The desktop hub now serves only
+  HTTPS with a persistent self-signed certificate. QR pairing transfers its
+  SHA-256 fingerprint, which the mobile client pins; Android cleartext traffic
+  is disabled. Windows Firewall prompts on the first server start.
 - [ ] **Play Store distribution** (account, signing policy, review overhead).
   Sideloading the signed GitHub-release APK already works.
 

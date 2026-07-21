@@ -25,6 +25,8 @@ export interface Settings {
   sync_code: string;
   /** Mobile: Adresse des Desktop-Hubs ("host:port"). */
   sync_host: string;
+  /** SHA-256-Fingerprint des per QR gekoppelten HTTPS-Hubs. */
+  sync_fingerprint: string;
   /** Mobile: automatisch im Hintergrund synchronisieren (Änderungen/Timer/Fokus). */
   sync_auto: boolean;
 }

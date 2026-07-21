@@ -27,8 +27,9 @@ android {
     compileSdk = 36
     namespace = "de.torim.kiebitz"
     defaultConfig {
-        // Der Geräte-Sync spricht http:// im lokalen Netz — auch im Release.
-        manifestPlaceholders["usesCleartextTraffic"] = "true"
+        // Der Geräte-Sync ist ausschließlich HTTPS; Android darf keinen
+        // Cleartext-Verkehr für Kiebitz erlauben.
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "de.torim.kiebitz"
         minSdk = 24
         targetSdk = 36
@@ -47,7 +48,7 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false

@@ -49,6 +49,9 @@ pub struct Settings {
     pub sync_code: String,
     /// Mobile: Adresse des Desktop-Hubs ("host:port").
     pub sync_host: String,
+    /// SHA-256-Fingerprint des Hub-Zertifikats. Wird ausschließlich durch den
+    /// QR-Pairing-Link gesetzt und pinnt den selbstsignierten HTTPS-Endpunkt.
+    pub sync_fingerprint: String,
     /// Mobile: automatisch im Hintergrund synchronisieren (bei Änderungen,
     /// per Timer und bei App-Fokus), statt manuell in den Settings.
     pub sync_auto: bool,
@@ -82,6 +85,7 @@ impl Default for Settings {
             sync_enabled: false,
             sync_code: String::new(),
             sync_host: String::new(),
+            sync_fingerprint: String::new(),
             sync_auto: false,
         }
     }
@@ -106,6 +110,13 @@ fn normalize(mut s: Settings) -> Settings {
     s.engine_path = s.engine_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s.db_path = s.db_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
     s.syzygy_path = s.syzygy_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    s.sync_fingerprint = s
+        .sync_fingerprint
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect::<String>()
+        .to_lowercase();
     s
 }
 
