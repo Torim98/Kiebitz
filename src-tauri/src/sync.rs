@@ -32,6 +32,10 @@ use tauri::Manager;
 use crate::{db, settings};
 
 pub const SYNC_PORT: u16 = 47323;
+/// UDP-Port für die Auto-Discovery ("Desktop suchen" auf dem Handy).
+pub const DISCOVERY_PORT: u16 = 47324;
+const DISCOVER_MSG: &[u8] = b"KIEBITZ_DISCOVER_V1";
+const DISCOVER_REPLY: &str = "KIEBITZ_HERE";
 /// Sicherheitsfenster gegen Uhren-Drift zwischen den Geräten (Sekunden).
 const SLACK: i64 = 600;
 /// Obergrenze für den Request-Body (Schutz gegen Unsinn auf dem Port).
@@ -88,6 +92,17 @@ pub struct SyncRepNode {
     pub lapses: i64,
     pub due_ts: i64,
     pub last_ts: i64,
+    /// Anlage-Zeitpunkt — entscheidet gegen Tombstones (Wieder-Anlegen gewinnt).
+    #[serde(default)]
+    pub created_ts: i64,
+}
+
+/// Gelöschter Repertoire-Teilbaum (Löschung propagiert auf gepairte Geräte).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncTombstone {
+    pub side: String,
+    pub path: String,
+    pub deleted_ts: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -98,6 +113,10 @@ pub struct SyncPuzzleAttempt {
     pub rating_before: i64,
     pub rating_after: i64,
     pub themes: String,
+    /// Puzzle-Rating zur Versuchszeit — Basis für den deterministischen
+    /// Elo-Replay nach einem Merge (0 = unbekannt, Versuch neutral).
+    #[serde(default)]
+    pub puzzle_rating: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -115,6 +134,8 @@ pub struct SyncRequest {
     pub since: i64,
     pub games: Vec<SyncGame>,
     pub rep_nodes: Vec<SyncRepNode>,
+    #[serde(default)]
+    pub rep_tombstones: Vec<SyncTombstone>,
     pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
     pub endgame_attempts: Vec<SyncEndgameAttempt>,
 }
@@ -124,6 +145,8 @@ pub struct SyncResponse {
     pub now: i64,
     pub games: Vec<SyncGame>,
     pub rep_nodes: Vec<SyncRepNode>,
+    #[serde(default)]
+    pub rep_tombstones: Vec<SyncTombstone>,
     pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
     pub endgame_attempts: Vec<SyncEndgameAttempt>,
 }
@@ -218,11 +241,12 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
         lapses: i64,
         due_ts: i64,
         last_ts: i64,
+        created_ts: i64,
     }
     let mut stmt = conn
         .prepare(
             "SELECT id, parent_id, side, san, name, fen_key, depth, stability, difficulty,
-                    reps, lapses, due_ts, last_ts
+                    reps, lapses, due_ts, last_ts, created_ts
              FROM rep_nodes ORDER BY depth, id",
         )
         .map_err(|e| e.to_string())?;
@@ -242,6 +266,7 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
                 lapses: r.get(10)?,
                 due_ts: r.get(11)?,
                 last_ts: r.get(12)?,
+                created_ts: r.get(13)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -273,15 +298,102 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
             lapses: r.lapses,
             due_ts: r.due_ts,
             last_ts: r.last_ts,
+            created_ts: r.created_ts,
         });
     }
     Ok(out)
 }
 
+fn collect_tombstones(conn: &Connection) -> Result<Vec<SyncTombstone>, String> {
+    let mut stmt = conn
+        .prepare("SELECT side, path, deleted_ts FROM rep_tombstones")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(SyncTombstone {
+                side: r.get(0)?,
+                path: r.get(1)?,
+                deleted_ts: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+/// Tombstones der Gegenseite übernehmen (Union, neuester Zeitstempel gewinnt)
+/// und danach lokal alle abgedeckten Knoten löschen, die älter sind als die
+/// Löschung — jüngere (wieder angelegte oder frisch trainierte) überleben.
+fn apply_tombstones(conn: &mut Connection, tombstones: &[SyncTombstone]) -> Result<usize, String> {
+    for t in tombstones {
+        conn.execute(
+            "INSERT INTO rep_tombstones (side, path, deleted_ts) VALUES (?1, ?2, ?3)
+             ON CONFLICT(side, path) DO UPDATE SET deleted_ts = MAX(deleted_ts, excluded.deleted_ts)",
+            params![t.side, t.path, t.deleted_ts],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    // Sweep über den lokalen Baum mit allen (auch schon vorhandenen) Tombstones.
+    let all = collect_tombstones(conn)?;
+    if all.is_empty() {
+        return Ok(0);
+    }
+    let local = collect_rep(conn)?;
+    let mut delete_keys: Vec<(String, String)> = Vec::new();
+    for n in &local {
+        let alive = n.last_ts.max(n.created_ts);
+        let covered = all.iter().any(|t| {
+            t.side == n.side
+                && (n.path == t.path || n.path.starts_with(&format!("{} ", t.path)))
+                && t.deleted_ts > alive
+        });
+        if covered {
+            delete_keys.push((n.side.clone(), n.path.clone()));
+        }
+    }
+    // Über (side, parent, san) je Ebene löschen — wir haben nur Pfade, keine IDs.
+    let mut deleted = 0usize;
+    if !delete_keys.is_empty() {
+        // IDs nachschlagen wie in apply_rep.
+        let mut stmt = conn
+            .prepare("SELECT id, parent_id, side, san FROM rep_nodes ORDER BY depth, id")
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, i64, String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        drop(stmt);
+        let mut paths: HashMap<i64, String> = HashMap::new();
+        let mut ids: Vec<i64> = Vec::new();
+        for (id, parent_id, side, san) in rows {
+            let path = if parent_id == 0 {
+                san
+            } else {
+                match paths.get(&parent_id) {
+                    Some(p) => format!("{p} {san}"),
+                    None => continue,
+                }
+            };
+            paths.insert(id, path.clone());
+            if delete_keys.iter().any(|(s, p)| *s == side && *p == path) {
+                ids.push(id);
+            }
+        }
+        for id in ids {
+            deleted += conn
+                .execute("DELETE FROM rep_nodes WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(deleted)
+}
+
 fn collect_puzzle_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncPuzzleAttempt>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT puzzle_id, ts, solved, rating_before, rating_after, themes
+            "SELECT puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating
              FROM puzzle_attempts WHERE ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -294,6 +406,7 @@ fn collect_puzzle_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncPuzz
                 rating_before: r.get(3)?,
                 rating_after: r.get(4)?,
                 themes: r.get(5)?,
+                puzzle_rating: r.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -426,12 +539,25 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
         }
     }
 
+    // Tombstones: gelöschte Pfade nicht wieder anlegen, außer der Knoten ist
+    // jünger als die Löschung (Wieder-Anlegen/Training nach dem Löschen).
+    let tombstones = collect_tombstones(conn)?;
+
     // Eltern vor Kindern anlegen.
     let mut sorted: Vec<&SyncRepNode> = nodes.iter().collect();
     sorted.sort_by_key(|n| n.depth);
     let mut merged = 0usize;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for n in sorted {
+        let alive = n.last_ts.max(n.created_ts);
+        let buried = tombstones.iter().any(|t| {
+            t.side == n.side
+                && (n.path == t.path || n.path.starts_with(&format!("{} ", t.path)))
+                && t.deleted_ts > alive
+        });
+        if buried {
+            continue;
+        }
         let key = format!("{}\n{}", n.side, n.path);
         match local_ids.get(&key) {
             None => {
@@ -449,11 +575,12 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                 let san = n.path.rsplit(' ').next().unwrap_or(&n.path);
                 tx.execute(
                     "INSERT INTO rep_nodes (parent_id, side, san, name, fen_key, depth,
-                        stability, difficulty, reps, lapses, due_ts, last_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                        stability, difficulty, reps, lapses, due_ts, last_ts, created_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
                     params![
                         parent_id, n.side, san, n.name, n.fen_key, n.depth,
-                        n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts
+                        n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts,
+                        n.created_ts
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -482,14 +609,55 @@ fn apply_puzzle_attempts(conn: &Connection, attempts: &[SyncPuzzleAttempt]) -> R
     for a in attempts {
         n += conn
             .execute(
-                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6
+                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
                  WHERE NOT EXISTS (SELECT 1 FROM puzzle_attempts WHERE puzzle_id = ?1 AND ts = ?2)",
-                params![a.puzzle_id, a.ts, a.solved as i64, a.rating_before, a.rating_after, a.themes],
+                params![a.puzzle_id, a.ts, a.solved as i64, a.rating_before, a.rating_after, a.themes, a.puzzle_rating],
             )
             .map_err(|e| e.to_string())?;
     }
     Ok(n)
+}
+
+/// Spielt die Elo-Kette über alle Versuche deterministisch neu ab — nach einem
+/// Merge haben damit beide Geräte identische Ratings. Sortiert wird geräte-
+/// unabhängig nach (ts, puzzle_id); Versuche ohne bekanntes Puzzle-Rating
+/// (puzzle_rating = 0) lassen das Rating unverändert.
+fn replay_puzzle_ratings(conn: &mut Connection) -> Result<(), String> {
+    const ELO_K: f64 = 24.0; // identisch zu puzzles.rs
+    const DEFAULT_RATING: i64 = 1500;
+    let rows: Vec<(i64, bool, i64)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, solved, puzzle_rating FROM puzzle_attempts ORDER BY ts, puzzle_id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? != 0, r.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string());
+        rows?
+    };
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut rating = DEFAULT_RATING;
+    for (id, solved, puzzle_rating) in rows {
+        let before = rating;
+        let after = if puzzle_rating > 0 {
+            let expected = 1.0 / (1.0 + 10f64.powf((puzzle_rating - before) as f64 / 400.0));
+            let score = if solved { 1.0 } else { 0.0 };
+            (before as f64 + ELO_K * (score - expected)).round() as i64
+        } else {
+            before
+        };
+        tx.execute(
+            "UPDATE puzzle_attempts SET rating_before = ?2, rating_after = ?3 WHERE id = ?1",
+            params![id, before, after],
+        )
+        .map_err(|e| e.to_string())?;
+        rating = after;
+    }
+    db::meta_set(&tx, "puzzle_rating", &rating.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn apply_endgame_attempts(conn: &Connection, attempts: &[SyncEndgameAttempt]) -> Result<usize, String> {
@@ -510,13 +678,18 @@ fn apply_endgame_attempts(conn: &Connection, attempts: &[SyncEndgameAttempt]) ->
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
     apply_games(conn, &req.games)?;
+    apply_tombstones(conn, &req.rep_tombstones)?;
     apply_rep(conn, &req.rep_nodes)?;
-    apply_puzzle_attempts(conn, &req.puzzle_attempts)?;
+    let pz = apply_puzzle_attempts(conn, &req.puzzle_attempts)?;
+    if pz > 0 {
+        replay_puzzle_ratings(conn)?;
+    }
     apply_endgame_attempts(conn, &req.endgame_attempts)?;
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
         rep_nodes: collect_rep(conn)?,
+        rep_tombstones: collect_tombstones(conn)?,
         puzzle_attempts: collect_puzzle_attempts(conn, req.since)?,
         endgame_attempts: collect_endgame_attempts(conn, req.since)?,
     })
@@ -548,12 +721,34 @@ fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
     Ok(s.sync_code.clone())
 }
 
+/// Beantwortet Discovery-Broadcasts vom Handy mit "KIEBITZ_HERE <port>".
+fn start_discovery_responder() {
+    std::thread::spawn(|| {
+        let sock = match std::net::UdpSocket::bind(("0.0.0.0", DISCOVERY_PORT)) {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("Discovery-Responder startet nicht (Port {DISCOVERY_PORT}): {e}");
+                return;
+            }
+        };
+        let mut buf = [0u8; 64];
+        loop {
+            if let Ok((n, peer)) = sock.recv_from(&mut buf) {
+                if &buf[..n] == DISCOVER_MSG {
+                    let _ = sock.send_to(format!("{DISCOVER_REPLY} {SYNC_PORT}").as_bytes(), peer);
+                }
+            }
+        }
+    });
+}
+
 pub fn start_server(app: &tauri::AppHandle) -> Result<(), String> {
     let flag = &app.state::<SyncServer>().0;
     if flag.swap(true, Ordering::SeqCst) {
         return Ok(()); // läuft schon
     }
     ensure_code(app)?;
+    start_discovery_responder();
     let server = tiny_http::Server::http(("0.0.0.0", SYNC_PORT)).map_err(|e| {
         app.state::<SyncServer>().0.store(false, Ordering::SeqCst);
         format!("Sync-Server startet nicht (Port {SYNC_PORT}): {e}")
@@ -670,6 +865,30 @@ pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
     sync_info(app)
 }
 
+/// Handy: sucht den Desktop-Hub per UDP-Broadcast im lokalen Netz.
+/// Liefert "ip:port" oder None, wenn nichts antwortet.
+#[tauri::command]
+pub async fn sync_discover() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let sock = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+        sock.set_broadcast(true).map_err(|e| e.to_string())?;
+        let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(600)));
+        let mut buf = [0u8; 64];
+        for _ in 0..3 {
+            let _ = sock.send_to(DISCOVER_MSG, ("255.255.255.255", DISCOVERY_PORT));
+            if let Ok((n, peer)) = sock.recv_from(&mut buf) {
+                let msg = String::from_utf8_lossy(&buf[..n]).to_string();
+                if let Some(port) = msg.strip_prefix(DISCOVER_REPLY) {
+                    return Ok(Some(format!("{}:{}", peer.ip(), port.trim())));
+                }
+            }
+        }
+        Ok(None)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Serialize)]
 pub struct SyncSummary {
     pub games_pulled: usize,
@@ -703,6 +922,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 since,
                 games: collect_games(&conn, since)?,
                 rep_nodes: collect_rep(&conn)?,
+                rep_tombstones: collect_tombstones(&conn)?,
                 puzzle_attempts: collect_puzzle_attempts(&conn, since)?,
                 endgame_attempts: collect_endgame_attempts(&conn, since)?,
             };
@@ -726,8 +946,12 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let db = app.state::<db::Db>();
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
         let games_pulled = apply_games(&mut conn, &resp.games)?;
+        apply_tombstones(&mut conn, &resp.rep_tombstones)?;
         let rep_merged = apply_rep(&mut conn, &resp.rep_nodes)?;
         let pz = apply_puzzle_attempts(&conn, &resp.puzzle_attempts)?;
+        if pz > 0 {
+            replay_puzzle_ratings(&mut conn)?;
+        }
         let eg = apply_endgame_attempts(&conn, &resp.endgame_attempts)?;
         db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
         Ok(SyncSummary {
@@ -857,6 +1081,7 @@ mod tests {
             lapses: 0,
             due_ts: 0,
             last_ts,
+            created_ts: 0,
         };
         apply_rep(&mut conn, &[node("e4", 1, 10, 1), node("e4 e5", 2, 10, 1)]).unwrap();
         let count: i64 = conn
@@ -887,6 +1112,7 @@ mod tests {
             rating_before: 1500,
             rating_after: 1512,
             themes: "fork".into(),
+            puzzle_rating: 1480,
         };
         assert_eq!(apply_puzzle_attempts(&conn, &[a.clone()]).unwrap(), 1);
         assert_eq!(apply_puzzle_attempts(&conn, &[a]).unwrap(), 0);
@@ -899,6 +1125,93 @@ mod tests {
         };
         assert_eq!(apply_endgame_attempts(&conn, &[e.clone()]).unwrap(), 1);
         assert_eq!(apply_endgame_attempts(&conn, &[e]).unwrap(), 0);
+    }
+
+    #[test]
+    fn tombstones_delete_subtree_but_newer_nodes_survive() {
+        let mut conn = mem_db();
+        let node = |path: &str, depth: i64, last_ts: i64, created_ts: i64| SyncRepNode {
+            side: "white".into(),
+            path: path.into(),
+            name: String::new(),
+            fen_key: format!("fen-{path}"),
+            depth,
+            stability: 1.0,
+            difficulty: 5.0,
+            reps: 1,
+            lapses: 0,
+            due_ts: 0,
+            last_ts,
+            created_ts,
+        };
+        // Baum: e4 → e5 → Nf3; alles alt (ts 10).
+        apply_rep(
+            &mut conn,
+            &[node("e4", 1, 10, 10), node("e4 e5", 2, 10, 10), node("e4 e5 Nf3", 3, 10, 10)],
+        )
+        .unwrap();
+
+        // Tombstone auf "e4 e5" (ts 50) löscht den Teilbaum, nicht die Wurzel.
+        let tomb = SyncTombstone {
+            side: "white".into(),
+            path: "e4 e5".into(),
+            deleted_ts: 50,
+        };
+        let deleted = apply_tombstones(&mut conn, &[tomb.clone()]).unwrap();
+        assert_eq!(deleted, 2);
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1);
+
+        // Alte Kopie der Gegenseite kommt nicht zurück (buried) …
+        apply_rep(&mut conn, &[node("e4 e5", 2, 10, 10)]).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1);
+
+        // … aber ein NEU angelegter Knoten (created_ts 100 > 50) überlebt.
+        apply_rep(&mut conn, &[node("e4 e5", 2, 0, 100)]).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 2);
+        // Ein erneuter Tombstone-Sweep mit demselben Stein löscht ihn nicht.
+        apply_tombstones(&mut conn, &[tomb]).unwrap();
+        let left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 2);
+    }
+
+    #[test]
+    fn rating_replay_is_deterministic_across_merge_orders() {
+        // Zwei "Geräte" mit unterschiedlichen Versuchen; nach Merge + Replay
+        // müssen beide dieselbe Elo-Kette und dasselbe Endrating haben.
+        let attempt = |id: &str, ts: i64, solved: bool, pr: i64| SyncPuzzleAttempt {
+            puzzle_id: id.into(),
+            ts,
+            solved,
+            rating_before: 0,
+            rating_after: 0,
+            themes: String::new(),
+            puzzle_rating: pr,
+        };
+        let a_set = [attempt("a", 100, true, 1600), attempt("b", 300, false, 1400)];
+        let b_set = [attempt("c", 200, true, 1550)];
+
+        let final_rating = |first: &[SyncPuzzleAttempt], second: &[SyncPuzzleAttempt]| {
+            let mut conn = mem_db();
+            apply_puzzle_attempts(&conn, first).unwrap();
+            apply_puzzle_attempts(&conn, second).unwrap();
+            replay_puzzle_ratings(&mut conn).unwrap();
+            db::meta_get(&conn, "puzzle_rating").unwrap()
+        };
+        let r1 = final_rating(&a_set, &b_set);
+        let r2 = final_rating(&b_set, &a_set);
+        assert_eq!(r1, r2, "Merge-Reihenfolge darf das Rating nicht ändern");
+        assert_ne!(r1, "1500", "Replay muss die Versuche einrechnen");
     }
 
     #[test]
@@ -926,6 +1239,7 @@ mod tests {
             since: 0,
             games: vec![sample_game("http1")],
             rep_nodes: vec![],
+            rep_tombstones: vec![],
             puzzle_attempts: vec![],
             endgame_attempts: vec![],
         };
@@ -962,6 +1276,7 @@ mod tests {
             since: 0,
             games: vec![],
             rep_nodes: vec![],
+            rep_tombstones: vec![],
             puzzle_attempts: vec![SyncPuzzleAttempt {
                 puzzle_id: "p9".into(),
                 ts: 500,
@@ -969,6 +1284,7 @@ mod tests {
                 rating_before: 1400,
                 rating_after: 1390,
                 themes: String::new(),
+                puzzle_rating: 1450,
             }],
             endgame_attempts: vec![],
         };

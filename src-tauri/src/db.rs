@@ -177,6 +177,35 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN note_ts INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    // Migration v7 (Sync-Grenzen): Repertoire-Löschungen propagieren über
+    // Tombstones (Löschung gewinnt nur gegen ältere Knoten — created_ts
+    // erlaubt das Wieder-Anlegen), und Puzzle-Versuche merken sich das
+    // Puzzle-Rating zur Versuchszeit, damit die Elo-Kette nach einem Merge
+    // deterministisch neu berechnet werden kann.
+    let _ = conn.execute(
+        "ALTER TABLE rep_nodes ADD COLUMN created_ts INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE puzzle_attempts ADD COLUMN puzzle_rating INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS rep_tombstones (
+            side       TEXT NOT NULL,
+            path       TEXT NOT NULL,
+            deleted_ts INTEGER NOT NULL,
+            PRIMARY KEY (side, path)
+        )",
+        [],
+    );
+    // Backfill: Puzzle-Rating für Alt-Versuche aus der lokalen Puzzle-DB.
+    let _ = conn.execute(
+        "UPDATE puzzle_attempts
+         SET puzzle_rating = COALESCE((SELECT rating FROM puzzles WHERE id = puzzle_id), 0)
+         WHERE puzzle_rating = 0",
+        [],
+    );
     Ok(())
 }
 

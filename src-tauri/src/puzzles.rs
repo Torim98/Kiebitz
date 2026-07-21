@@ -269,9 +269,9 @@ pub fn record_attempt(db: State<db::Db>, puzzle_id: String, solved: bool) -> Res
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     conn.execute(
-        "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![puzzle_id, now, solved, before, after, themes],
+        "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![puzzle_id, now, solved, before, after, themes, puzzle_rating],
     )
     .map_err(|e| e.to_string())?;
     db::meta_set(&conn, "puzzle_rating", &after.to_string())?;

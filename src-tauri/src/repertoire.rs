@@ -184,8 +184,9 @@ pub fn rep_add_line(
             Some(id) => id,
             None => {
                 conn.execute(
-                    "INSERT INTO rep_nodes (parent_id, side, san, fen_key, depth) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![parent_id, side, clean_san, key, depth],
+                    "INSERT INTO rep_nodes (parent_id, side, san, fen_key, depth, created_ts)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![parent_id, side, clean_san, key, depth, db::now_ts()],
                 )
                 .map_err(|e| e.to_string())?;
                 conn.last_insert_rowid()
@@ -207,6 +208,37 @@ pub fn rep_add_line(
 #[tauri::command]
 pub fn rep_delete(db: State<db::Db>, id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    // Pfad des Knotens für den Sync-Tombstone bestimmen (Wurzel → Knoten),
+    // damit die Löschung auf gepairte Geräte propagiert.
+    let mut parts: Vec<String> = Vec::new();
+    let mut side = String::new();
+    let mut cur = id;
+    while cur != 0 {
+        match conn
+            .query_row(
+                "SELECT parent_id, san, side FROM rep_nodes WHERE id = ?1",
+                params![cur],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            )
+            .ok()
+        {
+            Some((parent, san, s)) => {
+                parts.push(san);
+                side = s;
+                cur = parent;
+            }
+            None => break,
+        }
+    }
+    if !parts.is_empty() {
+        parts.reverse();
+        let path = parts.join(" ");
+        let _ = conn.execute(
+            "INSERT INTO rep_tombstones (side, path, deleted_ts) VALUES (?1, ?2, ?3)
+             ON CONFLICT(side, path) DO UPDATE SET deleted_ts = MAX(deleted_ts, excluded.deleted_ts)",
+            params![side, path, db::now_ts()],
+        );
+    }
     conn.execute(
         "DELETE FROM rep_nodes WHERE id IN (
             WITH RECURSIVE sub(i) AS (

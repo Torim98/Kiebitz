@@ -17,7 +17,8 @@ android {
     compileSdk = 36
     namespace = "de.torim.kiebitz"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // Der Geräte-Sync spricht http:// im lokalen Netz — auch im Release.
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "de.torim.kiebitz"
         minSdk = 24
         targetSdk = 36

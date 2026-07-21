@@ -39,7 +39,7 @@ import {
   type UpdateCheck,
   type UpdateState,
 } from "../lib/updater";
-import { syncInfo, syncNow, syncServerStart, type SyncInfo } from "../lib/sync";
+import { syncDiscover, syncInfo, syncNow, syncServerStart, type SyncInfo } from "../lib/sync";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
@@ -108,6 +108,7 @@ export default function SettingsPage() {
 
   const [sync, setSync] = useState<SyncInfo | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncErr, setSyncErr] = useState<string | null>(null);
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
@@ -288,6 +289,21 @@ export default function SettingsPage() {
       } catch (e) {
         setSyncErr(String(e));
       }
+    }
+  };
+
+  /** Mobile: Desktop-Hub per UDP-Broadcast suchen und die Adresse eintragen. */
+  const runDiscover = async () => {
+    setDiscovering(true);
+    setSyncErr(null);
+    try {
+      const addr = await syncDiscover();
+      if (addr) patch({ sync_host: addr });
+      else setSyncErr(t("set.syncDiscoverNone"));
+    } catch (e) {
+      setSyncErr(String(e));
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -734,12 +750,21 @@ export default function SettingsPage() {
               <>
                 <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-2">
                   <Field label={t("set.syncHostLabel")}>
-                    <input
-                      value={draft.sync_host}
-                      onChange={(e) => patch({ sync_host: e.target.value })}
-                      placeholder="192.168.1.5:47323"
-                      className={inputCls}
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        value={draft.sync_host}
+                        onChange={(e) => patch({ sync_host: e.target.value })}
+                        placeholder="192.168.1.5:47323"
+                        className={inputCls}
+                      />
+                      <Button onClick={() => !discovering && runDiscover()}>
+                        {discovering ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          t("set.syncDiscover")
+                        )}
+                      </Button>
+                    </div>
                   </Field>
                   <Field label={t("set.syncCodeLabel")}>
                     <input

@@ -165,11 +165,25 @@ Remaining work:
   united by SAN path with FSRS state LWW per `last_ts`, attempts append-only
   deduped on (id, ts). Cursor via meta `sync_last_ts` with a clock-drift slack;
   all merges idempotent (covered by unit tests + an HTTP-roundtrip test).
-  Not in v1: mDNS discovery/QR pairing (manual IP:port entry), repertoire
-  deletion propagation, puzzle-rating recompute across devices (ratings stay
-  per-device). Caveats: Windows Firewall prompts on first server start;
-  Android allows the cleartext-HTTP sync only in debug builds (release APKs
-  need `usesCleartextTraffic` or TLS — revisit with the release-signing work).
+  v1.1 (same day) closed the initial gaps: auto-discovery via UDP broadcast
+  on port 47324 ("Find" button fills the address; the desktop responds while
+  the sync server runs), repertoire deletions propagate via tombstones
+  (`rep_tombstones` + `created_ts` on nodes — a deletion only beats older
+  nodes, so re-adding or training after the deletion wins), and puzzle
+  ratings are recomputed deterministically after every merge (attempts store
+  the puzzle rating at attempt time; the Elo chain replays ordered by
+  (ts, puzzle_id), so both devices converge to identical ratings). Release
+  APKs allow the cleartext LAN sync (`usesCleartextTraffic=true`).
+  Still open: TLS on the sync channel. Caveat: Windows Firewall prompts on
+  first server start.
+- [ ] Sync QR pairing (convenience). Today pairing is address + 6-digit code:
+  the phone's "Find" button auto-fills the address via UDP discovery, the code
+  is typed. A QR flow would collapse this to one scan — the desktop renders a
+  QR encoding `host:port` + code (e.g. a `kiebitz://sync?host=…&code=…` URI),
+  the phone scans it (camera permission + a QR decoder in the mobile UI) and
+  fills both fields at once. Nice-to-have, not blocking: manual entry works and
+  the code is short. Revisit alongside TLS (the pairing payload could then also
+  carry a cert fingerprint).
 - [ ] Distribution: Play Store account, signing, review overhead (or sideload APK
   via GitHub releases first).
 

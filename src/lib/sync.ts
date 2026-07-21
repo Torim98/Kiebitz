@@ -34,3 +34,8 @@ export function syncServerStart(): Promise<SyncInfo> {
 export function syncNow(): Promise<SyncSummary> {
   return invoke<SyncSummary>("sync_now");
 }
+
+/** Mobile: sucht den Desktop-Hub per UDP-Broadcast ("ip:port" oder null). */
+export function syncDiscover(): Promise<string | null> {
+  return invoke<string | null>("sync_discover");
+}

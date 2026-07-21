@@ -314,6 +314,7 @@ pub fn run() {
             sync::sync_info,
             sync::sync_server_start,
             sync::sync_now,
+            sync::sync_discover,
             updater::check_update,
             updater::install_update
         ])
