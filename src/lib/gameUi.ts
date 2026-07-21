@@ -31,6 +31,7 @@ const TC_LABEL: Record<Locale, Record<string, string>> = {
     rapid: "Rapid",
     daily: "Täglich",
     classical: "Klassisch",
+    otb: "Brett",
   },
   en: {
     bullet: "Bullet",
@@ -38,6 +39,7 @@ const TC_LABEL: Record<Locale, Record<string, string>> = {
     rapid: "Rapid",
     daily: "Daily",
     classical: "Classical",
+    otb: "OTB",
   },
 };
 
@@ -82,8 +84,11 @@ export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
     eco: r.eco,
     moves: r.moves_count,
     accuracy: r.accuracy,
+    accuracyOpening: r.accuracy_opening,
+    accuracyMiddlegame: r.accuracy_middlegame,
+    accuracyEndgame: r.accuracy_endgame,
     analyzed: r.analyzed,
-    tags: [],
+    tags: r.tags ?? [],
     note: r.note || undefined,
     sans: r.moves ? r.moves.split(" ") : undefined,
   };

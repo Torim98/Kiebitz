@@ -4,7 +4,7 @@ import { emitDataChange } from "./changes";
 /** Spiegelt db::GameRecord aus dem Rust-Backend (snake_case wie serialisiert). */
 export interface GameRecord {
   id: number | null;
-  source: "chess.com" | "lichess";
+  source: "chess.com" | "lichess" | "manual";
   source_id: string;
   url: string;
   played_at: string; // ISO-Datum
@@ -19,8 +19,12 @@ export interface GameRecord {
   eco: string;
   moves_count: number;
   accuracy: number | null;
+  accuracy_opening?: number | null;
+  accuracy_middlegame?: number | null;
+  accuracy_endgame?: number | null;
   moves: string; // SAN-Züge, leerzeichengetrennt
   note: string;
+  tags?: string[];
   analyzed: boolean;
 }
 
@@ -42,6 +46,21 @@ export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {
 
 export function setGameNote(id: number, note: string): Promise<void> {
   return invoke<void>("set_game_note", { id, note }).then(() => emitDataChange());
+}
+
+export function setGameTags(id: number, tags: string[]): Promise<string[]> {
+  return invoke<string[]>("set_game_tags", { id, tags }).then((saved) => {
+    emitDataChange();
+    return saved;
+  });
+}
+
+export function readPgnFile(path: string): Promise<string> {
+  return invoke<string>("read_pgn_file", { path });
+}
+
+export function writePgnFile(path: string, contents: string): Promise<number> {
+  return invoke<number>("write_pgn_file", { path, contents });
 }
 
 export function dbStats(): Promise<{ total: number }> {

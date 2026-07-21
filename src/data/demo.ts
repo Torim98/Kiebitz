@@ -1,4 +1,4 @@
-export type Source = "chess.com" | "lichess";
+export type Source = "chess.com" | "lichess" | "manual";
 export type Result = "win" | "loss" | "draw";
 export type TimeControl = "Bullet" | "Blitz" | "Rapid" | "Täglich";
 
@@ -16,6 +16,9 @@ export interface Game {
   eco: string;
   moves: number;
   accuracy: number | null;
+  accuracyOpening?: number | null;
+  accuracyMiddlegame?: number | null;
+  accuracyEndgame?: number | null;
   analyzed: boolean;
   tags: string[];
   note?: string;

@@ -99,6 +99,21 @@ export default function Insights() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-2">
+        {live && (
+          <Card title={t("ins.phaseAccuracyTitle")} className="min-[1000px]:col-span-2">
+            <div className="grid grid-cols-3 gap-3">
+              {liveData.phaseAccuracy.map((item) => (
+                <div key={item.phase} className="rounded-lg border border-line bg-panel2 px-4 py-3 text-center">
+                  <div className="text-[12px] text-ink3">{phaseLabel(item.phase)}</div>
+                  <div className="mt-1 text-xl font-semibold text-ink">
+                    {item.accuracy == null ? "—" : `${de(item.accuracy)} %`}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-ink3">{t("ins.phaseAccuracyGames", { n: item.games })}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         <Card title={t("ins.openingsTitle")}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={openings} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 8 }} barSize={16}>

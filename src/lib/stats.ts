@@ -136,6 +136,7 @@ export interface LiveInsights {
   byTimeControl: { tc: string; games: number; winRate: number }[];
   byOppStrength: { bucket: string; games: number; winRate: number }[];
   accuracyTrend: { month: string; acc: number }[];
+  phaseAccuracy: { phase: "opening" | "middlegame" | "endgame"; accuracy: number | null; games: number }[];
   activity: { days: string[]; slots: string[]; values: number[][] };
   whiteAdvantagePts: number;
   topSlot: { label: string; games: number } | null;
@@ -173,6 +174,21 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
     withAcc.length > 0
       ? withAcc.reduce((s, g) => s + (g.accuracy ?? 0), 0) / withAcc.length
       : null;
+
+  const phaseAccuracy = (
+    [
+      ["opening", "accuracy_opening"],
+      ["middlegame", "accuracy_middlegame"],
+      ["endgame", "accuracy_endgame"],
+    ] as const
+  ).map(([phase, field]) => {
+    const values = records.map((g) => g[field]).filter((v): v is number => v != null);
+    return {
+      phase,
+      games: values.length,
+      accuracy: values.length ? Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 10) / 10 : null,
+    };
+  });
 
   const rated = records.filter((g) => g.opp_elo > 0);
   const avgOppElo =
@@ -280,6 +296,7 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
     byTimeControl,
     byOppStrength,
     accuracyTrend,
+    phaseAccuracy,
     activity: { days: dayNames, slots: SLOTS, values },
     whiteAdvantagePts: Math.round((wWhite - wBlack) * 10) / 10,
     topSlot,

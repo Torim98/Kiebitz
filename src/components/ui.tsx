@@ -79,15 +79,16 @@ export function ResultBadge({ result }: { result: Result }) {
 
 export function SourceBadge({ source }: { source: Source }) {
   const cc = source === "chess.com";
+  const manual = source === "manual";
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium"
       style={{
-        color: cc ? "var(--color-cc)" : "var(--color-blue)",
-        background: cc ? "rgba(129,182,76,0.12)" : "rgba(57,135,229,0.12)",
+        color: cc ? "var(--color-cc)" : manual ? "var(--color-gold)" : "var(--color-blue)",
+        background: cc ? "rgba(129,182,76,0.12)" : manual ? "rgba(210,170,70,0.12)" : "rgba(57,135,229,0.12)",
       }}
     >
-      {cc ? "chess.com" : "lichess"}
+      {cc ? "chess.com" : manual ? "PGN" : "lichess"}
     </span>
   );
 }
@@ -115,20 +116,23 @@ export function Button({
   primary = false,
   onClick,
   className = "",
+  disabled = false,
 }: {
   children: ReactNode;
   primary?: boolean;
   onClick?: () => void;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[13px] font-medium transition-colors [&>svg]:shrink-0 ${
         primary
           ? "bg-accent text-[#06251a] hover:bg-[#2bd49b]"
           : "border border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
-      } ${className}`}
+      } disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
     >
       {children}
     </button>

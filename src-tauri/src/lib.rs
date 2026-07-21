@@ -86,7 +86,11 @@ pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
         }
     }
 
-    let exe = if cfg!(windows) { "stockfish.exe" } else { "stockfish" };
+    let exe = if cfg!(windows) {
+        "stockfish.exe"
+    } else {
+        "stockfish"
+    };
 
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
@@ -145,6 +149,52 @@ fn upsert_games(
 fn set_game_note(db: tauri::State<db::Db>, id: i64, note: String) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::set_note(&conn, id, &note)
+}
+
+#[tauri::command]
+fn set_game_tags(
+    db: tauri::State<db::Db>,
+    id: i64,
+    tags: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::set_tags(&conn, id, &tags)
+}
+
+#[tauri::command]
+fn read_pgn_file(path: String) -> Result<String, String> {
+    let path = std::path::PathBuf::from(path.trim());
+    if path.as_os_str().is_empty() {
+        return Err("Kein PGN-Pfad angegeben.".into());
+    }
+    let meta = std::fs::metadata(&path).map_err(|e| format!("PGN nicht lesbar: {e}"))?;
+    if meta.len() > 64 * 1024 * 1024 {
+        return Err("PGN-Datei ist größer als 64 MB.".into());
+    }
+    std::fs::read_to_string(path).map_err(|e| format!("PGN nicht lesbar: {e}"))
+}
+
+#[tauri::command]
+fn write_pgn_file(path: String, contents: String) -> Result<usize, String> {
+    use std::io::Write;
+    let path = std::path::PathBuf::from(path.trim());
+    if path.as_os_str().is_empty() {
+        return Err("Kein Exportpfad angegeben.".into());
+    }
+    if path.exists() {
+        return Err("Die Zieldatei existiert bereits.".into());
+    }
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Zielordner nicht anlegbar: {e}"))?;
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|e| format!("PGN nicht speicherbar: {e}"))?;
+    file.write_all(contents.as_bytes())
+        .map_err(|e| format!("PGN nicht speicherbar: {e}"))?;
+    Ok(contents.len())
 }
 
 #[tauri::command]
@@ -226,7 +276,9 @@ pub fn run() {
             let conn = match rusqlite::Connection::open(&db_file) {
                 Ok(c) => c,
                 Err(e) => {
-                    log::warn!("Datenbank unter {db_file:?} nicht erreichbar ({e}); nutze Standardort");
+                    log::warn!(
+                        "Datenbank unter {db_file:?} nicht erreichbar ({e}); nutze Standardort"
+                    );
                     db_file = data_dir.join("kiebitz.db");
                     rusqlite::Connection::open(&db_file)?
                 }
@@ -285,6 +337,9 @@ pub fn run() {
             list_games,
             upsert_games,
             set_game_note,
+            set_game_tags,
+            read_pgn_file,
+            write_pgn_file,
             db_stats,
             analysis::start_analysis,
             analysis::cancel_analysis,
@@ -309,6 +364,8 @@ pub fn run() {
             settings::test_engine,
             settings::move_database,
             settings::use_database,
+            settings::backup_database,
+            settings::restore_database,
             settings::db_info,
             chessdb::chessdb_query,
             endgame::endgame_move,

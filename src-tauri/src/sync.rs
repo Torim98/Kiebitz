@@ -22,13 +22,13 @@
 //! `sync_last_ts`) und beide Seiten filtern mit einem Sicherheitsfenster
 //! (SLACK) — Doppel-Übertragungen sind durch die idempotenten Merges gratis.
 
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use rusqlite::{params, Connection};
+use std::sync::Arc;
 use tauri::Manager;
 
 use crate::{db, settings};
@@ -73,9 +73,19 @@ pub struct SyncGame {
     pub eco: String,
     pub moves_count: i64,
     pub accuracy: Option<f64>,
+    #[serde(default)]
+    pub accuracy_opening: Option<f64>,
+    #[serde(default)]
+    pub accuracy_middlegame: Option<f64>,
+    #[serde(default)]
+    pub accuracy_endgame: Option<f64>,
     pub moves: String,
     pub note: String,
     pub note_ts: i64,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub tags_ts: i64,
     pub analyzed: bool,
     pub evals: Vec<SyncEval>,
 }
@@ -161,7 +171,8 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
         .prepare(
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
                     opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
-                    moves, note, note_ts, analyzed
+                    accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                    moves, note, note_ts, tags, tags_ts, analyzed
              FROM games WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -185,10 +196,15 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     eco: r.get(13)?,
                     moves_count: r.get(14)?,
                     accuracy: r.get(15)?,
-                    moves: r.get(16)?,
-                    note: r.get(17)?,
-                    note_ts: r.get(18)?,
-                    analyzed: r.get::<_, i64>(19)? != 0,
+                    accuracy_opening: r.get(16)?,
+                    accuracy_middlegame: r.get(17)?,
+                    accuracy_endgame: r.get(18)?,
+                    moves: r.get(19)?,
+                    note: r.get(20)?,
+                    note_ts: r.get(21)?,
+                    tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
+                    tags_ts: r.get(23)?,
+                    analyzed: r.get::<_, i64>(24)? != 0,
                     evals: Vec::new(),
                 },
             ))
@@ -392,7 +408,10 @@ fn apply_tombstones(conn: &mut Connection, tombstones: &[SyncTombstone]) -> Resu
     Ok(deleted)
 }
 
-fn collect_puzzle_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncPuzzleAttempt>, String> {
+fn collect_puzzle_attempts(
+    conn: &Connection,
+    since: i64,
+) -> Result<Vec<SyncPuzzleAttempt>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating
@@ -417,7 +436,10 @@ fn collect_puzzle_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncPuzz
     rows
 }
 
-fn collect_endgame_attempts(conn: &Connection, since: i64) -> Result<Vec<SyncEndgameAttempt>, String> {
+fn collect_endgame_attempts(
+    conn: &Connection,
+    since: i64,
+) -> Result<Vec<SyncEndgameAttempt>, String> {
     let mut stmt = conn
         .prepare("SELECT drill_id, ts, solved, moves FROM endgame_attempts WHERE ts >= ?1")
         .map_err(|e| e.to_string())?;
@@ -443,11 +465,11 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut applied = 0usize;
     for g in games {
-        let existing: Option<(i64, i64, bool)> = tx
+        let existing: Option<(i64, i64, i64, bool)> = tx
             .query_row(
-                "SELECT id, note_ts, analyzed FROM games WHERE source = ?1 AND source_id = ?2",
+                "SELECT id, note_ts, tags_ts, analyzed FROM games WHERE source = ?1 AND source_id = ?2",
                 params![g.source, g.source_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0)),
             )
             .ok();
         let game_id = match existing {
@@ -455,12 +477,15 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                 tx.execute(
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
                         color, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
-                        accuracy, moves, note, note_ts, analyzed, updated_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                        accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                        moves, note, note_ts, tags, tags_ts, analyzed, updated_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
-                        g.moves_count, g.accuracy, g.moves, g.note, g.note_ts,
+                        g.moves_count, g.accuracy, g.accuracy_opening, g.accuracy_middlegame,
+                        g.accuracy_endgame, g.moves, g.note, g.note_ts,
+                        serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
                         g.analyzed as i64, now
                     ],
                 )
@@ -468,14 +493,25 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                 applied += 1;
                 tx.last_insert_rowid()
             }
-            Some((id, local_note_ts, _)) => {
+            Some((id, local_note_ts, local_tags_ts, _)) => {
                 tx.execute(
                     "UPDATE games SET
                         accuracy = COALESCE(accuracy, ?2),
-                        analyzed = MAX(analyzed, ?3),
-                        updated_ts = ?4
+                        accuracy_opening = COALESCE(accuracy_opening, ?3),
+                        accuracy_middlegame = COALESCE(accuracy_middlegame, ?4),
+                        accuracy_endgame = COALESCE(accuracy_endgame, ?5),
+                        analyzed = MAX(analyzed, ?6),
+                        updated_ts = ?7
                      WHERE id = ?1",
-                    params![id, g.accuracy, g.analyzed as i64, now],
+                    params![
+                        id,
+                        g.accuracy,
+                        g.accuracy_opening,
+                        g.accuracy_middlegame,
+                        g.accuracy_endgame,
+                        g.analyzed as i64,
+                        now
+                    ],
                 )
                 .map_err(|e| e.to_string())?;
                 if g.note_ts > local_note_ts {
@@ -485,15 +521,29 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                     )
                     .map_err(|e| e.to_string())?;
                 }
+                if g.tags_ts > local_tags_ts {
+                    tx.execute(
+                        "UPDATE games SET tags = ?2, tags_ts = ?3 WHERE id = ?1",
+                        params![
+                            id,
+                            serde_json::to_string(&g.tags).map_err(|e| e.to_string())?,
+                            g.tags_ts
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
                 applied += 1;
                 id
             }
         };
         // Analyse übernehmen, wenn die Gegenseite sie hat und wir (noch) nicht.
-        let locally_analyzed = existing.map(|(_, _, a)| a).unwrap_or(false);
+        let locally_analyzed = existing.map(|(_, _, _, a)| a).unwrap_or(false);
         if !g.evals.is_empty() && !locally_analyzed {
-            tx.execute("DELETE FROM move_evals WHERE game_id = ?1", params![game_id])
-                .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM move_evals WHERE game_id = ?1",
+                params![game_id],
+            )
+            .map_err(|e| e.to_string())?;
             let mut ins = tx
                 .prepare(
                     "INSERT INTO move_evals (game_id, ply, san, eval_cp, mate_in, best_uci, judgment, phase)
@@ -580,8 +630,18 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                         stability, difficulty, reps, lapses, due_ts, last_ts, created_ts)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
                     params![
-                        parent_id, n.side, san, n.name, n.fen_key, n.depth,
-                        n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts,
+                        parent_id,
+                        n.side,
+                        san,
+                        n.name,
+                        n.fen_key,
+                        n.depth,
+                        n.stability,
+                        n.difficulty,
+                        n.reps,
+                        n.lapses,
+                        n.due_ts,
+                        n.last_ts,
                         n.created_ts
                     ],
                 )
@@ -594,7 +654,15 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                     tx.execute(
                         "UPDATE rep_nodes SET stability = ?2, difficulty = ?3, reps = ?4,
                             lapses = ?5, due_ts = ?6, last_ts = ?7 WHERE id = ?1",
-                        params![id, n.stability, n.difficulty, n.reps, n.lapses, n.due_ts, n.last_ts],
+                        params![
+                            id,
+                            n.stability,
+                            n.difficulty,
+                            n.reps,
+                            n.lapses,
+                            n.due_ts,
+                            n.last_ts
+                        ],
                     )
                     .map_err(|e| e.to_string())?;
                     merged += 1;
@@ -606,7 +674,10 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
     Ok(merged)
 }
 
-fn apply_puzzle_attempts(conn: &Connection, attempts: &[SyncPuzzleAttempt]) -> Result<usize, String> {
+fn apply_puzzle_attempts(
+    conn: &Connection,
+    attempts: &[SyncPuzzleAttempt],
+) -> Result<usize, String> {
     let mut n = 0usize;
     for a in attempts {
         n += conn
@@ -662,7 +733,10 @@ fn replay_puzzle_ratings(conn: &mut Connection) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_endgame_attempts(conn: &Connection, attempts: &[SyncEndgameAttempt]) -> Result<usize, String> {
+fn apply_endgame_attempts(
+    conn: &Connection,
+    attempts: &[SyncEndgameAttempt],
+) -> Result<usize, String> {
     let mut n = 0usize;
     for a in attempts {
         n += conn
@@ -871,7 +945,10 @@ fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos() as u64 + d.as_secs())
             .unwrap_or(0);
-        s.sync_code = format!("{:06}", (nanos ^ (std::process::id() as u64) * 2654435761) % 1_000_000);
+        s.sync_code = format!(
+            "{:06}",
+            (nanos ^ (std::process::id() as u64) * 2654435761) % 1_000_000
+        );
         settings::save(app, &s)?;
     }
     Ok(s.sync_code.clone())
@@ -1111,7 +1188,13 @@ pub fn sync_pair(app: tauri::AppHandle) -> Result<PairInfo, String> {
         .ok_or("Keine LAN-Adresse gefunden.")?;
     let uri = pair_uri(&addr, &code, &fingerprint);
     let qr_svg = qr_svg(&uri)?;
-    Ok(PairInfo { uri, addr, code, fingerprint, qr_svg })
+    Ok(PairInfo {
+        uri,
+        addr,
+        code,
+        fingerprint,
+        qr_svg,
+    })
 }
 
 /// Mobile-Stub: das Handy zeigt keinen QR (es scannt ihn nur).
@@ -1160,7 +1243,11 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let (host, code, fingerprint) = {
             let s = app.state::<settings::SettingsState>();
             let s = s.0.lock().map_err(|e| e.to_string())?;
-            (s.sync_host.clone(), s.sync_code.clone(), s.sync_fingerprint.clone())
+            (
+                s.sync_host.clone(),
+                s.sync_code.clone(),
+                s.sync_fingerprint.clone(),
+            )
         };
         if host.is_empty() {
             return Err("Keine Sync-Adresse konfiguriert.".into());
@@ -1251,31 +1338,46 @@ mod tests {
             eco: "C50".into(),
             moves_count: 30,
             accuracy: None,
+            accuracy_opening: None,
+            accuracy_middlegame: None,
+            accuracy_endgame: None,
             moves: "e4 e5".into(),
             note: String::new(),
             note_ts: 0,
+            tags: Vec::new(),
+            tags_ts: 0,
             analyzed: false,
             evals: Vec::new(),
         }
     }
 
     #[test]
-    fn games_merge_is_idempotent_and_lww_notes_win() {
+    fn games_merge_is_idempotent_and_lww_metadata_wins() {
         let mut conn = mem_db();
         let mut g = sample_game("g1");
         g.note = "vom Handy".into();
         g.note_ts = 50;
+        g.tags = vec!["OTB".into()];
+        g.tags_ts = 50;
+        g.accuracy_opening = Some(91.0);
         apply_games(&mut conn, &[g.clone()]).unwrap();
         apply_games(&mut conn, &[g.clone()]).unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+        let (tags, opening): (String, Option<f64>) = conn
+            .query_row("SELECT tags, accuracy_opening FROM games", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(tags, r#"["OTB"]"#);
+        assert_eq!(opening, Some(91.0));
 
         // Ältere Notiz verliert, neuere gewinnt.
         let mut older = g.clone();
         older.note = "alt".into();
         older.note_ts = 10;
+        older.tags = vec!["old".into()];
+        older.tags_ts = 10;
         apply_games(&mut conn, &[older]).unwrap();
         let note: String = conn
             .query_row("SELECT note FROM games", [], |r| r.get(0))
@@ -1285,11 +1387,17 @@ mod tests {
         let mut newer = g;
         newer.note = "neu".into();
         newer.note_ts = 99;
+        newer.tags = vec!["Club".into(), "Important".into()];
+        newer.tags_ts = 99;
         apply_games(&mut conn, &[newer]).unwrap();
         let note: String = conn
             .query_row("SELECT note FROM games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(note, "neu");
+        let tags: String = conn
+            .query_row("SELECT tags FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tags, r#"["Club","Important"]"#);
     }
 
     #[test]
@@ -1351,12 +1459,16 @@ mod tests {
         // Frischere Review gewinnt, ältere nicht.
         apply_rep(&mut conn, &[node("e4", 1, 20, 5)]).unwrap();
         let reps: i64 = conn
-            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| r.get(0))
+            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(reps, 5);
         apply_rep(&mut conn, &[node("e4", 1, 15, 3)]).unwrap();
         let reps: i64 = conn
-            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| r.get(0))
+            .query_row("SELECT reps FROM rep_nodes WHERE san = 'e4'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(reps, 5);
     }
@@ -1406,7 +1518,11 @@ mod tests {
         // Baum: e4 → e5 → Nf3; alles alt (ts 10).
         apply_rep(
             &mut conn,
-            &[node("e4", 1, 10, 10), node("e4 e5", 2, 10, 10), node("e4 e5 Nf3", 3, 10, 10)],
+            &[
+                node("e4", 1, 10, 10),
+                node("e4 e5", 2, 10, 10),
+                node("e4 e5 Nf3", 3, 10, 10),
+            ],
         )
         .unwrap();
 
@@ -1457,7 +1573,10 @@ mod tests {
             themes: String::new(),
             puzzle_rating: pr,
         };
-        let a_set = [attempt("a", 100, true, 1600), attempt("b", 300, false, 1400)];
+        let a_set = [
+            attempt("a", 100, true, 1600),
+            attempt("b", 300, false, 1400),
+        ];
         let b_set = [attempt("c", 200, true, 1550)];
 
         let final_rating = |first: &[SyncPuzzleAttempt], second: &[SyncPuzzleAttempt]| {

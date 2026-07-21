@@ -90,6 +90,18 @@ describe("buildInsights", () => {
     expect(buildInsights([g({ accuracy: null })], "en").avgAccuracy).toBeNull();
   });
 
+  it("averages each analysis phase independently", () => {
+    const phases = buildInsights([
+      g({ accuracy_opening: 90, accuracy_middlegame: 70, accuracy_endgame: null }),
+      g({ accuracy_opening: 80, accuracy_middlegame: null, accuracy_endgame: 95 }),
+    ], "en").phaseAccuracy;
+    expect(phases).toEqual([
+      { phase: "opening", accuracy: 85, games: 2 },
+      { phase: "middlegame", accuracy: 70, games: 1 },
+      { phase: "endgame", accuracy: 95, games: 1 },
+    ]);
+  });
+
   it("ranks openings by frequency with per-opening win rate", () => {
     const ins = buildInsights(
       [

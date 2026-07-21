@@ -53,13 +53,14 @@ describe("toUi date formatting", () => {
 
 describe("toUi field mapping", () => {
   it("maps DB fields to the UI shape", () => {
-    const ui = toUi(record({ id: 42 }), "de");
+    const ui = toUi(record({ id: 42, tags: ["OTB"], accuracy_opening: 91.2 }), "de");
     expect(ui.id).toBe("db-42");
     expect(ui.dbId).toBe(42);
     expect(ui.tc).toBe("Rapid");
     expect(ui.moves).toBe(20);
     expect(ui.sans).toEqual(["e4", "e5", "Nf3", "Nc6"]);
-    expect(ui.tags).toEqual([]);
+    expect(ui.tags).toEqual(["OTB"]);
+    expect(ui.accuracyOpening).toBe(91.2);
   });
 
   it("uses an em dash for a missing opening and undefined for an empty note", () => {

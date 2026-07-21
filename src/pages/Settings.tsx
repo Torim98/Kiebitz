@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
+  ArchiveRestore,
   Cpu,
   Database,
   Download,
+  HardDriveDownload,
   Globe,
   Loader2,
   Puzzle as PuzzleIcon,
@@ -17,9 +19,11 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Locale } from "../lib/i18n";
 import {
   dbInfo,
+  backupDatabase,
   formatBytes,
   getSettings,
   moveDatabase,
+  restoreDatabase,
   setSettings,
   testEngine,
   useDatabase,
@@ -111,6 +115,8 @@ export default function SettingsPage() {
   const [info, setInfo] = useState<DbInfo | null>(null);
   const [movePath, setMovePath] = useState("");
   const [usePath, setUsePath] = useState("");
+  const [backupPath, setBackupPath] = useState("");
+  const [restorePath, setRestorePath] = useState("");
   const [dbBusy, setDbBusy] = useState(false);
 
   const [updCheck, setUpdCheck] = useState<UpdateCheck | null>(null);
@@ -272,6 +278,38 @@ export default function SettingsPage() {
       const s = await getSettings();
       setSaved(s);
       setDraft((d) => (d ? { ...d, db_path: s.db_path } : s));
+      puzzleStats().then(setPz).catch(() => {});
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setDbBusy(false);
+    }
+  };
+
+  const runBackup = async () => {
+    if (!backupPath.trim()) return;
+    setDbBusy(true);
+    setError(null);
+    try {
+      const path = await backupDatabase(backupPath.trim());
+      setBackupPath("");
+      setNotice(t("set.dbBackupDone", { path }));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setDbBusy(false);
+    }
+  };
+
+  const runRestore = async () => {
+    if (!restorePath.trim() || !window.confirm(t("set.dbRestoreConfirm"))) return;
+    setDbBusy(true);
+    setError(null);
+    try {
+      const next = await restoreDatabase(restorePath.trim());
+      setInfo(next);
+      setRestorePath("");
+      setNotice(t("set.dbRestoreDone", { path: next.path }));
       puzzleStats().then(setPz).catch(() => {});
     } catch (e) {
       setError(String(e));
@@ -653,6 +691,23 @@ export default function SettingsPage() {
                     />
                     <Button onClick={() => !dbBusy && runDbAction("use")}>
                       {dbBusy ? <Loader2 size={14} className="animate-spin" /> : t("set.dbUse")}
+                    </Button>
+                  </div>
+                </Field>
+                <div className="my-1 border-t border-line" />
+                <Field label={t("set.dbBackupLabel")}>
+                  <div className="flex gap-2">
+                    <input value={backupPath} onChange={(e) => setBackupPath(e.target.value)} placeholder="D:\\Backups\\kiebitz-backup.db" className={inputCls} />
+                    <Button onClick={() => !dbBusy && runBackup()}>
+                      {dbBusy ? <Loader2 size={14} className="animate-spin" /> : <HardDriveDownload size={14} />} {t("set.dbBackup")}
+                    </Button>
+                  </div>
+                </Field>
+                <Field label={t("set.dbRestoreLabel")}>
+                  <div className="flex gap-2">
+                    <input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="D:\\Backups\\kiebitz-backup.db" className={inputCls} />
+                    <Button onClick={() => !dbBusy && runRestore()}>
+                      {dbBusy ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />} {t("set.dbRestore")}
                     </Button>
                   </div>
                 </Field>

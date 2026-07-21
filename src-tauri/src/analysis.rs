@@ -121,9 +121,15 @@ fn eval_position(
 
 // ── Positionsindex ───────────────────────────────────────────────────────────
 
-fn index_game_positions(conn: &Connection, game_id: i64, walked: &[WalkedMove]) -> Result<(), String> {
+fn index_game_positions(
+    conn: &Connection,
+    game_id: i64,
+    walked: &[WalkedMove],
+) -> Result<(), String> {
     let mut stmt = conn
-        .prepare_cached("INSERT OR IGNORE INTO positions (fen_key, game_id, ply) VALUES (?1, ?2, ?3)")
+        .prepare_cached(
+            "INSERT OR IGNORE INTO positions (fen_key, game_id, ply) VALUES (?1, ?2, ?3)",
+        )
         .map_err(|e| e.to_string())?;
     stmt.execute(params![chess::start_key(), game_id, 0])
         .map_err(|e| e.to_string())?;
@@ -148,7 +154,8 @@ pub fn index_positions(db: State<db::Db>) -> Result<usize, String> {
         let rows = stmt
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
 
     conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
@@ -298,7 +305,8 @@ fn run_worker(
             let rows = stmt
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
                 .map_err(|e| e.to_string())?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
         }
     };
 
@@ -337,7 +345,7 @@ fn run_worker(
                 "UPDATE games SET analyzed = 1, updated_ts = ?2 WHERE id = ?1",
                 params![game_id, crate::db::now_ts()],
             )
-                .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
             continue;
         }
         let plies = walked.len() as u32;
@@ -345,7 +353,14 @@ fn run_worker(
         // Bewertungen für Grundstellung + jede Stellung nach einem Halbzug.
         let mut evals: Vec<PosEval> = Vec::with_capacity(walked.len() + 1);
         let start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-        evals.push(eval_position(&conn, &mut engine, start_fen, &chess::start_key(), true, depth)?);
+        evals.push(eval_position(
+            &conn,
+            &mut engine,
+            start_fen,
+            &chess::start_key(),
+            true,
+            depth,
+        )?);
 
         let mut canceled = false;
         for w in &walked {
@@ -381,6 +396,9 @@ fn run_worker(
         // Judgments + Genauigkeit meiner Züge.
         let my_white = color == "white";
         let mut my_losses: Vec<f64> = Vec::new();
+        let mut opening_losses: Vec<f64> = Vec::new();
+        let mut middlegame_losses: Vec<f64> = Vec::new();
+        let mut endgame_losses: Vec<f64> = Vec::new();
         let mut counts = (0u32, 0u32, 0u32); // inaccuracy, mistake, blunder
         let mut rows: Vec<(u32, &WalkedMove, &PosEval, &'static str)> = Vec::new();
         for (i, w) in walked.iter().enumerate() {
@@ -395,6 +413,12 @@ fn run_worker(
             };
             if w.by_white == my_white {
                 my_losses.push(drop);
+                match w.phase {
+                    "opening" => opening_losses.push(drop),
+                    "middlegame" => middlegame_losses.push(drop),
+                    "endgame" => endgame_losses.push(drop),
+                    _ => {}
+                }
             }
             let judgment = judgment_for(drop);
             match judgment {
@@ -406,11 +430,17 @@ fn run_worker(
             rows.push((w.ply, w, after, judgment));
         }
         let accuracy = accuracy_from_losses(&my_losses);
+        let accuracy_opening = accuracy_from_losses(&opening_losses);
+        let accuracy_middlegame = accuracy_from_losses(&middlegame_losses);
+        let accuracy_endgame = accuracy_from_losses(&endgame_losses);
 
         // In einer Transaktion schreiben.
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM move_evals WHERE game_id = ?1", params![game_id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM move_evals WHERE game_id = ?1",
+            params![game_id],
+        )
+        .map_err(|e| e.to_string())?;
         {
             let mut stmt = conn
                 .prepare_cached(
@@ -421,15 +451,31 @@ fn run_worker(
             for (ply, w, after, judgment) in &rows {
                 let best = &evals[*ply as usize - 1].best_uci;
                 stmt.execute(params![
-                    game_id, ply, w.san, after.eval_cp, after.mate_in, best, judgment, w.phase
+                    game_id,
+                    ply,
+                    w.san,
+                    after.eval_cp,
+                    after.mate_in,
+                    best,
+                    judgment,
+                    w.phase
                 ])
                 .map_err(|e| e.to_string())?;
             }
         }
         index_game_positions(&conn, game_id, &walked)?;
         conn.execute(
-            "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2), updated_ts = ?3 WHERE id = ?1",
-            params![game_id, accuracy, crate::db::now_ts()],
+            "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2),
+                accuracy_opening = ?3, accuracy_middlegame = ?4, accuracy_endgame = ?5,
+                updated_ts = ?6 WHERE id = ?1",
+            params![
+                game_id,
+                accuracy,
+                accuracy_opening,
+                accuracy_middlegame,
+                accuracy_endgame,
+                crate::db::now_ts()
+            ],
         )
         .map_err(|e| e.to_string())?;
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
@@ -484,7 +530,8 @@ pub fn game_analysis(db: State<db::Db>, game_id: i64) -> Result<Vec<MoveEvalRow>
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 // ── Fehler nach Spielphase (nur eigene Züge) ─────────────────────────────────
@@ -581,7 +628,14 @@ pub fn search_position(db: State<db::Db>, fen: String) -> Result<PositionSearch,
     let rows: Vec<(i64, u32, String, String, String, String, String, String)> = stmt
         .query_map(params![key], |r| {
             Ok((
-                r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
             ))
         })
         .map_err(|e| e.to_string())?

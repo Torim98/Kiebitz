@@ -129,11 +129,15 @@ Open:
 
 ## Cross-cutting / nice-to-have
 
-- [ ] Per-phase accuracy (separate opening/middlegame/endgame scores), reusing
-  the analysis pipeline's game-phase split.
-- [ ] PGN import/export for manual / over-the-board games.
-- [ ] Tags UI (the schema supports notes; tags are still demo-only).
-- [ ] Backup/restore of the database.
+- [x] **Per-phase accuracy** (2026-07-21). Analysis stores separate opening,
+  middlegame and endgame scores using the existing game-phase split; game details
+  and Insights expose the values.
+- [x] **PGN import/export for manual / over-the-board games** (2026-07-21).
+  Multi-game PGNs retain player perspective, metadata, notes and Kiebitz tags.
+- [x] **Tags UI** (2026-07-21). Tags can be added/removed per game, searched,
+  persisted in SQLite and synchronized between devices.
+- [x] **Backup/restore of the database** (2026-07-21). Settings can create a
+  consistent SQLite backup and validate/restore it over the active database.
 - [x] Frontend tests + CI. Vitest set up (jsdom + Testing Library, `npm test` /
   `npm run test:run`); unit tests for importer normalization (`importer.ts`,
   fetch-mocked), dashboard/insights stats (`stats.ts`), number/FEN helpers

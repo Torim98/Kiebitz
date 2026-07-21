@@ -83,6 +83,14 @@ export function useDatabase(path: string): Promise<DbInfo> {
   return invoke<DbInfo>("use_database", { path });
 }
 
+export function backupDatabase(target: string): Promise<string> {
+  return invoke<string>("backup_database", { target });
+}
+
+export function restoreDatabase(source: string): Promise<DbInfo> {
+  return invoke<DbInfo>("restore_database", { source });
+}
+
 export function chessdbQuery(fen: string): Promise<ChessDbResult> {
   return invoke<ChessDbResult>("chessdb_query", { fen });
 }

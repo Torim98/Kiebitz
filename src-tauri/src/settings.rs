@@ -107,9 +107,18 @@ fn normalize(mut s: Settings) -> Settings {
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
     s.display_name = s.display_name.trim().to_string();
-    s.engine_path = s.engine_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
-    s.db_path = s.db_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
-    s.syzygy_path = s.syzygy_path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    s.engine_path = s
+        .engine_path
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
+    s.db_path = s
+        .db_path
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
+    s.syzygy_path = s
+        .syzygy_path
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
     s.sync_fingerprint = s
         .sync_fingerprint
         .trim()
@@ -253,8 +262,7 @@ fn switch_to(app: &tauri::AppHandle, path: PathBuf) -> Result<DbInfo, String> {
     let conn = Connection::open(&path).map_err(|e| format!("Öffnen fehlgeschlagen: {e}"))?;
     db::init(&conn)?;
     *app.state::<db::Db>().0.lock().map_err(|e| e.to_string())? = conn;
-    *app
-        .state::<analysis::DbPath>()
+    *app.state::<analysis::DbPath>()
         .0
         .lock()
         .map_err(|e| e.to_string())? = path.clone();
@@ -283,16 +291,21 @@ pub fn move_database(app: tauri::AppHandle, target: String) -> Result<DbInfo, St
         return Err("Kein Zielpfad angegeben.".into());
     }
     if target.exists() {
-        return Err("Die Zieldatei existiert bereits — nutze „Vorhandene Datenbank verwenden“.".into());
+        return Err(
+            "Die Zieldatei existiert bereits — nutze „Vorhandene Datenbank verwenden“.".into(),
+        );
     }
-    if let Some(parent) = target.parent() {
+    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| format!("Zielordner nicht anlegbar: {e}"))?;
     }
     {
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        conn.execute("VACUUM INTO ?1", rusqlite::params![target.to_string_lossy()])
-            .map_err(|e| format!("Kopieren fehlgeschlagen: {e}"))?;
+        conn.execute(
+            "VACUUM INTO ?1",
+            rusqlite::params![target.to_string_lossy()],
+        )
+        .map_err(|e| format!("Kopieren fehlgeschlagen: {e}"))?;
     }
     switch_to(&app, target)
 }
@@ -310,6 +323,90 @@ pub fn use_database(app: tauri::AppHandle, path: String) -> Result<DbInfo, Strin
         std::fs::create_dir_all(parent).map_err(|e| format!("Ordner nicht anlegbar: {e}"))?;
     }
     switch_to(&app, path)
+}
+
+/// Erstellt über die SQLite Online Backup API einen konsistenten Snapshot.
+#[tauri::command]
+pub fn backup_database(app: tauri::AppHandle, target: String) -> Result<String, String> {
+    ensure_workers_idle(&app)?;
+    let target = PathBuf::from(target.trim());
+    if target.as_os_str().is_empty() {
+        return Err("Kein Sicherungspfad angegeben.".into());
+    }
+    if target.exists() {
+        return Err("Die Sicherungsdatei existiert bereits.".into());
+    }
+    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Zielordner nicht anlegbar: {e}"))?;
+    }
+    let source = app.state::<db::Db>();
+    let source = source.0.lock().map_err(|e| e.to_string())?;
+    let mut destination =
+        Connection::open(&target).map_err(|e| format!("Sicherungsdatei nicht anlegbar: {e}"))?;
+    let result = (|| {
+        let backup = rusqlite::backup::Backup::new(&source, &mut destination)
+            .map_err(|e| format!("Backup nicht startbar: {e}"))?;
+        backup
+            .run_to_completion(128, std::time::Duration::from_millis(10), None)
+            .map_err(|e| format!("Backup fehlgeschlagen: {e}"))
+    })();
+    drop(destination);
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(&target);
+        return Err(e);
+    }
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Validiert einen Snapshot und spielt ihn über die SQLite Backup API in die
+/// aktuell geöffnete Datenbank ein. Der Connection-Handle bleibt dabei stabil.
+#[tauri::command]
+pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo, String> {
+    ensure_workers_idle(&app)?;
+    let source_path = PathBuf::from(source.trim());
+    if !source_path.is_file() {
+        return Err("Sicherungsdatei nicht gefunden.".into());
+    }
+    let current_path = app
+        .state::<analysis::DbPath>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    if source_path.canonicalize().ok() == current_path.canonicalize().ok() {
+        return Err("Die Sicherung darf nicht die aktuell geöffnete Datenbank sein.".into());
+    }
+    let source =
+        Connection::open_with_flags(&source_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("Sicherung nicht lesbar: {e}"))?;
+    let check: String = source
+        .query_row("PRAGMA quick_check", [], |r| r.get(0))
+        .map_err(|e| format!("Sicherung ungültig: {e}"))?;
+    if check != "ok" {
+        return Err(format!("Sicherung beschädigt: {check}"));
+    }
+    let has_games: i64 = source
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='games'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("Sicherung ungültig: {e}"))?;
+    if has_games != 1 {
+        return Err("Die Datei ist keine Kiebitz-Datenbank.".into());
+    }
+    {
+        let state = app.state::<db::Db>();
+        let mut destination = state.0.lock().map_err(|e| e.to_string())?;
+        let backup = rusqlite::backup::Backup::new(&source, &mut destination)
+            .map_err(|e| format!("Wiederherstellung nicht startbar: {e}"))?;
+        backup
+            .run_to_completion(128, std::time::Duration::from_millis(10), None)
+            .map_err(|e| format!("Wiederherstellung fehlgeschlagen: {e}"))?;
+        drop(backup);
+        db::init(&destination)?;
+    }
+    db_info(app.clone(), app.state())
 }
 
 #[tauri::command]

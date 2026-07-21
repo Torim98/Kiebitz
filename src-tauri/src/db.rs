@@ -26,8 +26,16 @@ pub struct GameRecord {
     pub eco: String,
     pub moves_count: i64,
     pub accuracy: Option<f64>,
+    #[serde(default)]
+    pub accuracy_opening: Option<f64>,
+    #[serde(default)]
+    pub accuracy_middlegame: Option<f64>,
+    #[serde(default)]
+    pub accuracy_endgame: Option<f64>,
     pub moves: String,
     pub note: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub analyzed: bool,
 }
 
@@ -177,6 +185,16 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN note_ts INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    // Migration v8: Phasen-Genauigkeit und frei editierbare Tags.
+    for sql in [
+        "ALTER TABLE games ADD COLUMN accuracy_opening REAL",
+        "ALTER TABLE games ADD COLUMN accuracy_middlegame REAL",
+        "ALTER TABLE games ADD COLUMN accuracy_endgame REAL",
+        "ALTER TABLE games ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
+    ] {
+        let _ = conn.execute(sql, []);
+    }
     // Migration v7 (Sync-Grenzen): Repertoire-Löschungen propagieren über
     // Tombstones (Löschung gewinnt nur gegen ältere Knoten — created_ts
     // erlaubt das Wieder-Anlegen), und Puzzle-Versuche merken sich das
@@ -218,8 +236,10 @@ pub fn now_ts() -> i64 {
 }
 
 pub fn meta_get(conn: &Connection, key: &str) -> Option<String> {
-    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0))
-        .ok()
+    conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+        r.get(0)
+    })
+    .ok()
 }
 
 pub fn meta_set(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
@@ -256,13 +276,18 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
         let mut upsert_stmt = tx
             .prepare(
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
-                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves, updated_ts)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                    accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
+                    note, note_ts, tags, tags_ts, updated_ts)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
                     played_ts = excluded.played_ts,
                     accuracy = COALESCE(excluded.accuracy, games.accuracy),
+                    accuracy_opening = COALESCE(excluded.accuracy_opening, games.accuracy_opening),
+                    accuracy_middlegame = COALESCE(excluded.accuracy_middlegame, games.accuracy_middlegame),
+                    accuracy_endgame = COALESCE(excluded.accuracy_endgame, games.accuracy_endgame),
                     moves = excluded.moves,
                     moves_count = excluded.moves_count,
                     updated_ts = excluded.updated_ts",
@@ -273,6 +298,7 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
             let existed = exists_stmt
                 .exists(params![g.source, g.source_id])
                 .map_err(|e| e.to_string())?;
+            let changed_at = now_ts();
             upsert_stmt
                 .execute(params![
                     g.source,
@@ -290,8 +316,15 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.eco,
                     g.moves_count,
                     g.accuracy,
+                    g.accuracy_opening,
+                    g.accuracy_middlegame,
+                    g.accuracy_endgame,
                     g.moves,
-                    now_ts()
+                    g.note,
+                    if g.note.is_empty() { 0 } else { changed_at },
+                    serde_json::to_string(&g.tags).map_err(|e| e.to_string())?,
+                    if g.tags.is_empty() { 0 } else { changed_at },
+                    changed_at
                 ])
                 .map_err(|e| e.to_string())?;
             if !existed {
@@ -311,8 +344,9 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, opponent,
-                    opp_elo, my_elo, result, opening, eco, moves_count, accuracy, moves,
-                    note, analyzed
+                    opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                    accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
+                    note, tags, analyzed
              FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -335,13 +369,18 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 eco: r.get(13)?,
                 moves_count: r.get(14)?,
                 accuracy: r.get(15)?,
-                moves: r.get(16)?,
-                note: r.get(17)?,
-                analyzed: r.get::<_, i64>(18)? != 0,
+                accuracy_opening: r.get(16)?,
+                accuracy_middlegame: r.get(17)?,
+                accuracy_endgame: r.get(18)?,
+                moves: r.get(19)?,
+                note: r.get(20)?,
+                tags: serde_json::from_str(&r.get::<_, String>(21)?).unwrap_or_default(),
+                analyzed: r.get::<_, i64>(22)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 pub fn set_note(conn: &Connection, id: i64, note: &str) -> Result<(), String> {
@@ -349,8 +388,26 @@ pub fn set_note(conn: &Connection, id: i64, note: &str) -> Result<(), String> {
         "UPDATE games SET note = ?1, note_ts = ?3, updated_ts = ?3 WHERE id = ?2",
         params![note, id, now_ts()],
     )
-        .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+pub fn set_tags(conn: &Connection, id: i64, tags: &[String]) -> Result<Vec<String>, String> {
+    let mut clean: Vec<String> = tags
+        .iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect();
+    clean.sort_by_key(|tag| tag.to_lowercase());
+    clean.dedup_by(|a, b| a.to_lowercase() == b.to_lowercase());
+    clean.truncate(20);
+    let json = serde_json::to_string(&clean).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE games SET tags = ?1, tags_ts = ?3, updated_ts = ?3 WHERE id = ?2",
+        params![json, id, now_ts()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(clean)
 }
 
 #[cfg(test)]
@@ -375,8 +432,12 @@ mod tests {
             eco: "B10".into(),
             moves_count: 32,
             accuracy: None,
+            accuracy_opening: None,
+            accuracy_middlegame: None,
+            accuracy_endgame: None,
             moves: "e4 c6 Qf3 e5".into(),
             note: String::new(),
+            tags: Vec::new(),
             analyzed: false,
         }
     }
@@ -386,11 +447,24 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         init(&conn).unwrap();
 
-        let r1 = upsert_games(&mut conn, &[sample("abc"), sample("def")]).unwrap();
+        let mut tagged = sample("def");
+        tagged.note = "Imported PGN note".into();
+        tagged.tags = vec!["OTB".into(), "Club".into()];
+        let r1 = upsert_games(&mut conn, &[sample("abc"), tagged]).unwrap();
         assert_eq!(r1.inserted, 2);
         assert_eq!(r1.total, 2);
 
         let games = list_games(&conn).unwrap();
+        let imported = games.iter().find(|g| g.source_id == "def").unwrap();
+        assert_eq!(imported.note, "Imported PGN note");
+        assert_eq!(imported.tags, vec!["OTB", "Club"]);
+        let cleaned = set_tags(
+            &conn,
+            imported.id.unwrap(),
+            &[" club ".into(), "CLUB".into(), "Turnier".into()],
+        )
+        .unwrap();
+        assert_eq!(cleaned, vec!["club", "Turnier"]);
         let id = games[0].id.unwrap();
         set_note(&conn, id, "Merken: Cb6!").unwrap();
 

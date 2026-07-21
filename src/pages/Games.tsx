@@ -6,8 +6,11 @@ import {
   ChevronsRight,
   Database,
   Download,
+  FileDown,
+  FileUp,
   History,
   Loader2,
+  Plus,
   Save,
   Search,
   StickyNote,
@@ -16,7 +19,7 @@ import {
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
-import { listGames, setGameNote, upsertGames, type GameRecord } from "../lib/db";
+import { listGames, readPgnFile, setGameNote, setGameTags, upsertGames, writePgnFile, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
@@ -24,6 +27,7 @@ import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
+import { exportPgn, importPgn } from "../lib/pgn";
 
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
@@ -49,10 +53,16 @@ export default function Games({
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
+  const [records, setRecords] = useState<GameRecord[]>([]);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
+  const [pgnPath, setPgnPath] = useState("");
+  const [pgnExportPath, setPgnExportPath] = useState("");
+  const [pgnPlayer, setPgnPlayer] = useState(profile.ccUser);
+  const [pgnBusy, setPgnBusy] = useState(false);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -79,7 +89,10 @@ export default function Games({
 
   const reload = () =>
     listGames()
-      .then((rs) => setDbGames(rs.map((r) => toUi(r, locale))))
+      .then((rs) => {
+        setRecords(rs);
+        setDbGames(rs.map((r) => toUi(r, locale)));
+      })
       .catch(() => setDbGames(null));
 
   useEffect(() => {
@@ -102,7 +115,8 @@ export default function Games({
           (opening === "" || g.opening === opening) &&
           (query === "" ||
             g.opponent.toLowerCase().includes(query.toLowerCase()) ||
-            g.opening.toLowerCase().includes(query.toLowerCase()))
+            g.opening.toLowerCase().includes(query.toLowerCase()) ||
+            g.tags.some((tag) => tag.toLowerCase().includes(query.toLowerCase())))
       ),
     [allGames, source, result, tc, dateKey, opponent, opening, query]
   );
@@ -166,11 +180,60 @@ export default function Games({
     setTimeout(() => setNoteSaved(false), 1500);
   };
 
+  const saveTags = async (next: string[]) => {
+    if (!selected?.dbId) return;
+    const saved = await setGameTags(selected.dbId, next);
+    setDbGames((gs) => gs?.map((g) => (g.id === selected.id ? { ...g, tags: saved } : g)) ?? gs);
+    setRecords((rs) => rs.map((g) => (g.id === selected.dbId ? { ...g, tags: saved } : g)));
+  };
+
+  const addTags = async () => {
+    if (!selected) return;
+    const additions = tagDraft.split(/[,;]/).map((v) => v.trim()).filter(Boolean);
+    if (!additions.length) return;
+    await saveTags([...selected.tags, ...additions]);
+    setTagDraft("");
+  };
+
+  const runPgnImport = async () => {
+    if (!pgnPath.trim()) return;
+    setPgnBusy(true);
+    try {
+      const parsed = importPgn(await readPgnFile(pgnPath.trim()), pgnPlayer);
+      const res = await upsertGames(parsed);
+      await reload();
+      indexPositions().catch(() => {});
+      setImportMsg(t("games.pgnImported", { n: parsed.length, ins: res.inserted }));
+    } catch (e) {
+      setImportMsg(t("games.pgnFailed", { e: String(e) }));
+    } finally {
+      setPgnBusy(false);
+    }
+  };
+
+  const runPgnExport = async (onlySelected: boolean) => {
+    if (!pgnExportPath.trim()) return;
+    const chosen = onlySelected && selected?.dbId ? records.filter((g) => g.id === selected.dbId) : records;
+    if (!chosen.length) return;
+    setPgnBusy(true);
+    try {
+      await writePgnFile(pgnExportPath.trim(), exportPgn(chosen, pgnPlayer));
+      setImportMsg(t("games.pgnExported", { n: chosen.length, path: pgnExportPath.trim() }));
+    } catch (e) {
+      setImportMsg(t("games.pgnFailed", { e: String(e) }));
+    } finally {
+      setPgnBusy(false);
+    }
+  };
+
   const [myUser, setMyUser] = useState(profile.ccUser);
   useEffect(() => {
     if (backend.mode === "desktop") {
       getSettings()
-        .then((s) => setMyUser(s.cc_user || profile.ccUser))
+        .then((s) => {
+          setMyUser(s.cc_user || profile.ccUser);
+          setPgnPlayer(s.display_name || s.cc_user || profile.ccUser);
+        })
         .catch(() => {});
     }
   }, [backend.mode]);
@@ -217,6 +280,27 @@ export default function Games({
         </div>
       )}
 
+      {backend.mode === "desktop" && (
+        <Card title={t("games.pgnTitle")} className="mb-4">
+          <div className="mb-3 flex items-center gap-2">
+            <label className="text-[12px] text-ink3" htmlFor="pgn-player">{t("games.pgnPlayer")}</label>
+            <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="w-56 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
+          </div>
+          <div className="grid gap-3 min-[820px]:grid-cols-2">
+            <div className="flex gap-2">
+              <input value={pgnPath} onChange={(e) => setPgnPath(e.target.value)} placeholder={t("games.pgnImportPath")} className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
+              <Button onClick={() => !pgnBusy && runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
+            </div>
+            <div className="flex gap-2">
+              <input value={pgnExportPath} onChange={(e) => setPgnExportPath(e.target.value)} placeholder={t("games.pgnExportPath")} className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
+              <Button onClick={() => !pgnBusy && runPgnExport(true)} disabled={!selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
+              <Button onClick={() => !pgnBusy && runPgnExport(false)}>{t("games.pgnAll")}</Button>
+            </div>
+          </div>
+          <p className="mt-2 text-[11.5px] text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
+        </Card>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative mr-2">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
@@ -227,7 +311,7 @@ export default function Games({
             className="w-64 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
           />
         </div>
-        {(["alle", "chess.com", "lichess"] as const).map((s) => (
+        {(["alle", "chess.com", "lichess", "manual"] as const).map((s) => (
           <Chip key={s} active={source === s} onClick={() => setSource(s)}>
             {s === "alle" ? t("games.allSources") : s}
           </Chip>
@@ -494,14 +578,35 @@ export default function Games({
                   {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
                   {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
                 </div>
+                {selected.analyzed && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    {([
+                      [t("ins.phase.opening"), selected.accuracyOpening],
+                      [t("ins.phase.middlegame"), selected.accuracyMiddlegame],
+                      [t("ins.phase.endgame"), selected.accuracyEndgame],
+                    ] as const).map(([label, value]) => (
+                      <div key={label} className="rounded-md bg-panel2 px-1.5 py-1.5">
+                        <div className="text-[10px] text-ink3">{label}</div>
+                        <div className="text-[12px] font-medium text-ink2">{value == null ? "—" : `${de(value)} %`}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {selected.tags.length > 0
-                    ? selected.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)
+                    ? selected.tags.map((tag) => (
+                        <button key={tag} onClick={() => saveTags(selected.tags.filter((v) => v !== tag))} disabled={!selected.dbId} title={t("games.removeTag")}>
+                          <Tag>{tag} ×</Tag>
+                        </button>
+                      ))
                     : <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
-                  <button className="rounded-md border border-dashed border-line2 px-2 py-0.5 text-[11.5px] text-ink3 hover:text-accent">
-                    {t("games.addTag")}
-                  </button>
                 </div>
+                {selected.dbId && (
+                  <div className="mt-2 flex gap-2">
+                    <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTags()} placeholder={t("games.tagPlaceholder")} className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
+                    <Button onClick={addTags}><Plus size={13} /> {t("games.addTag")}</Button>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -530,15 +635,12 @@ export default function Games({
                     {selected.analyzed ? t("games.openAnalysis") : t("games.analyzeStockfish")}
                   </Button>
                 )}
-                <ExtLink
-                  href={
-                    selected.url ??
-                    (selected.source === "chess.com"
-                      ? `https://www.chess.com/games/archive/${myUser}`
-                      : `https://lichess.org/@/${myUser}/all`)
-                  }
-                  label={t("games.original")}
-                />
+                {selected.source !== "manual" && (
+                  <ExtLink
+                    href={selected.url || (selected.source === "chess.com" ? `https://www.chess.com/games/archive/${myUser}` : `https://lichess.org/@/${myUser}/all`)}
+                    label={t("games.original")}
+                  />
+                )}
               </div>
             </Card>
           </div>
