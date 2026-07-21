@@ -13,6 +13,16 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Signierung der Release-APK. keystore.properties + keystore.jks sind gitignored
+// und werden in CI aus Repo-Secrets erzeugt (siehe docs/DEPLOYMENT.md). Fehlen
+// sie (lokaler Debug-Build), bleibt die Release-Signierung einfach ungesetzt.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 36
     namespace = "de.torim.kiebitz"
@@ -24,6 +34,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -44,6 +64,11 @@ android {
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
+            // Nur signieren, wenn ein Keystore bereitsteht (CI). Ohne bleibt die
+            // Release-APK unsigniert — lokal ok, für Verteilung siehe DEPLOYMENT.md.
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     kotlinOptions {

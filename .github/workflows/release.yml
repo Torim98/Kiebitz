@@ -3,6 +3,12 @@ name: Release
 # Ein getaggter Commit (v*) löst einen kompletten Release-Build aus:
 # bauen → signieren → GitHub-Release anlegen → latest.json hochladen.
 # Installierte Apps holen sich das Update dann beim nächsten Start.
+#
+# Zwei Jobs:
+#   desktop  — Windows-Installer + Updater-Artefakte (primäres Produkt).
+#   android  — signierte arm64-APK, die an dasselbe Release gehängt wird.
+#              Läuft nur, wenn das Keystore-Secret gesetzt ist; sonst wird
+#              der Android-Teil sauber übersprungen (siehe DEPLOYMENT.md).
 on:
   push:
     tags:
@@ -12,7 +18,7 @@ permissions:
   contents: write # nötig, damit die Action das Release anlegen darf
 
 jobs:
-  release:
+  desktop:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -66,3 +72,125 @@ jobs:
           releaseBody: "Automatically built from ${{ github.ref_name }}. Existing installations update on the next start."
           releaseDraft: false
           prerelease: false
+
+  android:
+    # Erst bauen, wenn das Desktop-Release (und damit der Release-Eintrag)
+    # existiert — die APK wird an genau dieses Release gehängt.
+    needs: desktop
+    runs-on: ubuntu-latest
+    env:
+      # Android-Keystore als Base64-Secret (siehe DEPLOYMENT.md, One-time setup).
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      # Ohne Keystore-Secret kann keine installierbare (signierte) APK entstehen.
+      # Dann den Android-Teil überspringen, statt das ganze Release rot zu färben.
+      - name: Keystore vorhanden?
+        id: guard
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANDROID_KEYSTORE_BASE64 ist nicht gesetzt — Android-APK wird übersprungen. Setup siehe docs/DEPLOYMENT.md."
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.guard.outputs.has_keystore == 'true'
+
+      - name: Node einrichten
+        if: steps.guard.outputs.has_keystore == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: JDK 17 einrichten
+        if: steps.guard.outputs.has_keystore == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android-SDK/NDK einrichten
+        if: steps.guard.outputs.has_keystore == 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: NDK + Plattform installieren
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: |
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Rust + Android-Targets einrichten
+        if: steps.guard.outputs.has_keystore == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Rust-Build cachen
+        if: steps.guard.outputs.has_keystore == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: android
+
+      - name: Frontend-Abhängigkeiten installieren
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: npm ci
+
+      # Stockfish für Android (arm64) als libstockfish.so in die jniLibs legen.
+      # resolve_engine() findet sie im nativeLibraryDir der App. Plain armv8
+      # (kein -dotprod) für breite CPU-Kompatibilität.
+      - name: Stockfish holen (Android, armv8)
+        if: steps.guard.outputs.has_keystore == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          asset=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/official-stockfish/Stockfish/releases/latest" \
+            | jq -r '.assets[] | select(.name == "stockfish-android-armv8.tar") | .browser_download_url')
+          [ -n "$asset" ] || { echo "Kein stockfish-android-armv8.tar gefunden"; exit 1; }
+          echo "Lade $asset"
+          curl -sSL "$asset" -o sf.tar
+          mkdir -p sf && tar -xf sf.tar -C sf
+          bin=$(find sf -type f -name "stockfish-android-armv8" | head -n1)
+          [ -n "$bin" ] || bin=$(find sf -type f -perm -u+x ! -name "*.txt" | head -n1)
+          dest=src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p "$dest"
+          cp "$bin" "$dest/libstockfish.so"
+          echo "Stockfish gebündelt: $(basename "$bin") -> $dest/libstockfish.so"
+
+      # Keystore aus dem Secret wiederherstellen und die von Gradle gelesene
+      # keystore.properties erzeugen (beide sind gitignored).
+      - name: Keystore einrichten
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: |
+          cd src-tauri/gen/android
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore.jks
+          {
+            echo "storeFile=keystore.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Android-APK bauen (release, arm64)
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: npx tauri android build --apk --target aarch64
+
+      # Signierte APK finden, versioniert umbenennen und ans Release hängen.
+      - name: APK ans Release hängen
+        if: steps.guard.outputs.has_keystore == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          apk=$(find src-tauri/gen/android -path "*/outputs/apk/*/release/*.apk" | head -n1)
+          [ -n "$apk" ] || { echo "Keine Release-APK gefunden"; exit 1; }
+          out="Kiebitz_${version}_arm64.apk"
+          cp "$apk" "$out"
+          echo "Lade $out ($(du -h "$out" | cut -f1)) zu Release ${{ github.ref_name }}"
+          gh release upload "${{ github.ref_name }}" "$out" --clobber

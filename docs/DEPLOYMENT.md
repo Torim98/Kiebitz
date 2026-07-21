@@ -162,8 +162,10 @@ committed; build outputs and the engine `.so` stay gitignored):
 - **Config**: `src-tauri/tauri.android.conf.json` drops the desktop
   `stockfish.exe` resource and the updater artifacts from the mobile bundle.
 
-Not done yet: signed **release** APKs (a keystore for Play Store / stable
-sideload), multi-ABI packaging, and CI integration — see `ROADMAP.md`, Phase 4.
+CI now builds a **signed** arm64 release APK on every tagged release and attaches
+it to the GitHub release (see *Releasing a new version* → *One-time setup* for the
+keystore secrets). The steps above stay valid for local/manual builds. Still open:
+multi-ABI packaging and a Play-Store track — see `ROADMAP.md`, Phase 4.
 
 ## Icons
 
@@ -213,16 +215,21 @@ workflow then builds on a Windows runner, downloads Stockfish, signs the
 installer, creates the GitHub release, and uploads `latest.json`. Installed
 apps update themselves on their next start.
 
-> **Scope:** this covers the **desktop** app only. The Android APK is not built
-> by CI — it is a separate manual step (see *Android build*), and mobile does
-> not auto-update. The version bump below still applies (Android reads the same
-> `tauri.conf.json` version), but pushing a tag does not produce an APK.
+> **Scope:** pushing a tag now builds **both** the Windows desktop installer and
+> a signed **Android arm64 APK**, and attaches the APK to the same GitHub release
+> (`Kiebitz_<version>_arm64.apk`). The desktop app auto-updates; **Android does
+> not** — the APK is for manual/sideload install, and a newer one installs over
+> the old (keeping the on-device DB) only because CI signs every build with the
+> **same** keystore. The Android job runs only once the keystore secret is set
+> (see *One-time setup*); until then it is skipped and the desktop release is
+> unaffected.
 
 ### One-time setup
 
-Add the updater's **private signing key** as a repository secret named
-`TAURI_SIGNING_PRIVATE_KEY` (the workflow reads it; the key has no password, so
-no second secret is needed). From the repo root, with the GitHub CLI:
+**Desktop updater key.** Add the updater's **private signing key** as a
+repository secret named `TAURI_SIGNING_PRIVATE_KEY` (the workflow reads it; the
+key has no password, so no second secret is needed). From the repo root, with
+the GitHub CLI:
 
 ```sh
 gh secret set TAURI_SIGNING_PRIVATE_KEY < "$HOME/.tauri/kiebitz.key"
@@ -230,8 +237,40 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY < "$HOME/.tauri/kiebitz.key"
 ```
 
 Or paste the file's contents under **GitHub → Settings → Secrets and variables
-→ Actions → New repository secret**. That's it — endpoint, public key, and
-workflow are already committed.
+→ Actions → New repository secret**. That's it for the desktop app — endpoint,
+public key, and workflow are already committed.
+
+**Android signing keystore.** This is a **separate** credential from the updater
+key above: the updater key (minisign) only verifies desktop *update manifests*;
+Android needs a Java **keystore** for `apksigner` to sign the APK itself — the
+two are different formats and cannot be substituted for each other. Because this
+repo is **public**, the keystore must live in **secrets**, never committed.
+
+Create the keystore once (`keytool` ships with the JDK) — **back it up**, losing
+it means new APKs can no longer install over old ones without uninstalling:
+
+```sh
+keytool -genkeypair -v -keystore kiebitz-release.jks -alias kiebitz \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -dname "CN=Kiebitz, O=Torim, C=DE"
+# choose a store password when prompted; reuse it for the key password
+```
+
+Then set four repository secrets (base64 keeps the binary keystore intact):
+
+```sh
+base64 -w0 kiebitz-release.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEYSTORE_PASSWORD   # the store password from above
+gh secret set ANDROID_KEY_ALIAS           # kiebitz
+gh secret set ANDROID_KEY_PASSWORD        # the key password from above
+```
+
+> On Windows without `base64`, use PowerShell:
+> `[Convert]::ToBase64String([IO.File]::ReadAllBytes("kiebitz-release.jks")) | gh secret set ANDROID_KEYSTORE_BASE64`
+
+Once `ANDROID_KEYSTORE_BASE64` exists, the next tagged release also builds and
+attaches the APK. Keep the `.jks` file (and its passwords) somewhere safe and
+out of the repo.
 
 ### Every release — three steps
 
@@ -269,10 +308,18 @@ every running Kiebitz picks the update up on its next launch. Nothing else to do
   installer. For older CPUs, change the asset pattern in the workflow.
 - **Signing**: passes `TAURI_SIGNING_PRIVATE_KEY`, so `.sig` files and
   `latest.json` are produced and uploaded automatically.
-- **Scope**: Windows only, matching the primary target. To add macOS/Linux,
-  turn the job into a matrix over `windows-latest` / `macos-latest` /
-  `ubuntu-22.04`, add per-OS Stockfish fetch + resources, and (for macOS) signing
-  and notarization credentials.
+- **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
+  Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, downloads
+  the official `stockfish-android-armv8` engine into `jniLibs/arm64-v8a/`,
+  restores the keystore from the secrets, builds a signed release APK
+  (`tauri android build --apk --target aarch64`), and uploads
+  `Kiebitz_<version>_arm64.apk` to the release. It `needs: desktop`, so it
+  attaches to the release the desktop job created. Without the keystore secret
+  the job skips cleanly, leaving the desktop release green.
+- **Desktop scope**: Windows only, matching the primary target. To add
+  macOS/Linux, turn the desktop job into a matrix over `windows-latest` /
+  `macos-latest` / `ubuntu-22.04`, add per-OS Stockfish fetch + resources, and
+  (for macOS) signing and notarization credentials.
 
 ## Auto-update
 
