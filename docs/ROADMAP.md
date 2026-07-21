@@ -109,26 +109,6 @@ Open:
 - [ ] **Play Store distribution** (account, signing policy, review overhead).
   Sideloading the signed GitHub-release APK already works.
 
-## Phase 5 — Real web version (optional)
-
-- [ ] **Turn the browser build into a real web app.** Today the plain browser
-  build is "web mode": the same UI backed by demo data, with no Tauri backend
-  (no SQLite, engine, or persistence) — a dev convenience and showcase. A genuine
-  web version would replace the Rust core with a server-side backend. Open
-  questions: an API service replacing the Tauri commands (frontend `invoke` swaps
-  for HTTP behind the same interface); a hosted database and its multi-user vs.
-  single-user model; server-side vs. client-side-WASM engine; hosting, accounts,
-  and the GPL implications of serving Stockfish. Deliberately last and optional —
-  the desktop app is the primary product.
-
-## Phase 6 — LLM coach (hyper optional)
-
-- [ ] **Local LLM as a coach.** A language model that answers questions about the
-  player's own data ("what are my weaknesses?", "what should I train next?",
-  "explain this position"), grounded in the Insights/analysis data already in the
-  database — ideally a small **local** model so nothing leaves the machine. A
-  stretch goal, last in line.
-
 ## Cross-cutting / nice-to-have
 
 - [ ] Per-phase accuracy (separate opening/middlegame/endgame scores), reusing
