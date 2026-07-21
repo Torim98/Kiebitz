@@ -1,0 +1,30 @@
+name: CI
+
+# Schnelle Frontend-Checks bei jedem Push/PR auf main: Typecheck + Unit-/
+# Component-Tests (Vitest). Der Release-Build läuft separat in release.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Node einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm run test:run

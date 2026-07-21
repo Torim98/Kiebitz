@@ -116,7 +116,18 @@ Open:
 - [ ] PGN import/export for manual / over-the-board games.
 - [ ] Tags UI (the schema supports notes; tags are still demo-only).
 - [ ] Backup/restore of the database.
-- [ ] Tests: expand Rust coverage (importer normalization, stats) and add
-  frontend component tests.
+- [x] Frontend tests + CI. Vitest set up (jsdom + Testing Library, `npm test` /
+  `npm run test:run`); unit tests for importer normalization (`importer.ts`,
+  fetch-mocked), dashboard/insights stats (`stats.ts`), number/FEN helpers
+  (`util.ts`) and game mapping (`gameUi.ts`), plus a presentational component
+  test (`components/ui.tsx`) — 33 tests. A CI workflow (`ci.yml`) runs the
+  type-check + tests on every push/PR to main.
+- [ ] Expand Rust test coverage to the still-untested modules (`endgame`,
+  `study`, `puzzles`, `live`, `updater`); today `sync`, `analysis`, `repertoire`,
+  `chess`, `chessdb`, `settings`, `db`, `engine` carry the tests. (Rust tests are
+  not in CI yet — the Tauri crate needs the Linux system libs to build there.)
+- [ ] Grow frontend tests alongside the UI: more component/interaction tests —
+  the current one covers pure presentational components; data-backed pages still
+  need Tauri-`invoke` mocking.
 - [x] Auto-update — signed GitHub releases as the update feed, background
   check/install on startup (toggleable) + manual check in Settings → Updates.
