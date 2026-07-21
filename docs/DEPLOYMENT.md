@@ -3,12 +3,12 @@
 How to build, package, and distribute Kiebitz. The app is a Tauri 2 project: a
 Rust core plus a Vite/React frontend. The **desktop** build is the primary
 product (a native installer per OS, with auto-update). An **Android** build
-exists too (Phase 4) — currently a manually built, sideloaded APK; see
-*Android build* below.
+exists too (Phase 4) — a signed, sideloaded APK that CI now builds and attaches
+to each release (no auto-update on mobile); see *Android build* below.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
-- Current version: `0.3.2` (`src-tauri/tauri.conf.json` → `version`)
+- Current version: `0.4.0` (`src-tauri/tauri.conf.json` → `version`)
 
 ## Prerequisites
 
@@ -125,10 +125,18 @@ Notes:
 
 ## Android build (APK)
 
-The Android app reuses the same Rust core and React frontend. Today it is built
-locally and **sideloaded** — it is not part of the release CI and does **not**
-auto-update (the updater plugin is desktop-only; mobile updates by reinstalling
-a newer APK).
+The Android app reuses the same Rust core and React frontend. A tagged release
+now builds and attaches a signed APK automatically (see *Releasing a new
+version*); the steps here are for **local** builds and to explain the moving
+parts. The app is **sideloaded** and does **not** auto-update (the updater
+plugin is desktop-only; mobile updates by reinstalling a newer APK).
+
+> **Two version fields.** `versionName` is the human-readable string (e.g.
+> `0.4.0`, shown in-app) and comes straight from `tauri.conf.json`. `versionCode`
+> is a separate integer Android uses to compare "newer/older" for installs; it is
+> **never shown** and must be an integer, so it cannot literally be `0.4.0`. Tauri
+> derives it from the version (`0.4.0` → `4000`, `0.4.1` → `4001`, monotonic),
+> which is why installs over an older APK work. Nothing to set by hand.
 
 Build a debug APK (arm64), exporting the toolchain paths inline:
 
@@ -151,10 +159,11 @@ Android-specific pieces (already wired in `src-tauri/gen/android`, which is
 committed; build outputs and the engine `.so` stay gitignored):
 
 - **Engine**: Stockfish ships per ABI as
-  `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). It is **staged
-  manually** — download the official `stockfish-android-armv8` and copy it in;
-  there is no CI download step yet. `resolve_engine` (`src-tauri/src/lib.rs`)
-  finds it in the app's `nativeLibraryDir` via `/proc/self/maps`.
+  `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). CI stages it
+  automatically (downloads the official `stockfish-android-armv8`); for a **local**
+  build download that asset and copy it in yourself. `resolve_engine`
+  (`src-tauri/src/lib.rs`) finds it in the app's `nativeLibraryDir` via
+  `/proc/self/maps`.
 - **Native lib packaging**: `useLegacyPackaging = true` in
   `app/build.gradle.kts` sets `extractNativeLibs`, so the engine `.so` is
   unpacked as a real, executable file — required to launch it as a UCI child
@@ -246,27 +255,55 @@ Android needs a Java **keystore** for `apksigner` to sign the APK itself — the
 two are different formats and cannot be substituted for each other. Because this
 repo is **public**, the keystore must live in **secrets**, never committed.
 
-Create the keystore once (`keytool` ships with the JDK) — **back it up**, losing
-it means new APKs can no longer install over old ones without uninstalling:
+Create the keystore once with `keytool` — **back it up**, losing it means new
+APKs can no longer install over old ones without uninstalling. `keytool` ships
+inside any JDK; it is only needed for this one step (CI brings its own JDK for
+the actual build). If you don't have a JDK on the machine, install one first.
+
+**macOS / Linux** (keytool on `PATH`):
 
 ```sh
 keytool -genkeypair -v -keystore kiebitz-release.jks -alias kiebitz \
   -keyalg RSA -keysize 2048 -validity 10000 \
   -dname "CN=Kiebitz, O=Torim, C=DE"
-# choose a store password when prompted; reuse it for the key password
+# choose a store password when prompted; press Enter at the key password to reuse it
 ```
 
-Then set four repository secrets (base64 keeps the binary keystore intact):
+**Windows (PowerShell).** There is no standalone `keytool` — install a JDK, then
+call `keytool` by its full path (a fresh shell is not even required this way):
+
+```powershell
+winget install EclipseAdoptium.Temurin.17.JDK
+# resolves keytool.exe regardless of the exact patch version installed:
+$kt = (Get-ChildItem "C:\Program Files\Eclipse Adoptium\jdk-17*\bin\keytool.exe" | Select-Object -First 1).FullName
+& $kt -genkeypair -v -keystore kiebitz-release.jks -alias kiebitz -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Kiebitz, O=Torim, C=DE"
+# choose a store password; press Enter at the key password to reuse it
+```
+
+> Don't rely on `$env:JAVA_HOME` for this — a stale or unset value gives a
+> confusing "not recognized as ... program" error even though the path looks
+> right. The `Get-ChildItem` resolver above sidesteps it.
+
+Then set four repository secrets. The keystore is binary, so base64-encode it
+(`gh` reads the encoded value from the pipe; CI decodes it with `base64 -d`):
 
 ```sh
+# macOS / Linux
 base64 -w0 kiebitz-release.jks | gh secret set ANDROID_KEYSTORE_BASE64
-gh secret set ANDROID_KEYSTORE_PASSWORD   # the store password from above
-gh secret set ANDROID_KEY_ALIAS           # kiebitz
-gh secret set ANDROID_KEY_PASSWORD        # the key password from above
 ```
 
-> On Windows without `base64`, use PowerShell:
-> `[Convert]::ToBase64String([IO.File]::ReadAllBytes("kiebitz-release.jks")) | gh secret set ANDROID_KEYSTORE_BASE64`
+```powershell
+# Windows (PowerShell) — produces single-line base64, compatible with base64 -d
+[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path .\kiebitz-release.jks))) | gh secret set ANDROID_KEYSTORE_BASE64
+```
+
+The remaining three are plain strings — `gh` prompts for each value:
+
+```sh
+gh secret set ANDROID_KEYSTORE_PASSWORD   # the store password from above
+gh secret set ANDROID_KEY_ALIAS           # kiebitz
+gh secret set ANDROID_KEY_PASSWORD        # the key password (= store password if you pressed Enter)
+```
 
 Once `ANDROID_KEYSTORE_BASE64` exists, the next tagged release also builds and
 attaches the APK. Keep the `.jks` file (and its passwords) somewhere safe and

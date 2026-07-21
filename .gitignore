@@ -23,6 +23,10 @@ src-tauri/binaries/
 # Environment / secrets
 .env
 .env.*
+# Signing keystores — never commit (public repo). Store as GitHub secrets.
+*.jks
+*.keystore
+*.p12
 
 # Editors / OS
 .vscode/*
