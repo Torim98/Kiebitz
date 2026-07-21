@@ -91,6 +91,12 @@ Stockfish staged automatically in CI (2026-07-21).
 
 Open:
 
+- [ ] **Automatic background sync.** Once sync is enabled in Settings, it should
+  run on its own in the background — triggered by changes (new import, note edit,
+  finished analysis, puzzle/endgame attempt, repertoire change) and/or on a
+  timer/app-focus, so the user never has to open Settings to sync manually. Needs
+  debouncing/coalescing so bursts of changes collapse into one roundtrip, quiet
+  handling when the peer is unreachable, and a small status/last-synced indicator.
 - [ ] **On-device smoke test** — engine launch + live analysis on a real phone
   (still pending after the build/packaging work).
 - [ ] **Sync QR pairing.** Collapse address + 6-digit code into one scan: the
