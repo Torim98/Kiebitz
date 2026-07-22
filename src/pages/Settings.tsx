@@ -7,6 +7,7 @@ import {
   Download,
   HardDriveDownload,
   Globe,
+  FolderOpen,
   Loader2,
   Puzzle as PuzzleIcon,
   QrCode,
@@ -15,6 +16,7 @@ import {
   Smartphone,
   UserRound,
 } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Locale } from "../lib/i18n";
 import {
@@ -118,6 +120,7 @@ export default function SettingsPage() {
   const [backupPath, setBackupPath] = useState("");
   const [restorePath, setRestorePath] = useState("");
   const [dbBusy, setDbBusy] = useState(false);
+  const [dbFeedback, setDbFeedback] = useState<{ error: boolean; text: string } | null>(null);
 
   const [updCheck, setUpdCheck] = useState<UpdateCheck | null>(null);
   const [updChecking, setUpdChecking] = useState(false);
@@ -264,6 +267,7 @@ export default function SettingsPage() {
     if (!path) return;
     setDbBusy(true);
     setError(null);
+    setDbFeedback(null);
     try {
       const next = action === "move" ? await moveDatabase(path) : await useDatabase(path);
       setInfo(next);
@@ -274,6 +278,10 @@ export default function SettingsPage() {
           ? t("set.dbMoved", { path: next.path })
           : t("set.dbSwitched", { path: next.path })
       );
+      setDbFeedback({
+        error: false,
+        text: action === "move" ? t("set.dbMoved", { path: next.path }) : t("set.dbSwitched", { path: next.path }),
+      });
       // Einstellungen neu laden (db_path hat sich geändert).
       const s = await getSettings();
       setSaved(s);
@@ -281,38 +289,65 @@ export default function SettingsPage() {
       puzzleStats().then(setPz).catch(() => {});
     } catch (e) {
       setError(String(e));
+      setDbFeedback({ error: true, text: String(e) });
     } finally {
       setDbBusy(false);
     }
   };
 
   const runBackup = async () => {
-    if (!backupPath.trim()) return;
+    let target = backupPath.trim();
+    if (!target) {
+      const chosen = await saveDialog({
+        defaultPath: "kiebitz-backup.db",
+        filters: [{ name: "SQLite database", extensions: ["db"] }],
+      });
+      if (!chosen) return;
+      target = chosen.toLowerCase().endsWith(".db") ? chosen : `${chosen}.db`;
+      setBackupPath(target);
+    }
     setDbBusy(true);
     setError(null);
+    setDbFeedback(null);
     try {
-      const path = await backupDatabase(backupPath.trim());
+      const path = await backupDatabase(target);
       setBackupPath("");
       setNotice(t("set.dbBackupDone", { path }));
+      setDbFeedback({ error: false, text: t("set.dbBackupDone", { path }) });
     } catch (e) {
       setError(String(e));
+      setDbFeedback({ error: true, text: String(e) });
     } finally {
       setDbBusy(false);
     }
   };
 
   const runRestore = async () => {
-    if (!restorePath.trim() || !window.confirm(t("set.dbRestoreConfirm"))) return;
+    let source = restorePath.trim();
+    if (!source) {
+      const chosen = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "SQLite database", extensions: ["db"] }],
+      });
+      if (typeof chosen !== "string") return;
+      source = chosen;
+      setRestorePath(source);
+    }
+    if (!window.confirm(t("set.dbRestoreConfirm"))) return;
     setDbBusy(true);
     setError(null);
+    setDbFeedback(null);
     try {
-      const next = await restoreDatabase(restorePath.trim());
+      const next = await restoreDatabase(source);
       setInfo(next);
       setRestorePath("");
       setNotice(t("set.dbRestoreDone", { path: next.path }));
+      setDbFeedback({ error: false, text: t("set.dbRestoreDone", { path: next.path }) });
       puzzleStats().then(setPz).catch(() => {});
     } catch (e) {
       setError(String(e));
+      setDbFeedback({ error: true, text: String(e) });
     } finally {
       setDbBusy(false);
     }
@@ -673,7 +708,7 @@ export default function SettingsPage() {
                     <input
                       value={movePath}
                       onChange={(e) => setMovePath(e.target.value)}
-                      placeholder="D:\Nextcloud\Schach\kiebitz.db"
+                      placeholder="C:\\Kiebitz\\kiebitz.db"
                       className={inputCls}
                     />
                     <Button onClick={() => !dbBusy && runDbAction("move")}>
@@ -686,7 +721,7 @@ export default function SettingsPage() {
                     <input
                       value={usePath}
                       onChange={(e) => setUsePath(e.target.value)}
-                      placeholder="D:\Nextcloud\Schach\kiebitz.db"
+                      placeholder="C:\\Kiebitz\\kiebitz.db"
                       className={inputCls}
                     />
                     <Button onClick={() => !dbBusy && runDbAction("use")}>
@@ -697,7 +732,13 @@ export default function SettingsPage() {
                 <div className="my-1 border-t border-line" />
                 <Field label={t("set.dbBackupLabel")}>
                   <div className="flex gap-2">
-                    <input value={backupPath} onChange={(e) => setBackupPath(e.target.value)} placeholder="D:\\Backups\\kiebitz-backup.db" className={inputCls} />
+                    <input value={backupPath} onChange={(e) => setBackupPath(e.target.value)} placeholder="C:\\Kiebitz\\kiebitz-backup.db" className={inputCls} />
+                    <Button onClick={async () => {
+                      const chosen = await saveDialog({ defaultPath: "kiebitz-backup.db", filters: [{ name: "SQLite database", extensions: ["db"] }] });
+                      if (chosen) setBackupPath(chosen.toLowerCase().endsWith(".db") ? chosen : `${chosen}.db`);
+                    }}>
+                      <FolderOpen size={14} /> {t("set.dbChooseTarget")}
+                    </Button>
                     <Button onClick={() => !dbBusy && runBackup()}>
                       {dbBusy ? <Loader2 size={14} className="animate-spin" /> : <HardDriveDownload size={14} />} {t("set.dbBackup")}
                     </Button>
@@ -705,12 +746,23 @@ export default function SettingsPage() {
                 </Field>
                 <Field label={t("set.dbRestoreLabel")}>
                   <div className="flex gap-2">
-                    <input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="D:\\Backups\\kiebitz-backup.db" className={inputCls} />
+                    <input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="C:\\Kiebitz\\kiebitz-backup.db" className={inputCls} />
+                    <Button onClick={async () => {
+                      const chosen = await openDialog({ multiple: false, directory: false, filters: [{ name: "SQLite database", extensions: ["db"] }] });
+                      if (typeof chosen === "string") setRestorePath(chosen);
+                    }}>
+                      <FolderOpen size={14} /> {t("set.dbChooseFile")}
+                    </Button>
                     <Button onClick={() => !dbBusy && runRestore()}>
                       {dbBusy ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />} {t("set.dbRestore")}
                     </Button>
                   </div>
                 </Field>
+                {dbFeedback && (
+                  <div className={`rounded-lg border px-3 py-2 text-[12.5px] ${dbFeedback.error ? "border-[#8a3535] bg-[#2a1414] text-loss" : "border-accent-dim bg-accent-soft text-accent"}`}>
+                    {dbFeedback.text}
+                  </div>
+                )}
               </div>
               <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.dbNote")}</p>
             </>

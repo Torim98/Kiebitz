@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ChevronsLeft,
   ChevronsRight,
   Database,
@@ -10,12 +12,13 @@ import {
   FileUp,
   History,
   Loader2,
-  Plus,
+  FolderOpen,
   Save,
   Search,
   StickyNote,
   X,
 } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
@@ -63,6 +66,7 @@ export default function Games({
   const [pgnExportPath, setPgnExportPath] = useState("");
   const [pgnPlayer, setPgnPlayer] = useState(profile.ccUser);
   const [pgnBusy, setPgnBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -195,6 +199,23 @@ export default function Games({
     setTagDraft("");
   };
 
+  const choosePgnImport = async () => {
+    const path = await openDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Portable Game Notation", extensions: ["pgn"] }],
+    });
+    if (typeof path === "string") setPgnPath(path);
+  };
+
+  const choosePgnExport = async () => {
+    const path = await saveDialog({
+      defaultPath: "kiebitz-export.pgn",
+      filters: [{ name: "Portable Game Notation", extensions: ["pgn"] }],
+    });
+    if (path) setPgnExportPath(path.toLowerCase().endsWith(".pgn") ? path : `${path}.pgn`);
+  };
+
   const runPgnImport = async () => {
     if (!pgnPath.trim()) return;
     setPgnBusy(true);
@@ -255,22 +276,10 @@ export default function Games({
           </p>
         </div>
         {backend.mode === "desktop" && (
-          <div className="flex gap-2">
-            <Button onClick={() => !importing && runImport(true)}>
-              <History size={15} /> {t("games.importAll")}
-            </Button>
-            <Button primary onClick={() => !importing && runImport(false)}>
-              {importing ? (
-                <>
-                  <Loader2 size={15} className="animate-spin" /> {t("games.importing")}
-                </>
-              ) : (
-                <>
-                  <Download size={15} /> {t("games.importLatest")}
-                </>
-              )}
-            </Button>
-          </div>
+          <Button onClick={() => setImportOpen((open) => !open)}>
+            <Download size={15} /> {t("games.manageImports")}
+            {importOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </Button>
         )}
       </header>
 
@@ -280,21 +289,44 @@ export default function Games({
         </div>
       )}
 
-      {backend.mode === "desktop" && (
-        <Card title={t("games.pgnTitle")} className="mb-4">
+      {backend.mode === "desktop" && importOpen && (
+        <Card title={t("games.importPanelTitle")} className="mb-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-[12.5px] font-medium text-ink2">{t("games.onlineImportTitle")}</div>
+              <div className="mt-0.5 text-[11.5px] text-ink3">{t("games.onlineImportHint")}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => !importing && runImport(true)}>
+                <History size={15} /> {t("games.importAll")}
+              </Button>
+              <Button primary onClick={() => !importing && runImport(false)}>
+                {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                {importing ? t("games.importing") : t("games.importLatest")}
+              </Button>
+            </div>
+          </div>
+          <div className="mb-4 border-t border-line" />
+          <div className="mb-3 text-[12.5px] font-medium text-ink2">{t("games.pgnTitle")}</div>
           <div className="mb-3 flex items-center gap-2">
             <label className="text-[12px] text-ink3" htmlFor="pgn-player">{t("games.pgnPlayer")}</label>
             <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="w-56 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
           </div>
           <div className="grid gap-3 min-[820px]:grid-cols-2">
             <div className="flex gap-2">
-              <input value={pgnPath} onChange={(e) => setPgnPath(e.target.value)} placeholder={t("games.pgnImportPath")} className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
-              <Button onClick={() => !pgnBusy && runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
+              <button onClick={choosePgnImport} className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+                {pgnPath || t("games.pgnChooseImport")}
+              </button>
+              <Button onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
+              <Button primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
             </div>
             <div className="flex gap-2">
-              <input value={pgnExportPath} onChange={(e) => setPgnExportPath(e.target.value)} placeholder={t("games.pgnExportPath")} className="min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
-              <Button onClick={() => !pgnBusy && runPgnExport(true)} disabled={!selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
-              <Button onClick={() => !pgnBusy && runPgnExport(false)}>{t("games.pgnAll")}</Button>
+              <button onClick={choosePgnExport} className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+                {pgnExportPath || t("games.pgnChooseExport")}
+              </button>
+              <Button onClick={choosePgnExport}><FolderOpen size={14} /> {t("games.chooseTarget")}</Button>
+              <Button onClick={() => !pgnBusy && runPgnExport(true)} disabled={!pgnExportPath || !selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
+              <Button onClick={() => !pgnBusy && runPgnExport(false)} disabled={!pgnExportPath}>{t("games.pgnAll")}</Button>
             </div>
           </div>
           <p className="mt-2 text-[11.5px] text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
@@ -385,7 +417,7 @@ export default function Games({
                 <th className="px-2 font-medium">{t("games.colOpening")}</th>
                 <th className="px-2 font-medium">{t("games.colResult")}</th>
                 <th className="px-2 text-right font-medium">{t("games.colAccuracy")}</th>
-                <th className="py-2.5 pl-2 pr-4 text-right font-medium">{t("games.colTags")}</th>
+                <th className="w-[112px] py-2.5 pl-2 pr-4 text-right font-medium">{t("games.colTags")}</th>
               </tr>
             </thead>
             <tbody>
@@ -459,8 +491,9 @@ export default function Games({
                     {g.accuracy != null ? `${de(g.accuracy)} %` : "—"}
                   </td>
                   <td className="py-2.5 pl-2 pr-4 text-right">
-                    <div className="flex justify-end gap-1">
-                      {g.tags.slice(0, 2).map((tag) => <Tag key={tag}>{tag}</Tag>)}
+                    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+                      {g.tags[0] && <span className="inline-block max-w-[68px] truncate align-middle"><Tag>{g.tags[0]}</Tag></span>}
+                      {g.tags.length > 1 && <span className="text-[11px] text-ink3">+{g.tags.length - 1}</span>}
                       {g.note && <StickyNote size={14} className="ml-1 inline text-gold" />}
                     </div>
                   </td>
@@ -602,10 +635,18 @@ export default function Games({
                     : <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
                 </div>
                 {selected.dbId && (
-                  <div className="mt-2 flex gap-2">
-                    <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTags()} placeholder={t("games.tagPlaceholder")} className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none" />
-                    <Button onClick={addTags}><Plus size={13} /> {t("games.addTag")}</Button>
-                  </div>
+                  <input
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                        e.preventDefault();
+                        addTags();
+                      }
+                    }}
+                    placeholder={t("games.tagPlaceholder")}
+                    className="mt-2 w-full rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+                  />
                 )}
               </div>
             </Card>

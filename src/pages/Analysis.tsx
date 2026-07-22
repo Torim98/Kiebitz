@@ -568,6 +568,28 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             </div>
           </Card>
 
+          {live && (
+            <Card title={t("an.phaseAccuracy")}>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {([
+                  [t("ins.phase.opening"), game.accuracy_opening],
+                  [t("ins.phase.middlegame"), game.accuracy_middlegame],
+                  [t("ins.phase.endgame"), game.accuracy_endgame],
+                ] as const).map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-panel2 px-1.5 py-2">
+                    <div className="text-[10.5px] text-ink3">{label}</div>
+                    <div className="mt-0.5 text-[13px] font-semibold text-ink2">
+                      {value == null ? "—" : `${de(value)} %`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {game.accuracy_opening == null && game.accuracy_middlegame == null && game.accuracy_endgame == null && (
+                <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("an.phaseAccuracyMissing")}</p>
+              )}
+            </Card>
+          )}
+
           {desktop && chessdbOn && (
             <Card title={t("an.book")}>
               {bookState === "loading" && !book ? (

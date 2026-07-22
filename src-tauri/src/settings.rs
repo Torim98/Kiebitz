@@ -326,25 +326,17 @@ pub fn use_database(app: tauri::AppHandle, path: String) -> Result<DbInfo, Strin
 }
 
 /// Erstellt über die SQLite Online Backup API einen konsistenten Snapshot.
-#[tauri::command]
-pub fn backup_database(app: tauri::AppHandle, target: String) -> Result<String, String> {
-    ensure_workers_idle(&app)?;
-    let target = PathBuf::from(target.trim());
-    if target.as_os_str().is_empty() {
-        return Err("Kein Sicherungspfad angegeben.".into());
-    }
+fn backup_to(source: &Connection, target: &std::path::Path) -> Result<(), String> {
     if target.exists() {
         return Err("Die Sicherungsdatei existiert bereits.".into());
     }
     if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| format!("Zielordner nicht anlegbar: {e}"))?;
     }
-    let source = app.state::<db::Db>();
-    let source = source.0.lock().map_err(|e| e.to_string())?;
-    let mut destination =
-        Connection::open(&target).map_err(|e| format!("Sicherungsdatei nicht anlegbar: {e}"))?;
+    let mut destination = Connection::open(target)
+        .map_err(|e| format!("Sicherungsdatei nicht anlegbar: {e}"))?;
     let result = (|| {
-        let backup = rusqlite::backup::Backup::new(&source, &mut destination)
+        let backup = rusqlite::backup::Backup::new(source, &mut destination)
             .map_err(|e| format!("Backup nicht startbar: {e}"))?;
         backup
             .run_to_completion(128, std::time::Duration::from_millis(10), None)
@@ -352,33 +344,33 @@ pub fn backup_database(app: tauri::AppHandle, target: String) -> Result<String, 
     })();
     drop(destination);
     if let Err(e) = result {
-        let _ = std::fs::remove_file(&target);
+        let _ = std::fs::remove_file(target);
         return Err(e);
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn backup_database(app: tauri::AppHandle, target: String) -> Result<String, String> {
+    ensure_workers_idle(&app)?;
+    let target = PathBuf::from(target.trim());
+    if target.as_os_str().is_empty() {
+        return Err("Kein Sicherungspfad angegeben.".into());
+    }
+    let source = app.state::<db::Db>();
+    let source = source.0.lock().map_err(|e| e.to_string())?;
+    backup_to(&source, &target)?;
     Ok(target.to_string_lossy().to_string())
 }
 
 /// Validiert einen Snapshot und spielt ihn über die SQLite Backup API in die
 /// aktuell geöffnete Datenbank ein. Der Connection-Handle bleibt dabei stabil.
-#[tauri::command]
-pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo, String> {
-    ensure_workers_idle(&app)?;
-    let source_path = PathBuf::from(source.trim());
-    if !source_path.is_file() {
-        return Err("Sicherungsdatei nicht gefunden.".into());
-    }
-    let current_path = app
-        .state::<analysis::DbPath>()
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
-    if source_path.canonicalize().ok() == current_path.canonicalize().ok() {
-        return Err("Die Sicherung darf nicht die aktuell geöffnete Datenbank sein.".into());
-    }
-    let source =
-        Connection::open_with_flags(&source_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(|e| format!("Sicherung nicht lesbar: {e}"))?;
+fn restore_from(source_path: &std::path::Path, destination: &mut Connection) -> Result<(), String> {
+    let source = Connection::open_with_flags(
+        source_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .map_err(|e| format!("Sicherung nicht lesbar: {e}"))?;
     let check: String = source
         .query_row("PRAGMA quick_check", [], |r| r.get(0))
         .map_err(|e| format!("Sicherung ungültig: {e}"))?;
@@ -395,15 +387,34 @@ pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo,
     if has_games != 1 {
         return Err("Die Datei ist keine Kiebitz-Datenbank.".into());
     }
+    let backup = rusqlite::backup::Backup::new(&source, destination)
+        .map_err(|e| format!("Wiederherstellung nicht startbar: {e}"))?;
+    backup
+        .run_to_completion(128, std::time::Duration::from_millis(10), None)
+        .map_err(|e| format!("Wiederherstellung fehlgeschlagen: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo, String> {
+    ensure_workers_idle(&app)?;
+    let source_path = PathBuf::from(source.trim());
+    if !source_path.is_file() {
+        return Err("Sicherungsdatei nicht gefunden.".into());
+    }
+    let current_path = app
+        .state::<analysis::DbPath>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    if source_path.canonicalize().ok() == current_path.canonicalize().ok() {
+        return Err("Die Sicherung darf nicht die aktuell geöffnete Datenbank sein.".into());
+    }
     {
         let state = app.state::<db::Db>();
         let mut destination = state.0.lock().map_err(|e| e.to_string())?;
-        let backup = rusqlite::backup::Backup::new(&source, &mut destination)
-            .map_err(|e| format!("Wiederherstellung nicht startbar: {e}"))?;
-        backup
-            .run_to_completion(128, std::time::Duration::from_millis(10), None)
-            .map_err(|e| format!("Wiederherstellung fehlgeschlagen: {e}"))?;
-        drop(backup);
+        restore_from(&source_path, &mut destination)?;
         db::init(&destination)?;
     }
     db_info(app.clone(), app.state())
@@ -477,5 +488,31 @@ mod tests {
         assert_eq!(back.import_months, 3);
         assert!(back.auto_update);
         assert_eq!(back.display_name, "");
+    }
+
+    #[test]
+    fn database_backup_and_restore_roundtrip() {
+        let source = Connection::open_in_memory().unwrap();
+        db::init(&source).unwrap();
+        source
+            .execute_batch("CREATE TABLE backup_marker (value TEXT); INSERT INTO backup_marker VALUES ('ok');")
+            .unwrap();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("kiebitz-backup-{unique}.db"));
+
+        backup_to(&source, &path).unwrap();
+        assert!(path.is_file());
+
+        let mut destination = Connection::open_in_memory().unwrap();
+        restore_from(&path, &mut destination).unwrap();
+        let value: String = destination
+            .query_row("SELECT value FROM backup_marker", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(value, "ok");
+
+        std::fs::remove_file(path).unwrap();
     }
 }

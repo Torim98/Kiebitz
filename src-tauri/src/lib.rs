@@ -257,6 +257,7 @@ pub fn run() {
                 )?;
             }
             app.handle().plugin(tauri_plugin_opener::init())?;
+            app.handle().plugin(tauri_plugin_dialog::init())?;
 
             // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.
             #[cfg(mobile)]
