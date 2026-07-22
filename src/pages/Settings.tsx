@@ -366,7 +366,7 @@ export default function SettingsPage() {
     }
   };
 
-  /** Startet Download + Installation; bei Erfolg startet die App neu. */
+  /** Desktop installiert direkt; Android öffnet die signierte APK im Browser. */
   const runUpdateInstall = () => {
     setUpdError(null);
     installUpdate().catch((e) => {
@@ -1037,16 +1037,18 @@ export default function SettingsPage() {
         >
           {desktop && draft ? (
             <>
-              <label className="flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={draft.auto_update}
-                  onChange={(e) => patch({ auto_update: e.target.checked })}
-                  className="h-4 w-4 accent-[#22c08a]"
-                />
-                <span className="text-[13px] text-ink">{t("set.autoUpdateToggle")}</span>
-              </label>
-              <div className="mt-4 flex items-center gap-3">
+              {!mobile && (
+                <label className="flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={draft.auto_update}
+                    onChange={(e) => patch({ auto_update: e.target.checked })}
+                    className="h-4 w-4 accent-[#22c08a]"
+                  />
+                  <span className="text-[13px] text-ink">{t("set.autoUpdateToggle")}</span>
+                </label>
+              )}
+              <div className={`${mobile ? "" : "mt-4"} flex items-center gap-3`}>
                 <Button onClick={() => !updChecking && !updState && runUpdateCheck()}>
                   {updChecking ? <Loader2 size={14} className="animate-spin" /> : t("set.updateCheck")}
                 </Button>
@@ -1088,7 +1090,7 @@ export default function SettingsPage() {
                       )}
                       <div>
                         <Button primary onClick={runUpdateInstall}>
-                          <Download size={14} /> {t("set.updateInstall")}
+                          <Download size={14} /> {t(mobile ? "set.updateInstallMobile" : "set.updateInstall")}
                         </Button>
                       </div>
                     </div>
@@ -1097,7 +1099,9 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
-              <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.autoUpdateNote")}</p>
+              <p className="mt-3 text-[12px] leading-relaxed text-ink3">
+                {t(mobile ? "set.updateMobileNote" : "set.autoUpdateNote")}
+              </p>
             </>
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>

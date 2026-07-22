@@ -35,7 +35,7 @@ jobs:
             echo "Wiederverwendung des vorhandenen Draft-Releases $TAG"
           else
             gh release create "$TAG" --draft --title "Kiebitz $TAG" \
-              --notes "Automatically built from $TAG. Existing installations update after publication."
+              --notes "Automatically built from $TAG. Desktop installations update after publication; Android offers the signed APK in Settings."
           fi
           echo "release_id=$(gh release view "$TAG" --json id --jq .id)" >> "$GITHUB_OUTPUT"
 
@@ -93,7 +93,7 @@ jobs:
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseName: "Kiebitz ${{ github.ref_name }}"
-          releaseBody: "Automatically built from ${{ github.ref_name }}. Existing installations update on the next start."
+          releaseBody: "Automatically built from ${{ github.ref_name }}. Desktop installations update on the next start; Android offers the signed APK in Settings."
           # Der Draft existiert bereits; tauri-action lädt Signaturen und
           # latest.json daran hoch. Veröffentlichung erfolgt im publish-Job.
           releaseDraft: true

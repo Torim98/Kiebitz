@@ -1,19 +1,48 @@
-//! Auto-Update über signierte GitHub-Releases (tauri-plugin-updater).
+//! Updates über signierte GitHub-Releases.
 //!
-//! Beim Start wird immer geprüft: ist die Einstellung aktiv, wird das Update
-//! direkt geladen und installiert; ist sie aus, meldet ein
+//! Auf dem Desktop wird beim Start immer geprüft: ist die Einstellung aktiv,
+//! wird das Update direkt geladen und installiert; ist sie aus, meldet ein
 //! `update://available`-Event dem Frontend nur, dass eine neue Version
 //! bereitsteht (Toast unten rechts mit „Jetzt aktualisieren“). Daneben gibt es
 //! den manuellen Check auf der Settings-Seite. Fortschritt läuft als
 //! `update://state`-Events ans Frontend; nach der Installation startet die App
 //! neu (unter Windows beendet der Installer die App selbst).
+//!
+//! Android liest beim manuellen Check dieselbe `latest.json`, vergleicht deren
+//! Version und öffnet die passende signierte GitHub-APK im Systembrowser. Die
+//! eigentliche Installation muss Android aus Sicherheitsgründen bestätigen.
 
 use serde::Serialize;
 use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::Emitter;
+#[cfg(target_os = "android")]
+use tauri_plugin_opener::OpenerExt;
 #[cfg(desktop)]
 use tauri_plugin_updater::UpdaterExt;
+
+#[cfg(target_os = "android")]
+const RELEASE_MANIFEST_URL: &str =
+    "https://github.com/Torim98/Kiebitz/releases/latest/download/latest.json";
+
+#[cfg(any(target_os = "android", test))]
+fn parse_release_version(raw: &str) -> Result<semver::Version, String> {
+    semver::Version::parse(raw.trim().trim_start_matches('v'))
+        .map_err(|e| format!("Ungültige Release-Version '{raw}': {e}"))
+}
+
+#[cfg(any(target_os = "android", test))]
+fn is_newer_release(current: &str, candidate: &str) -> Result<bool, String> {
+    Ok(parse_release_version(candidate)? > parse_release_version(current)?)
+}
+
+#[cfg(any(target_os = "android", test))]
+fn android_apk_url(version: &str) -> Result<String, String> {
+    let version = parse_release_version(version)?.to_string();
+    Ok(format!(
+        "https://github.com/Torim98/Kiebitz/releases/download/v{version}/Kiebitz_{version}_arm64.apk"
+    ))
+}
 
 #[derive(Serialize)]
 pub struct UpdateCheck {
@@ -87,12 +116,59 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     }
 }
 
-// ── Mobile-Stubs ─────────────────────────────────────────────────────────────
-// In-App-Updates gibt es nur auf dem Desktop; Mobile aktualisiert über
-// Store/Sideload. Die Commands existieren trotzdem, damit das Frontend
-// dieselben invoke-Aufrufe machen darf.
+// ── Mobile-Updates ───────────────────────────────────────────────────────────
+// Android prüft den Desktop-Release-Feed, installiert aber nicht still: der
+// Systembrowser lädt die APK, anschließend bestätigt der Nutzer die Installation.
 
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
+#[derive(serde::Deserialize)]
+struct AndroidReleaseManifest {
+    version: String,
+}
+
+#[cfg(target_os = "android")]
+fn fetch_android_release() -> Result<AndroidReleaseManifest, String> {
+    let response = ureq::get(RELEASE_MANIFEST_URL)
+        .timeout(std::time::Duration::from_secs(15))
+        .call()
+        .map_err(|e| format!("Release-Feed nicht erreichbar: {e}"))?;
+    serde_json::from_reader(response.into_reader())
+        .map_err(|e| format!("Release-Feed ist ungültig: {e}"))
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
+    let current = app.package_info().version.to_string();
+    let manifest = tauri::async_runtime::spawn_blocking(fetch_android_release)
+        .await
+        .map_err(|e| format!("Update-Check abgebrochen: {e}"))??;
+    let available = if is_newer_release(&current, &manifest.version)? {
+        Some(parse_release_version(&manifest.version)?.to_string())
+    } else {
+        None
+    };
+    Ok(UpdateCheck {
+        current,
+        available,
+        notes: None,
+    })
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    let check = check_update(app.clone()).await?;
+    let version = check
+        .available
+        .ok_or_else(|| "Kein Update verfügbar.".to_string())?;
+    let url = android_apk_url(&version)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("APK-Download konnte nicht geöffnet werden: {e}"))
+}
+
+#[cfg(target_os = "ios")]
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
     Ok(UpdateCheck {
@@ -102,10 +178,10 @@ pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
     })
 }
 
-#[cfg(mobile)]
+#[cfg(target_os = "ios")]
 #[tauri::command]
 pub async fn install_update(_app: AppHandle) -> Result<(), String> {
-    Err("In-App-Updates gibt es nur in der Desktop-App.".into())
+    Err("In-App-Updates sind auf iOS nicht verfügbar.".into())
 }
 
 /// Check beim App-Start. Ist `auto` gesetzt, wird das Update direkt geladen,
@@ -239,5 +315,21 @@ mod tests {
     #[test]
     fn progress_difference_cannot_underflow() {
         assert!(!should_emit_progress(100, 200, None));
+    }
+
+    #[test]
+    fn release_versions_are_compared_semantically() {
+        assert!(is_newer_release("0.4.4", "0.5.0").unwrap());
+        assert!(is_newer_release("0.9.9", "v0.10.0").unwrap());
+        assert!(!is_newer_release("0.5.0", "0.5.0").unwrap());
+        assert!(!is_newer_release("0.5.1", "0.5.0").unwrap());
+    }
+
+    #[test]
+    fn android_apk_link_matches_release_asset_name() {
+        assert_eq!(
+            android_apk_url("v0.5.0").unwrap(),
+            "https://github.com/Torim98/Kiebitz/releases/download/v0.5.0/Kiebitz_0.5.0_arm64.apk"
+        );
     }
 }

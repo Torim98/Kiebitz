@@ -135,8 +135,11 @@ Notes:
 The Android app reuses the same Rust core and React frontend. A tagged release
 now builds and attaches a signed APK automatically (see *Releasing a new
 version*); the steps here are for **local** builds and to explain the moving
-parts. The app is **sideloaded** and does **not** auto-update (the updater
-plugin is desktop-only; mobile updates by reinstalling a newer APK).
+parts. The app is **sideloaded** and cannot install silently (the Tauri updater
+plugin is desktop-only). Settings → Updates nevertheless checks the shared
+GitHub release feed: when a newer version exists, Kiebitz opens the matching
+signed APK in the system browser. Open the downloaded APK and confirm Android's
+install prompt; the existing app data is preserved.
 
 > **Two version fields.** `versionName` is the human-readable string (e.g.
 > `0.4.0`, shown in-app) and comes straight from `tauri.conf.json`. `versionCode`
@@ -410,7 +413,8 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 
 ## Auto-update
 
-The updater plugin (`tauri-plugin-updater`) is wired up. Behavior in the app:
+The updater plugin (`tauri-plugin-updater`) is wired up for desktop. Behavior in
+the app:
 
 - **On startup** (if enabled in Settings → Updates, default on): a background
   task checks the endpoint, downloads and installs a newer version, and restarts
@@ -418,6 +422,9 @@ The updater plugin (`tauri-plugin-updater`) is wired up. Behavior in the app:
   yet) are only logged.
 - **Manually**: Settings → Updates has a "check now" button and an explicit
   "download & restart" action, independent of the toggle.
+- **Android**: the same button reads the version from `latest.json` and opens
+  the matching signed arm64 APK from the GitHub release. Android requires the
+  user to confirm the sideloaded update; there is no silent restart/install.
 
 The pieces that make it work:
 

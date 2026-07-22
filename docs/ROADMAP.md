@@ -167,5 +167,6 @@ Open:
   its persistent planner, and the four Insights sub-pages exercise asynchronous
   backend loading and navigation/filter actions through mocked Tauri `invoke`
   calls, including coach recommendations and daily plan completion.
-- [x] Auto-update — signed GitHub releases as the update feed, background
-  check/install on startup (toggleable) + manual check in Settings → Updates.
+- [x] Update flow — signed GitHub releases as the feed; desktop has toggleable
+  background check/install plus a manual action, while Android checks the same
+  feed and opens the matching signed APK for user-confirmed installation.
