@@ -44,6 +44,23 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # tauri.conf.json bundles this file, so Tauri's build script requires it
+      # even for `cargo test`. Keep this pin in sync with release.yml and the
+      # licensing metadata in src-tauri/resources/stockfish/NOTICE.txt.
+      - name: Stockfish holen (Windows, AVX2)
+        shell: pwsh
+        run: |
+          $url = "https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip"
+          $expected = "6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900"
+          Invoke-WebRequest $url -OutFile sf.zip
+          $actual = (Get-FileHash sf.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Stockfish archive has unexpected SHA-256: $actual" }
+          Expand-Archive sf.zip -DestinationPath sf -Force
+          $exe = Get-ChildItem sf -Recurse -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "Stockfish archive contains no executable" }
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          Copy-Item $exe.FullName src-tauri/binaries/stockfish.exe
+
       - name: Tests
         working-directory: src-tauri
         run: cargo test
