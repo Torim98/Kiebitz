@@ -134,4 +134,32 @@ describe("buildInsights", () => {
     expect(ins.activity.values.length).toBe(7);
     expect(ins.activity.values.every((row) => row.length === 6)).toBe(true);
   });
+
+  it("compares two 20-game form windows and computes point score", () => {
+    const games = Array.from({ length: 40 }, (_, index) =>
+      g({
+        id: index,
+        played_ts: NOW - (39 - index) * 60,
+        result: index < 20 ? "loss" : index % 2 ? "win" : "draw",
+      })
+    );
+    const ins = buildInsights(games, "en");
+    expect(ins.recentForm.games).toBe(20);
+    expect(ins.recentForm.previousScorePct).toBe(0);
+    expect(ins.recentForm.scorePct).toBe(75);
+    expect(ins.scoreRate).toBeCloseTo(37.5);
+  });
+
+  it("builds detailed opening, game-length, and bounce-back segments", () => {
+    const ins = buildInsights([
+      g({ opening: "Italian Game", color: "white", result: "loss", moves_count: 18, accuracy: 70 }),
+      g({ opening: "Italian Game", color: "white", result: "win", moves_count: 30, accuracy: 90 }),
+      g({ opening: "Sicilian", color: "black", result: "draw", moves_count: 50, accuracy: 80 }),
+    ], "en");
+    expect(ins.openingDetails[0]).toMatchObject({ name: "Italian Game", color: "white", games: 2, scorePct: 50 });
+    expect(ins.byLength.map((bucket) => bucket.games)).toEqual([1, 1, 1]);
+    expect(ins.bounceBack).toEqual({ games: 1, scorePct: 100 });
+    expect(ins.longestLossStreak).toBe(1);
+    expect(ins.accuracyConsistency).toBeCloseTo(8.2, 1);
+  });
 });

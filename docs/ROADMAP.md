@@ -16,9 +16,10 @@ Shipped:
   blunder, Lichess-style accuracy); SQLite persistence with duplicate-safe
   chess.com/Lichess import and per-game notes; position search across all games.
 - **Modules:** Dashboard, Games, Analysis, Repertoire (FSRS training), Endgame
-  trainer (curated drills vs. engine, optional Syzygy), Puzzles (Lichess CC0 DB,
-  Elo + per-theme), Study/coach (weakness recommendations + learning schedule),
-  Insights (live stats).
+  trainer (curated drills vs. engine, optional Syzygy), Puzzles (Lichess CC0 DB
+  plus positions from the player's own games, Elo + per-theme), Study/coach
+  (weakness recommendations + persistent drag-and-drop calendar), Insights
+  (multi-page in-depth analysis).
 - **Settings:** German/English i18n, configurable DB location, engine binary +
   tuning, optional chessdb.cn book, puzzle-DB management, account/import
   defaults. (One dark theme by choice.)
@@ -34,14 +35,20 @@ Current priorities (added 2026-07-21):
 
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
-- [ ] **Deepen Insights.** Grow Insights into serious, in-depth, comprehensive
-  analysis — likely split across several sub-tabs rather than one page.
-- [ ] **Drag-and-drop study calendar.** Give the study schedule real calendar
-  units that can be placed and moved by drag and drop (like a personal
-  calendar), beyond today's checklist + week strip.
-- [ ] **Puzzles from your own games.** Generate puzzles from the player's own
-  positions (the tactical moments the analysis pipeline already flags), not just
-  the Lichess dump.
+- [x] **Deepen Insights** (2026-07-22). Insights now has four focused sub-pages:
+  overview/diagnosis, playing strength, color-split opening files, and behavioral
+  patterns. Added score-rate and 20-game form comparisons, analysis coverage and
+  consistency, phase/error, opponent-strength, time-control, game-length,
+  weekday/time-slot, bounce-back and losing-streak analysis.
+- [x] **Drag-and-drop study calendar** (2026-07-22). A collapsed planner below
+  the existing Study checklist/week strip persists editable unit templates and
+  scheduled events in SQLite. Units can be added, edited, deleted, assigned by
+  date, dragged between days, completed and reopened. Four starter templates
+  cover openings, endgames, tactics, and a played game plus analysis.
+- [x] **Puzzles from your own games** (2026-07-22). Auto-analysis turns the
+  player's missed best moves on mistakes/blunders into directly playable local
+  puzzles. Existing analyses are backfilled once; the trainer exposes source
+  filters for all, own-game, and Lichess puzzles.
 - [x] **Rebrand the sidebar subtitle.** Replaced "Chess cockpit" with
   "Zug um Zugvogel" / "Moves take flight" (2026-07-22).
 
@@ -148,17 +155,17 @@ Open:
   fetch-mocked), dashboard/insights stats (`stats.ts`), number/FEN helpers
   (`util.ts`) and game mapping (`gameUi.ts`), pure presentational components
   (`components/ui.tsx`), plus data-backed Dashboard and Study page interactions
-  with mocked Tauri `invoke` calls — 50 tests total. The CI workflow (`ci.yml`)
+  with mocked Tauri `invoke` calls — 56 tests total. The CI workflow (`ci.yml`)
   runs the type-check and frontend tests on every push/PR to main.
 - [x] **Rust coverage across all backend modules** (2026-07-22). Added tests for
   the previously uncovered `endgame`, `study`, `puzzles`, `live` and `updater`
   modules: database aggregation, streak/due logic, puzzle selection and Elo
   persistence, UCI parsing, engine lifecycle and updater progress throttling.
-  The 44-test Rust suite now runs in CI on Windows, avoiding the additional
+  The 47-test Rust suite now runs in CI on Windows, avoiding the additional
   GTK/WebKit system dependencies a Linux Tauri build would require.
-- [x] **Data-backed frontend interaction tests** (2026-07-22). Dashboard and
-  Study now exercise asynchronous backend loading and navigation/filter actions
-  through mocked Tauri `invoke` calls, including coach recommendations and daily
-  plan completion.
+- [x] **Data-backed frontend interaction tests** (2026-07-22). Dashboard, Study,
+  its persistent planner, and the four Insights sub-pages exercise asynchronous
+  backend loading and navigation/filter actions through mocked Tauri `invoke`
+  calls, including coach recommendations and daily plan completion.
 - [x] Auto-update — signed GitHub releases as the update feed, background
   check/install on startup (toggleable) + manual check in Settings → Updates.

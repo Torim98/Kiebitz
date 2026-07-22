@@ -43,6 +43,13 @@ function mockBackend(study = liveStudy(), themes: unknown[] = []) {
         return Promise.resolve({ themes });
       case "error_stats":
         return Promise.resolve([]);
+      case "study_calendar":
+        return Promise.resolve({
+          templates: [{ id: 1, title: "Taktik", duration_min: 20, tool: "Kiebitz Puzzles", description: "15–20 Aufgaben" }],
+          events: [],
+        });
+      case "schedule_study_unit":
+        return Promise.resolve();
       default:
         return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
     }
@@ -108,6 +115,23 @@ describe("Study page", () => {
     expect(await screen.findByText("Tagesplan komplett — starke Arbeit!")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getAllByText("Erledigt")).toHaveLength(3);
+    });
+  });
+
+  it("opens the persistent planner and schedules an editable unit", async () => {
+    mockBackend();
+    renderStudy();
+    await screen.findByText("7 fällig");
+
+    fireEvent.click(screen.getByRole("button", { name: /Planung öffnen/ }));
+    expect(await screen.findByText("15–20 Aufgaben")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Planen" }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "schedule_study_unit",
+        expect.objectContaining({ templateId: 1 })
+      );
     });
   });
 });

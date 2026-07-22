@@ -208,6 +208,80 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE puzzle_attempts ADD COLUMN puzzle_rating INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    // Migration v9: Herkunft eigener Puzzles sowie persistenter Studienkalender.
+    for sql in [
+        "ALTER TABLE puzzles ADD COLUMN source TEXT NOT NULL DEFAULT 'lichess'",
+        "ALTER TABLE puzzles ADD COLUMN source_game_id INTEGER",
+        "ALTER TABLE puzzles ADD COLUMN source_ply INTEGER",
+        "ALTER TABLE puzzles ADD COLUMN setup_plies INTEGER NOT NULL DEFAULT 1",
+    ] {
+        let _ = conn.execute(sql, []);
+    }
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_puzzles_source ON puzzles(source);
+
+         CREATE TABLE IF NOT EXISTS study_templates (
+            id           INTEGER PRIMARY KEY,
+            title        TEXT NOT NULL,
+            duration_min INTEGER NOT NULL DEFAULT 20,
+            tool         TEXT NOT NULL DEFAULT '',
+            description  TEXT NOT NULL DEFAULT '',
+            created_ts   INTEGER NOT NULL DEFAULT 0,
+            updated_ts   INTEGER NOT NULL DEFAULT 0
+         );
+
+         CREATE TABLE IF NOT EXISTS study_events (
+            id           INTEGER PRIMARY KEY,
+            template_id  INTEGER NOT NULL,
+            day          TEXT NOT NULL,
+            position     INTEGER NOT NULL DEFAULT 0,
+            completed    INTEGER NOT NULL DEFAULT 0,
+            completed_ts INTEGER NOT NULL DEFAULT 0,
+            created_ts   INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE INDEX IF NOT EXISTS idx_study_events_day ON study_events(day, position, id);",
+    )
+    .map_err(|e| format!("Kalender-Schema fehlgeschlagen: {e}"))?;
+
+    // Einmalige, danach vollständig editier- und löschbare Startvorlagen.
+    if meta_get(conn, "study_templates_seeded").is_none() {
+        let now = now_ts();
+        for (title, duration, tool, description) in [
+            (
+                "Eröffnungs-Training",
+                20,
+                "Kiebitz Repertoire",
+                "Wähle eine Eröffnung für Weiß und eine für Schwarz. Lerne die ersten 8–10 Züge und die Ideen dahinter.",
+            ),
+            (
+                "Endspiel-Training",
+                20,
+                "Kiebitz Endgames",
+                "Grundlagen in Reihenfolge: Dame gegen König, Turm gegen König, Bauernendspiele mit Opposition und Quadratregel.",
+            ),
+            (
+                "Taktik",
+                20,
+                "Kiebitz Puzzles",
+                "15–20 Aufgaben, langsam und korrekt. Fokus: Gabel, Fesselung, Spieß und Abzug.",
+            ),
+            (
+                "Partie + Analyse",
+                40,
+                "Lichess + Kiebitz Analysis",
+                "Eine Rapid-Partie spielen, zuerst selbst prüfen und danach die drei größten Engine-Fehler verstehen.",
+            ),
+        ] {
+            conn.execute(
+                "INSERT INTO study_templates
+                 (title, duration_min, tool, description, created_ts, updated_ts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                params![title, duration, tool, description, now],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        meta_set(conn, "study_templates_seeded", "1")?;
+    }
     let _ = conn.execute(
         "CREATE TABLE IF NOT EXISTS rep_tombstones (
             side       TEXT NOT NULL,

@@ -17,6 +17,7 @@ import { puzzleStats, themeLabel, type ThemeStat } from "../lib/puzzles";
 import { studyData, dayUnits, type StudyData } from "../lib/study";
 import { buildCoach } from "../lib/coach";
 import { Button, Card } from "../components/ui";
+import StudyPlanner from "../components/StudyPlanner";
 import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
@@ -359,6 +360,8 @@ export default function Study({
         </div>
         <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
       </Card>
+
+      <StudyPlanner desktop={desktop} />
     </div>
   );
 }

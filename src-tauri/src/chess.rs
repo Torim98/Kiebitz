@@ -10,6 +10,8 @@ pub struct WalkedMove {
     /// 1-basierter Halbzug-Index.
     pub ply: u32,
     pub san: String,
+    /// Volle FEN der Stellung vor dem Zug.
+    pub fen_before: String,
     /// Volle FEN der Stellung nach dem Zug.
     pub fen_after: String,
     /// Normalisierter Schlüssel der Stellung nach dem Zug.
@@ -70,6 +72,7 @@ pub fn walk_sans(moves: &str) -> Vec<WalkedMove> {
             Err(_) => break,
         };
         let by_white = pos.turn() == Color::White;
+        let fen_before = full_fen(&pos);
         pos = match pos.play(&m) {
             Ok(p) => p,
             Err(_) => break,
@@ -77,6 +80,7 @@ pub fn walk_sans(moves: &str) -> Vec<WalkedMove> {
         out.push(WalkedMove {
             ply,
             san: san_str.to_string(),
+            fen_before,
             fen_after: full_fen(&pos),
             key_after: fen_key(&pos),
             phase: phase_of(&pos, ply),

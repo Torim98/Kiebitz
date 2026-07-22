@@ -273,15 +273,15 @@ fn run_worker(
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
 
-    let targets: Vec<(i64, String, String, String)> = {
+    let targets: Vec<(i64, String, String, String, i64)> = {
         let (sql, use_ids) = match &game_ids {
             Some(_) => (
-                "SELECT id, moves, opponent, color FROM games WHERE id = ?1".to_string(),
+                "SELECT id, moves, opponent, color, my_elo FROM games WHERE id = ?1".to_string(),
                 true,
             ),
             None => (
                 format!(
-                    "SELECT id, moves, opponent, color FROM games
+                    "SELECT id, moves, opponent, color, my_elo FROM games
                      WHERE analyzed = 0 AND moves != ''
                      ORDER BY played_ts DESC LIMIT {}",
                     limit.unwrap_or(u32::MAX)
@@ -294,7 +294,7 @@ fn run_worker(
             let mut v = Vec::new();
             for id in game_ids.unwrap() {
                 if let Ok(row) = stmt.query_row(params![id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
                 }) {
                     v.push(row);
                 }
@@ -303,7 +303,9 @@ fn run_worker(
         } else {
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .query_map([], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?
@@ -334,7 +336,7 @@ fn run_worker(
     let total = targets.len();
     let mut analyzed = 0usize;
 
-    for (idx, (game_id, moves, opponent, color)) in targets.into_iter().enumerate() {
+    for (idx, (game_id, moves, opponent, color, my_elo)) in targets.into_iter().enumerate() {
         if state.cancel.load(Ordering::SeqCst) {
             break;
         }
@@ -433,6 +435,19 @@ fn run_worker(
         let accuracy_opening = accuracy_from_losses(&opening_losses);
         let accuracy_middlegame = accuracy_from_losses(&middlegame_losses);
         let accuracy_endgame = accuracy_from_losses(&endgame_losses);
+        let own_puzzles: Vec<crate::puzzles::OwnPuzzleCandidate> = rows
+            .iter()
+            .filter(|(_, w, _, judgment)| {
+                w.by_white == my_white && matches!(*judgment, "mistake" | "blunder")
+            })
+            .map(|(ply, w, _, judgment)| crate::puzzles::OwnPuzzleCandidate {
+                ply: *ply,
+                fen: w.fen_before.clone(),
+                best_uci: evals[*ply as usize - 1].best_uci.clone(),
+                phase: w.phase.to_string(),
+                judgment: (*judgment).to_string(),
+            })
+            .collect();
 
         // In einer Transaktion schreiben.
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
@@ -463,6 +478,12 @@ fn run_worker(
                 .map_err(|e| e.to_string())?;
             }
         }
+        crate::puzzles::replace_own_game_puzzles(
+            &conn,
+            game_id,
+            if my_elo > 0 { my_elo } else { 1500 },
+            &own_puzzles,
+        )?;
         index_game_positions(&conn, game_id, &walked)?;
         conn.execute(
             "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2),

@@ -140,6 +140,29 @@ export interface LiveInsights {
   activity: { days: string[]; slots: string[]; values: number[][] };
   whiteAdvantagePts: number;
   topSlot: { label: string; games: number } | null;
+  scoreRate: number;
+  analysisCoverage: number;
+  accuracyConsistency: number | null;
+  recentForm: {
+    games: number;
+    scorePct: number;
+    previousScorePct: number | null;
+    accuracy: number | null;
+    previousAccuracy: number | null;
+  };
+  openingDetails: {
+    name: string;
+    color: "white" | "black";
+    games: number;
+    scorePct: number;
+    accuracy: number | null;
+  }[];
+  resultTrend: { month: string; scorePct: number; games: number }[];
+  byWeekday: { day: string; games: number; scorePct: number; accuracy: number | null }[];
+  byTimeSlot: { slot: string; games: number; scorePct: number; accuracy: number | null }[];
+  byLength: { bucket: string; games: number; scorePct: number; accuracy: number | null }[];
+  bounceBack: { games: number; scorePct: number };
+  longestLossStreak: number;
 }
 
 const MONTHS: Record<Locale, string[]> = {
@@ -164,16 +187,35 @@ function winPct(games: GameRecord[]): number {
   return (games.filter((g) => g.result === "win").length / games.length) * 100;
 }
 
+function scorePct(games: GameRecord[]): number {
+  if (games.length === 0) return 0;
+  const points = games.reduce(
+    (sum, game) => sum + (game.result === "win" ? 1 : game.result === "draw" ? 0.5 : 0),
+    0
+  );
+  return (points / games.length) * 100;
+}
+
+function averageAccuracy(games: GameRecord[]): number | null {
+  const values = games.map((game) => game.accuracy).filter((value): value is number => value != null);
+  if (values.length === 0) return null;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
+}
+
 export function buildInsights(records: GameRecord[], locale: Locale = "de"): LiveInsights {
   const months = MONTHS[locale];
   const dayNames = DAYS[locale];
   const total = records.length;
+  const asc = [...records].sort((a, b) => a.played_ts - b.played_ts);
 
   const withAcc = records.filter((g) => g.accuracy != null);
   const avgAccuracy =
     withAcc.length > 0
       ? withAcc.reduce((s, g) => s + (g.accuracy ?? 0), 0) / withAcc.length
       : null;
+  const accuracyConsistency = withAcc.length > 1 && avgAccuracy != null
+    ? Math.round(Math.sqrt(withAcc.reduce((sum, game) => sum + (game.accuracy! - avgAccuracy) ** 2, 0) / withAcc.length) * 10) / 10
+    : null;
 
   const phaseAccuracy = (
     [
@@ -208,6 +250,23 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
       games: gs.length,
       win: Math.round(winPct(gs)),
     }));
+
+  const openingDetails = [...byOpening.entries()]
+    .flatMap(([name, games]) =>
+      (["white", "black"] as const).map((color) => {
+        const subset = games.filter((game) => game.color === color);
+        return {
+          name,
+          color,
+          games: subset.length,
+          scorePct: Math.round(scorePct(subset)),
+          accuracy: averageAccuracy(subset),
+        };
+      })
+    )
+    .filter((opening) => opening.games > 0)
+    .sort((a, b) => b.games - a.games || b.scorePct - a.scorePct)
+    .slice(0, 20);
 
   // Farben
   const byColor = (["white", "black"] as const).map((c) => {
@@ -260,6 +319,24 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
       };
     });
 
+  const resultTrend = [...new Set(asc.map((game) => {
+    const date = new Date(game.played_ts * 1000);
+    return `${date.getFullYear()}-${String(date.getMonth()).padStart(2, "0")}`;
+  }))]
+    .sort()
+    .slice(-12)
+    .map((key) => {
+      const games = asc.filter((game) => {
+        const date = new Date(game.played_ts * 1000);
+        return `${date.getFullYear()}-${String(date.getMonth()).padStart(2, "0")}` === key;
+      });
+      return {
+        month: months[Number(key.split("-")[1])],
+        scorePct: Math.round(scorePct(games)),
+        games: games.length,
+      };
+    });
+
   // Aktivität: Wochentag × 4h-Slot (lokale Zeit)
   const values = dayNames.map(() => SLOTS.map(() => 0));
   for (const g of records) {
@@ -286,6 +363,42 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
     }
   }
 
+  const byWeekday = dayNames.map((day, index) => {
+    const games = records.filter((game) => {
+      if (game.played_ts <= 0) return false;
+      return (new Date(game.played_ts * 1000).getDay() + 6) % 7 === index;
+    });
+    return { day, games: games.length, scorePct: Math.round(scorePct(games)), accuracy: averageAccuracy(games) };
+  });
+  const byTimeSlot = SLOTS.map((slot, index) => {
+    const games = records.filter((game) => game.played_ts > 0 && Math.floor(new Date(game.played_ts * 1000).getHours() / 4) === index);
+    return { slot, games: games.length, scorePct: Math.round(scorePct(games)), accuracy: averageAccuracy(games) };
+  });
+  const lengthLabels = locale === "en"
+    ? ["Short (≤20 moves)", "Medium (21–40)", "Long (>40)"]
+    : ["Kurz (≤20 Züge)", "Mittel (21–40)", "Lang (>40)"];
+  const lengthGroups = [
+    records.filter((game) => game.moves_count <= 20),
+    records.filter((game) => game.moves_count > 20 && game.moves_count <= 40),
+    records.filter((game) => game.moves_count > 40),
+  ];
+  const byLength = lengthGroups.map((games, index) => ({
+    bucket: lengthLabels[index],
+    games: games.length,
+    scorePct: Math.round(scorePct(games)),
+    accuracy: averageAccuracy(games),
+  }));
+
+  const recentGames = asc.slice(-20);
+  const previousGames = asc.slice(Math.max(0, asc.length - 40), Math.max(0, asc.length - 20));
+  const bounceGames = asc.filter((_, index) => index > 0 && asc[index - 1].result === "loss");
+  let longestLossStreak = 0;
+  let currentLossStreak = 0;
+  for (const game of asc) {
+    currentLossStreak = game.result === "loss" ? currentLossStreak + 1 : 0;
+    longestLossStreak = Math.max(longestLossStreak, currentLossStreak);
+  }
+
   return {
     totalGames: total,
     winRate: winPct(records),
@@ -300,5 +413,22 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
     activity: { days: dayNames, slots: SLOTS, values },
     whiteAdvantagePts: Math.round((wWhite - wBlack) * 10) / 10,
     topSlot,
+    scoreRate: scorePct(records),
+    analysisCoverage: total > 0 ? Math.round((records.filter((game) => game.analyzed).length / total) * 100) : 0,
+    accuracyConsistency,
+    recentForm: {
+      games: recentGames.length,
+      scorePct: Math.round(scorePct(recentGames)),
+      previousScorePct: previousGames.length ? Math.round(scorePct(previousGames)) : null,
+      accuracy: averageAccuracy(recentGames),
+      previousAccuracy: previousGames.length ? averageAccuracy(previousGames) : null,
+    },
+    openingDetails,
+    resultTrend,
+    byWeekday,
+    byTimeSlot,
+    byLength,
+    bounceBack: { games: bounceGames.length, scorePct: Math.round(scorePct(bounceGames)) },
+    longestLossStreak,
   };
 }

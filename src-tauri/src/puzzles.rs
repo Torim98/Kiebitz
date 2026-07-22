@@ -21,6 +21,127 @@ const DUMP_URL: &str = "https://database.lichess.org/lichess_db_puzzle.csv.zst";
 const DEFAULT_RATING: i64 = 1500;
 const ELO_K: f64 = 24.0;
 
+pub(crate) struct OwnPuzzleCandidate {
+    pub ply: u32,
+    pub fen: String,
+    pub best_uci: String,
+    pub phase: String,
+    pub judgment: String,
+}
+
+/// Ersetzt die automatisch erzeugten Aufgaben einer Partie. Eine eigene
+/// Aufgabe beginnt direkt vor dem verpassten Zug; deshalb gibt es keinen
+/// automatisch abgespielten Setup-Zug (`setup_plies = 0`).
+pub(crate) fn replace_own_game_puzzles(
+    conn: &Connection,
+    game_id: i64,
+    player_rating: i64,
+    candidates: &[OwnPuzzleCandidate],
+) -> Result<usize, String> {
+    conn.execute(
+        "DELETE FROM puzzles WHERE source = 'own' AND source_game_id = ?1",
+        params![game_id],
+    )
+    .map_err(|e| e.to_string())?;
+    let mut inserted = 0usize;
+    for candidate in candidates {
+        if candidate.best_uci.len() < 4 {
+            continue;
+        }
+        let rating = (player_rating
+            + if candidate.judgment == "blunder" {
+                50
+            } else {
+                -50
+            })
+        .clamp(600, 2800);
+        let id = format!("own:{game_id}:{}", candidate.ply);
+        let themes = format!("ownGame {} {} oneMove", candidate.phase, candidate.judgment);
+        conn.execute(
+            "INSERT OR REPLACE INTO puzzles
+             (id, fen, moves, rating, themes, opening_tags, source,
+              source_game_id, source_ply, setup_plies)
+             VALUES (?1, ?2, ?3, ?4, ?5, '', 'own', ?6, ?7, 0)",
+            params![
+                id,
+                candidate.fen,
+                candidate.best_uci,
+                rating,
+                themes,
+                game_id,
+                candidate.ply
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+fn backfill_own_puzzles(conn: &Connection) -> Result<(), String> {
+    if db::meta_get(conn, "own_puzzles_backfilled_v1").is_some() {
+        return Ok(());
+    }
+    let games: Vec<(i64, String, String, i64)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, moves, color, my_elo FROM games
+                 WHERE analyzed = 1 AND moves != ''
+                   AND EXISTS (SELECT 1 FROM move_evals WHERE game_id = games.id)",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+    for (game_id, moves, color, rating) in games {
+        let walked = crate::chess::walk_sans(&moves);
+        let my_white = color == "white";
+        let rows: Vec<(u32, String, String, String)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT ply, best_uci, phase, judgment FROM move_evals
+                     WHERE game_id = ?1 AND judgment IN ('mistake', 'blunder')",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![game_id], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows
+        };
+        let candidates: Vec<OwnPuzzleCandidate> = rows
+            .into_iter()
+            .filter_map(|(ply, best_uci, phase, judgment)| {
+                let walked_move = walked.get(ply.saturating_sub(1) as usize)?;
+                if walked_move.by_white != my_white {
+                    return None;
+                }
+                Some(OwnPuzzleCandidate {
+                    ply,
+                    fen: walked_move.fen_before.clone(),
+                    best_uci,
+                    phase,
+                    judgment,
+                })
+            })
+            .collect();
+        replace_own_game_puzzles(
+            conn,
+            game_id,
+            if rating > 0 { rating } else { DEFAULT_RATING },
+            &candidates,
+        )?;
+    }
+    db::meta_set(conn, "own_puzzles_backfilled_v1", "1")
+}
+
 // ── Import ───────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
@@ -119,8 +240,9 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
         let mut stmt = tx
             .prepare(
                 "INSERT OR REPLACE INTO puzzles
-                    (id, fen, moves, rating, rd, popularity, nb_plays, themes, opening_tags)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    (id, fen, moves, rating, rd, popularity, nb_plays, themes, opening_tags,
+                     source, setup_plies)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'lichess', 1)",
             )
             .map_err(|e| e.to_string())?;
         for record in csv.records() {
@@ -183,6 +305,10 @@ pub struct PuzzleOut {
     pub moves: Vec<String>,
     pub rating: i64,
     pub themes: Vec<String>,
+    pub source: String,
+    pub source_game_id: Option<i64>,
+    /// Anzahl der automatisch gespielten Züge, bevor der Löser am Zug ist.
+    pub setup_plies: i64,
 }
 
 fn personal_rating(conn: &Connection) -> i64 {
@@ -197,16 +323,18 @@ fn personal_rating(conn: &Connection) -> i64 {
 pub fn next_puzzle(
     db: State<db::Db>,
     theme: Option<String>,
+    source: Option<String>,
     min_rating: Option<i64>,
     max_rating: Option<i64>,
 ) -> Result<Option<PuzzleOut>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    next_puzzle_from_conn(&conn, theme, min_rating, max_rating)
+    next_puzzle_from_conn(&conn, theme, source, min_rating, max_rating)
 }
 
 fn next_puzzle_from_conn(
     conn: &Connection,
     theme: Option<String>,
+    source: Option<String>,
     min_rating: Option<i64>,
     max_rating: Option<i64>,
 ) -> Result<Option<PuzzleOut>, String> {
@@ -217,26 +345,24 @@ fn next_puzzle_from_conn(
     };
 
     let theme_filter = theme.filter(|t| !t.is_empty());
+    let source_filter = source.filter(|s| s == "lichess" || s == "own");
     // Fenster schrittweise weiten, bis etwas gefunden wird.
     for widen in [0i64, 150, 400, 1200, 4000] {
         let lo = base_lo - widen;
         let hi = base_hi + widen;
-        let sql = format!(
-            "SELECT id, fen, moves, rating, themes FROM puzzles
-             WHERE rating BETWEEN ?1 AND ?2 {}
+        let sql = "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies
+             FROM puzzles
+             WHERE rating BETWEEN ?1 AND ?2
+               AND (?3 IS NULL OR source = ?3)
+               AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
                AND id NOT IN (SELECT puzzle_id FROM puzzle_attempts WHERE solved = 1)
-             ORDER BY RANDOM() LIMIT 1",
-            if theme_filter.is_some() {
-                "AND (' ' || themes || ' ') LIKE ?3"
-            } else {
-                ""
-            }
+             ORDER BY RANDOM() LIMIT 1";
+        let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
+        let row = conn.query_row(
+            sql,
+            params![lo, hi, source_filter.as_deref(), theme_pattern.as_deref()],
+            map_puzzle,
         );
-        let row = if let Some(t) = &theme_filter {
-            conn.query_row(&sql, params![lo, hi, format!("% {t} %")], map_puzzle)
-        } else {
-            conn.query_row(&sql, params![lo, hi], map_puzzle)
-        };
         match row {
             Ok(p) => return Ok(Some(p)),
             Err(rusqlite::Error::QueryReturnedNoRows) => continue,
@@ -255,6 +381,9 @@ fn map_puzzle(r: &rusqlite::Row) -> rusqlite::Result<PuzzleOut> {
         moves: moves.split_whitespace().map(String::from).collect(),
         rating: r.get(3)?,
         themes: themes.split_whitespace().map(String::from).collect(),
+        source: r.get(5)?,
+        source_game_id: r.get(6)?,
+        setup_plies: r.get(7)?,
     })
 }
 
@@ -331,6 +460,8 @@ pub struct ThemeStat {
 pub struct PuzzleStats {
     pub personal_rating: i64,
     pub db_total: i64,
+    pub lichess_total: i64,
+    pub own_total: i64,
     pub attempts: i64,
     pub solved: i64,
     pub today_solved: i64,
@@ -350,8 +481,23 @@ pub fn puzzle_stats(
     import_state: State<PuzzleImportState>,
 ) -> Result<PuzzleStats, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    backfill_own_puzzles(&conn)?;
     let db_total: i64 = conn
         .query_row("SELECT COUNT(*) FROM puzzles", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let lichess_total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM puzzles WHERE source = 'lichess'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let own_total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM puzzles WHERE source = 'own'",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     let (attempts, solved): (i64, i64) = conn
         .query_row(
@@ -445,6 +591,8 @@ pub fn puzzle_stats(
     Ok(PuzzleStats {
         personal_rating: personal_rating(&conn),
         db_total,
+        lichess_total,
+        own_total,
         attempts,
         solved,
         today_solved,
@@ -526,16 +674,17 @@ mod tests {
         puzzle(&conn, "fork-1", 1500, "fork short");
         puzzle(&conn, "pin-1", 1500, "pin short");
 
-        let selected = next_puzzle_from_conn(&conn, Some("fork".into()), Some(1400), Some(1600))
-            .unwrap()
-            .unwrap();
+        let selected =
+            next_puzzle_from_conn(&conn, Some("fork".into()), None, Some(1400), Some(1600))
+                .unwrap()
+                .unwrap();
         assert_eq!(selected.id, "fork-1");
         assert_eq!(selected.moves, vec!["a1a2", "h1h2"]);
         assert_eq!(selected.themes, vec!["fork", "short"]);
 
         record_attempt_at(&conn, "fork-1", true, 1234).unwrap();
         assert!(
-            next_puzzle_from_conn(&conn, Some("fork".into()), Some(1400), Some(1600),)
+            next_puzzle_from_conn(&conn, Some("fork".into()), None, Some(1400), Some(1600),)
                 .unwrap()
                 .is_none()
         );
@@ -547,5 +696,42 @@ mod tests {
         assert_eq!(solved_streak(&[9, 8], 10), 2);
         assert_eq!(solved_streak(&[10, 8], 10), 1);
         assert_eq!(solved_streak(&[], 10), 0);
+    }
+
+    #[test]
+    fn generates_and_replaces_puzzles_from_own_games() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let candidates = vec![OwnPuzzleCandidate {
+            ply: 17,
+            fen: "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1".into(),
+            best_uci: "e1g1".into(),
+            phase: "opening".into(),
+            judgment: "blunder".into(),
+        }];
+        assert_eq!(
+            replace_own_game_puzzles(&conn, 42, 1400, &candidates).unwrap(),
+            1
+        );
+
+        let selected =
+            next_puzzle_from_conn(&conn, None, Some("own".into()), Some(1000), Some(1800))
+                .unwrap()
+                .unwrap();
+        assert_eq!(selected.id, "own:42:17");
+        assert_eq!(selected.source, "own");
+        assert_eq!(selected.source_game_id, Some(42));
+        assert_eq!(selected.setup_plies, 0);
+        assert_eq!(selected.moves, vec!["e1g1"]);
+
+        replace_own_game_puzzles(&conn, 42, 1400, &[]).unwrap();
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM puzzles WHERE source = 'own'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 }

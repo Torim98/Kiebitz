@@ -29,3 +29,56 @@ export function studyData(): Promise<StudyData> {
 export function dayUnits(d: DayActivity): number {
   return d.puzzle_attempts + d.endgame_attempts + d.rep_reviews;
 }
+
+export interface StudyTemplate {
+  id: number;
+  title: string;
+  duration_min: number;
+  tool: string;
+  description: string;
+}
+
+export interface StudyEvent {
+  id: number;
+  template_id: number;
+  day: string;
+  position: number;
+  completed: boolean;
+  completed_ts: number;
+  template: StudyTemplate;
+}
+
+export interface StudyCalendar {
+  templates: StudyTemplate[];
+  events: StudyEvent[];
+}
+
+export type StudyTemplateInput = Omit<StudyTemplate, "id"> & { id?: number };
+
+export function getStudyCalendar(startDay: string, endDay: string): Promise<StudyCalendar> {
+  return invoke<StudyCalendar>("study_calendar", { startDay, endDay });
+}
+
+export function saveStudyTemplate(template: StudyTemplateInput): Promise<StudyTemplate> {
+  return invoke<StudyTemplate>("save_study_template", { template });
+}
+
+export function deleteStudyTemplate(templateId: number): Promise<void> {
+  return invoke("delete_study_template", { templateId });
+}
+
+export function scheduleStudyUnit(templateId: number, day: string): Promise<void> {
+  return invoke("schedule_study_unit", { templateId, day });
+}
+
+export function moveStudyUnit(eventId: number, day: string, position: number): Promise<void> {
+  return invoke("move_study_unit", { eventId, day, position });
+}
+
+export function completeStudyUnit(eventId: number, completed: boolean): Promise<void> {
+  return invoke("complete_study_unit", { eventId, completed });
+}
+
+export function deleteStudyUnit(eventId: number): Promise<void> {
+  return invoke("delete_study_unit", { eventId });
+}

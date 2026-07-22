@@ -161,6 +161,7 @@ function TrainerView({
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
   // Vorbelegt z. B. vom Coach ("schwächstes Motiv trainieren").
   const [theme, setTheme] = useState<string>(initialTheme);
+  const [source, setSource] = useState<"all" | "lichess" | "own">("all");
 
   const chessRef = useRef(new Chess());
   const idxRef = useRef(0);
@@ -176,14 +177,14 @@ function TrainerView({
     setFen(chessRef.current.fen());
   };
 
-  const load = (t: string = theme) => {
+  const load = (t: string = theme, s: "all" | "lichess" | "own" = source) => {
     setStatus("loading");
     setWrong(false);
     setShowHint(false);
     setSelected(null);
     setRatingDelta(null);
     failedRef.current = false;
-    nextPuzzle({ theme: t || undefined })
+    nextPuzzle({ theme: t || undefined, source: s === "all" ? undefined : s })
       .then((p) => {
         if (!p) {
           setStatus("empty");
@@ -193,12 +194,16 @@ function TrainerView({
         chessRef.current = new Chess(p.fen);
         setFen(p.fen);
         idxRef.current = 0;
-        // Der erste Zug ist der Gegnerzug, der die Aufgabe stellt.
-        timerRef.current = setTimeout(() => {
-          playUci(p.moves[0]);
-          idxRef.current = 1;
+        if (p.setup_plies === 0) {
           setStatus("playing");
-        }, 550);
+        } else {
+          // Lichess-Aufgaben spielen zunächst den gegnerischen Setup-Zug.
+          timerRef.current = setTimeout(() => {
+            playUci(p.moves[0]);
+            idxRef.current = 1;
+            setStatus("playing");
+          }, 550);
+        }
       })
       .catch(() => setStatus("empty"));
   };
@@ -213,8 +218,9 @@ function TrainerView({
 
   const orientation: "white" | "black" = useMemo(() => {
     if (!puzzle) return "white";
-    // Am Zug ist der Löser — nach dem automatischen Gegnerzug.
-    return puzzle.fen.split(" ")[1] === "w" ? "black" : "white";
+    const initialWhite = puzzle.fen.split(" ")[1] === "w";
+    const solverWhite = puzzle.setup_plies % 2 === 0 ? initialWhite : !initialWhite;
+    return solverWhite ? "white" : "black";
   }, [puzzle]);
 
   const finish = (solvedFirstTry: boolean) => {
@@ -298,10 +304,12 @@ function TrainerView({
   if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
   if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px #d9a028" };
 
-  const mainTheme = puzzle?.themes.find((t) => FILTER_THEMES.includes(t)) ?? puzzle?.themes[0] ?? "";
+  const mainTheme = puzzle?.themes.find(
+    (value) => !["ownGame", "oneMove", "opening", "middlegame", "blunder", "mistake"].includes(value)
+  ) ?? "";
   const history = stats.history.length >= 2 ? stats.history : [stats.personal_rating, stats.personal_rating];
   const themeStats = stats.themes
-    .filter((t) => !["short", "long", "veryLong", "oneMove", "advantage", "crushing", "equality", "mate", "middlegame", "opening"].includes(t.theme))
+    .filter((t) => !["short", "long", "veryLong", "oneMove", "advantage", "crushing", "equality", "mate", "middlegame", "opening", "ownGame", "blunder", "mistake"].includes(t.theme))
     .slice(0, 5);
 
   return (
@@ -310,7 +318,11 @@ function TrainerView({
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            {t("pz.subtitle", { n: deInt(stats.db_total), m: deInt(stats.solved) })}
+            {t("pz.subtitle", {
+              n: deInt(stats.db_total),
+              o: deInt(stats.own_total),
+              m: deInt(stats.solved),
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
@@ -327,8 +339,15 @@ function TrainerView({
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
               <Target size={15} className="text-accent" />
-              <span className="font-medium">{mainTheme ? themeLabel(mainTheme, locale) : "…"}</span>
+              <span className="font-medium">
+                {puzzle?.source === "own" ? t("pz.missedMove") : mainTheme ? themeLabel(mainTheme, locale) : "…"}
+              </span>
               {puzzle && <span className="text-ink3">· Rating {puzzle.rating}</span>}
+              {puzzle?.source === "own" && (
+                <span className="rounded-md border border-accent-dim bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">
+                  {t("pz.fromOwnGame")}
+                </span>
+              )}
             </div>
             <span className="text-[12.5px] text-ink3">
               {status === "loading"
@@ -452,6 +471,20 @@ function TrainerView({
           </Card>
 
           <Card title={t("pz.filter")}>
+            <div className="mb-3 flex flex-wrap gap-2 border-b border-line pb-3">
+              {(["all", "own", "lichess"] as const).map((value) => (
+                <Chip
+                  key={value}
+                  active={source === value}
+                  onClick={() => {
+                    setSource(value);
+                    load(theme, value);
+                  }}
+                >
+                  {t(value === "all" ? "pz.sourceAll" : value === "own" ? "pz.sourceOwn" : "pz.sourceLichess")}
+                </Chip>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-2">
               <Chip active={theme === ""} onClick={() => { setTheme(""); load(""); }}>
                 {t("pz.allThemes")}

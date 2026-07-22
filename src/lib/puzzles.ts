@@ -10,6 +10,10 @@ export interface PuzzleOut {
   moves: string[];
   rating: number;
   themes: string[];
+  source: "lichess" | "own";
+  source_game_id: number | null;
+  /** 1 bei Lichess-Aufgaben, 0 bei direkt spielbaren eigenen Stellungen. */
+  setup_plies: number;
 }
 
 export interface AttemptResult {
@@ -27,6 +31,8 @@ export interface ThemeStat {
 export interface PuzzleStats {
   personal_rating: number;
   db_total: number;
+  lichess_total: number;
+  own_total: number;
   attempts: number;
   solved: number;
   today_solved: number;
@@ -58,11 +64,13 @@ export function importPuzzles(path?: string): Promise<void> {
 
 export function nextPuzzle(opts: {
   theme?: string;
+  source?: "lichess" | "own";
   minRating?: number;
   maxRating?: number;
 }): Promise<PuzzleOut | null> {
   return invoke<PuzzleOut | null>("next_puzzle", {
     theme: opts.theme ?? null,
+    source: opts.source ?? null,
     minRating: opts.minRating ?? null,
     maxRating: opts.maxRating ?? null,
   });

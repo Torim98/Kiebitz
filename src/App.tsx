@@ -36,7 +36,7 @@ import Repertoire from "./pages/Repertoire";
 import Endgame from "./pages/Endgame";
 import Puzzles from "./pages/Puzzles";
 import Study from "./pages/Study";
-import Insights from "./pages/Insights";
+import Insights from "./pages/InsightsV2";
 import SettingsPage from "./pages/Settings";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
