@@ -4,11 +4,10 @@ name: Release
 # bauen → signieren → GitHub-Release anlegen → latest.json hochladen.
 # Installierte Apps holen sich das Update dann beim nächsten Start.
 #
-# Zwei Jobs:
-#   desktop  — Windows-Installer + Updater-Artefakte (primäres Produkt).
-#   android  — signierte arm64-APK, die an dasselbe Release gehängt wird.
-#              Läuft nur, wenn das Keystore-Secret gesetzt ist; sonst wird
-#              der Android-Teil sauber übersprungen (siehe DEPLOYMENT.md).
+# Drei Phasen:
+#   prepare-release — legt einen privaten Draft-Release an.
+#   desktop/android — bauen danach parallel und hängen ihre Artefakte an den Draft.
+#   publish         — veröffentlicht den Draft erst, wenn beide Jobs erfolgreich sind.
 on:
   push:
     tags:
@@ -18,7 +17,28 @@ permissions:
   contents: write # nötig, damit die Action das Release anlegen darf
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - name: Draft-Release anlegen
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            [ "$draft" = "true" ] || { echo "::error::Release $TAG ist bereits veröffentlicht."; exit 1; }
+            echo "Wiederverwendung des vorhandenen Draft-Releases $TAG"
+          else
+            gh release create "$TAG" --draft --title "Kiebitz $TAG" \
+              --notes "Automatically built from $TAG. Existing installations update after publication."
+          fi
+          echo "release_id=$(gh release view "$TAG" --json id --jq .id)" >> "$GITHUB_OUTPUT"
+
   desktop:
+    needs: prepare-release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -59,7 +79,7 @@ jobs:
           Copy-Item $exe.FullName src-tauri/binaries/stockfish.exe
           Write-Host "Stockfish gebündelt: $($asset.name)"
 
-      - name: Bauen, signieren & Release veröffentlichen
+      - name: Bauen, signieren & Artefakte an Draft-Release anhängen
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,16 +87,20 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
+          # Eindeutige Zuordnung zum Draft aus prepare-release. Damit kann der
+          # Desktop-Job keinen zweiten Release für denselben Tag erzeugen.
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseName: "Kiebitz ${{ github.ref_name }}"
           releaseBody: "Automatically built from ${{ github.ref_name }}. Existing installations update on the next start."
-          releaseDraft: false
+          # Der Draft existiert bereits; tauri-action lädt Signaturen und
+          # latest.json daran hoch. Veröffentlichung erfolgt im publish-Job.
+          releaseDraft: true
           prerelease: false
 
   android:
-    # Erst bauen, wenn das Desktop-Release (und damit der Release-Eintrag)
-    # existiert — die APK wird an genau dieses Release gehängt.
-    needs: desktop
+    # Startet parallel zum Desktop-Build; der Draft-Release existiert bereits.
+    needs: prepare-release
     runs-on: ubuntu-latest
     env:
       # Android-Keystore als Base64-Secret (siehe DEPLOYMENT.md, One-time setup).
@@ -209,3 +233,15 @@ jobs:
           cp "$apk" "$out"
           echo "Lade $out ($(du -h "$out" | cut -f1)) zu Release ${{ github.ref_name }}"
           gh release upload "${{ github.ref_name }}" "$out" --clobber
+
+  publish:
+    # Bei einem fehlgeschlagenen Build bleibt der Draft als Diagnose-Artefakt
+    # erhalten; nur ein vollständiger Release wird öffentlich.
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Draft-Release veröffentlichen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false

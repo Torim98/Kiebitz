@@ -8,7 +8,7 @@ to each release (no auto-update on mobile); see *Android build* below.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
-- Current version: `0.4.0` (`src-tauri/tauri.conf.json` → `version`)
+- Current version: `0.4.4` (`src-tauri/tauri.conf.json` → `version`)
 
 ## Prerequisites
 
@@ -231,10 +231,10 @@ app means backing up this file.
 ## Releasing a new version (the comfortable way)
 
 A GitHub Actions workflow (`.github/workflows/release.yml`) does the whole
-release for you. **Pushing a version tag is the only action you take** — the
-workflow then builds on a Windows runner, downloads Stockfish, signs the
-installer, creates the GitHub release, and uploads `latest.json`. Installed
-apps update themselves on their next start.
+release for you. The checked-in PowerShell command **is the only command you
+need to run locally**: it verifies the working tree and version, runs the test
+suite, updates all version files, commits, creates an annotated tag, and pushes
+`main` plus the tag. Pushing the tag starts the CI workflow.
 
 > **Scope:** pushing a tag now builds **both** the Windows desktop installer and
 > a signed **Android arm64 APK**, and attaches the APK to the same GitHub release
@@ -350,33 +350,31 @@ Once `ANDROID_KEYSTORE_BASE64` exists, the next tagged release also builds and
 attaches the APK. Keep the `.jks` file (and its passwords) somewhere safe and
 out of the repo.
 
-### Every release — three steps
+### Every release — one command
 
-1. **Bump the version** in `src-tauri/tauri.conf.json` and `package.json` (keep
-   them equal). It must be **higher** than what users have installed, or the
-   updater won't offer it — e.g. `0.1.0` → `0.2.0`. This `tauri.conf.json`
-   version is also what the app shows (sidebar, Settings → Updates) and what the
-   updater compares against; `src-tauri/Cargo.toml`'s `version` is unrelated to
-   the app version and does not need bumping.
-2. **Commit** the bump:
+From a clean, current `main` branch run (use the desired, strictly higher
+semantic version):
 
-   ```sh
-   git commit -am "Release v0.2.0"
-   ```
+```powershell
+.\scripts\release.ps1 -Version 0.4.5
+```
 
-3. **Tag and push** — the tag must be `v` + the version from step 1:
+The command runs the frontend build, frontend tests, and Rust tests first. Only
+after all checks pass does it update `package.json`, `package-lock.json`, and
+`src-tauri/tauri.conf.json`, create `Release v0.4.5`, create the annotated tag
+`v0.4.5`, then push both `main` and that tag. It deliberately refuses a dirty
+working tree, a version that is not higher than the current one, or an existing
+remote tag.
 
-   ```sh
-   git tag v0.2.0
-   git push origin main --tags
-   ```
+Then watch **GitHub → Actions**. The release starts with a private draft; the
+desktop and Android builds run in parallel and upload their artifacts to it. The
+final `publish` job makes the draft public only when both jobs completed
+successfully. A failed build therefore leaves a private draft with its logs and
+any completed artifacts for diagnosis, rather than publishing a partial release.
 
-Then watch **GitHub → Actions**; the run takes ~10–15 min. When it's green,
-the release is live with the installer, `.sig`, and `latest.json` attached, and
-every running Kiebitz picks the update up on its next launch. Nothing else to do.
-
-> **Tip:** if a build fails, fix it, delete the tag locally and remotely
-> (`git tag -d v0.2.0 && git push origin :refs/tags/v0.2.0`), and push it again.
+> **Tip:** after fixing a failed build, delete the remote and local tag and the
+> failed draft release, then run the command again with the same version. If the
+> release is already public, use a new, higher version instead.
 
 ### What the workflow handles for you
 
@@ -386,14 +384,16 @@ every running Kiebitz picks the update up on its next launch. Nothing else to do
   installer. For older CPUs, change the asset pattern in the workflow.
 - **Signing**: passes `TAURI_SIGNING_PRIVATE_KEY`, so `.sig` files and
   `latest.json` are produced and uploaded automatically.
+- **Release orchestration**: `prepare-release` creates (or reuses) a private
+  draft. `desktop` and `android` both depend only on that small setup job, so
+  they run in parallel. `publish` depends on both and publishes the draft last.
 - **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
   Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, downloads
   the official `stockfish-android-armv8` engine into `jniLibs/arm64-v8a/`,
   restores the keystore from the secrets, builds a signed release APK
   (`tauri android build --apk --target aarch64`), and uploads
-  `Kiebitz_<version>_arm64.apk` to the release. It `needs: desktop`, so it
-  attaches to the release the desktop job created. Without the keystore secret
-  the job skips cleanly, leaving the desktop release green.
+  `Kiebitz_<version>_arm64.apk` to the draft release. Without the keystore
+  secret the job skips cleanly, leaving the desktop release green.
 - **Desktop scope**: Windows only, matching the primary target. To add
   macOS/Linux, turn the desktop job into a matrix over `windows-latest` /
   `macos-latest` / `ubuntu-22.04`, add per-OS Stockfish fetch + resources, and
@@ -457,10 +457,9 @@ The pieces that make it work:
 
 The automated flow (see *Releasing a new version*) is the short version of this:
 
-1. Bump `version` in `src-tauri/tauri.conf.json` **and** `package.json`.
-2. Commit, then tag `vX.Y.Z` and push (`git push origin main --tags`).
-3. Wait for the GitHub Actions run to go green.
-4. Smoke-test: install the new release (or let an existing copy auto-update),
+1. On a clean `main`, run `.\scripts\release.ps1 -Version X.Y.Z`.
+2. Wait for the GitHub Actions run to finish, including the final `publish` job.
+3. Smoke-test: install the new release (or let an existing copy auto-update),
    import games, run a live analysis, confirm the database is untouched in the
    app-data directory.
 
