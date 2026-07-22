@@ -60,24 +60,23 @@ jobs:
         run: npm ci
 
       # Stockfish wird nicht mit eingecheckt (GPL, Größe) und muss vor dem
-      # Bundle in src-tauri/binaries/ liegen. Hier: aktuelles offizielles
-      # Windows-AVX2-Release. Für ältere CPUs das Muster auf "sse41-popcnt"
-      # o. Ä. ändern.
+      # Bundle in src-tauri/binaries/ liegen. Release und Hash sind bewusst
+      # gepinnt, damit der exakte GPL-Quellstand reproduzierbar bleibt.
       - name: Stockfish holen (Windows, AVX2)
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $headers = @{ "User-Agent" = "kiebitz-ci"; "Authorization" = "Bearer $env:GITHUB_TOKEN" }
-          $rel = Invoke-RestMethod "https://api.github.com/repos/official-stockfish/Stockfish/releases/latest" -Headers $headers
-          $asset = $rel.assets | Where-Object { $_.name -match "windows-x86-64-avx2.*\.zip$" } | Select-Object -First 1
-          if (-not $asset) { throw "Kein Windows-AVX2-Stockfish-Asset gefunden" }
-          Invoke-WebRequest $asset.browser_download_url -OutFile sf.zip
+          $url = "https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip"
+          $expected = "6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900"
+          Invoke-WebRequest $url -OutFile sf.zip
+          $actual = (Get-FileHash sf.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Stockfish archive has unexpected SHA-256: $actual" }
           Expand-Archive sf.zip -DestinationPath sf -Force
           $exe = Get-ChildItem sf -Recurse -Filter *.exe | Select-Object -First 1
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
           Copy-Item $exe.FullName src-tauri/binaries/stockfish.exe
-          Write-Host "Stockfish gebündelt: $($asset.name)"
+          Write-Host "Stockfish 18 gebündelt: stockfish-windows-x86-64-avx2.zip ($actual)"
 
       - name: Bauen, signieren & Artefakte an Draft-Release anhängen
         uses: tauri-apps/tauri-action@v0
@@ -173,12 +172,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          asset=$(curl -sSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/official-stockfish/Stockfish/releases/latest" \
-            | jq -r '.assets[] | select(.name == "stockfish-android-armv8.tar") | .browser_download_url')
-          [ -n "$asset" ] || { echo "Kein stockfish-android-armv8.tar gefunden"; exit 1; }
+          asset="https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-android-armv8.tar"
+          expected="e2eca54b0e3189ec7de338133c2b34fa8f5cdec3d2473519b414a5cb6815e768"
           echo "Lade $asset"
           curl -sSL "$asset" -o sf.tar
+          echo "$expected  sf.tar" | sha256sum --check --strict
           mkdir -p sf && tar -xf sf.tar -C sf
           bin=$(find sf -type f -name "stockfish-android-armv8" | head -n1)
           [ -n "$bin" ] || bin=$(find sf -type f -perm -u+x ! -name "*.txt" | head -n1)

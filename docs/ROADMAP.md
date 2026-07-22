@@ -42,8 +42,8 @@ Current priorities (added 2026-07-21):
 - [ ] **Puzzles from your own games.** Generate puzzles from the player's own
   positions (the tactical moments the analysis pipeline already flags), not just
   the Lichess dump.
-- [ ] **Rebrand the sidebar subtitle.** Replace "Chess cockpit" (top-left) with a
-  short pun on bird/Kiebitz (lapwing) + chess.
+- [x] **Rebrand the sidebar subtitle.** Replaced "Chess cockpit" with
+  "Zug um Zugvogel" / "Moves take flight" (2026-07-22).
 
 ---
 
@@ -124,6 +124,11 @@ Open:
   HTTPS with a persistent self-signed certificate. QR pairing transfers its
   SHA-256 fingerprint, which the mobile client pins; Android cleartext traffic
   is disabled. Windows Firewall prompts on the first server start.
+- [x] **Play Store prerequisites: Android manifest and Stockfish licensing**
+  (2026-07-22). Removed the unintended Android TV/Leanback declaration. The
+  bundled Stockfish 18 release is pinned to its exact source commit; CI verifies
+  the official Android/Windows archive hashes, and GPL-3.0, source and binary
+  provenance notices are bundled as app resources on both platforms.
 - [ ] **Play Store distribution** (account, signing policy, review overhead).
   Sideloading the signed GitHub-release APK already works.
 
@@ -141,15 +146,19 @@ Open:
 - [x] Frontend tests + CI. Vitest set up (jsdom + Testing Library, `npm test` /
   `npm run test:run`); unit tests for importer normalization (`importer.ts`,
   fetch-mocked), dashboard/insights stats (`stats.ts`), number/FEN helpers
-  (`util.ts`) and game mapping (`gameUi.ts`), plus a presentational component
-  test (`components/ui.tsx`) — 33 tests. A CI workflow (`ci.yml`) runs the
-  type-check + tests on every push/PR to main.
-- [ ] Expand Rust test coverage to the still-untested modules (`endgame`,
-  `study`, `puzzles`, `live`, `updater`); today `sync`, `analysis`, `repertoire`,
-  `chess`, `chessdb`, `settings`, `db`, `engine` carry the tests. (Rust tests are
-  not in CI yet — the Tauri crate needs the Linux system libs to build there.)
-- [ ] Grow frontend tests alongside the UI: more component/interaction tests —
-  the current one covers pure presentational components; data-backed pages still
-  need Tauri-`invoke` mocking.
+  (`util.ts`) and game mapping (`gameUi.ts`), pure presentational components
+  (`components/ui.tsx`), plus data-backed Dashboard and Study page interactions
+  with mocked Tauri `invoke` calls — 50 tests total. The CI workflow (`ci.yml`)
+  runs the type-check and frontend tests on every push/PR to main.
+- [x] **Rust coverage across all backend modules** (2026-07-22). Added tests for
+  the previously uncovered `endgame`, `study`, `puzzles`, `live` and `updater`
+  modules: database aggregation, streak/due logic, puzzle selection and Elo
+  persistence, UCI parsing, engine lifecycle and updater progress throttling.
+  The 44-test Rust suite now runs in CI on Windows, avoiding the additional
+  GTK/WebKit system dependencies a Linux Tauri build would require.
+- [x] **Data-backed frontend interaction tests** (2026-07-22). Dashboard and
+  Study now exercise asynchronous backend loading and navigation/filter actions
+  through mocked Tauri `invoke` calls, including coach recommendations and daily
+  plan completion.
 - [x] Auto-update — signed GitHub releases as the update feed, background
   check/install on startup (toggleable) + manual check in Settings → Updates.

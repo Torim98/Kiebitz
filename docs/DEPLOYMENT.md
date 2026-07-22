@@ -104,7 +104,11 @@ To make step 3 work, bundle the binary as a resource. In `tauri.conf.json`:
 
 ```json
 "bundle": {
-  "resources": ["binaries/stockfish.exe"]
+  "resources": [
+    "binaries/stockfish.exe",
+    "resources/stockfish/NOTICE.txt",
+    "resources/stockfish/COPYING.txt"
+  ]
 }
 ```
 
@@ -117,11 +121,14 @@ Notes:
   ship the correct per-OS/arch binary (`stockfish` vs `stockfish.exe`, avx2/bmi2
   vs generic) — either with OS-specific `resources`, or via Tauri's `externalBin`
   sidecar mechanism using target-triple-suffixed names.
-- **Licensing**: Stockfish is **GPL-3.0**. Distributing it inside Kiebitz brings
-  the combined distribution under GPL obligations (offer of source, license
-  compatibility). Fine for private use; review before any public release.
-  Alternatively, ship without an engine and let users point `KIEBITZ_ENGINE` at
-  their own install.
+- **Licensing**: Stockfish is **GPL-3.0** and Kiebitz distributes its unmodified
+  official binary as a separate UCI process. `resources/stockfish/NOTICE.txt`
+  records Stockfish 18, the exact source commit, official binary URLs and their
+  SHA-256 hashes; `COPYING.txt` contains the complete GPL-3.0. Both files are
+  bundled on desktop and Android and are also referenced by
+  `THIRD_PARTY_NOTICES.md`. CI downloads only the pinned `sf_18` archives and
+  aborts if a hash differs. Keep this provenance in sync whenever Stockfish is
+  upgraded.
 
 ## Android build (APK)
 
@@ -160,7 +167,8 @@ committed; build outputs and the engine `.so` stay gitignored):
 
 - **Engine**: Stockfish ships per ABI as
   `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). CI stages it
-  automatically (downloads the official `stockfish-android-armv8`); for a **local**
+  automatically (downloads the pinned Stockfish 18 `stockfish-android-armv8`);
+  for a **local**
   build download that asset and copy it in yourself. `resolve_engine`
   (`src-tauri/src/lib.rs`) finds it in the app's `nativeLibraryDir` via
   `/proc/self/maps`.
@@ -378,7 +386,7 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 
 ### What the workflow handles for you
 
-- **Engine**: fetches the current official Windows AVX2 Stockfish into
+- **Engine**: fetches the pinned official Stockfish 18 Windows AVX2 archive into
   `src-tauri/binaries/stockfish.exe` before the build (the binary is gitignored,
   so it never lives in the repo). `bundle.resources` then ships it inside the
   installer. For older CPUs, change the asset pattern in the workflow.
@@ -389,7 +397,8 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
   they run in parallel. `publish` depends on both and publishes the draft last.
 - **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
   Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, downloads
-  the official `stockfish-android-armv8` engine into `jniLibs/arm64-v8a/`,
+  the pinned Stockfish 18 `stockfish-android-armv8` engine into
+  `jniLibs/arm64-v8a/`, verifies its SHA-256 hash,
   restores the keystore from the secrets, builds a signed release APK
   (`tauri android build --apk --target aarch64`), and uploads
   `Kiebitz_<version>_arm64.apk` to the draft release. Without the keystore

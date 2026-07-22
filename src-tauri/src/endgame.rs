@@ -85,6 +85,16 @@ pub fn endgame_record(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    record_attempt(&conn, &drill_id, solved, moves, now)
+}
+
+fn record_attempt(
+    conn: &rusqlite::Connection,
+    drill_id: &str,
+    solved: bool,
+    moves: i64,
+    now: i64,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO endgame_attempts (drill_id, ts, solved, moves) VALUES (?1, ?2, ?3, ?4)",
         params![drill_id, now, solved as i64, moves],
@@ -97,6 +107,10 @@ pub fn endgame_record(
 #[tauri::command]
 pub fn endgame_stats(db: tauri::State<db::Db>) -> Result<Vec<DrillStat>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    stats(&conn)
+}
+
+fn stats(conn: &rusqlite::Connection) -> Result<Vec<DrillStat>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT drill_id, COUNT(*), SUM(solved),
@@ -114,5 +128,40 @@ pub fn endgame_stats(db: tauri::State<db::Db>) -> Result<Vec<DrillStat>, String>
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    #[test]
+    fn records_and_aggregates_drill_progress() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+
+        record_attempt(&conn, "lucena", false, 12, 100).unwrap();
+        record_attempt(&conn, "lucena", true, 8, 200).unwrap();
+        record_attempt(&conn, "philidor", false, 10, 300).unwrap();
+
+        let all = stats(&conn).unwrap();
+        let lucena = all.iter().find(|s| s.drill_id == "lucena").unwrap();
+        assert_eq!(lucena.attempts, 2);
+        assert_eq!(lucena.solved, 1);
+        assert_eq!(lucena.last_solved_ts, Some(200));
+
+        let philidor = all.iter().find(|s| s.drill_id == "philidor").unwrap();
+        assert_eq!(philidor.attempts, 1);
+        assert_eq!(philidor.solved, 0);
+        assert_eq!(philidor.last_solved_ts, None);
+    }
+
+    #[test]
+    fn shutting_down_an_empty_engine_is_safe() {
+        let engine = EndgameEngine::default();
+        engine.shutdown();
+        assert!(engine.0.lock().unwrap().is_none());
+    }
 }

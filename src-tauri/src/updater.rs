@@ -44,6 +44,14 @@ pub struct UpdateAvailable {
 }
 
 #[cfg(desktop)]
+const PROGRESS_EVENT_STEP: u64 = 256 * 1024;
+
+#[cfg(desktop)]
+fn should_emit_progress(received: u64, last_emitted: u64, total: Option<u64>) -> bool {
+    received.saturating_sub(last_emitted) >= PROGRESS_EVENT_STEP || total == Some(received)
+}
+
+#[cfg(desktop)]
 fn emit_state(app: &AppHandle, state: UpdateState) {
     let _ = app.emit("update://state", state);
 }
@@ -158,7 +166,7 @@ async fn download_and_install(app: &AppHandle) -> Result<bool, String> {
             move |chunk, total| {
                 received += chunk as u64;
                 // Nicht jeden Chunk melden — alle 256 KB reichen fürs UI.
-                if received - last_emitted >= 256 * 1024 || Some(received) == total {
+                if should_emit_progress(received, last_emitted, total) {
                     last_emitted = received;
                     emit_state(
                         &progress_app,
@@ -204,4 +212,32 @@ async fn download_and_install(app: &AppHandle) -> Result<bool, String> {
 
     log::info!("Update {version} installiert, starte neu …");
     app.restart();
+}
+
+#[cfg(all(test, desktop))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_is_throttled_to_256_kib_steps() {
+        assert!(!should_emit_progress(1, 0, None));
+        assert!(!should_emit_progress(PROGRESS_EVENT_STEP - 1, 0, None));
+        assert!(should_emit_progress(PROGRESS_EVENT_STEP, 0, None));
+        assert!(!should_emit_progress(
+            PROGRESS_EVENT_STEP + 100,
+            PROGRESS_EVENT_STEP,
+            None,
+        ));
+    }
+
+    #[test]
+    fn final_short_chunk_is_always_emitted() {
+        assert!(should_emit_progress(42_000, 0, Some(42_000)));
+        assert!(!should_emit_progress(41_999, 0, Some(42_000)));
+    }
+
+    #[test]
+    fn progress_difference_cannot_underflow() {
+        assert!(!should_emit_progress(100, 200, None));
+    }
 }

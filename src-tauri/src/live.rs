@@ -153,7 +153,10 @@ impl LiveEngine {
             }
         });
 
-        Ok(LiveProc { stdin, _child: child })
+        Ok(LiveProc {
+            stdin,
+            _child: child,
+        })
     }
 }
 
@@ -206,4 +209,53 @@ fn parse_info(line: &str, generation: u64) -> Option<LiveInfo> {
         return None;
     }
     Some(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_centipawn_multipv_line() {
+        let info = parse_info(
+            "info depth 18 seldepth 25 multipv 2 score cp -37 nodes 123 nps 456789 pv e2e4 e7e5 g1f3",
+            7,
+        )
+        .unwrap();
+        assert_eq!(info.generation, 7);
+        assert_eq!(info.depth, 18);
+        assert_eq!(info.multipv, 2);
+        assert_eq!(info.eval_cp, Some(-37));
+        assert_eq!(info.mate_in, None);
+        assert_eq!(info.nps, Some(456_789));
+        assert_eq!(info.pv, vec!["e2e4", "e7e5", "g1f3"]);
+    }
+
+    #[test]
+    fn parses_mate_score() {
+        let info = parse_info("info depth 24 score mate 3 pv h5h7 g8f8 h7h8", 2).unwrap();
+        assert_eq!(info.depth, 24);
+        assert_eq!(info.eval_cp, None);
+        assert_eq!(info.mate_in, Some(3));
+        assert_eq!(info.multipv, 1);
+    }
+
+    #[test]
+    fn ignores_incomplete_or_non_analysis_lines() {
+        assert!(parse_info("bestmove e2e4", 1).is_none());
+        assert!(parse_info("info depth 18 score cp 20", 1).is_none());
+        assert!(parse_info("info depth 0 score cp 20 pv e2e4", 1).is_none());
+        assert!(parse_info("info depth 18 pv e2e4", 1).is_none());
+        assert!(parse_info("info depth nope score cp 20 pv e2e4", 1).is_none());
+    }
+
+    #[test]
+    fn default_engine_starts_idle_and_shutdown_is_idempotent() {
+        let engine = LiveEngine::default();
+        assert_eq!(engine.generation.load(Ordering::SeqCst), 0);
+        engine.stop();
+        engine.shutdown();
+        engine.shutdown();
+        assert!(engine.inner.lock().unwrap().is_none());
+    }
 }

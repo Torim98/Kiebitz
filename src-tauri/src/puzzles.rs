@@ -57,7 +57,14 @@ pub fn import_puzzles(
             Ok((n, total)) => (n, total, None),
             Err(e) => (0, 0, Some(e)),
         };
-        let _ = app2.emit("puzzles://done", ImportDone { imported, total, error });
+        let _ = app2.emit(
+            "puzzles://done",
+            ImportDone {
+                imported,
+                total,
+                error,
+            },
+        );
     });
     Ok(())
 }
@@ -75,7 +82,8 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
 
     let (reader, source): (Box<dyn Read>, &str) = match &path {
         Some(p) => {
-            let file = std::fs::File::open(p).map_err(|e| format!("Datei nicht lesbar ({p}): {e}"))?;
+            let file =
+                std::fs::File::open(p).map_err(|e| format!("Datei nicht lesbar ({p}): {e}"))?;
             if p.to_lowercase().ends_with(".zst") {
                 (
                     Box::new(zstd::stream::read::Decoder::new(file).map_err(|e| e.to_string())?),
@@ -100,7 +108,9 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
         }
     };
 
-    let mut csv = csv::ReaderBuilder::new().has_headers(true).from_reader(reader);
+    let mut csv = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(reader);
     let mut imported = 0u64;
     let mut batch = 0u32;
 
@@ -191,7 +201,16 @@ pub fn next_puzzle(
     max_rating: Option<i64>,
 ) -> Result<Option<PuzzleOut>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let me = personal_rating(&conn);
+    next_puzzle_from_conn(&conn, theme, min_rating, max_rating)
+}
+
+fn next_puzzle_from_conn(
+    conn: &Connection,
+    theme: Option<String>,
+    min_rating: Option<i64>,
+    max_rating: Option<i64>,
+) -> Result<Option<PuzzleOut>, String> {
+    let me = personal_rating(conn);
     let (base_lo, base_hi) = match (min_rating, max_rating) {
         (Some(lo), Some(hi)) => (lo, hi),
         _ => (me - 75, me + 75),
@@ -249,8 +268,31 @@ pub struct AttemptResult {
 /// Verbucht einen Versuch (gelöst/gescheitert am ersten Anlauf) und
 /// aktualisiert das persönliche Rating nach Elo.
 #[tauri::command]
-pub fn record_attempt(db: State<db::Db>, puzzle_id: String, solved: bool) -> Result<AttemptResult, String> {
+pub fn record_attempt(
+    db: State<db::Db>,
+    puzzle_id: String,
+    solved: bool,
+) -> Result<AttemptResult, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    record_attempt_at(&conn, &puzzle_id, solved, now)
+}
+
+fn elo_after(before: i64, puzzle_rating: i64, solved: bool) -> i64 {
+    let expected = 1.0 / (1.0 + 10f64.powf((puzzle_rating - before) as f64 / 400.0));
+    let score = if solved { 1.0 } else { 0.0 };
+    (before as f64 + ELO_K * (score - expected)).round() as i64
+}
+
+fn record_attempt_at(
+    conn: &Connection,
+    puzzle_id: &str,
+    solved: bool,
+    now: i64,
+) -> Result<AttemptResult, String> {
     let (puzzle_rating, themes): (i64, String) = conn
         .query_row(
             "SELECT rating, themes FROM puzzles WHERE id = ?1",
@@ -259,22 +301,15 @@ pub fn record_attempt(db: State<db::Db>, puzzle_id: String, solved: bool) -> Res
         )
         .map_err(|_| "Puzzle nicht gefunden".to_string())?;
 
-    let before = personal_rating(&conn);
-    let expected = 1.0 / (1.0 + 10f64.powf((puzzle_rating - before) as f64 / 400.0));
-    let score = if solved { 1.0 } else { 0.0 };
-    let after = (before as f64 + ELO_K * (score - expected)).round() as i64;
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    let before = personal_rating(conn);
+    let after = elo_after(before, puzzle_rating, solved);
     conn.execute(
         "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![puzzle_id, now, solved, before, after, themes, puzzle_rating],
     )
     .map_err(|e| e.to_string())?;
-    db::meta_set(&conn, "puzzle_rating", &after.to_string())?;
+    db::meta_set(conn, "puzzle_rating", &after.to_string())?;
 
     Ok(AttemptResult {
         rating_before: before,
@@ -350,39 +385,36 @@ pub fn puzzle_stats(
     // Serie: aufeinanderfolgende Tage (rückwärts ab heute) mit ≥ 1 gelöstem Puzzle.
     let days: Vec<i64> = {
         let mut stmt = conn
-            .prepare("SELECT DISTINCT ts / 86400 FROM puzzle_attempts WHERE solved = 1 ORDER BY 1 DESC")
+            .prepare(
+                "SELECT DISTINCT ts / 86400 FROM puzzle_attempts WHERE solved = 1 ORDER BY 1 DESC",
+            )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        let rows = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
     let today = now / 86_400;
-    let mut streak = 0i64;
-    let mut expect = today;
-    for d in days {
-        if d == expect {
-            streak += 1;
-            expect -= 1;
-        } else if d == expect - 1 && streak == 0 {
-            // Heute noch nichts gelöst — Serie ab gestern zählen.
-            streak = 1;
-            expect = d - 1;
-        } else {
-            break;
-        }
-    }
+    let streak = solved_streak(&days, today);
 
     let history: Vec<i64> = {
         let mut stmt = conn
             .prepare("SELECT rating_after FROM puzzle_attempts ORDER BY id DESC LIMIT 30")
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?;
-        let mut v: Vec<i64> = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let mut v: Vec<i64> = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
         v.reverse();
         v
     };
 
     // Motiv-Statistik aus den Versuchen.
-    let mut theme_map: std::collections::HashMap<String, (i64, i64)> = std::collections::HashMap::new();
+    let mut theme_map: std::collections::HashMap<String, (i64, i64)> =
+        std::collections::HashMap::new();
     {
         let mut stmt = conn
             .prepare("SELECT themes, solved FROM puzzle_attempts")
@@ -423,4 +455,97 @@ pub fn puzzle_stats(
         importing: import_state.0.load(Ordering::SeqCst),
         imported_at: db::meta_get(&conn, "puzzle_imported_at").and_then(|v| v.parse().ok()),
     })
+}
+
+fn solved_streak(days: &[i64], today: i64) -> i64 {
+    let mut streak = 0i64;
+    let mut expect = today;
+    for &day in days {
+        if day == expect {
+            streak += 1;
+            expect -= 1;
+        } else if day == expect - 1 && streak == 0 {
+            // Nothing solved today: a still-active streak may start yesterday.
+            streak = 1;
+            expect = day - 1;
+        } else {
+            break;
+        }
+    }
+    streak
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn puzzle(conn: &Connection, id: &str, rating: i64, themes: &str) {
+        conn.execute(
+            "INSERT INTO puzzles (id, fen, moves, rating, themes)
+             VALUES (?1, '8/8/8/8/8/8/8/K6k w - - 0 1', 'a1a2 h1h2', ?2, ?3)",
+            params![id, rating, themes],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn elo_moves_in_the_expected_direction() {
+        assert_eq!(elo_after(1500, 1500, true), 1512);
+        assert_eq!(elo_after(1500, 1500, false), 1488);
+        assert!(elo_after(1500, 1800, true) > 1512);
+        assert!(elo_after(1500, 1200, false) < 1488);
+    }
+
+    #[test]
+    fn records_attempt_and_persists_new_personal_rating() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+
+        let result = record_attempt_at(&conn, "fork-1", true, 1234).unwrap();
+        assert_eq!(result.rating_before, 1500);
+        assert_eq!(result.rating_after, 1512);
+        assert_eq!(result.delta, 12);
+        assert_eq!(personal_rating(&conn), 1512);
+
+        let stored: (i64, i64, String) = conn
+            .query_row(
+                "SELECT ts, solved, themes FROM puzzle_attempts WHERE puzzle_id = 'fork-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(stored, (1234, 1, "fork short".into()));
+    }
+
+    #[test]
+    fn selects_by_theme_and_skips_already_solved_puzzles() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+        puzzle(&conn, "pin-1", 1500, "pin short");
+
+        let selected = next_puzzle_from_conn(&conn, Some("fork".into()), Some(1400), Some(1600))
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.id, "fork-1");
+        assert_eq!(selected.moves, vec!["a1a2", "h1h2"]);
+        assert_eq!(selected.themes, vec!["fork", "short"]);
+
+        record_attempt_at(&conn, "fork-1", true, 1234).unwrap();
+        assert!(
+            next_puzzle_from_conn(&conn, Some("fork".into()), Some(1400), Some(1600),)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn solved_streak_handles_today_yesterday_and_gaps() {
+        assert_eq!(solved_streak(&[10, 9, 8], 10), 3);
+        assert_eq!(solved_streak(&[9, 8], 10), 2);
+        assert_eq!(solved_streak(&[10, 8], 10), 1);
+        assert_eq!(solved_streak(&[], 10), 0);
+    }
 }

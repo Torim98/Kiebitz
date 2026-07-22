@@ -28,3 +28,22 @@ jobs:
 
       - name: Tests
         run: npm run test:run
+
+  rust:
+    # Windows already provides the native Tauri/WebView dependencies, avoiding
+    # the extra GTK/WebKit system packages needed by Linux runners.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust einrichten
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust-Build cachen
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test

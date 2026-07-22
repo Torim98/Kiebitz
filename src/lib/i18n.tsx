@@ -39,7 +39,7 @@ const de = {
   "common.tc.daily": "Täglich",
 
   // ── App-Shell ──────────────────────────────────────────────────────────────
-  "app.tagline": "Schach-Cockpit",
+  "app.tagline": "Zug um Zugvogel",
   "nav.dashboard": "Dashboard",
   "nav.games": "Partien",
   "nav.analysis": "Analyse",
@@ -561,7 +561,7 @@ const en: Record<Key, string> = {
   "common.tc.classical": "Classical",
   "common.tc.daily": "Daily",
 
-  "app.tagline": "Chess cockpit",
+  "app.tagline": "Moves take flight",
   "nav.dashboard": "Dashboard",
   "nav.games": "Games",
   "nav.analysis": "Analysis",

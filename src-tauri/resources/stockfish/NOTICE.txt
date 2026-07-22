@@ -1,0 +1,32 @@
+Stockfish 18
+============
+
+Kiebitz includes Stockfish, a free UCI chess engine developed by the Stockfish
+authors and contributors. Stockfish is distributed under the GNU General Public
+License version 3 (GPL-3.0). The complete license is included next to this file
+as COPYING.txt.
+
+Exact corresponding source
+--------------------------
+
+Release: Stockfish 18 (tag sf_18)
+Commit:  cb3d4ee9b47d0c5aae855b12379378ea1439675c
+Source:  https://github.com/official-stockfish/Stockfish/tree/cb3d4ee9b47d0c5aae855b12379378ea1439675c
+Archive: https://github.com/official-stockfish/Stockfish/archive/cb3d4ee9b47d0c5aae855b12379378ea1439675c.tar.gz
+
+The source tree contains the build instructions, Makefile, authorship
+information, and NNUE network information needed for the official binaries.
+
+Bundled official binary archives
+---------------------------------
+
+Android arm64:
+https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-android-armv8.tar
+SHA-256: e2eca54b0e3189ec7de338133c2b34fa8f5cdec3d2473519b414a5cb6815e768
+
+Windows x86-64 AVX2:
+https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip
+SHA-256: 6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900
+
+Kiebitz starts Stockfish as a separate process and communicates with it through
+the public UCI text protocol. Stockfish is not modified by Kiebitz.

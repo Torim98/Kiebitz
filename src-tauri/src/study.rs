@@ -54,6 +54,20 @@ fn count(conn: &Connection, sql: &str, lo: i64, hi: i64) -> Result<i64, String> 
 pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let now = now_ts();
+    let puzzle_goal = app
+        .state::<settings::SettingsState>()
+        .0
+        .lock()
+        .map(|s| s.puzzle_goal as i64)
+        .unwrap_or(20);
+    study_data_from_conn(&conn, now, puzzle_goal)
+}
+
+fn study_data_from_conn(
+    conn: &Connection,
+    now: i64,
+    puzzle_goal: i64,
+) -> Result<StudyData, String> {
     let today = now / 86_400;
     let day_start = today * 86_400;
 
@@ -62,7 +76,9 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
     let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
     let due_now: i64 = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts <= ?1)"),
+            &format!(
+                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts <= ?1)"
+            ),
             params![now],
             |r| r.get(0),
         )
@@ -72,7 +88,9 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
     // Heute: alles, was bis Tagesende fällig ist (inkl. neuer Karten).
     due_week.push(
         conn.query_row(
-            &format!("SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"),
+            &format!(
+                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
+            ),
             params![day_start + 86_400],
             |r| r.get(0),
         )
@@ -94,21 +112,16 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
 
     // ── Backlog & Tagesziel ──────────────────────────────────────────────────
     let unanalyzed: i64 = conn
-        .query_row("SELECT COUNT(*) FROM games WHERE analyzed = 0", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM games WHERE analyzed = 0", [], |r| {
+            r.get(0)
+        })
         .map_err(|e| e.to_string())?;
     let today_puzzle_attempts = count(
-        &conn,
+        conn,
         "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
         day_start,
         day_start + 86_400,
     )?;
-    let puzzle_goal = app
-        .state::<settings::SettingsState>()
-        .0
-        .lock()
-        .map(|s| s.puzzle_goal as i64)
-        .unwrap_or(20);
-
     // ── Aktivität der letzten 7 Tage ─────────────────────────────────────────
     let mut activity = Vec::with_capacity(7);
     for k in (0..7i64).rev() {
@@ -117,19 +130,19 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
         activity.push(DayActivity {
             day_ts: lo,
             puzzle_attempts: count(
-                &conn,
+                conn,
                 "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
                 lo,
                 hi,
             )?,
             endgame_attempts: count(
-                &conn,
+                conn,
                 "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
                 lo,
                 hi,
             )?,
             rep_reviews: count(
-                &conn,
+                conn,
                 "SELECT COUNT(*) FROM rep_nodes WHERE last_ts >= ?1 AND last_ts < ?2",
                 lo,
                 hi,
@@ -145,14 +158,20 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
         "SELECT DISTINCT last_ts / 86400 FROM rep_nodes WHERE last_ts > 0",
     ] {
         let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
         for d in rows {
             days.insert(d.map_err(|e| e.to_string())?);
         }
     }
     let mut streak = 0i64;
     // Heute zählt, sobald etwas passiert ist; sonst ab gestern rückwärts.
-    let mut expect = if days.contains(&today) { today } else { today - 1 };
+    let mut expect = if days.contains(&today) {
+        today
+    } else {
+        today - 1
+    };
     while days.contains(&expect) {
         streak += 1;
         expect -= 1;
@@ -167,4 +186,102 @@ pub fn study_data(app: tauri::AppHandle, db: State<db::Db>) -> Result<StudyData,
         activity,
         streak_days: streak,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    const TODAY: i64 = 20_000;
+    const NOW: i64 = TODAY * 86_400 + 12 * 3_600;
+
+    #[test]
+    fn aggregates_due_items_activity_backlog_and_streak() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO games (source, source_id, analyzed) VALUES ('manual', 'open', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO games (source, source_id, analyzed) VALUES ('manual', 'done', 1)",
+            [],
+        )
+        .unwrap();
+
+        // White depth 1 and black depth 2 are trainable moves. White depth 2
+        // belongs to the opponent and must not enter the due counts.
+        for (side, san, depth, reps, due_ts, last_ts) in [
+            ("white", "e4", 1, 0, 0, (TODAY - 2) * 86_400 + 10),
+            ("black", "e5", 2, 1, NOW - 1, 0),
+            ("white", "c5", 2, 0, 0, 0),
+            ("white", "Nf3", 3, 1, (TODAY + 1) * 86_400 + 10, 0),
+        ] {
+            conn.execute(
+                "INSERT INTO rep_nodes
+                 (parent_id, side, san, fen_key, depth, reps, due_ts, last_ts)
+                 VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    side,
+                    san,
+                    format!("fen-{side}-{san}"),
+                    depth,
+                    reps,
+                    due_ts,
+                    last_ts
+                ],
+            )
+            .unwrap();
+        }
+
+        for ts in [TODAY * 86_400 + 100, (TODAY - 1) * 86_400 + 100] {
+            conn.execute(
+                "INSERT INTO puzzle_attempts
+                 (puzzle_id, ts, solved, rating_before, rating_after, themes)
+                 VALUES ('p', ?1, 1, 1500, 1512, 'fork')",
+                params![ts],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
+             VALUES ('lucena', ?1, 1, 8)",
+            params![(TODAY - 2) * 86_400 + 200],
+        )
+        .unwrap();
+
+        let data = study_data_from_conn(&conn, NOW, 12).unwrap();
+        assert_eq!(data.due_now, 2);
+        assert_eq!(data.due_week[0], 2);
+        assert_eq!(data.due_week[1], 1);
+        assert_eq!(data.unanalyzed, 1);
+        assert_eq!(data.today_puzzle_attempts, 1);
+        assert_eq!(data.puzzle_goal, 12);
+        assert_eq!(data.activity.len(), 7);
+        assert_eq!(data.activity[6].puzzle_attempts, 1);
+        assert_eq!(data.activity[5].puzzle_attempts, 1);
+        assert_eq!(data.activity[4].endgame_attempts, 1);
+        assert_eq!(data.activity[4].rep_reviews, 1);
+        assert_eq!(data.streak_days, 3);
+    }
+
+    #[test]
+    fn streak_can_continue_from_yesterday_when_today_is_empty() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        for day in [TODAY - 1, TODAY - 2] {
+            conn.execute(
+                "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
+                 VALUES ('philidor', ?1, 1, 6)",
+                params![day * 86_400 + 1],
+            )
+            .unwrap();
+        }
+
+        let data = study_data_from_conn(&conn, NOW, 20).unwrap();
+        assert_eq!(data.streak_days, 2);
+    }
 }
