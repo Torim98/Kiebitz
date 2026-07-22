@@ -7,6 +7,7 @@ export interface UiGame extends Omit<Game, "tc"> {
   tc: string;
   dbId?: number;
   url?: string;
+  analysisExcluded?: boolean;
 }
 
 /**
@@ -88,6 +89,7 @@ export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
     accuracyMiddlegame: r.accuracy_middlegame,
     accuracyEndgame: r.accuracy_endgame,
     analyzed: r.analyzed,
+    analysisExcluded: r.analysis_excluded,
     tags: r.tags ?? [],
     note: r.note || undefined,
     sans: r.moves ? r.moves.split(" ") : undefined,

@@ -402,7 +402,7 @@ pub fn rep_stats(db: State<db::Db>) -> Result<RepStats, String> {
     }
 
     let mut stmt = conn
-        .prepare("SELECT color, moves FROM games WHERE moves != '' ORDER BY played_ts DESC LIMIT 50")
+        .prepare("SELECT color, moves FROM games WHERE moves != '' AND analysis_excluded = 0 ORDER BY played_ts DESC LIMIT 50")
         .map_err(|e| e.to_string())?;
     let games: Vec<(String, String)> = stmt
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -493,7 +493,7 @@ pub fn rep_node_games(db: State<db::Db>, node_id: i64) -> Result<NodeGameStats, 
         .prepare(
             "SELECT p.game_id, MIN(p.ply), g.result, g.moves
              FROM positions p JOIN games g ON g.id = p.game_id
-             WHERE p.fen_key = ?1 AND g.color = ?2
+             WHERE p.fen_key = ?1 AND g.color = ?2 AND g.analysis_excluded = 0
              GROUP BY p.game_id",
         )
         .map_err(|e| e.to_string())?;

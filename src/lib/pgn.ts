@@ -43,6 +43,30 @@ function normalizedPlayer(value = ""): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase();
 }
 
+/** Leitet die übliche Schach-Zeitklasse aus PGN-TimeClass/TimeControl ab. */
+function timeClass(h: Record<string, string>): string {
+  const declared = h.TimeClass?.trim().toLowerCase();
+  if (declared && ["bullet", "blitz", "rapid", "classical", "daily", "otb"].includes(declared)) {
+    return declared;
+  }
+  const control = h.TimeControl?.trim();
+  if (!control || control === "?" || control === "-") return "otb";
+
+  // Unterstützt u. a. 900+10 sowie Turnierformate wie 40/7200:3600.
+  const stages = control.split(":");
+  let seconds = 0;
+  for (const stage of stages) {
+    const match = /^(?:(\d+)\/)?(\d+)(?:\+(\d+))?$/.exec(stage.trim());
+    if (!match) return "otb";
+    const moves = Number(match[1] || 40);
+    seconds += Number(match[2]) + Number(match[3] || 0) * moves;
+  }
+  if (seconds < 180) return "bullet";
+  if (seconds < 600) return "blitz";
+  if (seconds < 3600) return "rapid";
+  return "classical";
+}
+
 export class PgnPlayerMismatchError extends Error {
   readonly playerName: string;
   readonly unmatchedGames: number;
@@ -56,7 +80,11 @@ export class PgnPlayerMismatchError extends Error {
 }
 
 /** Parses one or more PGN games into normal database records. */
-export function importPgn(text: string, playerName: string): GameRecord[] {
+export function importPgn(
+  text: string,
+  playerName: string,
+  options: { excludeFromAnalysis?: boolean } = {}
+): GameRecord[] {
   const player = normalizedPlayer(playerName);
   const parsed = splitGames(text).map((block) => ({ block, headers: headers(block) }));
   const unmatchedGames = parsed.filter(({ headers: h }) => {
@@ -85,7 +113,7 @@ export function importPgn(text: string, playerName: string): GameRecord[] {
       url: "",
       played_at: date.iso,
       played_ts: date.ts,
-      time_class: h.TimeClass?.toLowerCase() || (h.TimeControl ? "classical" : "otb"),
+      time_class: timeClass(h),
       color,
       opponent: opponent || "?",
       opp_elo: Number(color === "white" ? h.BlackElo : h.WhiteElo) || 0,
@@ -102,6 +130,8 @@ export function importPgn(text: string, playerName: string): GameRecord[] {
       note: h.KiebitzNote || "",
       tags: tags(h.KiebitzTags),
       analyzed: false,
+      analysis_excluded:
+        options.excludeFromAnalysis ?? /^(1|true|yes)$/i.test(h.KiebitzAnalysisExcluded || ""),
     };
   });
 }
@@ -135,6 +165,7 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
     if (game.opening) values.Opening = game.opening;
     if (game.tags?.length) values.KiebitzTags = game.tags.join(", ");
     if (game.note) values.KiebitzNote = game.note;
+    if (game.analysis_excluded) values.KiebitzAnalysisExcluded = "true";
     if (game.accuracy != null) values.KiebitzAccuracy = game.accuracy.toFixed(1);
     if (game.accuracy_opening != null) values.KiebitzAccuracyOpening = game.accuracy_opening.toFixed(1);
     if (game.accuracy_middlegame != null) values.KiebitzAccuracyMiddlegame = game.accuracy_middlegame.toFixed(1);

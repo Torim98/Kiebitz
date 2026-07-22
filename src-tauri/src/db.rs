@@ -37,6 +37,10 @@ pub struct GameRecord {
     #[serde(default)]
     pub tags: Vec<String>,
     pub analyzed: bool,
+    /// Partie bleibt in der Bibliothek, wird aber von Engine, Statistiken und
+    /// daraus abgeleiteten Trainingsinhalten ausgeschlossen.
+    #[serde(default)]
+    pub analysis_excluded: bool,
 }
 
 #[derive(Serialize)]
@@ -192,6 +196,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN accuracy_endgame REAL",
         "ALTER TABLE games ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE games ADD COLUMN analysis_excluded INTEGER NOT NULL DEFAULT 0",
     ] {
         let _ = conn.execute(sql, []);
     }
@@ -293,6 +298,15 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         )",
         [],
     );
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS game_tombstones (
+            source      TEXT NOT NULL,
+            source_id   TEXT NOT NULL,
+            deleted_ts  INTEGER NOT NULL,
+            PRIMARY KEY (source, source_id)
+        )",
+        [],
+    );
     // Backfill: Puzzle-Rating für Alt-Versuche aus der lokalen Puzzle-DB.
     let _ = conn.execute(
         "UPDATE puzzle_attempts
@@ -354,8 +368,8 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
                     opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
-                    note, note_ts, tags, tags_ts, updated_ts)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
+                    note, note_ts, tags, tags_ts, analysis_excluded, updated_ts)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
@@ -366,6 +380,8 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     accuracy_endgame = COALESCE(excluded.accuracy_endgame, games.accuracy_endgame),
                     moves = excluded.moves,
                     moves_count = excluded.moves_count,
+                    time_class = excluded.time_class,
+                    analysis_excluded = excluded.analysis_excluded,
                     updated_ts = excluded.updated_ts",
             )
             .map_err(|e| e.to_string())?;
@@ -375,6 +391,13 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                 .exists(params![g.source, g.source_id])
                 .map_err(|e| e.to_string())?;
             let changed_at = now_ts();
+            // Ein bewusster lokaler Re-Import legt die Partie neu an und hebt
+            // deshalb einen älteren Löschmarker auf.
+            tx.execute(
+                "DELETE FROM game_tombstones WHERE source = ?1 AND source_id = ?2",
+                params![g.source, g.source_id],
+            )
+            .map_err(|e| e.to_string())?;
             upsert_stmt
                 .execute(params![
                     g.source,
@@ -400,6 +423,7 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     if g.note.is_empty() { 0 } else { changed_at },
                     serde_json::to_string(&g.tags).map_err(|e| e.to_string())?,
                     if g.tags.is_empty() { 0 } else { changed_at },
+                    g.analysis_excluded as i64,
                     changed_at
                 ])
                 .map_err(|e| e.to_string())?;
@@ -422,7 +446,7 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, opponent,
                     opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
-                    note, tags, analyzed
+                    note, tags, analyzed, analysis_excluded
              FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -452,6 +476,7 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 note: r.get(20)?,
                 tags: serde_json::from_str(&r.get::<_, String>(21)?).unwrap_or_default(),
                 analyzed: r.get::<_, i64>(22)? != 0,
+                analysis_excluded: r.get::<_, i64>(23)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -486,11 +511,8 @@ pub fn set_tags(conn: &Connection, id: i64, tags: &[String]) -> Result<Vec<Strin
     Ok(clean)
 }
 
-/// Löscht eine Partie samt lokal abgeleiteten Daten. Online-Import oder Sync
-/// können dieselbe Partie anhand ihres Natural Keys später erneut einspielen.
-pub fn delete_game(conn: &mut Connection, id: i64) -> Result<bool, String> {
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
+pub(crate) fn delete_game_rows(conn: &Connection, id: i64) -> Result<(), String> {
+    conn.execute(
         "DELETE FROM puzzle_attempts
          WHERE puzzle_id IN (
              SELECT id FROM puzzles WHERE source = 'own' AND source_game_id = ?1
@@ -498,20 +520,43 @@ pub fn delete_game(conn: &mut Connection, id: i64) -> Result<bool, String> {
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    tx.execute(
+    conn.execute(
         "DELETE FROM puzzles WHERE source = 'own' AND source_game_id = ?1",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM move_evals WHERE game_id = ?1", params![id])
+    conn.execute("DELETE FROM move_evals WHERE game_id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM positions WHERE game_id = ?1", params![id])
+    conn.execute("DELETE FROM positions WHERE game_id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    let deleted = tx
-        .execute("DELETE FROM games WHERE id = ?1", params![id])
+    conn.execute("DELETE FROM games WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Löscht eine Partie samt lokal abgeleiteten Daten und merkt den Natural Key,
+/// damit die Löschung beim nächsten Gerätesync weitergegeben wird.
+pub fn delete_game(conn: &mut Connection, id: i64) -> Result<bool, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let key: Option<(String, String)> = tx
+        .query_row(
+            "SELECT source, source_id FROM games WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+    let Some((source, source_id)) = key else {
+        return Ok(false);
+    };
+    tx.execute(
+        "INSERT INTO game_tombstones (source, source_id, deleted_ts) VALUES (?1, ?2, ?3)
+         ON CONFLICT(source, source_id) DO UPDATE SET deleted_ts = MAX(deleted_ts, excluded.deleted_ts)",
+        params![source, source_id, now_ts()],
+    )
+    .map_err(|e| e.to_string())?;
+    delete_game_rows(&tx, id)?;
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(deleted > 0)
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -543,6 +588,7 @@ mod tests {
             note: String::new(),
             tags: Vec::new(),
             analyzed: false,
+            analysis_excluded: false,
         }
     }
 

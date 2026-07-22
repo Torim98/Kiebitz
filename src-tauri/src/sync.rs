@@ -87,7 +87,19 @@ pub struct SyncGame {
     #[serde(default)]
     pub tags_ts: i64,
     pub analyzed: bool,
+    #[serde(default)]
+    pub analysis_excluded: bool,
+    /// Ursprungszeit der letzten Änderung; entscheidet gegen Löschmarker.
+    #[serde(default)]
+    pub updated_ts: i64,
     pub evals: Vec<SyncEval>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncGameTombstone {
+    pub source: String,
+    pub source_id: String,
+    pub deleted_ts: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -145,6 +157,8 @@ pub struct SyncRequest {
     /// Serverzeit des letzten erfolgreichen Syncs (0 = erster Sync).
     pub since: i64,
     pub games: Vec<SyncGame>,
+    #[serde(default)]
+    pub game_tombstones: Vec<SyncGameTombstone>,
     pub rep_nodes: Vec<SyncRepNode>,
     #[serde(default)]
     pub rep_tombstones: Vec<SyncTombstone>,
@@ -156,6 +170,8 @@ pub struct SyncRequest {
 pub struct SyncResponse {
     pub now: i64,
     pub games: Vec<SyncGame>,
+    #[serde(default)]
+    pub game_tombstones: Vec<SyncGameTombstone>,
     pub rep_nodes: Vec<SyncRepNode>,
     #[serde(default)]
     pub rep_tombstones: Vec<SyncTombstone>,
@@ -172,7 +188,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
                     opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
-                    moves, note, note_ts, tags, tags_ts, analyzed
+                    moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts
              FROM games WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -205,6 +221,8 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
                     tags_ts: r.get(23)?,
                     analyzed: r.get::<_, i64>(24)? != 0,
+                    analysis_excluded: r.get::<_, i64>(25)? != 0,
+                    updated_ts: r.get(26)?,
                     evals: Vec::new(),
                 },
             ))
@@ -241,6 +259,24 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
         out.push(g);
     }
     Ok(out)
+}
+
+fn collect_game_tombstones(conn: &Connection) -> Result<Vec<SyncGameTombstone>, String> {
+    let mut stmt = conn
+        .prepare("SELECT source, source_id, deleted_ts FROM game_tombstones")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(SyncGameTombstone {
+                source: r.get(0)?,
+                source_id: r.get(1)?,
+                deleted_ts: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
 }
 
 /// Kompletter Repertoire-Baum mit berechneten Pfaden (klein genug für "immer alles").
@@ -460,16 +496,65 @@ fn collect_endgame_attempts(
 
 // ── Apply: Daten der Gegenseite einmergen ───────────────────────────────────
 
+fn apply_game_tombstones(
+    conn: &mut Connection,
+    tombstones: &[SyncGameTombstone],
+) -> Result<usize, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut deleted = 0usize;
+    for tombstone in tombstones {
+        tx.execute(
+            "INSERT INTO game_tombstones (source, source_id, deleted_ts) VALUES (?1, ?2, ?3)
+             ON CONFLICT(source, source_id) DO UPDATE SET deleted_ts = MAX(deleted_ts, excluded.deleted_ts)",
+            params![tombstone.source, tombstone.source_id, tombstone.deleted_ts],
+        )
+        .map_err(|e| e.to_string())?;
+        let local: Option<(i64, i64)> = tx
+            .query_row(
+                "SELECT id, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
+                params![tombstone.source, tombstone.source_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+        if let Some((id, updated_ts)) = local {
+            if tombstone.deleted_ts >= updated_ts {
+                db::delete_game_rows(&tx, id)?;
+                deleted += 1;
+            }
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(deleted)
+}
+
 fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, String> {
     let now = db::now_ts();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut applied = 0usize;
     for g in games {
-        let existing: Option<(i64, i64, i64, bool)> = tx
+        let tombstone_ts: Option<i64> = tx
             .query_row(
-                "SELECT id, note_ts, tags_ts, analyzed FROM games WHERE source = ?1 AND source_id = ?2",
+                "SELECT deleted_ts FROM game_tombstones WHERE source = ?1 AND source_id = ?2",
                 params![g.source, g.source_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0)),
+                |row| row.get(0),
+            )
+            .ok();
+        if tombstone_ts.is_some_and(|deleted_ts| deleted_ts >= g.updated_ts) {
+            continue;
+        }
+        if tombstone_ts.is_some() {
+            tx.execute(
+                "DELETE FROM game_tombstones WHERE source = ?1 AND source_id = ?2",
+                params![g.source, g.source_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        let incoming_updated = if g.updated_ts > 0 { g.updated_ts } else { now };
+        let existing: Option<(i64, i64, i64, bool, i64)> = tx
+            .query_row(
+                "SELECT id, note_ts, tags_ts, analyzed, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
+                params![g.source, g.source_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?)),
             )
             .ok();
         let game_id = match existing {
@@ -478,22 +563,22 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
                         color, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
-                        moves, note, note_ts, tags, tags_ts, analyzed, updated_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
+                        moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
                         g.moves_count, g.accuracy, g.accuracy_opening, g.accuracy_middlegame,
                         g.accuracy_endgame, g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
-                        g.analyzed as i64, now
+                        g.analyzed as i64, g.analysis_excluded as i64, incoming_updated
                     ],
                 )
                 .map_err(|e| e.to_string())?;
                 applied += 1;
                 tx.last_insert_rowid()
             }
-            Some((id, local_note_ts, local_tags_ts, _)) => {
+            Some((id, local_note_ts, local_tags_ts, _, _local_updated_ts)) => {
                 tx.execute(
                     "UPDATE games SET
                         accuracy = COALESCE(accuracy, ?2),
@@ -501,7 +586,9 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         accuracy_middlegame = COALESCE(accuracy_middlegame, ?4),
                         accuracy_endgame = COALESCE(accuracy_endgame, ?5),
                         analyzed = MAX(analyzed, ?6),
-                        updated_ts = ?7
+                        analysis_excluded = CASE WHEN ?7 >= updated_ts THEN ?8 ELSE analysis_excluded END,
+                        time_class = CASE WHEN ?7 >= updated_ts THEN ?9 ELSE time_class END,
+                        updated_ts = MAX(updated_ts, ?7)
                      WHERE id = ?1",
                     params![
                         id,
@@ -510,7 +597,9 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.accuracy_middlegame,
                         g.accuracy_endgame,
                         g.analyzed as i64,
-                        now
+                        incoming_updated,
+                        g.analysis_excluded as i64,
+                        g.time_class
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -537,7 +626,7 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
             }
         };
         // Analyse übernehmen, wenn die Gegenseite sie hat und wir (noch) nicht.
-        let locally_analyzed = existing.map(|(_, _, _, a)| a).unwrap_or(false);
+        let locally_analyzed = existing.map(|(_, _, _, a, _)| a).unwrap_or(false);
         if !g.evals.is_empty() && !locally_analyzed {
             tx.execute(
                 "DELETE FROM move_evals WHERE game_id = ?1",
@@ -753,6 +842,7 @@ fn apply_endgame_attempts(
 
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
+    apply_game_tombstones(conn, &req.game_tombstones)?;
     apply_games(conn, &req.games)?;
     apply_tombstones(conn, &req.rep_tombstones)?;
     apply_rep(conn, &req.rep_nodes)?;
@@ -764,6 +854,7 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
+        game_tombstones: collect_game_tombstones(conn)?,
         rep_nodes: collect_rep(conn)?,
         rep_tombstones: collect_tombstones(conn)?,
         puzzle_attempts: collect_puzzle_attempts(conn, req.since)?,
@@ -1265,6 +1356,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 code,
                 since,
                 games: collect_games(&conn, since)?,
+                game_tombstones: collect_game_tombstones(&conn)?,
                 rep_nodes: collect_rep(&conn)?,
                 rep_tombstones: collect_tombstones(&conn)?,
                 puzzle_attempts: collect_puzzle_attempts(&conn, since)?,
@@ -1291,6 +1383,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
 
         let db = app.state::<db::Db>();
         let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+        apply_game_tombstones(&mut conn, &resp.game_tombstones)?;
         let games_pulled = apply_games(&mut conn, &resp.games)?;
         apply_tombstones(&mut conn, &resp.rep_tombstones)?;
         let rep_merged = apply_rep(&mut conn, &resp.rep_nodes)?;
@@ -1347,6 +1440,8 @@ mod tests {
             tags: Vec::new(),
             tags_ts: 0,
             analyzed: false,
+            analysis_excluded: false,
+            updated_ts: 100,
             evals: Vec::new(),
         }
     }
@@ -1398,6 +1493,29 @@ mod tests {
             .query_row("SELECT tags FROM games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(tags, r#"["Club","Important"]"#);
+    }
+
+    #[test]
+    fn game_tombstone_deletes_remote_copy_and_blocks_stale_recreation() {
+        let mut conn = mem_db();
+        let old = sample_game("deleted-game");
+        apply_games(&mut conn, &[old.clone()]).unwrap();
+
+        let tombstone = SyncGameTombstone {
+            source: old.source.clone(),
+            source_id: old.source_id.clone(),
+            deleted_ts: 200,
+        };
+        assert_eq!(apply_game_tombstones(&mut conn, &[tombstone]).unwrap(), 1);
+        assert_eq!(apply_games(&mut conn, &[old.clone()]).unwrap(), 0);
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+
+        let mut reimported = old;
+        reimported.updated_ts = 300;
+        assert_eq!(apply_games(&mut conn, &[reimported]).unwrap(), 1);
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "a genuinely newer reimport may recreate the game");
     }
 
     #[test]
@@ -1661,6 +1779,7 @@ mod tests {
             code: "424242".into(),
             since: 0,
             games: vec![sample_game("http1")],
+            game_tombstones: vec![],
             rep_nodes: vec![],
             rep_tombstones: vec![],
             puzzle_attempts: vec![],
@@ -1704,6 +1823,7 @@ mod tests {
             code: "000000".into(),
             since: 0,
             games: vec![],
+            game_tombstones: vec![],
             rep_nodes: vec![],
             rep_tombstones: vec![],
             puzzle_attempts: vec![SyncPuzzleAttempt {

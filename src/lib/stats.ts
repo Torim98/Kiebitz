@@ -15,7 +15,7 @@ export interface RatingCard {
 }
 
 export interface HistoryPoint {
-  week: string;
+  month: string;
   cc: number | null;
   li: number | null;
 }
@@ -33,19 +33,12 @@ export interface DashboardOptions {
   liUser: string;
 }
 
-function isoWeek(d: Date, locale: Locale): string {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return locale === "en" ? `W ${week}` : `KW ${week}`;
-}
-
 export function buildDashboard(
   records: GameRecord[],
   opts: DashboardOptions = { locale: "de", ccUser: "Torim98", liUser: "Torim98" }
 ): LiveDashboard {
+  const libraryRecords = records;
+  records = records.filter((game) => !game.analysis_excluded);
   const profileUrl: Record<string, string> = {
     "chess.com": `https://www.chess.com/member/${opts.ccUser}`,
     lichess: `https://lichess.org/@/${opts.liUser}`,
@@ -93,24 +86,29 @@ export function buildDashboard(
     return B.recent - A.recent || B.last - A.last;
   });
 
-  // Wochenverlauf (letzte 26 Wochen): letztes Rapid-/Blitz-Rating pro Woche & Quelle
+  // Monatsverlauf: letztes Rapid-/Blitz-Rating je Kalendermonat und Quelle.
   const history: HistoryPoint[] = [];
-  for (let w = 25; w >= 0; w--) {
-    const start = now - (w + 1) * 7 * 86400;
-    const end = now - w * 7 * 86400;
-    const inWeek = (src: string) =>
+  const currentMonth = new Date();
+  currentMonth.setDate(1);
+  currentMonth.setHours(0, 0, 0, 0);
+  for (let offset = 5; offset >= 0; offset--) {
+    const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset, 1);
+    const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset + 1, 1);
+    const start = Math.floor(startDate.getTime() / 1000);
+    const end = Math.floor(endDate.getTime() / 1000);
+    const inMonth = (src: string) =>
       asc.filter(
         (g) =>
           g.source === src &&
-          g.played_ts > start &&
-          g.played_ts <= end &&
+          g.played_ts >= start &&
+          g.played_ts < end &&
           g.my_elo > 0 &&
           (g.time_class === "rapid" || g.time_class === "blitz")
       );
-    const cc = inWeek("chess.com");
-    const li = inWeek("lichess");
+    const cc = inMonth("chess.com");
+    const li = inMonth("lichess");
     history.push({
-      week: isoWeek(new Date(end * 1000), opts.locale),
+      month: startDate.toLocaleDateString(opts.locale === "de" ? "de-DE" : "en-US", { month: "short" }),
       cc: cc.length ? cc[cc.length - 1].my_elo : null,
       li: li.length ? li[li.length - 1].my_elo : null,
     });
@@ -119,7 +117,7 @@ export function buildDashboard(
   return {
     cards: cards.slice(0, 4),
     history,
-    recent: records.slice(0, 5).map((r) => toUi(r, opts.locale)),
+    recent: libraryRecords.slice(0, 5).map((r) => toUi(r, opts.locale)),
     unanalyzed: records.filter((g) => !g.analyzed).length,
   };
 }
@@ -203,6 +201,7 @@ function averageAccuracy(games: GameRecord[]): number | null {
 }
 
 export function buildInsights(records: GameRecord[], locale: Locale = "de"): LiveInsights {
+  records = records.filter((game) => !game.analysis_excluded);
   const months = MONTHS[locale];
   const dayNames = DAYS[locale];
   const total = records.length;

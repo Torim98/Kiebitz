@@ -71,17 +71,20 @@ export const ratings = [
   },
 ];
 
-// 26 Wochen Rating-Verlauf, zwei Serien
-export const ratingHistory = Array.from({ length: 26 }, (_, i) => {
+// Sechs Monate Rating-Verlauf, zwei Serien
+export const ratingHistory = Array.from({ length: 6 }, (_, i) => {
   const cc = [
     1380, 1388, 1375, 1392, 1401, 1396, 1410, 1404, 1398, 1415, 1422, 1417, 1430,
     1424, 1436, 1429, 1441, 1435, 1448, 1443, 1439, 1452, 1447, 1455, 1458, 1462,
-  ][i];
+  ][i * 5];
   const li = [
     1440, 1448, 1455, 1446, 1460, 1467, 1459, 1472, 1465, 1478, 1470, 1483, 1476,
     1488, 1481, 1493, 1487, 1499, 1492, 1504, 1497, 1508, 1512, 1506, 1517, 1521,
-  ][i];
-  return { week: `KW ${i + 2}`, cc, li };
+  ][i * 5];
+  const date = new Date();
+  date.setDate(1);
+  date.setMonth(date.getMonth() - (5 - i));
+  return { month: date.toLocaleDateString("de-DE", { month: "short" }), cc, li };
 });
 
 export const games: Game[] = [

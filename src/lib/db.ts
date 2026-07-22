@@ -26,6 +26,8 @@ export interface GameRecord {
   note: string;
   tags?: string[];
   analyzed: boolean;
+  /** In Bibliothek behalten, aber aus Engine- und Statistik-Analysen auslassen. */
+  analysis_excluded?: boolean;
 }
 
 export interface UpsertResult {

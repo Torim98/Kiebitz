@@ -139,7 +139,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
   const reloadGames = useCallback(() => {
     return listGames().then((gs) => {
-      setGames(gs.filter((g) => g.moves));
+      setGames(gs.filter((g) => g.moves && !g.analysis_excluded));
       return gs;
     });
   }, []);

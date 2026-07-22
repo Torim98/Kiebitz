@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import Games from "./Games";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -38,7 +39,7 @@ const game = {
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(openDialog).mockReset();
   invokeMock.mockImplementation((command: string) => {
     if (command === "app_info") {
       return Promise.resolve({ version: "0.5.0", backend: "tauri", platform: "windows" });
@@ -54,6 +55,7 @@ beforeEach(() => {
     }
     if (command === "list_games") return Promise.resolve([game]);
     if (command === "delete_game") return Promise.resolve(true);
+    if (command === "read_pgn_file") return Promise.resolve(`[Event "Friend"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0`);
     return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
   });
 });
@@ -69,6 +71,9 @@ describe("Games page", () => {
     expect(await screen.findByText("Testgegner")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Partie löschen" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByText("Kiebitz")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Endgültig löschen" }));
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("delete_game", { id: 1 }));
     expect(await screen.findByText("Keine Partien gefunden.")).toBeTruthy();
@@ -83,5 +88,18 @@ describe("Games page", () => {
     expect(screen.getByText("PGN importieren")).toBeTruthy();
     expect(screen.getByText("PGN exportieren")).toBeTruthy();
     expect(screen.getByText(/ordnet beim Import Weiß\/Schwarz, Gegner, Elo und Ergebnis/)).toBeTruthy();
+  });
+
+  it("renders a player-name mismatch as a yellow warning", async () => {
+    vi.mocked(openDialog).mockResolvedValue("friend.pgn");
+    render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+    await screen.findByText("Testgegner");
+    fireEvent.click(screen.getByRole("button", { name: /Import \/ Export/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Datei wählen" }));
+    await screen.findByText("friend.pgn");
+    fireEvent.click(screen.getByRole("button", { name: "Importieren" }));
+
+    const warning = await screen.findByText(/stimmt bei 1 PGN-Partie/);
+    expect(warning.closest("div")?.className).toContain("text-gold");
   });
 });

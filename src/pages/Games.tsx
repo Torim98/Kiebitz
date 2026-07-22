@@ -17,6 +17,7 @@ import {
   Search,
   StickyNote,
   Trash2,
+  AlertTriangle,
   X,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -35,6 +36,7 @@ import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
+type ImportTone = "info" | "success" | "warning" | "error";
 
 /** Gemerkte Seitengröße lesen; beim ersten Öffnen auf 10 (ungültig/leer). */
 function readStoredPageSize(): number {
@@ -60,6 +62,7 @@ export default function Games({
   const [records, setRecords] = useState<GameRecord[]>([]);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importTone, setImportTone] = useState<ImportTone>("info");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
@@ -67,9 +70,11 @@ export default function Games({
   const [pgnExportPath, setPgnExportPath] = useState("");
   const [pgnPlayer, setPgnPlayer] = useState(profile.ccUser);
   const [pgnBusy, setPgnBusy] = useState(false);
+  const [pgnExcludeFromAnalysis, setPgnExcludeFromAnalysis] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -148,6 +153,7 @@ export default function Games({
 
   const runImport = async (full: boolean) => {
     setImporting(true);
+    setImportTone("info");
     setImportMsg(full ? t("games.loadingFull") : t("games.loadingLatest"));
     try {
       const settings = await getSettings().catch(() => null);
@@ -169,8 +175,10 @@ export default function Games({
         total: deInt(res.total),
       });
       if (summary.errors.length) msg += t("games.importErrors", { e: summary.errors.join("; ") });
+      setImportTone(summary.errors.length ? "warning" : "success");
       setImportMsg(msg);
     } catch (e) {
+      setImportTone("error");
       setImportMsg(t("games.importFailed", { e: String(e) }));
     } finally {
       setImporting(false);
@@ -204,7 +212,7 @@ export default function Games({
 
   const deleteSelected = async () => {
     if (!selected?.dbId || deleting) return;
-    if (!window.confirm(t("games.deleteConfirm", { opponent: selected.opponent }))) return;
+    setDeleteConfirmOpen(false);
     setDeleting(true);
     setDeleteError(null);
     try {
@@ -243,12 +251,16 @@ export default function Games({
     if (!pgnPath.trim()) return;
     setPgnBusy(true);
     try {
-      const parsed = importPgn(await readPgnFile(pgnPath.trim()), pgnPlayer);
+      const parsed = importPgn(await readPgnFile(pgnPath.trim()), pgnPlayer, {
+        excludeFromAnalysis: pgnExcludeFromAnalysis,
+      });
       const res = await upsertGames(parsed);
       await reload();
       indexPositions().catch(() => {});
+      setImportTone("success");
       setImportMsg(t("games.pgnImported", { n: parsed.length, ins: res.inserted }));
     } catch (e) {
+      setImportTone(e instanceof PgnPlayerMismatchError ? "warning" : "error");
       setImportMsg(
         e instanceof PgnPlayerMismatchError
           ? t("games.pgnPlayerMismatch", {
@@ -269,8 +281,10 @@ export default function Games({
     setPgnBusy(true);
     try {
       await writePgnFile(pgnExportPath.trim(), exportPgn(chosen, pgnPlayer));
+      setImportTone("success");
       setImportMsg(t("games.pgnExported", { n: chosen.length, path: pgnExportPath.trim() }));
     } catch (e) {
+      setImportTone("error");
       setImportMsg(t("games.pgnFailed", { e: String(e) }));
     } finally {
       setPgnBusy(false);
@@ -314,7 +328,13 @@ export default function Games({
       </header>
 
       {importMsg && (
-        <div className="mb-4 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[12.5px] text-accent">
+        <div className={`mb-4 rounded-lg border px-4 py-2.5 text-[12.5px] ${
+          importTone === "warning"
+            ? "border-[#8a6a24] bg-[#2a2110] text-gold"
+            : importTone === "error"
+              ? "border-[#8a3535] bg-[#2a1414] text-loss"
+              : "border-accent-dim bg-accent-soft text-accent"
+        }`}>
           {importMsg}
         </div>
       )}
@@ -349,6 +369,18 @@ export default function Games({
               <button onClick={choosePgnImport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
                 {pgnPath || t("games.pgnChooseImport")}
               </button>
+              <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-[11.5px] leading-relaxed text-ink2">
+                <input
+                  type="checkbox"
+                  checked={pgnExcludeFromAnalysis}
+                  onChange={(event) => setPgnExcludeFromAnalysis(event.target.checked)}
+                  className="mt-0.5 size-3.5 accent-[var(--color-accent)]"
+                />
+                <span>
+                  <span className="block font-medium text-ink">{t("games.pgnExcludeAnalysis")}</span>
+                  <span className="text-ink3">{t("games.pgnExcludeAnalysisHint")}</span>
+                </span>
+              </label>
               <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                 <Button className="w-full" onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
                 <Button className="w-full" primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
@@ -663,13 +695,14 @@ export default function Games({
                   </div>
                 )}
                 <div className="mt-3 flex flex-wrap gap-1.5">
+                  {selected.analysisExcluded && <Tag>{t("games.analysisExcludedTag")}</Tag>}
                   {selected.tags.length > 0
                     ? selected.tags.map((tag) => (
                         <button key={tag} onClick={() => saveTags(selected.tags.filter((v) => v !== tag))} disabled={!selected.dbId} title={t("games.removeTag")}>
                           <Tag>{tag} ×</Tag>
                         </button>
                       ))
-                    : <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
+                    : !selected.analysisExcluded && <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
                 </div>
                 {selected.dbId && (
                   <input
@@ -704,8 +737,10 @@ export default function Games({
                       <Save size={15} />
                       {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
                     </Button>
-                    <Button className="w-full" onClick={() => openAnalysis(selected.dbId!)}>
-                      {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
+                    <Button className="w-full" disabled={selected.analysisExcluded} onClick={() => openAnalysis(selected.dbId!)}>
+                      {selected.analysisExcluded
+                        ? t("games.analysisExcludedTag")
+                        : selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
                     </Button>
                   </>
                 ) : (
@@ -727,7 +762,7 @@ export default function Games({
                   <button
                     type="button"
                     disabled={deleting}
-                    onClick={deleteSelected}
+                    onClick={() => setDeleteConfirmOpen(true)}
                     className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -744,6 +779,45 @@ export default function Games({
           </div>
         )}
       </div>
+
+      {deleteConfirmOpen && selected?.dbId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-game-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleting) setDeleteConfirmOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+            <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">Kiebitz</div>
+                <h2 id="delete-game-title" className="text-[16px] font-semibold">{t("games.deleteTitle")}</h2>
+              </div>
+            </div>
+            <p className="px-5 py-4 text-[13px] leading-relaxed text-ink2">
+              {t("games.deleteConfirm", { opponent: selected.opponent })}
+            </p>
+            <div className="flex justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
+              <Button onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>{t("common.cancel")}</Button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={deleteSelected}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d] disabled:opacity-45"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {deleting ? t("games.deleting") : t("games.deleteConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

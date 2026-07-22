@@ -68,7 +68,15 @@ export default function Dashboard({
 
   const recent: UiGame[] = dash ? dash.recent : demoGames.slice(0, 5);
   const unanalyzed = dash ? dash.unanalyzed : demoGames.filter((g) => !g.analyzed).length;
-  const history = dash ? dash.history : ratingHistory;
+  const history = dash ? dash.history : ratingHistory.map((point, index) => {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - (ratingHistory.length - 1 - index));
+    return {
+      ...point,
+      month: date.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", { month: "short" }),
+    };
+  });
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -132,7 +140,7 @@ export default function Dashboard({
           <ResponsiveContainer width="100%" height={230}>
             <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
               <CartesianGrid stroke={chart.grid} vertical={false} />
-              <XAxis dataKey="week" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={4} />
+              <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={0} />
               <YAxis domain={live ? ["auto", "auto"] : [1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
               <Tooltip content={<DarkTooltip />} cursor={{ stroke: chart.axis }} />
               <Legend
@@ -280,7 +288,7 @@ export default function Dashboard({
                       <ResultBadge result={g.result} />
                     </button>
                   </td>
-                  <td className="px-2 text-right text-ink2">
+                  <td className="whitespace-nowrap px-2 text-right text-ink2">
                     {g.accuracy != null ? `${de(g.accuracy)} %` : "—"}
                   </td>
                   <td className="py-2.5 pl-2 pr-4 text-right" onClick={(e) => e.stopPropagation()}>

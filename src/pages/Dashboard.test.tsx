@@ -93,6 +93,7 @@ describe("Dashboard page", () => {
     expect(screen.getByText(/Tori/)).toBeTruthy();
     expect(screen.getByText("5")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("87,4 %").closest("td")?.className).toContain("whitespace-nowrap");
     expect(invokeMock).toHaveBeenCalledWith("list_games");
   });
 

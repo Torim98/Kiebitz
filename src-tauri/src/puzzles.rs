@@ -86,7 +86,7 @@ fn backfill_own_puzzles(conn: &Connection) -> Result<(), String> {
         let mut stmt = conn
             .prepare(
                 "SELECT id, moves, color, my_elo FROM games
-                 WHERE analyzed = 1 AND moves != ''
+                 WHERE analyzed = 1 AND analysis_excluded = 0 AND moves != ''
                    AND EXISTS (SELECT 1 FROM move_evals WHERE game_id = games.id)",
             )
             .map_err(|e| e.to_string())?;

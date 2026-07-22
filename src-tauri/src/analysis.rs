@@ -276,13 +276,13 @@ fn run_worker(
     let targets: Vec<(i64, String, String, String, i64)> = {
         let (sql, use_ids) = match &game_ids {
             Some(_) => (
-                "SELECT id, moves, opponent, color, my_elo FROM games WHERE id = ?1".to_string(),
+                "SELECT id, moves, opponent, color, my_elo FROM games WHERE id = ?1 AND analysis_excluded = 0".to_string(),
                 true,
             ),
             None => (
                 format!(
                     "SELECT id, moves, opponent, color, my_elo FROM games
-                     WHERE analyzed = 0 AND moves != ''
+                     WHERE analyzed = 0 AND analysis_excluded = 0 AND moves != ''
                      ORDER BY played_ts DESC LIMIT {}",
                     limit.unwrap_or(u32::MAX)
                 ),
@@ -572,7 +572,7 @@ pub fn error_stats(db: State<db::Db>) -> Result<Vec<PhaseErrors>, String> {
         .prepare(
             "SELECT e.phase, e.judgment, COUNT(*) FROM move_evals e
              JOIN games g ON g.id = e.game_id
-             WHERE e.judgment != ''
+             WHERE e.judgment != '' AND g.analysis_excluded = 0
                AND ((g.color = 'white' AND e.ply % 2 = 1) OR (g.color = 'black' AND e.ply % 2 = 0))
              GROUP BY e.phase, e.judgment",
         )

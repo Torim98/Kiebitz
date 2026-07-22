@@ -379,7 +379,7 @@ fn study_data_from_conn(
 
     // ── Backlog & Tagesziel ──────────────────────────────────────────────────
     let unanalyzed: i64 = conn
-        .query_row("SELECT COUNT(*) FROM games WHERE analyzed = 0", [], |r| {
+        .query_row("SELECT COUNT(*) FROM games WHERE analyzed = 0 AND analysis_excluded = 0", [], |r| {
             r.get(0)
         })
         .map_err(|e| e.to_string())?;

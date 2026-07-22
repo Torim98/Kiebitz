@@ -49,4 +49,17 @@ describe("PGN import/export", () => {
   it("matches player names case-insensitively with normalized whitespace", () => {
     expect(importPgn(SAMPLE, "  tOM  ")[0].color).toBe("black");
   });
+
+  it("derives rapid, blitz and classical modes from PGN time controls", () => {
+    const withControl = (control: string) => SAMPLE.replace('[Result "0-1"]', `[Result "0-1"]\n[TimeControl "${control}"]`);
+    expect(importPgn(withControl("900+0"), "Tom")[0].time_class).toBe("rapid");
+    expect(importPgn(withControl("300+3"), "Tom")[0].time_class).toBe("blitz");
+    expect(importPgn(withControl("40/7200:3600"), "Tom")[0].time_class).toBe("classical");
+  });
+
+  it("marks optional library-only imports and preserves the marker on export", () => {
+    const game = importPgn(SAMPLE, "Tom", { excludeFromAnalysis: true })[0];
+    expect(game.analysis_excluded).toBe(true);
+    expect(exportPgn([game], "Tom")).toContain('[KiebitzAnalysisExcluded "true"]');
+  });
 });

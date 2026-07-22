@@ -90,6 +90,15 @@ describe("buildInsights", () => {
     expect(buildInsights([g({ accuracy: null })], "en").avgAccuracy).toBeNull();
   });
 
+  it("keeps library-only games out of insights and analysis backlog", () => {
+    const included = g({ source_id: "included", accuracy: 80, analyzed: false });
+    const excluded = g({ source_id: "excluded", accuracy: 20, analyzed: false, analysis_excluded: true });
+    expect(buildInsights([included, excluded], "en").totalGames).toBe(1);
+    const dashboard = buildDashboard([included, excluded], { locale: "en", ccUser: "me", liUser: "me" });
+    expect(dashboard.unanalyzed).toBe(1);
+    expect(dashboard.recent).toHaveLength(2);
+  });
+
   it("averages each analysis phase independently", () => {
     const phases = buildInsights([
       g({ accuracy_opening: 90, accuracy_middlegame: 70, accuracy_endgame: null }),
