@@ -35,9 +35,11 @@ const game = {
   tags: [],
   analyzed: true,
 };
+let listedGame: typeof game & { analysis_excluded?: boolean } = { ...game };
 
 beforeEach(() => {
   localStorage.clear();
+  listedGame = { ...game };
   invokeMock.mockReset();
   vi.mocked(openDialog).mockReset();
   invokeMock.mockImplementation((command: string) => {
@@ -53,7 +55,7 @@ beforeEach(() => {
         import_months: 3,
       });
     }
-    if (command === "list_games") return Promise.resolve([game]);
+    if (command === "list_games") return Promise.resolve([listedGame]);
     if (command === "delete_game") return Promise.resolve(true);
     if (command === "read_pgn_file") return Promise.resolve(`[Event "Friend"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0`);
     return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
@@ -101,5 +103,15 @@ describe("Games page", () => {
 
     const warning = await screen.findByText(/stimmt bei 1 PGN-Partie/);
     expect(warning.closest("div")?.className).toContain("text-gold");
+  });
+
+  it("keeps an excluded game individually openable in analysis", async () => {
+    listedGame = { ...game, analyzed: false, analysis_excluded: true };
+    const openAnalysis = vi.fn();
+    render(<LocaleProvider><Games openAnalysis={openAnalysis} /></LocaleProvider>);
+
+    expect(await screen.findByText("Nicht in Analysen")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Analysieren" }));
+    expect(openAnalysis).toHaveBeenCalledWith(1);
   });
 });

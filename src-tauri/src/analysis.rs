@@ -273,15 +273,15 @@ fn run_worker(
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
 
-    let targets: Vec<(i64, String, String, String, i64)> = {
+    let targets: Vec<(i64, String, String, String, i64, bool)> = {
         let (sql, use_ids) = match &game_ids {
             Some(_) => (
-                "SELECT id, moves, opponent, color, my_elo FROM games WHERE id = ?1 AND analysis_excluded = 0".to_string(),
+                "SELECT id, moves, opponent, color, my_elo, analysis_excluded FROM games WHERE id = ?1".to_string(),
                 true,
             ),
             None => (
                 format!(
-                    "SELECT id, moves, opponent, color, my_elo FROM games
+                    "SELECT id, moves, opponent, color, my_elo, analysis_excluded FROM games
                      WHERE analyzed = 0 AND analysis_excluded = 0 AND moves != ''
                      ORDER BY played_ts DESC LIMIT {}",
                     limit.unwrap_or(u32::MAX)
@@ -294,7 +294,7 @@ fn run_worker(
             let mut v = Vec::new();
             for id in game_ids.unwrap() {
                 if let Ok(row) = stmt.query_row(params![id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get::<_, i64>(5)? != 0))
                 }) {
                     v.push(row);
                 }
@@ -304,7 +304,7 @@ fn run_worker(
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
                 .query_map([], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get::<_, i64>(5)? != 0))
                 })
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<Vec<_>, _>>()
@@ -336,7 +336,7 @@ fn run_worker(
     let total = targets.len();
     let mut analyzed = 0usize;
 
-    for (idx, (game_id, moves, opponent, color, my_elo)) in targets.into_iter().enumerate() {
+    for (idx, (game_id, moves, opponent, color, my_elo, analysis_excluded)) in targets.into_iter().enumerate() {
         if state.cancel.load(Ordering::SeqCst) {
             break;
         }
@@ -482,7 +482,7 @@ fn run_worker(
             &conn,
             game_id,
             if my_elo > 0 { my_elo } else { 1500 },
-            &own_puzzles,
+            if analysis_excluded { &[] } else { &own_puzzles },
         )?;
         index_game_positions(&conn, game_id, &walked)?;
         conn.execute(

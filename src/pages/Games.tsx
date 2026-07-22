@@ -737,10 +737,8 @@ export default function Games({
                       <Save size={15} />
                       {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
                     </Button>
-                    <Button className="w-full" disabled={selected.analysisExcluded} onClick={() => openAnalysis(selected.dbId!)}>
-                      {selected.analysisExcluded
-                        ? t("games.analysisExcludedTag")
-                        : selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
+                    <Button className="w-full" onClick={() => openAnalysis(selected.dbId!)}>
+                      {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
                     </Button>
                   </>
                 ) : (

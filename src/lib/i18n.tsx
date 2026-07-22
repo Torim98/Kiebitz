@@ -181,6 +181,9 @@ const de = {
 
   // ── Analyse ────────────────────────────────────────────────────────────────
   "an.title": "Analyse",
+  "an.freeBoard": "Freie Analyse",
+  "an.freeBoardHint": "Neue Partie · Ziehe für beide Seiten und analysiere jede Stellung live mit Stockfish.",
+  "an.newBoard": "Neu",
   "an.me": "Ich",
   "an.meLower": "ich",
   "an.inaccuracy": "Ungenauigkeit",
@@ -797,6 +800,9 @@ const en: Record<Key, string> = {
   "games.deleteFailed": "Could not delete the game: {e}",
 
   "an.title": "Analysis",
+  "an.freeBoard": "Free analysis",
+  "an.freeBoardHint": "New game · Play both sides and analyze every position live with Stockfish.",
+  "an.newBoard": "New",
   "an.me": "Me",
   "an.meLower": "me",
   "an.inaccuracy": "Inaccuracy",

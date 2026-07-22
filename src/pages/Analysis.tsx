@@ -12,6 +12,7 @@ import {
   Search,
   Square,
   Zap,
+  RotateCcw,
 } from "lucide-react";
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
@@ -123,6 +124,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
   const [games, setGames] = useState<GameRecord[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [scratchSans, setScratchSans] = useState<string[]>([]);
+  const [scratchSelected, setScratchSelected] = useState<string | null>(null);
   const [rows, setRows] = useState<MoveEvalRow[] | null>(null);
   const [ply, setPly] = useState(0);
   const [liveEval, setLiveEval] = useState<{ cp: number | null; mate: number | null } | null>(null);
@@ -139,7 +142,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
   const reloadGames = useCallback(() => {
     return listGames().then((gs) => {
-      setGames(gs.filter((g) => g.moves && !g.analysis_excluded));
+      setGames(gs.filter((g) => g.moves));
       return gs;
     });
   }, []);
@@ -149,11 +152,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     if (!desktop) return;
     reloadGames().then((gs) => {
       const withMoves = gs.filter((g) => g.moves);
-      const pick =
-        (targetGameId != null && withMoves.find((g) => g.id === targetGameId)) ||
-        withMoves.find((g) => g.analyzed) ||
-        withMoves[0];
-      if (pick?.id != null) setSelectedId(pick.id);
+      const pick = targetGameId != null ? withMoves.find((g) => g.id === targetGameId) : null;
+      setSelectedId(pick?.id ?? null);
     });
   }, [desktop, targetGameId, reloadGames]);
 
@@ -209,6 +209,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     () => games.find((g) => g.id === selectedId) ?? null,
     [games, selectedId]
   );
+  const scratch = desktop && game == null;
 
   // Gespeicherte Analyse der gewählten Partie laden.
   useEffect(() => {
@@ -220,11 +221,15 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   // Zug-Sicht: Demo im Web, echte Partie auf dem Desktop.
   const live = desktop && game != null;
   const sans = useMemo(
-    () => (live ? game.moves.split(" ").filter(Boolean) : featuredGame.moves.map((m) => m.san)),
-    [live, game]
+    () => live
+      ? game.moves.split(" ").filter(Boolean)
+      : scratch
+        ? scratchSans
+        : featuredGame.moves.map((m) => m.san),
+    [live, game, scratch, scratchSans]
   );
   const viewMoves: ViewMove[] = useMemo(() => {
-    if (!live) {
+    if (!desktop) {
       const byNag: Record<string, string> = { "?!": "inaccuracy", "?": "mistake", "??": "blunder" };
       return featuredGame.moves.map((m) => ({
         san: m.san,
@@ -234,8 +239,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         judgment: m.nag ? byNag[m.nag] : undefined,
       }));
     }
-    return rowsToViewMoves(sans, rows ?? []);
-  }, [live, sans, rows]);
+    return rowsToViewMoves(sans, live ? rows ?? [] : []);
+  }, [desktop, live, sans, rows]);
 
   const analyzedRows = live ? (rows?.length ?? 0) > 0 : true;
 
@@ -243,9 +248,38 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   useEffect(() => {
     setPly(sans.length);
     setLiveEval(null);
+    setScratchSelected(null);
   }, [selectedId, sans.length]);
 
   const fen = useMemo(() => fenAfter(sans, ply), [sans, ply]);
+
+  const playScratchMove = (from: string, to: string): boolean => {
+    if (!scratch) return false;
+    try {
+      const chess = new Chess(fen);
+      const move = chess.move({ from, to, promotion: "q" });
+      const next = [...scratchSans.slice(0, ply), move.san];
+      setScratchSans(next);
+      setPly(next.length);
+      setScratchSelected(null);
+      setLiveEval(null);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const onScratchSquareClick = (square: string) => {
+    if (!scratch) return;
+    const chess = new Chess(fen);
+    const piece = chess.get(square as Parameters<typeof chess.get>[0]);
+    if (scratchSelected && scratchSelected !== square) {
+      const moved = playScratchMove(scratchSelected, square);
+      setScratchSelected(moved || !piece || piece.color !== chess.turn() ? null : square);
+    } else if (piece && piece.color === chess.turn()) {
+      setScratchSelected(scratchSelected === square ? null : square);
+    }
+  };
 
   // Tastatur-Navigation.
   useEffect(() => {
@@ -299,10 +333,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const currentMove = ply > 0 ? viewMoves[ply - 1] : null;
   const currentComment = useMemo(() => {
     if (!currentMove) return null;
+    if (scratch) return null;
     if (!live) return featuredGame.moves[ply - 1]?.comment ?? null;
     const prevEval = ply <= 1 ? 20 : evalNum(viewMoves[ply - 2]?.evalCp ?? null, viewMoves[ply - 2]?.mateIn ?? null);
     return commentFor(t, sans.slice(0, ply - 1), currentMove, prevEval);
-  }, [live, currentMove, ply, sans, viewMoves, t]);
+  }, [scratch, live, currentMove, ply, sans, viewMoves, t]);
 
   const evalSeries = viewMoves
     .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
@@ -319,10 +354,12 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     return { ...counts, acpl: acpl(viewMoves) };
   }, [viewMoves, live, game]);
 
-  const unanalyzed = games.filter((g) => !g.analyzed);
+  const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
   const headerSub = live
     ? `${game.color === "white" ? t("an.me") : game.opponent} vs. ${game.color === "white" ? game.opponent : t("an.meLower")} · ${game.opening || game.eco || "—"} · ${game.played_at}`
-    : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
+    : scratch
+      ? t("an.freeBoardHint")
+      : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
@@ -338,9 +375,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5">
           <select
             value={selectedId ?? ""}
-            onChange={(e) => setSelectedId(Number(e.target.value))}
+            onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
             className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
           >
+            <option value="">{t("an.freeBoard")}</option>
             {games.map((g) => (
               <option key={g.id} value={g.id ?? undefined}>
                 {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
@@ -432,12 +470,6 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         </div>
       )}
 
-      {desktop && games.length === 0 && (
-        <div className="mb-4 rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[13px] text-ink3">
-          {t("an.noGames")}
-        </div>
-      )}
-
       <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[auto_1fr_300px]">
         {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
         <div className="min-[1240px]:w-[432px]">
@@ -447,11 +479,33 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               <div className="w-full bg-[#e6e3d3]" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
             </div>
             <div className="min-w-0 flex-1">
-              <Board boardId="analysis" fen={fen} width={400} orientation={live && game.color === "black" ? "black" : "white"} />
+              <Board
+                boardId="analysis"
+                fen={fen}
+                width={400}
+                orientation={live && game.color === "black" ? "black" : "white"}
+                draggable={scratch}
+                onPieceDrop={scratch ? playScratchMove : undefined}
+                onSquareClick={scratch ? onScratchSquareClick : undefined}
+                squareStyles={scratchSelected ? { [scratchSelected]: { background: "rgba(34, 192, 138, 0.42)" } } : undefined}
+              />
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between pl-8">
             <div className="flex gap-1">
+              {scratch && (
+                <Button
+                  onClick={() => {
+                    setScratchSans([]);
+                    setPly(0);
+                    setScratchSelected(null);
+                    setLiveEval(null);
+                  }}
+                  className="mr-1"
+                >
+                  <RotateCcw size={15} /> {t("an.newBoard")}
+                </Button>
+              )}
               <Button onClick={() => setPly(0)}><ChevronFirst size={15} /></Button>
               <Button onClick={() => setPly((p) => Math.max(0, p - 1))}><ChevronLeft size={15} /></Button>
               <Button onClick={() => setPly((p) => Math.min(sans.length, p + 1))}><ChevronRight size={15} /></Button>
@@ -465,7 +519,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
         {/* Zugliste + Eval-Graph */}
         <div className="flex min-w-0 flex-col gap-4">
-          <Card title={t("an.game")} pad={false} className="flex-1">
+          <Card title={scratch ? t("an.freeBoard") : t("an.game")} pad={false} className="flex-1">
             <div className="max-h-[290px] overflow-y-auto p-3">
               <div className="flex flex-wrap gap-x-1 gap-y-1.5 text-[13.5px] leading-relaxed">
                 {viewMoves.map((m, i) => (
@@ -542,7 +596,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         <div className="flex flex-col gap-4">
           <LiveEngine
             fen={fen}
-            demoLines={featuredGame.pvLines}
+            demoLines={scratch ? [] : featuredGame.pvLines}
             onEval={(cp, mate) => setLiveEval({ cp, mate })}
           />
 
@@ -563,8 +617,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             </ul>
             <div className="mt-3 border-t border-line pt-3 text-[12px] text-ink3">
               {t("an.acpl")}{" "}
-              <span className="text-ink2">{t("common.white")} {live ? summary.acpl.white : featuredGame.summary.acplWhite}</span> ·{" "}
-              <span className="text-ink2">{t("common.black")} {live ? summary.acpl.black : featuredGame.summary.acplBlack}</span>
+              <span className="text-ink2">{t("common.white")} {desktop ? summary.acpl.white : featuredGame.summary.acplWhite}</span> ·{" "}
+              <span className="text-ink2">{t("common.black")} {desktop ? summary.acpl.black : featuredGame.summary.acplBlack}</span>
             </div>
           </Card>
 

@@ -68,3 +68,11 @@ body {
 .animate-shake {
   animation: shake 0.25s ease-in-out 2;
 }
+
+/* Android/iOS im Querformat: alle Navigationsziele bleiben ohne einen
+   problematischen, verschachtelten Drawer-Scroll erreichbar. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .mobile-landscape-hide {
+    display: none;
+  }
+}

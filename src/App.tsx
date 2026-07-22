@@ -144,15 +144,18 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const navigate = (id: PageId) => {
     if (id === "games") openGames();
-    else setPage(id);
+    else {
+      if (id === "analysis") setAnalysisGameId(null);
+      setPage(id);
+    }
     setNavOpen(false);
   };
 
   // Inhalt der Sidebar — identisch für Desktop-Aside und Mobile-Drawer.
   const sidebarContent = (
     <>
-      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+      <div className={`flex items-center gap-2.5 ${isMobile ? "px-4 py-3" : "px-5 pb-5 pt-6"}`}>
+        <span className={`flex items-center justify-center rounded-xl bg-accent-soft text-accent ${isMobile ? "h-8 w-8" : "h-9 w-9"}`}>
           <Bird size={20} />
         </span>
         <div>
@@ -161,12 +164,12 @@ export default function App() {
         </div>
       </div>
 
-      <nav className="flex flex-col gap-0.5 px-3">
+      <nav className={`flex flex-col ${isMobile ? "gap-0 px-2" : "gap-0.5 px-3"}`}>
         {nav.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             onClick={() => navigate(id)}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
+            className={`flex items-center gap-3 rounded-lg px-3 text-left text-[13.5px] transition-colors ${isMobile ? "py-1.5" : "py-2"} ${
               page === id
                 ? "bg-panel3 font-medium text-ink"
                 : "text-ink2 hover:bg-panel2 hover:text-ink"
@@ -178,8 +181,8 @@ export default function App() {
         ))}
       </nav>
 
-      <div className="mt-auto px-3 pb-5">
-        <div className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5">
+      <div className={`mt-auto px-3 ${isMobile ? "pb-2" : "pb-5"}`}>
+        <div className={`mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5 ${isMobile ? "mobile-landscape-hide" : ""}`}>
           <div className="flex items-center gap-2 text-[12px] text-ink2">
             {syncStatus.active ? (
               <>
@@ -234,7 +237,7 @@ export default function App() {
         </div>
         <button
           onClick={() => navigate("settings")}
-          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
+          className={`flex w-full items-center gap-3 rounded-lg px-3 text-[13.5px] transition-colors ${isMobile ? "py-1.5" : "py-2"} ${
             page === "settings"
               ? "bg-panel3 font-medium text-ink"
               : "text-ink2 hover:bg-panel2 hover:text-ink"
@@ -248,14 +251,14 @@ export default function App() {
   );
 
   return (
-    <div className="flex h-full flex-col md:flex-row">
-      <aside className="hidden w-[228px] shrink-0 flex-col border-r border-line bg-panel md:flex">
+    <div className={`flex h-full flex-col ${isMobile ? "" : "md:flex-row"}`}>
+      <aside className={`${isMobile ? "hidden" : "hidden md:flex"} w-[228px] shrink-0 flex-col border-r border-line bg-panel`}>
         {sidebarContent}
       </aside>
 
       {/* Mobile-Topbar (unter md) */}
       <header
-        className="flex shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2 md:hidden"
+        className={`${isMobile ? "flex" : "flex md:hidden"} shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2`}
         style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
       >
         <div className="flex items-center gap-2.5">
@@ -275,7 +278,7 @@ export default function App() {
 
       {/* Mobile-Drawer */}
       {navOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className={`fixed inset-0 z-50 ${isMobile ? "" : "md:hidden"}`}>
           <div className="absolute inset-0 bg-black/60" onClick={() => setNavOpen(false)} />
           <aside
             className="absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl"
@@ -291,14 +294,14 @@ export default function App() {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {page === "dashboard" && (
-          <Dashboard go={setPage} openAnalysis={openAnalysis} openGames={openGames} />
+          <Dashboard go={navigate} openAnalysis={openAnalysis} openGames={openGames} />
         )}
         {page === "games" && <Games openAnalysis={openAnalysis} initialFilter={gamesFilter} />}
         {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
         {page === "repertoire" && <Repertoire />}
         {page === "endgame" && <Endgame />}
         {page === "puzzles" && <Puzzles initialTheme={puzzleTheme} />}
-        {page === "study" && <Study go={setPage} openPuzzles={openPuzzles} />}
+        {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}
       </main>
