@@ -69,6 +69,12 @@ body {
   animation: shake 0.25s ease-in-out 2;
 }
 
+/* Android WebViews melden den Drei-Tasten-/Gestenbereich je nach OEM als
+   safe-area 0. Der Mindestabstand haelt Drawer-Aktionen und Seiteninhalt frei. */
+.android-safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 32px) !important;
+}
+
 /* Android/iOS im Querformat: alle Navigationsziele bleiben ohne einen
    problematischen, verschachtelten Drawer-Scroll erreichbar. */
 @media (orientation: landscape) and (max-height: 600px) {

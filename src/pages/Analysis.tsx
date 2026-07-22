@@ -34,7 +34,7 @@ import {
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ResultBadge } from "../components/ui";
-import { de, evalLabel, fenAfter, nagColor, winProb } from "../lib/util";
+import { de, evalLabel, fenAfter, winProb } from "../lib/util";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
@@ -43,17 +43,58 @@ interface ViewMove {
   mateIn: number | null;
   nag?: string;
   bestUci?: string;
-  judgment?: string;
+  playedUci?: string;
+  judgment?: MoveJudgment;
 }
 
-const NAG: Record<string, string> = { inaccuracy: "?!", mistake: "?", blunder: "??" };
+type MoveJudgment =
+  | "book"
+  | "brilliant"
+  | "great"
+  | "best"
+  | "excellent"
+  | "good"
+  | "inaccuracy"
+  | "mistake"
+  | "blunder";
+
+const NAG: Record<MoveJudgment, string> = {
+  book: "B",
+  brilliant: "!!",
+  great: "!",
+  best: "★",
+  excellent: "✓",
+  good: "•",
+  inaccuracy: "?!",
+  mistake: "?",
+  blunder: "??",
+};
+
+const JUDGMENT_COLOR: Record<MoveJudgment, string> = {
+  book: "#9085e9",
+  brilliant: "#22c08a",
+  great: "#3987e5",
+  best: "#22c08a",
+  excellent: "#63bca9",
+  good: "#8b8a82",
+  inaccuracy: "#d9a028",
+  mistake: "#e08a3c",
+  blunder: "#e66767",
+};
 
 function judgmentLabel(t: TFunc, judgment: string): string {
-  return judgment === "inaccuracy"
-    ? t("an.inaccuracy")
-    : judgment === "mistake"
-      ? t("an.mistake")
-      : t("an.blunder");
+  const labels: Record<string, Parameters<TFunc>[0]> = {
+    book: "an.bookMove",
+    brilliant: "an.brilliant",
+    great: "an.great",
+    best: "an.best",
+    excellent: "an.excellent",
+    good: "an.good",
+    inaccuracy: "an.inaccuracy",
+    mistake: "an.mistake",
+    blunder: "an.blunder",
+  };
+  return t(labels[judgment] ?? "an.good");
 }
 
 /** Zahl fürs Chart / die Eval-Bar: Matt zählt wie ±10 Bauern. */
@@ -64,15 +105,41 @@ function evalNum(cp: number | null, mate: number | null): number {
 
 function rowsToViewMoves(sans: string[], rows: MoveEvalRow[]): ViewMove[] {
   const byPly = new Map(rows.map((r) => [r.ply, r]));
+  const chess = new Chess();
+  let prevEval = 20;
   return sans.map((san, i) => {
     const r = byPly.get(i + 1);
+    let playedUci = "";
+    try {
+      const played = chess.move(san);
+      playedUci = `${played.from}${played.to}${played.promotion ?? ""}`;
+    } catch {
+      // Ungueltige Alt-Daten bleiben weiterhin sichtbar.
+    }
+    const currentEval = r ? evalNum(r.eval_cp, r.mate_in) : prevEval;
+    const before = winProb(prevEval) / 100;
+    const after = winProb(currentEval) / 100;
+    const drop = i % 2 === 0 ? Math.max(0, before - after) : Math.max(0, after - before);
+    const engineJudgment = r?.judgment as MoveJudgment | "" | undefined;
+    const isBest = !!r?.best_uci && r.best_uci.slice(0, playedUci.length) === playedUci;
+    let judgment: MoveJudgment | undefined = engineJudgment || undefined;
+    if (r && !judgment) {
+      if (i < 16 && drop < 0.03) judgment = "book";
+      else if (isBest && i >= 16 && /[x+#=]/.test(san) && Math.abs(currentEval - prevEval) >= 40) judgment = "brilliant";
+      else if (isBest) judgment = "best";
+      else if (drop < 0.01) judgment = "great";
+      else if (drop < 0.03) judgment = "excellent";
+      else if (drop < 0.10) judgment = "good";
+    }
+    prevEval = currentEval;
     return {
       san,
       evalCp: r ? r.eval_cp : null,
       mateIn: r ? r.mate_in : null,
-      nag: r && r.judgment ? NAG[r.judgment] : undefined,
+      nag: judgment ? NAG[judgment] : undefined,
       bestUci: r?.best_uci,
-      judgment: r?.judgment || undefined,
+      playedUci,
+      judgment,
     };
   });
 }
@@ -96,6 +163,9 @@ function acpl(moves: ViewMove[]): { white: number; black: number } {
 /** Kommentar zu einem annotierten Zug: Bewertungssprung + bessere Alternative. */
 function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: number): string | null {
   if (!m.judgment) return null;
+  if (!(["inaccuracy", "mistake", "blunder"] as MoveJudgment[]).includes(m.judgment)) {
+    return t("an.qualityComment", { judgment: judgmentLabel(t, m.judgment) });
+  }
   let best = "";
   if (m.bestUci) {
     try {
@@ -126,14 +196,17 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [scratchSans, setScratchSans] = useState<string[]>([]);
   const [scratchSelected, setScratchSelected] = useState<string | null>(null);
+  const [variation, setVariation] = useState<{ basePly: number; sans: string[] } | null>(null);
   const [rows, setRows] = useState<MoveEvalRow[] | null>(null);
   const [ply, setPly] = useState(0);
   const [liveEval, setLiveEval] = useState<{ cp: number | null; mate: number | null } | null>(null);
+  const [liveBestUci, setLiveBestUci] = useState<string | null>(null);
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [posSearch, setPosSearch] = useState<PositionSearch | null>(null);
   const [chessdbOn, setChessdbOn] = useState(false);
+  const [playerProfile, setPlayerProfile] = useState({ cc: "", li: "", display: "" });
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -201,7 +274,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   useEffect(() => {
     if (!desktop) return;
     getSettings()
-      .then((s) => setChessdbOn(s.chessdb_enabled))
+      .then((s) => {
+        setChessdbOn(s.chessdb_enabled);
+        setPlayerProfile({ cc: s.cc_user ?? "", li: s.li_user ?? "", display: s.display_name ?? "" });
+      })
       .catch(() => {});
   }, [desktop]);
 
@@ -230,7 +306,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   );
   const viewMoves: ViewMove[] = useMemo(() => {
     if (!desktop) {
-      const byNag: Record<string, string> = { "?!": "inaccuracy", "?": "mistake", "??": "blunder" };
+      const byNag: Record<string, MoveJudgment> = { "?!": "inaccuracy", "?": "mistake", "??": "blunder" };
       return featuredGame.moves.map((m) => ({
         san: m.san,
         evalCp: m.eval,
@@ -248,33 +324,47 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   useEffect(() => {
     setPly(sans.length);
     setLiveEval(null);
+    setLiveBestUci(null);
     setScratchSelected(null);
+    setVariation(null);
   }, [selectedId, sans.length]);
 
-  const fen = useMemo(() => fenAfter(sans, ply), [sans, ply]);
+  const fen = useMemo(
+    () => variation
+      ? fenAfter([...sans.slice(0, variation.basePly), ...variation.sans])
+      : fenAfter(sans, ply),
+    [sans, ply, variation]
+  );
 
-  const playScratchMove = (from: string, to: string): boolean => {
-    if (!scratch) return false;
+  const playBoardMove = (from: string, to: string): boolean => {
+    if (!scratch && !live) return false;
     try {
       const chess = new Chess(fen);
       const move = chess.move({ from, to, promotion: "q" });
-      const next = [...scratchSans.slice(0, ply), move.san];
-      setScratchSans(next);
-      setPly(next.length);
+      if (scratch) {
+        const next = [...scratchSans.slice(0, ply), move.san];
+        setScratchSans(next);
+        setPly(next.length);
+      } else {
+        setVariation((current) => current
+          ? { ...current, sans: [...current.sans, move.san] }
+          : { basePly: ply, sans: [move.san] });
+      }
       setScratchSelected(null);
       setLiveEval(null);
+      setLiveBestUci(null);
       return true;
     } catch {
       return false;
     }
   };
 
-  const onScratchSquareClick = (square: string) => {
-    if (!scratch) return;
+  const onBoardSquareClick = (square: string) => {
+    if (!scratch && !live) return;
     const chess = new Chess(fen);
     const piece = chess.get(square as Parameters<typeof chess.get>[0]);
     if (scratchSelected && scratchSelected !== square) {
-      const moved = playScratchMove(scratchSelected, square);
+      const moved = playBoardMove(scratchSelected, square);
       setScratchSelected(moved || !piece || piece.color !== chess.turn() ? null : square);
     } else if (piece && piece.color === chess.turn()) {
       setScratchSelected(scratchSelected === square ? null : square);
@@ -284,8 +374,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   // Tastatur-Navigation.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") setPly((p) => Math.max(0, p - 1));
-      if (e.key === "ArrowRight") setPly((p) => Math.min(sans.length, p + 1));
+      if (e.key === "ArrowLeft") {
+        setVariation(null);
+        setPly((p) => Math.max(0, p - 1));
+      }
+      if (e.key === "ArrowRight") {
+        setVariation(null);
+        setPly((p) => Math.min(sans.length, p + 1));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -327,34 +423,81 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   }, [desktop, chessdbOn, fen]);
 
   // Eval an der aktuellen Stellung: live von der Engine, sonst gespeichert.
-  const storedEval = ply === 0 ? 20 : evalNum(viewMoves[ply - 1]?.evalCp ?? null, viewMoves[ply - 1]?.mateIn ?? null);
+  const storedPly = variation?.basePly ?? ply;
+  const storedEval = storedPly === 0 ? 20 : evalNum(viewMoves[storedPly - 1]?.evalCp ?? null, viewMoves[storedPly - 1]?.mateIn ?? null);
   const shownEval = liveEval ? evalNum(liveEval.cp, liveEval.mate) : storedEval;
   const whitePct = winProb(shownEval);
-  const currentMove = ply > 0 ? viewMoves[ply - 1] : null;
+  const currentMove = !variation && ply > 0 ? viewMoves[ply - 1] : null;
   const currentComment = useMemo(() => {
     if (!currentMove) return null;
-    if (scratch) return null;
+    if (scratch || variation) return null;
     if (!live) return featuredGame.moves[ply - 1]?.comment ?? null;
     const prevEval = ply <= 1 ? 20 : evalNum(viewMoves[ply - 2]?.evalCp ?? null, viewMoves[ply - 2]?.mateIn ?? null);
     return commentFor(t, sans.slice(0, ply - 1), currentMove, prevEval);
-  }, [scratch, live, currentMove, ply, sans, viewMoves, t]);
+  }, [scratch, variation, live, currentMove, ply, sans, viewMoves, t]);
 
   const evalSeries = viewMoves
     .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
     .filter((_, i) => !live || (rows ?? []).length > i);
 
   const summary = useMemo(() => {
-    const counts = { inaccuracy: 0, mistake: 0, blunder: 0 };
+    const counts: Record<MoveJudgment, number> = {
+      book: 0,
+      brilliant: 0,
+      great: 0,
+      best: 0,
+      excellent: 0,
+      good: 0,
+      inaccuracy: 0,
+      mistake: 0,
+      blunder: 0,
+    };
     viewMoves.forEach((m, i) => {
       const mine = !live || !game ? true : (game.color === "white") === (i % 2 === 0);
-      if (m.judgment && m.judgment in counts && mine) {
-        counts[m.judgment as keyof typeof counts]++;
-      }
+      if (m.judgment && mine) counts[m.judgment]++;
     });
     return { ...counts, acpl: acpl(viewMoves) };
   }, [viewMoves, live, game]);
 
   const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
+  const orientation = live && game.color === "black" ? "black" : "white";
+  const ownPlayerName = live
+    ? (game.source === "chess.com" ? playerProfile.cc : game.source === "lichess" ? playerProfile.li : "")
+      || playerProfile.display
+      || t("an.me")
+    : t("an.me");
+  const demoPlayer = (label: string) => {
+    const match = label.match(/^(.*?)\s*\((\d+)\)$/);
+    return { name: match?.[1] ?? label, elo: match ? Number(match[2]) : 0 };
+  };
+  const whitePlayer = live
+    ? { name: game.color === "white" ? ownPlayerName : game.opponent, elo: game.color === "white" ? game.my_elo : game.opp_elo }
+    : scratch ? { name: t("common.white"), elo: 0 } : demoPlayer(featuredGame.white);
+  const blackPlayer = live
+    ? { name: game.color === "black" ? ownPlayerName : game.opponent, elo: game.color === "black" ? game.my_elo : game.opp_elo }
+    : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(featuredGame.black);
+  const topPlayer = orientation === "white" ? blackPlayer : whitePlayer;
+  const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
+  const currentQuality = currentMove?.judgment;
+  const currentTarget = currentMove?.playedUci?.slice(2, 4);
+  const storedArrows: [string, string, string?][] = currentMove
+    ? [
+        ...(currentMove.bestUci ? [[currentMove.bestUci.slice(0, 2), currentMove.bestUci.slice(2, 4), "rgba(34,192,138,0.78)"] as [string, string, string]] : []),
+        ...(currentMove.playedUci && currentMove.playedUci.slice(0, 4) !== currentMove.bestUci?.slice(0, 4)
+          ? [[currentMove.playedUci.slice(0, 2), currentMove.playedUci.slice(2, 4), "rgba(217,160,40,0.78)"] as [string, string, string]]
+          : []),
+      ]
+    : [];
+  const liveArrows: [string, string, string?][] = liveBestUci
+    ? [[liveBestUci.slice(0, 2), liveBestUci.slice(2, 4), "rgba(34,192,138,0.78)"]]
+    : [];
+  const goToPly = (next: number) => {
+    setVariation(null);
+    setScratchSelected(null);
+    setLiveEval(null);
+    setLiveBestUci(null);
+    setPly(Math.max(0, Math.min(sans.length, next)));
+  };
   const headerSub = live
     ? `${game.color === "white" ? t("an.me") : game.opponent} vs. ${game.color === "white" ? game.opponent : t("an.meLower")} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
@@ -362,7 +505,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
-    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-4 flex items-end justify-between">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
@@ -470,9 +613,13 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[auto_1fr_300px]">
+      <div className="grid grid-cols-1 gap-4 min-[1440px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
         {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
-        <div className="min-[1240px]:w-[432px]">
+        <div className="min-w-0 min-[1440px]:w-[560px]">
+          <div className="mb-2 flex items-center justify-between pl-8 text-[12.5px]">
+            <span className="font-semibold text-ink2">{topPlayer.name}</span>
+            {topPlayer.elo > 0 && <span className="tabular-nums text-ink3">{topPlayer.elo}</span>}
+          </div>
           <div className="flex gap-3">
             <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
               <div className="w-full" style={{ height: `${100 - whitePct}%`, background: "#3a3a37", transition: "height 0.3s" }} />
@@ -482,15 +629,35 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               <Board
                 boardId="analysis"
                 fen={fen}
-                width={400}
-                orientation={live && game.color === "black" ? "black" : "white"}
-                draggable={scratch}
-                onPieceDrop={scratch ? playScratchMove : undefined}
-                onSquareClick={scratch ? onScratchSquareClick : undefined}
+                width={528}
+                orientation={orientation}
+                draggable={scratch || live}
+                onPieceDrop={scratch || live ? playBoardMove : undefined}
+                onSquareClick={scratch || live ? onBoardSquareClick : undefined}
                 squareStyles={scratchSelected ? { [scratchSelected]: { background: "rgba(34, 192, 138, 0.42)" } } : undefined}
+                arrows={variation || scratch || !currentMove ? liveArrows : storedArrows}
+                badges={currentQuality && currentTarget ? [{
+                  square: currentTarget,
+                  label: NAG[currentQuality],
+                  color: JUDGMENT_COLOR[currentQuality],
+                  title: judgmentLabel(t, currentQuality),
+                }] : []}
+                muted={!!variation}
               />
             </div>
           </div>
+          <div className="mt-2 flex items-center justify-between pl-8 text-[12.5px]">
+            <span className="font-semibold text-ink2">{bottomPlayer.name}</span>
+            {bottomPlayer.elo > 0 && <span className="tabular-nums text-ink3">{bottomPlayer.elo}</span>}
+          </div>
+          {variation && (
+            <div className="ml-8 mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
+              <span className="text-ink2">{t("an.variationAt", { n: Math.floor(variation.basePly / 2) + 1 })}: <strong className="text-accent">{variation.sans.join(" ")}</strong></span>
+              <button onClick={() => goToPly(variation.basePly)} className="ml-3 text-ink3 transition-colors hover:text-ink">
+                {t("an.returnToGame")}
+              </button>
+            </div>
+          )}
           <div className="mt-3 flex items-center justify-between pl-8">
             <div className="flex gap-1">
               {scratch && (
@@ -500,16 +667,17 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                     setPly(0);
                     setScratchSelected(null);
                     setLiveEval(null);
+                    setLiveBestUci(null);
                   }}
                   className="mr-1"
                 >
                   <RotateCcw size={15} /> {t("an.newBoard")}
                 </Button>
               )}
-              <Button onClick={() => setPly(0)}><ChevronFirst size={15} /></Button>
-              <Button onClick={() => setPly((p) => Math.max(0, p - 1))}><ChevronLeft size={15} /></Button>
-              <Button onClick={() => setPly((p) => Math.min(sans.length, p + 1))}><ChevronRight size={15} /></Button>
-              <Button onClick={() => setPly(sans.length)}><ChevronLast size={15} /></Button>
+              <Button onClick={() => goToPly(0)}><ChevronFirst size={15} /></Button>
+              <Button onClick={() => goToPly((variation?.basePly ?? ply) - 1)}><ChevronLeft size={15} /></Button>
+              <Button onClick={() => goToPly((variation?.basePly ?? ply) + 1)}><ChevronRight size={15} /></Button>
+              <Button onClick={() => goToPly(sans.length)}><ChevronLast size={15} /></Button>
             </div>
             <div className="text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
               {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
@@ -528,14 +696,15 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                       <span className="mr-1 text-[12px] text-ink3">{i / 2 + 1}.</span>
                     )}
                     <button
-                      onClick={() => setPly(i + 1)}
+                      onClick={() => goToPly(i + 1)}
+                      title={m.judgment ? judgmentLabel(t, m.judgment) : undefined}
                       className={`rounded px-1 py-0.5 font-medium transition-colors ${
-                        ply === i + 1 ? "bg-accent-soft text-accent" : "hover:bg-panel2"
+                        !variation && ply === i + 1 ? "bg-accent-soft text-accent" : "hover:bg-panel2"
                       }`}
                     >
                       {m.san}
                       {m.nag && (
-                        <span className="ml-0.5" style={{ color: nagColor[m.nag] }}>{m.nag}</span>
+                        <span className="ml-0.5" style={{ color: m.judgment ? JUDGMENT_COLOR[m.judgment] : undefined }}>{m.nag}</span>
                       )}
                     </button>
                   </span>
@@ -548,8 +717,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               )}
               {currentComment && (
                 <div className="mt-3 rounded-lg border-l-2 bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
-                  style={{ borderColor: currentMove?.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
-                  <span className="font-medium" style={{ color: currentMove?.nag ? nagColor[currentMove.nag] : "var(--color-accent)" }}>
+                  style={{ borderColor: currentMove?.judgment ? JUDGMENT_COLOR[currentMove.judgment] : "var(--color-accent)" }}>
+                  <span className="font-medium" style={{ color: currentMove?.judgment ? JUDGMENT_COLOR[currentMove.judgment] : "var(--color-accent)" }}>
                     {Math.ceil(ply / 2)}.{ply % 2 === 0 ? ".." : ""} {currentMove?.san}{currentMove?.nag}
                   </span>{" "}
                   {currentComment}
@@ -593,27 +762,24 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         </div>
 
         {/* Engine-Panel + Annotationen + Positionssuche */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 min-[1440px]:contents">
           <LiveEngine
             fen={fen}
             demoLines={scratch ? [] : featuredGame.pvLines}
             onEval={(cp, mate) => setLiveEval({ cp, mate })}
+            onBestMove={setLiveBestUci}
           />
 
-          <Card title={live ? t("an.myErrors") : t("an.autoAnnotation")}>
-            <ul className="flex flex-col gap-2 text-[13px]">
-              <li className="flex justify-between">
-                <span style={{ color: nagColor["?!"] }}>{t("an.inaccuracies")}</span>
-                <span className="font-medium">{summary.inaccuracy}</span>
-              </li>
-              <li className="flex justify-between">
-                <span style={{ color: nagColor["?"] }}>{t("an.mistakes")}</span>
-                <span className="font-medium">{summary.mistake}</span>
-              </li>
-              <li className="flex justify-between">
-                <span style={{ color: nagColor["??"] }}>{t("an.blunders")}</span>
-                <span className="font-medium">{summary.blunder}</span>
-              </li>
+          <Card title={live ? t("an.myMoves") : t("an.autoAnnotation")}>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+              {(["brilliant", "great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "blunder"] as MoveJudgment[]).map((quality) => (
+                <li key={quality} className="flex min-w-0 justify-between gap-2">
+                  <span className="truncate" style={{ color: JUDGMENT_COLOR[quality] }}>
+                    {NAG[quality]} {judgmentLabel(t, quality)}
+                  </span>
+                  <span className="font-medium">{summary[quality]}</span>
+                </li>
+              ))}
             </ul>
             <div className="mt-3 border-t border-line pt-3 text-[12px] text-ink3">
               {t("an.acpl")}{" "}

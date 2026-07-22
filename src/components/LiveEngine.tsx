@@ -49,11 +49,13 @@ export default function LiveEngine({
   fen,
   demoLines,
   onEval,
+  onBestMove,
 }: {
   fen: string;
   demoLines: { eval: string; depth: number; line: string }[];
   /** Bewertung aus Weiß-Sicht, sobald die Engine Tiefe gewinnt. */
   onEval?: (evalCp: number | null, mateIn: number | null) => void;
+  onBestMove?: (uci: string | null) => void;
 }) {
   const t = useT();
   const [engine, setEngine] = useState<EngineState>({ mode: "checking" });
@@ -65,6 +67,8 @@ export default function LiveEngine({
   fenRef.current = fen;
   const onEvalRef = useRef(onEval);
   onEvalRef.current = onEval;
+  const onBestMoveRef = useRef(onBestMove);
+  onBestMoveRef.current = onBestMove;
 
   useEffect(() => {
     engineInfo()
@@ -96,6 +100,7 @@ export default function LiveEngine({
           info.mate_in != null ? sign * info.mate_in : null
         );
       }
+      if (info.multipv === 1) onBestMoveRef.current?.(info.pv[0] ?? null);
     }).then((u) => (disposed ? u() : (unInfo = u)));
     onEngineDone(() => {}).then((u) => (disposed ? u() : (unDone = u)));
     return () => {
@@ -109,6 +114,7 @@ export default function LiveEngine({
   useEffect(() => {
     if (!available) return;
     setLines(new Map());
+    onBestMoveRef.current?.(null);
     if (!running) return;
     let stale = false;
     analyzeLive(fen)

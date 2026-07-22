@@ -6,6 +6,7 @@ import Analysis from "./Analysis";
 const mocks = vi.hoisted(() => ({
   listGames: vi.fn(),
   startAnalysis: vi.fn(),
+  gameAnalysis: vi.fn(),
 }));
 
 vi.mock("../lib/backend", () => ({
@@ -18,7 +19,7 @@ vi.mock("../lib/settings", () => ({
 }));
 vi.mock("../lib/analysis", () => ({
   cancelAnalysis: vi.fn(),
-  gameAnalysis: () => Promise.resolve([]),
+  gameAnalysis: mocks.gameAnalysis,
   onAnalysisDone: () => Promise.resolve(() => {}),
   onAnalysisGameDone: () => Promise.resolve(() => {}),
   onAnalysisProgress: () => Promise.resolve(() => {}),
@@ -26,9 +27,10 @@ vi.mock("../lib/analysis", () => ({
   startAnalysis: mocks.startAnalysis,
 }));
 vi.mock("../components/Board", () => ({
-  default: ({ onPieceDrop }: { onPieceDrop?: (from: string, to: string) => boolean }) => (
-    <div data-testid="analysis-board">
+  default: ({ onPieceDrop, draggable, muted }: { onPieceDrop?: (from: string, to: string) => boolean; draggable?: boolean; muted?: boolean }) => (
+    <div data-testid="analysis-board" data-draggable={String(!!draggable)} data-muted={String(!!muted)}>
       {onPieceDrop && <button onClick={() => onPieceDrop("e2", "e4")}>play e4</button>}
+      {onPieceDrop && <button onClick={() => onPieceDrop("e7", "e5")}>play e5</button>}
     </div>
   ),
 }));
@@ -73,6 +75,7 @@ const excludedGame = {
 
 beforeEach(() => {
   mocks.listGames.mockResolvedValue([excludedGame]);
+  mocks.gameAnalysis.mockResolvedValue([]);
   mocks.startAnalysis.mockResolvedValue(undefined);
 });
 
@@ -98,5 +101,19 @@ describe("Analysis page", () => {
     expect(screen.queryByRole("button", { name: /Nächste 10/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Diese Partie analysieren" }));
     expect(mocks.startAnalysis).toHaveBeenCalledWith({ gameIds: [7] });
+  });
+
+  it("lets desktop users branch from a played move with drag and drop", async () => {
+    render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+
+    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    expect(screen.getByTestId("analysis-board").dataset.draggable).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "e4" }));
+    fireEvent.click(screen.getByRole("button", { name: "play e5" }));
+
+    expect(await screen.findByText(/Variante ab Zug 1/)).toBeTruthy();
+    expect(screen.getByTestId("analysis-board").dataset.muted).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Zurück zur Partie" }));
+    expect(screen.getByTestId("analysis-board").dataset.muted).toBe("false");
   });
 });

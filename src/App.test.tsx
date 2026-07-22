@@ -43,6 +43,7 @@ describe("mobile navigation", () => {
     expect(screen.getAllByRole("button", { name: "Insights" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Einstellungen" })).toHaveLength(2);
     expect(container.querySelector(".mobile-landscape-hide")).toBeTruthy();
+    expect(container.querySelector("aside.android-safe-bottom")).toBeTruthy();
     await waitFor(() => expect(screen.getAllByText(/12 Partien/).length).toBeGreaterThan(0));
   });
 });

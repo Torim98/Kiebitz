@@ -281,7 +281,7 @@ export default function App() {
         <div className={`fixed inset-0 z-50 ${isMobile ? "" : "md:hidden"}`}>
           <div className="absolute inset-0 bg-black/60" onClick={() => setNavOpen(false)} />
           <aside
-            className="absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl"
+            className={`absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl ${isMobile ? "android-safe-bottom" : ""}`}
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
             {sidebarContent}
@@ -290,7 +290,7 @@ export default function App() {
       )}
 
       <main
-        className="min-w-0 flex-1 overflow-y-auto"
+        className={`min-w-0 flex-1 overflow-y-auto ${isMobile ? "android-safe-bottom" : ""}`}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {page === "dashboard" && (
