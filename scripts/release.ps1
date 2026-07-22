@@ -51,9 +51,22 @@ try {
   Invoke-Checked npm @("version", $Version, "--no-git-tag-version", "--ignore-scripts")
 
   $json = Get-Content -Raw $tauriConfig
-  $updated = $json -replace '("version"\s*:\s*")[^"]+("\s*,?)', "`$1$Version`$2"
+  # ${1}/${2} halten die Regex-Gruppen von einer direkt folgenden, mit einer
+  # Ziffer beginnenden Versionsnummer getrennt (sonst wird z. B. $1 + 0.5.0
+  # von .NET als die nicht vorhandene Gruppe $10 interpretiert).
+  $replacement = '${1}' + $Version + '${2}'
+  $updated = $json -replace '("version"\s*:\s*")[^"]+("\s*,?)', $replacement
   if ($updated -eq $json) {
     throw "Die Version in src-tauri/tauri.conf.json konnte nicht aktualisiert werden."
+  }
+  try {
+    $updatedConfig = $updated | ConvertFrom-Json
+  }
+  catch {
+    throw "Die aktualisierte Tauri-Konfiguration ist kein gültiges JSON: $($_.Exception.Message)"
+  }
+  if ($updatedConfig.version -ne $Version) {
+    throw "Die Tauri-Version wurde nicht korrekt auf $Version aktualisiert."
   }
   [System.IO.File]::WriteAllText(
     $tauriConfig,

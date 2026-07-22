@@ -80,7 +80,7 @@ describe("deep Insights", () => {
 
   it("shows detailed color-split opening records", async () => {
     render(<LocaleProvider><InsightsV2 /></LocaleProvider>);
-    await screen.findByText("Analytische Diagnose");
+    await screen.findByText(/Tiefenanalyse über 6 Partien/);
     fireEvent.click(screen.getByRole("button", { name: /Eröffnungen/ }));
     expect(screen.getByText("Eröffnungsakte · getrennt nach Farbe")).toBeTruthy();
     expect(screen.getAllByText("Italian Game").length).toBeGreaterThan(0);
@@ -89,7 +89,7 @@ describe("deep Insights", () => {
 
   it("switches to performance and behavioral analysis", async () => {
     render(<LocaleProvider><InsightsV2 /></LocaleProvider>);
-    await screen.findByText("Analytische Diagnose");
+    await screen.findByText(/Tiefenanalyse über 6 Partien/);
     fireEvent.click(screen.getByRole("button", { name: /Spielstärke/ }));
     expect(screen.getByText("Leistung nach Zeitkontrolle")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Muster & Gewohnheiten/ }));

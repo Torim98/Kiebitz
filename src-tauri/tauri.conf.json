@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Kiebitz",
-  $10.5.0",
+  "version": "0.5.0",
   "identifier": "de.torim.kiebitz",
   "build": {
     "frontendDist": "../dist",

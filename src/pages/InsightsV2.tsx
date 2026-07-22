@@ -330,8 +330,18 @@ export default function InsightsV2() {
 
   useEffect(() => {
     if (backend.mode !== "desktop") return;
-    listGames().then(setRecords).catch(() => setRecords([]));
-    errorStats().then(setErrors).catch(() => setErrors([]));
+    let cancelled = false;
+    Promise.all([
+      listGames().catch(() => [] as GameRecord[]),
+      errorStats().catch(() => [] as PhaseErrors[]),
+    ]).then(([nextRecords, nextErrors]) => {
+      if (cancelled) return;
+      setRecords(nextRecords);
+      setErrors(nextErrors);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [backend.mode]);
 
   const analysisRecords = backend.mode === "desktop" ? records : DEMO_RECORDS;
