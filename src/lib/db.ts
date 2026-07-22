@@ -55,6 +55,13 @@ export function setGameTags(id: number, tags: string[]): Promise<string[]> {
   });
 }
 
+export function deleteGame(id: number): Promise<boolean> {
+  return invoke<boolean>("delete_game", { id }).then((deleted) => {
+    if (deleted) emitDataChange();
+    return deleted;
+  });
+}
+
 export function readPgnFile(path: string): Promise<string> {
   return invoke<string>("read_pgn_file", { path });
 }

@@ -162,6 +162,12 @@ fn set_game_tags(
 }
 
 #[tauri::command]
+fn delete_game(db: tauri::State<db::Db>, id: i64) -> Result<bool, String> {
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::delete_game(&mut conn, id)
+}
+
+#[tauri::command]
 fn read_pgn_file(path: String) -> Result<String, String> {
     let path = std::path::PathBuf::from(path.trim());
     if path.as_os_str().is_empty() {
@@ -339,6 +345,7 @@ pub fn run() {
             upsert_games,
             set_game_note,
             set_game_tags,
+            delete_game,
             read_pgn_file,
             write_pgn_file,
             db_stats,

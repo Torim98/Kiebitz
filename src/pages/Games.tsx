@@ -16,13 +16,14 @@ import {
   Save,
   Search,
   StickyNote,
+  Trash2,
   X,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
-import { listGames, readPgnFile, setGameNote, setGameTags, upsertGames, writePgnFile, type GameRecord } from "../lib/db";
+import { deleteGame, listGames, readPgnFile, setGameNote, setGameTags, upsertGames, writePgnFile, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
@@ -67,6 +68,8 @@ export default function Games({
   const [pgnPlayer, setPgnPlayer] = useState(profile.ccUser);
   const [pgnBusy, setPgnBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -104,8 +107,8 @@ export default function Games({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend.mode, locale]);
 
-  const live = dbGames !== null && dbGames.length > 0;
-  const allGames: UiGame[] = live ? dbGames! : demoGames;
+  const databaseLoaded = dbGames !== null;
+  const allGames: UiGame[] = databaseLoaded ? dbGames : demoGames;
 
   const filtered = useMemo(
     () =>
@@ -199,6 +202,26 @@ export default function Games({
     setTagDraft("");
   };
 
+  const deleteSelected = async () => {
+    if (!selected?.dbId || deleting) return;
+    if (!window.confirm(t("games.deleteConfirm", { opponent: selected.opponent }))) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const deleted = await deleteGame(selected.dbId);
+      if (!deleted) throw new Error(t("games.deleteMissing"));
+      setRecords((games) => games.filter((game) => game.id !== selected.dbId));
+      setDbGames((games) => games?.filter((game) => game.id !== selected.id) ?? games);
+      setSelectedId(null);
+      setNoteDraft(null);
+      setTagDraft("");
+    } catch (e) {
+      setDeleteError(t("games.deleteFailed", { e: String(e) }));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const choosePgnImport = async () => {
     const path = await openDialog({
       multiple: false,
@@ -265,7 +288,7 @@ export default function Games({
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("games.title")}</h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink3">
-            {live ? (
+            {databaseLoaded ? (
               <>
                 <Database size={13} className="text-accent" />
                 {t("games.dbCount", { n: deInt(allGames.length) })}
@@ -291,16 +314,16 @@ export default function Games({
 
       {backend.mode === "desktop" && importOpen && (
         <Card title={t("games.importPanelTitle")} className="mb-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
+          <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0">
               <div className="text-[12.5px] font-medium text-ink2">{t("games.onlineImportTitle")}</div>
               <div className="mt-0.5 text-[11.5px] text-ink3">{t("games.onlineImportHint")}</div>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={() => !importing && runImport(true)}>
+            <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 sm:flex">
+              <Button className="w-full sm:w-auto" onClick={() => !importing && runImport(true)}>
                 <History size={15} /> {t("games.importAll")}
               </Button>
-              <Button primary onClick={() => !importing && runImport(false)}>
+              <Button className="w-full sm:w-auto" primary onClick={() => !importing && runImport(false)}>
                 {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 {importing ? t("games.importing") : t("games.importLatest")}
               </Button>
@@ -308,28 +331,34 @@ export default function Games({
           </div>
           <div className="mb-4 border-t border-line" />
           <div className="mb-3 text-[12.5px] font-medium text-ink2">{t("games.pgnTitle")}</div>
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 grid max-w-md gap-1.5 sm:grid-cols-[auto_minmax(0,14rem)] sm:items-center">
             <label className="text-[12px] text-ink3" htmlFor="pgn-player">{t("games.pgnPlayer")}</label>
-            <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="w-56 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
+            <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="min-w-0 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
           </div>
-          <div className="grid gap-3 min-[820px]:grid-cols-2">
-            <div className="flex gap-2">
-              <button onClick={choosePgnImport} className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+          <p className="mb-3 max-w-3xl text-[11.5px] leading-relaxed text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
+          <div className="grid min-w-0 gap-3 min-[900px]:grid-cols-2">
+            <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
+              <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnImportGroup")}</div>
+              <button onClick={choosePgnImport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
                 {pgnPath || t("games.pgnChooseImport")}
               </button>
-              <Button onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
-              <Button primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={choosePgnExport} className="min-w-0 flex-1 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+              <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+                <Button className="w-full" onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
+                <Button className="w-full" primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
+              </div>
+            </section>
+            <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
+              <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnExportGroup")}</div>
+              <button onClick={choosePgnExport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
                 {pgnExportPath || t("games.pgnChooseExport")}
               </button>
-              <Button onClick={choosePgnExport}><FolderOpen size={14} /> {t("games.chooseTarget")}</Button>
-              <Button onClick={() => !pgnBusy && runPgnExport(true)} disabled={!pgnExportPath || !selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
-              <Button onClick={() => !pgnBusy && runPgnExport(false)} disabled={!pgnExportPath}>{t("games.pgnAll")}</Button>
-            </div>
+              <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 min-[620px]:grid-cols-3">
+                <Button className="w-full" onClick={choosePgnExport}><FolderOpen size={14} /> {t("games.chooseTarget")}</Button>
+                <Button className="w-full" onClick={() => !pgnBusy && runPgnExport(true)} disabled={!pgnExportPath || !selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
+                <Button className="w-full min-[420px]:col-span-2 min-[620px]:col-span-1" onClick={() => !pgnBusy && runPgnExport(false)} disabled={!pgnExportPath}>{t("games.pgnAll")}</Button>
+              </div>
+            </section>
           </div>
-          <p className="mt-2 text-[11.5px] text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
         </Card>
       )}
 
@@ -432,6 +461,7 @@ export default function Games({
                   onClick={() => {
                     setSelectedId(g.id);
                     setNoteDraft(null);
+                    setDeleteError(null);
                   }}
                   className={`cursor-pointer border-b border-line last:border-0 ${
                     selected?.id === g.id ? "bg-panel2" : "hover:bg-panel2/60"
@@ -660,29 +690,49 @@ export default function Games({
                 rows={4}
                 className="w-full resize-none rounded-lg border border-line bg-panel2 p-3 text-[13px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
               />
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-3 grid gap-2 min-[480px]:grid-cols-2">
                 {selected.dbId ? (
                   <>
-                    <Button primary onClick={saveNote} className="flex-1">
+                    <Button primary onClick={saveNote} className="w-full">
                       <Save size={15} />
                       {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
                     </Button>
-                    <Button onClick={() => openAnalysis(selected.dbId!)}>
+                    <Button className="w-full" onClick={() => openAnalysis(selected.dbId!)}>
                       {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
                     </Button>
                   </>
                 ) : (
-                  <Button primary className="flex-1">
+                  <Button primary className="w-full min-[480px]:col-span-2">
                     {selected.analyzed ? t("games.openAnalysis") : t("games.analyzeStockfish")}
                   </Button>
                 )}
-                {selected.source !== "manual" && (
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+                {selected.source !== "manual" ? (
                   <ExtLink
                     href={selected.url || (selected.source === "chess.com" ? `https://www.chess.com/games/archive/${myUser}` : `https://lichess.org/@/${myUser}/all`)}
                     label={t("games.original")}
                   />
+                ) : (
+                  <span />
+                )}
+                {selected.dbId && (
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={deleteSelected}
+                    className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    {deleting ? t("games.deleting") : t("games.delete")}
+                  </button>
                 )}
               </div>
+              {deleteError && (
+                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+                  {deleteError}
+                </div>
+              )}
             </Card>
           </div>
         )}

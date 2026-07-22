@@ -484,6 +484,34 @@ pub fn set_tags(conn: &Connection, id: i64, tags: &[String]) -> Result<Vec<Strin
     Ok(clean)
 }
 
+/// Löscht eine Partie samt lokal abgeleiteten Daten. Online-Import oder Sync
+/// können dieselbe Partie anhand ihres Natural Keys später erneut einspielen.
+pub fn delete_game(conn: &mut Connection, id: i64) -> Result<bool, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM puzzle_attempts
+         WHERE puzzle_id IN (
+             SELECT id FROM puzzles WHERE source = 'own' AND source_game_id = ?1
+         )",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM puzzles WHERE source = 'own' AND source_game_id = ?1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM move_evals WHERE game_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM positions WHERE game_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    let deleted = tx
+        .execute("DELETE FROM games WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(deleted > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,5 +582,55 @@ mod tests {
         assert_eq!(abc.accuracy, Some(84.2), "Accuracy aktualisiert");
         let noted = games.iter().find(|g| g.id == Some(id)).unwrap();
         assert_eq!(noted.note, "Merken: Cb6!", "Notiz überlebt den Re-Import");
+    }
+
+    #[test]
+    fn delete_game_removes_derived_rows_but_keeps_other_games() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        upsert_games(&mut conn, &[sample("delete-me"), sample("keep-me")]).unwrap();
+        let id = list_games(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|game| game.source_id == "delete-me")
+            .and_then(|game| game.id)
+            .unwrap();
+
+        conn.execute(
+            "INSERT INTO move_evals (game_id, ply) VALUES (?1, 1)",
+            params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO positions (fen_key, game_id, ply) VALUES ('fen', ?1, 1)",
+            params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO puzzles
+             (id, fen, moves, rating, source, source_game_id, setup_plies)
+             VALUES ('own:test', 'fen', 'e2e4', 1200, 'own', ?1, 0)",
+            params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO puzzle_attempts
+             (puzzle_id, ts, solved, rating_before, rating_after)
+             VALUES ('own:test', 1, 1, 1200, 1210)",
+            [],
+        )
+        .unwrap();
+
+        assert!(delete_game(&mut conn, id).unwrap());
+        assert_eq!(list_games(&conn).unwrap().len(), 1);
+        for table in ["move_evals", "positions", "puzzles", "puzzle_attempts"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "derived rows remain in {table}");
+        }
+        assert!(!delete_game(&mut conn, id).unwrap());
     }
 }
