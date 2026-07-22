@@ -96,10 +96,13 @@ impl LiveEngine {
     }
 
     fn spawn(&self, app: &tauri::AppHandle, path: &str) -> Result<LiveProc, String> {
-        let mut child = Command::new(path)
+        let mut command = Command::new(path);
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        crate::engine::configure_child_process(&mut command);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("Engine konnte nicht gestartet werden ({path}): {e}"))?;
 

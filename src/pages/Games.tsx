@@ -31,7 +31,7 @@ import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { de, deInt, fenAfter } from "../lib/util";
-import { exportPgn, importPgn } from "../lib/pgn";
+import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
@@ -249,7 +249,14 @@ export default function Games({
       indexPositions().catch(() => {});
       setImportMsg(t("games.pgnImported", { n: parsed.length, ins: res.inserted }));
     } catch (e) {
-      setImportMsg(t("games.pgnFailed", { e: String(e) }));
+      setImportMsg(
+        e instanceof PgnPlayerMismatchError
+          ? t("games.pgnPlayerMismatch", {
+              player: e.playerName || t("games.pgnPlayerEmpty"),
+              n: e.unmatchedGames,
+            })
+          : t("games.pgnFailed", { e: String(e) })
+      );
     } finally {
       setPgnBusy(false);
     }

@@ -120,6 +120,8 @@ const de = {
   "games.pgnImported": "{n} PGN-Partien gelesen, {ins} neu importiert.",
   "games.pgnExported": "{n} Partien nach {path} exportiert.",
   "games.pgnFailed": "PGN-Vorgang fehlgeschlagen: {e}",
+  "games.pgnPlayerMismatch": "Der Spielername \"{player}\" stimmt bei {n} PGN-Partie(n) weder mit Weiß noch mit Schwarz überein. Bitte prüfe den Namen vor dem Import.",
+  "games.pgnPlayerEmpty": "nicht angegeben",
   "games.pgnChooseImport": "Keine PGN-Datei ausgewählt",
   "games.pgnChooseExport": "Kein Exportziel ausgewählt",
   "games.chooseFile": "Datei wählen",
@@ -286,6 +288,8 @@ const de = {
 
   // ── Puzzles ────────────────────────────────────────────────────────────────
   "pz.title": "Puzzle-Training",
+  "pz.preparing": "Das Training wird vorbereitet.",
+  "pz.loadingLibrary": "Puzzle-Daten und persönlichen Trainingsstand laden …",
   "pz.subtitle": "{n} Aufgaben offline · davon {o} aus eigenen Partien · {m} gelöst",
   "pz.demoSubtitle": "Demo-Puzzles — die Lichess-Datenbank (~5 Mio. Aufgaben) importiert die Desktop-App",
   "pz.streakToday": "Serie · heute {n}",
@@ -728,6 +732,8 @@ const en: Record<Key, string> = {
   "games.pgnImported": "Read {n} PGN games; {ins} newly imported.",
   "games.pgnExported": "Exported {n} games to {path}.",
   "games.pgnFailed": "PGN operation failed: {e}",
+  "games.pgnPlayerMismatch": "The player name \"{player}\" matches neither White nor Black in {n} PGN game(s). Check the name before importing.",
+  "games.pgnPlayerEmpty": "not provided",
   "games.pgnChooseImport": "No PGN file selected",
   "games.pgnChooseExport": "No export target selected",
   "games.chooseFile": "Choose file",
@@ -890,6 +896,8 @@ const en: Record<Key, string> = {
   "rep.deleteVariant": "Delete variation",
 
   "pz.title": "Puzzle training",
+  "pz.preparing": "Preparing your training session.",
+  "pz.loadingLibrary": "Loading puzzles and your personal training progress …",
   "pz.subtitle": "{n} puzzles offline · {o} from your own games · {m} solved",
   "pz.demoSubtitle": "Demo puzzles — the desktop app imports the Lichess database (~5M puzzles)",
   "pz.streakToday": "streak · today {n}",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exportPgn, importPgn } from "./pgn";
+import { exportPgn, importPgn, PgnPlayerMismatchError } from "./pgn";
 
 const SAMPLE = `[Event "Club game"]
 [Site "Berlin"]
@@ -33,5 +33,20 @@ describe("PGN import/export", () => {
     expect(imported).toHaveLength(2);
     expect(imported[0].moves).toBe(game.moves);
     expect(imported[0].tags).toEqual(game.tags);
+  });
+
+  it("rejects an import when the player matches neither color", () => {
+    expect(() => importPgn(SAMPLE, "AliceAndTom")).toThrow(PgnPlayerMismatchError);
+  });
+
+  it("rejects the complete multi-game import when one game does not match", () => {
+    const other = SAMPLE.replace('[White "Alice"]', '[White "Carol"]').replace('[Black "Tom"]', '[Black "Dave"]');
+    expect(() => importPgn(`${SAMPLE}\n\n${other}`, "Tom")).toThrowError(
+      expect.objectContaining({ unmatchedGames: 1, playerName: "Tom" })
+    );
+  });
+
+  it("matches player names case-insensitively with normalized whitespace", () => {
+    expect(importPgn(SAMPLE, "  tOM  ")[0].color).toBe("black");
   });
 });

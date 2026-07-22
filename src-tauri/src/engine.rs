@@ -5,6 +5,19 @@ use serde::Serialize;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 
+/// Stockfish is a console application. Without this flag Windows opens a
+/// visible console window whenever the engine process starts.
+pub(crate) fn configure_child_process(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
 #[derive(Serialize)]
 pub struct AnalysisResult {
     pub bestmove: String,
@@ -24,10 +37,13 @@ pub struct UciEngine {
 
 impl UciEngine {
     pub fn spawn(path: &str) -> Result<Self, String> {
-        let mut child = Command::new(path)
+        let mut command = Command::new(path);
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        configure_child_process(&mut command);
+        let mut child = command
             .spawn()
             .map_err(|e| format!("Engine konnte nicht gestartet werden ({path}): {e}"))?;
 

@@ -110,18 +110,25 @@ pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
 #[tauri::command]
 fn engine_info(app: tauri::AppHandle) -> EngineInfo {
     match resolve_engine(&app) {
-        Some(path) => match engine::UciEngine::spawn(&path.to_string_lossy()) {
-            Ok(uci) => EngineInfo {
+        // Do not start Stockfish just to render the Analysis page. The former
+        // UCI handshake was repeated by the first live analysis and blocked
+        // the UI noticeably, especially on Android.
+        Some(path) => {
+            let file_name = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Engine");
+            let name = if file_name.to_ascii_lowercase().contains("stockfish") {
+                "Stockfish 18".to_string()
+            } else {
+                file_name.to_string()
+            };
+            EngineInfo {
                 available: true,
-                name: uci.name().to_string(),
+                name,
                 path: path.to_string_lossy().to_string(),
-            },
-            Err(err) => EngineInfo {
-                available: false,
-                name: err,
-                path: path.to_string_lossy().to_string(),
-            },
-        },
+            }
+        }
         None => EngineInfo {
             available: false,
             name: "Keine Engine gefunden".to_string(),
@@ -225,25 +232,28 @@ fn analyze_position(
 /// Dauer-Analyse über die persistente Engine: `info`-Zeilen kommen als
 /// `engine://info`-Events. Liefert die Generation dieser Anfrage.
 #[tauri::command]
-fn analyze_live(
+async fn analyze_live(
     app: tauri::AppHandle,
-    state: tauri::State<live::LiveEngine>,
     fen: String,
     depth: Option<u32>,
 ) -> Result<u64, String> {
-    let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
-    let live_depth = app
-        .state::<settings::SettingsState>()
-        .0
-        .lock()
-        .map(|s| s.live_depth)
-        .unwrap_or(24);
-    state.analyze(
-        &app,
-        &path.to_string_lossy(),
-        &fen,
-        depth.unwrap_or(live_depth).clamp(6, 40),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
+        let live_depth = app
+            .state::<settings::SettingsState>()
+            .0
+            .lock()
+            .map(|s| s.live_depth)
+            .unwrap_or(24);
+        app.state::<live::LiveEngine>().analyze(
+            &app,
+            &path.to_string_lossy(),
+            &fen,
+            depth.unwrap_or(live_depth).clamp(6, 40),
+        )
+    })
+    .await
+    .map_err(|e| format!("Engine-Start fehlgeschlagen: {e}"))?
 }
 
 #[tauri::command]

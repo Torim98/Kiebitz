@@ -39,15 +39,40 @@ function tags(value = ""): string[] {
   return [...new Set(value.split(/[,;]/).map((v) => v.trim()).filter(Boolean))];
 }
 
+function normalizedPlayer(value = ""): string {
+  return value.normalize("NFKC").trim().toLocaleLowerCase();
+}
+
+export class PgnPlayerMismatchError extends Error {
+  readonly playerName: string;
+  readonly unmatchedGames: number;
+
+  constructor(playerName: string, unmatchedGames: number) {
+    super(`PGN player name does not match White or Black in ${unmatchedGames} game(s)`);
+    this.name = "PgnPlayerMismatchError";
+    this.playerName = playerName.trim();
+    this.unmatchedGames = unmatchedGames;
+  }
+}
+
 /** Parses one or more PGN games into normal database records. */
 export function importPgn(text: string, playerName: string): GameRecord[] {
-  const player = playerName.trim().toLocaleLowerCase();
-  return splitGames(text).map((block) => {
-    const h = headers(block);
+  const player = normalizedPlayer(playerName);
+  const parsed = splitGames(text).map((block) => ({ block, headers: headers(block) }));
+  const unmatchedGames = parsed.filter(({ headers: h }) => {
+    const white = normalizedPlayer(h.White);
+    const black = normalizedPlayer(h.Black);
+    return player === "" || (white !== player && black !== player);
+  }).length;
+  if (unmatchedGames > 0) {
+    throw new PgnPlayerMismatchError(playerName, unmatchedGames);
+  }
+
+  return parsed.map(({ block, headers: h }) => {
     const chess = new Chess();
     chess.loadPgn(block, { strict: false });
     const moves = chess.history();
-    const isBlack = player !== "" && h.Black?.trim().toLocaleLowerCase() === player;
+    const isBlack = normalizedPlayer(h.Black) === player;
     const color = isBlack ? "black" : "white";
     const opponent = color === "white" ? h.Black : h.White;
     const result = h.Result === "1/2-1/2" ? "draw" : h.Result === (color === "white" ? "1-0" : "0-1") ? "win" : "loss";

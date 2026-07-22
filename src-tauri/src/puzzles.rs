@@ -289,9 +289,22 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
         .unwrap_or(0);
     let _ = db::meta_set(&conn, "puzzle_imported_at", &now.to_string());
 
-    let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM puzzles", [], |r| r.get(0))
+    let lichess_total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM puzzles WHERE source = 'lichess'",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
+    db::meta_set(&conn, "puzzle_lichess_total", &lichess_total.to_string())?;
+    let own_total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM puzzles WHERE source = 'own'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let total = lichess_total + own_total;
     Ok((imported, total))
 }
 
@@ -320,15 +333,20 @@ fn personal_rating(conn: &Connection) -> i64 {
 /// Nächstes Puzzle: nahe am persönlichen Rating (oder im gewünschten Band),
 /// optional nach Motiv gefiltert; bereits gelöste werden gemieden.
 #[tauri::command]
-pub fn next_puzzle(
-    db: State<db::Db>,
+pub async fn next_puzzle(
+    app: tauri::AppHandle,
     theme: Option<String>,
     source: Option<String>,
     min_rating: Option<i64>,
     max_rating: Option<i64>,
 ) -> Result<Option<PuzzleOut>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    next_puzzle_from_conn(&conn, theme, source, min_rating, max_rating)
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        next_puzzle_from_conn(&conn, theme, source, min_rating, max_rating)
+    })
+    .await
+    .map_err(|e| format!("Puzzle-Auswahl fehlgeschlagen: {e}"))?
 }
 
 fn next_puzzle_from_conn(
@@ -350,17 +368,46 @@ fn next_puzzle_from_conn(
     for widen in [0i64, 150, 400, 1200, 4000] {
         let lo = base_lo - widen;
         let hi = base_hi + widen;
-        let sql = "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies
-             FROM puzzles
+        let filter = "FROM puzzles INDEXED BY idx_puzzles_rating
              WHERE rating BETWEEN ?1 AND ?2
                AND (?3 IS NULL OR source = ?3)
                AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
-               AND id NOT IN (SELECT puzzle_id FROM puzzle_attempts WHERE solved = 1)
-             ORDER BY RANDOM() LIMIT 1";
+               AND NOT EXISTS (
+                 SELECT 1 FROM puzzle_attempts AS pa
+                 WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1
+               )";
         let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
+        let count_sql = format!("SELECT COUNT(*) {filter}");
+        let count: i64 = conn
+            .query_row(
+                &count_sql,
+                params![lo, hi, source_filter.as_deref(), theme_pattern.as_deref()],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if count == 0 {
+            continue;
+        }
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let offset = (nanos % count as u128) as i64;
+        // OFFSET scans the rating index linearly, but avoids SQLite's costly
+        // random sort over tens of thousands of candidates on mobile.
+        let sql = format!(
+            "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies
+             {filter} ORDER BY rating LIMIT 1 OFFSET ?5"
+        );
         let row = conn.query_row(
-            sql,
-            params![lo, hi, source_filter.as_deref(), theme_pattern.as_deref()],
+            &sql,
+            params![
+                lo,
+                hi,
+                source_filter.as_deref(),
+                theme_pattern.as_deref(),
+                offset
+            ],
             map_puzzle,
         );
         match row {
@@ -476,22 +523,40 @@ pub struct PuzzleStats {
 }
 
 #[tauri::command]
-pub fn puzzle_stats(
-    db: State<db::Db>,
-    import_state: State<PuzzleImportState>,
-) -> Result<PuzzleStats, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+pub async fn puzzle_stats(app: tauri::AppHandle) -> Result<PuzzleStats, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let importing = app.state::<PuzzleImportState>().0.load(Ordering::SeqCst);
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        puzzle_stats_from_conn(&conn, importing)
+    })
+    .await
+    .map_err(|e| format!("Puzzle-Statistik fehlgeschlagen: {e}"))?
+}
+
+fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleStats, String> {
     backfill_own_puzzles(&conn)?;
-    let db_total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM puzzles", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let lichess_total: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM puzzles WHERE source = 'lichess'",
-            [],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+    let imported_at = db::meta_get(conn, "puzzle_imported_at").and_then(|v| v.parse().ok());
+    let cached_lichess_total =
+        db::meta_get(conn, "puzzle_lichess_total").and_then(|value| value.parse::<i64>().ok());
+    let lichess_total = match cached_lichess_total {
+        Some(total) => total,
+        None => {
+            let total: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM puzzles WHERE source = 'lichess'",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            // Imported databases are static between explicit dump imports, so
+            // this millions-row count only needs to run once after upgrading.
+            if imported_at.is_some() {
+                db::meta_set(conn, "puzzle_lichess_total", &total.to_string())?;
+            }
+            total
+        }
+    };
     let own_total: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM puzzles WHERE source = 'own'",
@@ -499,6 +564,7 @@ pub fn puzzle_stats(
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
+    let db_total = lichess_total + own_total;
     let (attempts, solved): (i64, i64) = conn
         .query_row(
             "SELECT COUNT(*), COALESCE(SUM(solved), 0) FROM puzzle_attempts",
@@ -600,8 +666,8 @@ pub fn puzzle_stats(
         streak_days: streak,
         history,
         themes,
-        importing: import_state.0.load(Ordering::SeqCst),
-        imported_at: db::meta_get(&conn, "puzzle_imported_at").and_then(|v| v.parse().ok()),
+        importing,
+        imported_at,
     })
 }
 
@@ -687,6 +753,23 @@ mod tests {
             next_puzzle_from_conn(&conn, Some("fork".into()), None, Some(1400), Some(1600),)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn stats_cache_the_static_lichess_total_after_an_import() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+        puzzle(&conn, "pin-1", 1550, "pin short");
+        db::meta_set(&conn, "puzzle_imported_at", "1234").unwrap();
+
+        let stats = puzzle_stats_from_conn(&conn, false).unwrap();
+        assert_eq!(stats.db_total, 2);
+        assert_eq!(stats.lichess_total, 2);
+        assert_eq!(
+            db::meta_get(&conn, "puzzle_lichess_total"),
+            Some("2".into())
         );
     }
 

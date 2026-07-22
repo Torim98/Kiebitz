@@ -30,7 +30,7 @@ import { deInt } from "../lib/util";
 
 export default function Puzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const backend = useBackendInfo();
-  if (backend.mode === "pending") return null;
+  if (backend.mode === "pending") return <PuzzleLoading />;
   return backend.mode === "desktop" ? <LivePuzzles initialTheme={initialTheme} /> : <DemoPuzzles />;
 }
 
@@ -46,9 +46,25 @@ function LivePuzzles({ initialTheme = "" }: { initialTheme?: string }) {
     reloadStats();
   }, []);
 
-  if (!stats) return null;
+  if (!stats) return <PuzzleLoading />;
   if (stats.db_total === 0) return <ImportView stats={stats} onImported={reloadStats} />;
   return <TrainerView stats={stats} reloadStats={reloadStats} initialTheme={initialTheme} />;
+}
+
+function PuzzleLoading() {
+  const t = useT();
+  return (
+    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+      <header className="mb-5">
+        <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
+        <p className="mt-0.5 text-[13px] text-ink3">{t("pz.preparing")}</p>
+      </header>
+      <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-5 text-[13px] text-ink2">
+        <Loader2 size={17} className="animate-spin text-accent" />
+        {t("pz.loadingLibrary")}
+      </div>
+    </div>
+  );
 }
 
 // ── Import-Ansicht ───────────────────────────────────────────────────────────

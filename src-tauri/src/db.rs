@@ -219,6 +219,8 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     }
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_puzzles_source ON puzzles(source);
+         CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_puzzle
+           ON puzzle_attempts(puzzle_id, solved);
 
          CREATE TABLE IF NOT EXISTS study_templates (
             id           INTEGER PRIMARY KEY,
