@@ -26,6 +26,8 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gh kann das Repository ohne Checkout nicht aus .git ableiten.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
@@ -241,5 +243,7 @@ jobs:
       - name: Draft-Release veröffentlichen
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Auch dieser Job hat keinen Checkout; Repository explizit setzen.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: gh release edit "$TAG" --draft=false
