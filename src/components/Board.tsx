@@ -1,6 +1,6 @@
 import { Chessboard } from "react-chessboard";
 import { TouchBackend } from "react-dnd-touch-backend";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 const boardTheme = {
   customDarkSquareStyle: { backgroundColor: "#6f8155" },
@@ -43,8 +43,8 @@ export default function Board({
   shake?: boolean;
   /** Engine-/Partiezug-Pfeile im Format [von, nach, Farbe]. */
   arrows?: [string, string, string?][];
-  /** Kleine Zugqualitaets-Marker auf Zielfeldern. */
-  badges?: { square: string; label: string; color: string; title?: string }[];
+  /** Kleine Zugqualitaets-Marker auf der oberen rechten Feldecke. */
+  badges?: { square: string; label: ReactNode; color: string; title?: string }[];
   /** Varianten werden durch entsaettigte Felder vom Partieverlauf abgesetzt. */
   muted?: boolean;
   /** Windows-WebView: Touch-Backend explizit auch fuer Maus-Pointer aktivieren. */
@@ -66,14 +66,17 @@ export default function Board({
     return () => ro.disconnect();
   }, [width]);
 
+  // Der Marker sitzt wie bei chess.com mittig auf der oberen rechten Ecke des
+  // Zielfelds und ueberlappt das Nachbarfeld nur minimal.
   const badgePosition = (square: string) => {
     const file = square.charCodeAt(0) - 97;
     const rank = Number(square[1]);
     const x = orientation === "white" ? file : 7 - file;
     const y = orientation === "white" ? 8 - rank : rank - 1;
     return {
-      left: `${(x + 1) * 12.5 - 5.2}%`,
-      top: `${y * 12.5 + 0.8}%`,
+      left: `${(x + 1) * 12.5}%`,
+      top: `${y * 12.5}%`,
+      transform: "translate(-50%, -50%)",
     };
   };
 
@@ -109,9 +112,9 @@ export default function Board({
         />
         {badges.map((badge, index) => (
           <span
-            key={`${badge.square}-${badge.label}-${index}`}
+            key={`${badge.square}-${index}`}
             title={badge.title}
-            className="pointer-events-none absolute z-20 flex h-[8.5%] min-h-5 w-[8.5%] min-w-5 items-center justify-center rounded-full border-2 border-white/80 text-[clamp(9px,1.4vw,14px)] font-extrabold leading-none text-white shadow-lg"
+            className="pointer-events-none absolute z-20 flex h-[6.5%] min-h-4 w-[6.5%] min-w-4 items-center justify-center rounded-full border border-white/85 text-[clamp(7px,1.05vw,11px)] font-extrabold leading-none text-white shadow-md"
             style={{ ...badgePosition(badge.square), background: badge.color }}
           >
             {badge.label}

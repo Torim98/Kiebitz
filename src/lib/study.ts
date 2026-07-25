@@ -4,9 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 export interface DayActivity {
   day_ts: number; // UTC-Tagesbeginn (Unix-Sekunden)
   puzzle_attempts: number;
+  puzzle_solved: number;
   endgame_attempts: number;
   rep_reviews: number;
+  game_reviews: number;
 }
+
+/** Ein vollständiges Partie-Review ist eine große Einheit — es zählt zehnfach. */
+export const GAME_REVIEW_UNITS = 10;
 
 /** Spiegelt study::StudyData. */
 export interface StudyData {
@@ -25,9 +30,16 @@ export function studyData(): Promise<StudyData> {
   return invoke<StudyData>("study_data");
 }
 
-/** Lerneinheiten eines Tages (Puzzles + Endspiele + Wiederholungen). */
+/**
+ * Lerneinheiten eines Tages: gelöste Puzzles, Endspiel-Drills und
+ * Repertoire-Wiederholungen zählen einfach, ein vollständiges Partie-Review
+ * zehnfach. Der Wochenkalender bekommt denselben Wert fertig gerechnet aus
+ * `study_calendar`; hier steht die Regel für Tagesauswertungen.
+ */
 export function dayUnits(d: DayActivity): number {
-  return d.puzzle_attempts + d.endgame_attempts + d.rep_reviews;
+  return (
+    d.puzzle_solved + d.endgame_attempts + d.rep_reviews + d.game_reviews * GAME_REVIEW_UNITS
+  );
 }
 
 export interface StudyTemplate {
@@ -48,9 +60,23 @@ export interface StudyEvent {
   template: StudyTemplate;
 }
 
+/** Tageskennzahlen des Wochenkalenders (spiegelt study::StudyDay). */
+export interface StudyDay {
+  day: string;
+  puzzle_solved: number;
+  endgame_attempts: number;
+  rep_reviews: number;
+  game_reviews: number;
+  /** Erledigte Einheiten; Partie-Reviews zählen zehnfach. */
+  units: number;
+  /** Fällige Repertoire-Wiederholungen an diesem Tag. */
+  due_reviews: number;
+}
+
 export interface StudyCalendar {
   templates: StudyTemplate[];
   events: StudyEvent[];
+  days: StudyDay[];
 }
 
 export type StudyTemplateInput = Omit<StudyTemplate, "id"> & { id?: number };

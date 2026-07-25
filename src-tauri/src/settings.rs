@@ -55,6 +55,30 @@ pub struct Settings {
     /// Mobile: automatisch im Hintergrund synchronisieren (bei Änderungen,
     /// per Timer und bei App-Fokus), statt manuell in den Settings.
     pub sync_auto: bool,
+    /// Tägliche Erinnerung an anstehendes Training (Desktop und Android).
+    pub notify_enabled: bool,
+    /// Uhrzeit der Erinnerung als lokale "HH:MM".
+    pub notify_time: String,
+    /// Welche Fälligkeiten die Erinnerung nennt.
+    pub notify_study: bool,
+    pub notify_repertoire: bool,
+    pub notify_puzzles: bool,
+    pub notify_endgame: bool,
+    pub notify_analysis: bool,
+}
+
+/// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf 18:00 zurück.
+fn normalize_time(value: &str) -> String {
+    let (Some(hours), Some(minutes)) = (
+        value.get(0..2).and_then(|h| h.parse::<u32>().ok()),
+        value.get(3..5).and_then(|m| m.parse::<u32>().ok()),
+    ) else {
+        return "18:00".into();
+    };
+    if value.as_bytes().get(2) != Some(&b':') || hours > 23 || minutes > 59 {
+        return "18:00".into();
+    }
+    format!("{hours:02}:{minutes:02}")
 }
 
 impl Default for Settings {
@@ -87,6 +111,13 @@ impl Default for Settings {
             sync_host: String::new(),
             sync_fingerprint: String::new(),
             sync_auto: false,
+            notify_enabled: false,
+            notify_time: "18:00".into(),
+            notify_study: true,
+            notify_repertoire: true,
+            notify_puzzles: true,
+            notify_endgame: true,
+            notify_analysis: true,
         }
     }
 }
@@ -119,6 +150,7 @@ fn normalize(mut s: Settings) -> Settings {
         .syzygy_path
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty());
+    s.notify_time = normalize_time(&s.notify_time);
     s.sync_fingerprint = s
         .sync_fingerprint
         .trim()
@@ -469,6 +501,22 @@ mod tests {
         assert_eq!(s.batch_depth, 6);
         assert_eq!(s.cc_user, "Torim98");
         assert_eq!(s.engine_path, None);
+    }
+
+    #[test]
+    fn normalize_repairs_reminder_times() {
+        assert_eq!(normalize_time("7:5"), "18:00");
+        assert_eq!(normalize_time("24:00"), "18:00");
+        assert_eq!(normalize_time("09:30"), "09:30");
+        assert_eq!(normalize_time("23:59"), "23:59");
+        assert_eq!(
+            normalize(Settings {
+                notify_time: "".into(),
+                ..Settings::default()
+            })
+            .notify_time,
+            "18:00"
+        );
     }
 
     #[test]

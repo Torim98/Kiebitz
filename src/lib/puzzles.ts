@@ -87,6 +87,40 @@ export function puzzleStats(): Promise<PuzzleStats> {
   return invoke<PuzzleStats>("puzzle_stats");
 }
 
+/** Ein Auswertungsfenster (Rating-Bucket, Wochentag 0 = Montag, Stunde). */
+export interface BucketStat {
+  key: number;
+  attempts: number;
+  solved: number;
+}
+
+export interface PuzzleDayPoint {
+  day_ts: number;
+  attempts: number;
+  solved: number;
+  rating: number;
+}
+
+/** Spiegelt puzzles::PuzzleInsights — Datenbasis des Insights-Unterreiters. */
+export interface PuzzleInsights {
+  personal_rating: number;
+  attempts: number;
+  solved: number;
+  avg_puzzle_rating: number;
+  avg_solved_rating: number;
+  best_run: number;
+  current_run: number;
+  themes: ThemeStat[];
+  by_rating: BucketStat[];
+  by_weekday: BucketStat[];
+  by_hour: BucketStat[];
+  timeline: PuzzleDayPoint[];
+}
+
+export function puzzleInsights(days = 30): Promise<PuzzleInsights> {
+  return invoke<PuzzleInsights>("puzzle_insights", { days });
+}
+
 export function onPuzzleImportProgress(
   cb: (p: PuzzleImportProgress) => void
 ): Promise<UnlistenFn> {

@@ -29,6 +29,15 @@ export interface Settings {
   sync_fingerprint: string;
   /** Mobile: automatisch im Hintergrund synchronisieren (Änderungen/Timer/Fokus). */
   sync_auto: boolean;
+  /** Tägliche Erinnerung an anstehendes Training. */
+  notify_enabled: boolean;
+  /** Uhrzeit der Erinnerung als lokale "HH:MM". */
+  notify_time: string;
+  notify_study: boolean;
+  notify_repertoire: boolean;
+  notify_puzzles: boolean;
+  notify_endgame: boolean;
+  notify_analysis: boolean;
 }
 
 export interface EngineTest {

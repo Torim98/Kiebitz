@@ -16,9 +16,13 @@ pub struct DayActivity {
     /// Unix-Sekunden des UTC-Tagesbeginns.
     pub day_ts: i64,
     pub puzzle_attempts: i64,
+    /// Gelöste Puzzles — sie zählen als Lerneinheiten im Wochenkalender.
+    pub puzzle_solved: i64,
     pub endgame_attempts: i64,
     /// Approximation: Knoten, deren letzte Wiederholung an diesem Tag war.
     pub rep_reviews: i64,
+    /// An diesem Tag fertig analysierte Partien (ein Review = 10 Einheiten).
+    pub game_reviews: i64,
 }
 
 #[derive(Serialize)]
@@ -67,10 +71,71 @@ pub struct StudyEvent {
     pub template: StudyTemplate,
 }
 
+/// Tageskennzahlen des Wochenkalenders: erledigte Lerneinheiten (Vergangenheit
+/// und heute) sowie fällige Wiederholungen (heute und Zukunft).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct StudyDay {
+    pub day: String,
+    pub puzzle_solved: i64,
+    pub endgame_attempts: i64,
+    pub rep_reviews: i64,
+    pub game_reviews: i64,
+    /// Summe der Einheiten; ein vollständiges Partie-Review zählt zehnfach.
+    pub units: i64,
+    /// An diesem Tag fällige Repertoire-Wiederholungen (heute inkl. überfällig
+    /// und neuer Karten).
+    pub due_reviews: i64,
+}
+
 #[derive(Serialize)]
 pub struct StudyCalendar {
     pub templates: Vec<StudyTemplate>,
     pub events: Vec<StudyEvent>,
+    /// Ein Eintrag je Tag des angefragten Zeitraums (aufsteigend).
+    pub days: Vec<StudyDay>,
+}
+
+/// Ein vollständiges Partie-Review ist eine große Einheit — es zählt zehnfach.
+const GAME_REVIEW_UNITS: i64 = 10;
+
+/// Tage seit 1970-01-01 (Howard Hinnants `days_from_civil`).
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+/// ISO-Tag ("2026-07-25") → Unix-Sekunden des UTC-Tagesbeginns.
+fn day_start_ts(day: &str) -> Option<i64> {
+    if !valid_day(day) {
+        return None;
+    }
+    let year: i64 = day[0..4].parse().ok()?;
+    let month: i64 = day[5..7].parse().ok()?;
+    let date: i64 = day[8..10].parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&date) {
+        return None;
+    }
+    Some(days_from_civil(year, month, date) * 86_400)
+}
+
+/// ISO-Tag aus Unix-Sekunden (UTC), Gegenstück zu `day_start_ts`.
+fn iso_day(ts: i64) -> String {
+    let days = ts.div_euclid(86_400) + 719_468;
+    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
 }
 
 fn now_ts() -> i64 {
@@ -117,10 +182,73 @@ fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
     .map_err(|_| "Lerneinheit nicht gefunden".to_string())
 }
 
+/// Kennzahlen eines Kalendertags: erledigte Einheiten und fällige Wiederholungen.
+fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, String> {
+    let day_end = day_start + 86_400;
+    let today_start = now - now.rem_euclid(86_400);
+    let puzzle_solved = count(
+        conn,
+        "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1 AND ts < ?2",
+        day_start,
+        day_end,
+    )?;
+    let endgame_attempts = count(
+        conn,
+        "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
+        day_start,
+        day_end,
+    )?;
+    let rep_reviews = count(
+        conn,
+        "SELECT COUNT(*) FROM rep_nodes WHERE last_ts >= ?1 AND last_ts < ?2",
+        day_start,
+        day_end,
+    )?;
+    let game_reviews = count(
+        conn,
+        "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
+        day_start,
+        day_end,
+    )?;
+    // my_move-Parität wie in repertoire.rs: Weiß trainiert ungerade Halbzüge.
+    let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
+    let due_reviews = if day_start < today_start {
+        0
+    } else if day_start == today_start {
+        // Heute: alles Überfällige plus neue Karten.
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"),
+            params![day_end],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM rep_nodes
+                 WHERE {my_move} AND reps > 0 AND due_ts >= ?1 AND due_ts < ?2"
+            ),
+            params![day_start, day_end],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?
+    };
+    Ok(StudyDay {
+        day: iso_day(day_start),
+        puzzle_solved,
+        endgame_attempts,
+        rep_reviews,
+        game_reviews,
+        units: puzzle_solved + endgame_attempts + rep_reviews + game_reviews * GAME_REVIEW_UNITS,
+        due_reviews,
+    })
+}
+
 fn calendar_from_conn(
     conn: &Connection,
     start_day: &str,
     end_day: &str,
+    now: i64,
 ) -> Result<StudyCalendar, String> {
     if !valid_day(start_day) || !valid_day(end_day) || start_day > end_day {
         return Err("Ungültiger Kalenderzeitraum".into());
@@ -180,7 +308,21 @@ fn calendar_from_conn(
             .map_err(|e| e.to_string())?;
         rows
     };
-    Ok(StudyCalendar { templates, events })
+    // Tageskennzahlen: höchstens 42 Tage (Wochen- und Monatsansicht).
+    let (Some(first), Some(last)) = (day_start_ts(start_day), day_start_ts(end_day)) else {
+        return Err("Ungültiger Kalenderzeitraum".into());
+    };
+    let mut days = Vec::new();
+    let mut cursor = first;
+    while cursor <= last && days.len() < 42 {
+        days.push(study_day(conn, cursor, now)?);
+        cursor += 86_400;
+    }
+    Ok(StudyCalendar {
+        templates,
+        events,
+        days,
+    })
 }
 
 #[tauri::command]
@@ -190,7 +332,7 @@ pub fn study_calendar(
     end_day: String,
 ) -> Result<StudyCalendar, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    calendar_from_conn(&conn, &start_day, &end_day)
+    calendar_from_conn(&conn, &start_day, &end_day, now_ts())
 }
 
 #[tauri::command]
@@ -402,6 +544,12 @@ fn study_data_from_conn(
                 lo,
                 hi,
             )?,
+            puzzle_solved: count(
+                conn,
+                "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1 AND ts < ?2",
+                lo,
+                hi,
+            )?,
             endgame_attempts: count(
                 conn,
                 "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
@@ -411,6 +559,12 @@ fn study_data_from_conn(
             rep_reviews: count(
                 conn,
                 "SELECT COUNT(*) FROM rep_nodes WHERE last_ts >= ?1 AND last_ts < ?2",
+                lo,
+                hi,
+            )?,
+            game_reviews: count(
+                conn,
+                "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
                 lo,
                 hi,
             )?,
@@ -530,6 +684,7 @@ mod tests {
         assert_eq!(data.activity.len(), 7);
         assert_eq!(data.activity[6].puzzle_attempts, 1);
         assert_eq!(data.activity[5].puzzle_attempts, 1);
+        assert_eq!(data.activity[6].puzzle_solved, 1);
         assert_eq!(data.activity[4].endgame_attempts, 1);
         assert_eq!(data.activity[4].rep_reviews, 1);
         assert_eq!(data.streak_days, 3);
@@ -584,18 +739,75 @@ mod tests {
         )
         .unwrap();
 
-        let calendar = calendar_from_conn(&conn, "2026-07-20", "2026-07-26").unwrap();
+        let calendar = calendar_from_conn(&conn, "2026-07-20", "2026-07-26", NOW).unwrap();
         assert!(calendar.templates.iter().any(|t| t.title == "Calculation"));
         assert_eq!(calendar.events.len(), 1);
         assert_eq!(calendar.events[0].template.duration_min, 30);
         assert!(!calendar.events[0].completed);
+        assert_eq!(calendar.days.len(), 7);
+        assert_eq!(calendar.days[0].day, "2026-07-20");
+        assert_eq!(calendar.days[6].day, "2026-07-26");
     }
 
     #[test]
     fn validates_calendar_days() {
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
-        assert!(calendar_from_conn(&conn, "22.07.2026", "2026-07-26").is_err());
-        assert!(calendar_from_conn(&conn, "2026-07-27", "2026-07-26").is_err());
+        assert!(calendar_from_conn(&conn, "22.07.2026", "2026-07-26", NOW).is_err());
+        assert!(calendar_from_conn(&conn, "2026-07-27", "2026-07-26", NOW).is_err());
+    }
+
+    #[test]
+    fn iso_days_round_trip_and_match_day_starts() {
+        for day in ["1970-01-01", "2026-02-28", "2024-02-29", "2026-12-31"] {
+            let ts = day_start_ts(day).unwrap();
+            assert_eq!(ts % 86_400, 0);
+            assert_eq!(iso_day(ts), day);
+        }
+        assert!(day_start_ts("2026-13-01").is_none());
+    }
+
+    #[test]
+    fn calendar_days_count_units_and_due_reviews() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let today = iso_day(NOW);
+        let day_start = TODAY * 86_400;
+
+        conn.execute(
+            "INSERT INTO puzzle_attempts
+             (puzzle_id, ts, solved, rating_before, rating_after, themes)
+             VALUES ('p', ?1, 1, 1500, 1512, 'fork')",
+            params![day_start + 60],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO puzzle_attempts
+             (puzzle_id, ts, solved, rating_before, rating_after, themes)
+             VALUES ('q', ?1, 0, 1512, 1500, 'pin')",
+            params![day_start + 120],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO games (source, source_id, analyzed, analyzed_ts)
+             VALUES ('manual', 'reviewed', 1, ?1)",
+            params![day_start + 180],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO rep_nodes (parent_id, side, san, fen_key, depth, reps, due_ts, last_ts)
+             VALUES (0, 'white', 'e4', 'fen-e4', 1, 0, 0, 0)",
+            [],
+        )
+        .unwrap();
+
+        let calendar = calendar_from_conn(&conn, &today, &today, NOW).unwrap();
+        let day = &calendar.days[0];
+        // Nur gelöste Puzzles zählen; ein Partie-Review zählt zehnfach.
+        assert_eq!(day.puzzle_solved, 1);
+        assert_eq!(day.game_reviews, 1);
+        assert_eq!(day.units, 11);
+        // Neue Repertoire-Karten sind heute fällig.
+        assert_eq!(day.due_reviews, 1);
     }
 }

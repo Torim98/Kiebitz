@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
+  BookOpen,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
@@ -9,6 +10,8 @@ import {
   Cpu,
   ListChecks,
   Loader2,
+  Plus,
+  Save,
   Search,
   Square,
   Zap,
@@ -17,7 +20,7 @@ import {
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type TFunc } from "../lib/i18n";
-import { listGames, type GameRecord } from "../lib/db";
+import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
   cancelAnalysis,
@@ -33,7 +36,7 @@ import {
 } from "../lib/analysis";
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
-import { Button, Card, ResultBadge } from "../components/ui";
+import { Button, Card, ResultBadge, Tag } from "../components/ui";
 import { de, evalLabel, fenAfter, winProb } from "../lib/util";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
@@ -58,8 +61,9 @@ type MoveJudgment =
   | "mistake"
   | "blunder";
 
+/** Buchzüge tragen wie bei chess.com ein Buch-Symbol statt eines Kürzels. */
 const NAG: Record<MoveJudgment, string> = {
-  book: "📖",
+  book: "",
   brilliant: "!!",
   great: "!",
   best: "★",
@@ -71,7 +75,7 @@ const NAG: Record<MoveJudgment, string> = {
 };
 
 const JUDGMENT_COLOR: Record<MoveJudgment, string> = {
-  book: "#9085e9",
+  book: "#a88865",
   brilliant: "#22c08a",
   great: "#3987e5",
   best: "#22c08a",
@@ -81,6 +85,14 @@ const JUDGMENT_COLOR: Record<MoveJudgment, string> = {
   mistake: "#e08a3c",
   blunder: "#e66767",
 };
+
+/** Bewertungen, die in der Zugliste ein Kürzel hinter dem Zug tragen. */
+const MARKED_IN_LIST: MoveJudgment[] = ["brilliant", "excellent", "inaccuracy", "blunder"];
+
+/** Kürzel bzw. Symbol einer Bewertung; `size` gilt nur für das Buch-Symbol. */
+function judgmentMark(judgment: MoveJudgment, size: number | string = "64%"): ReactNode {
+  return judgment === "book" ? <BookOpen size={size} strokeWidth={2.4} /> : NAG[judgment];
+}
 
 function judgmentLabel(t: TFunc, judgment: string): string {
   const labels: Record<string, Parameters<TFunc>[0]> = {
@@ -209,6 +221,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const [playerProfile, setPlayerProfile] = useState({ cc: "", li: "", display: "" });
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
 
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selectedId;
@@ -319,6 +335,49 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   }, [desktop, live, sans, rows]);
 
   const analyzedRows = live ? (rows?.length ?? 0) > 0 : true;
+
+  // Notizen und Tags der gewählten Partie in die Eingaben übernehmen.
+  useEffect(() => {
+    setNoteDraft(game?.note ?? "");
+    setTagDraft("");
+    setNoteSaved(false);
+    setNotesError(null);
+  }, [game?.id, game?.note]);
+
+  /** Aktualisiert die Partie lokal, damit Liste und Panel sofort stimmen. */
+  const patchGame = (patch: Partial<GameRecord>) =>
+    setGames((current) => current.map((g) => (g.id === selectedId ? { ...g, ...patch } : g)));
+
+  const saveNote = async () => {
+    if (!game?.id) return;
+    setNotesError(null);
+    try {
+      await setGameNote(game.id, noteDraft);
+      patchGame({ note: noteDraft });
+      setNoteSaved(true);
+      setTimeout(() => setNoteSaved(false), 1500);
+    } catch (e) {
+      setNotesError(String(e));
+    }
+  };
+
+  const saveTags = async (next: string[]) => {
+    if (!game?.id) return;
+    setNotesError(null);
+    try {
+      patchGame({ tags: await setGameTags(game.id, next) });
+    } catch (e) {
+      setNotesError(String(e));
+    }
+  };
+
+  const addTags = async () => {
+    if (!game) return;
+    const additions = tagDraft.split(/[,;]/).map((v) => v.trim()).filter(Boolean);
+    if (!additions.length) return;
+    await saveTags([...(game.tags ?? []), ...additions]);
+    setTagDraft("");
+  };
 
   // Beim Partiewechsel ans Ende springen.
   useEffect(() => {
@@ -640,7 +699,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 arrows={variation || scratch ? liveArrows : previewArrows}
                 badges={currentQuality && currentTarget ? [{
                   square: currentTarget,
-                  label: NAG[currentQuality],
+                  label: judgmentMark(currentQuality),
                   color: JUDGMENT_COLOR[currentQuality],
                   title: judgmentLabel(t, currentQuality),
                 }] : []}
@@ -705,8 +764,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                       }`}
                     >
                       {m.san}
-                      {m.nag && m.judgment && (["brilliant", "inaccuracy", "blunder"] as MoveJudgment[]).includes(m.judgment) && (
-                        <span className="ml-0.5" style={{ color: m.judgment ? JUDGMENT_COLOR[m.judgment] : undefined }}>{m.nag}</span>
+                      {m.nag && m.judgment && MARKED_IN_LIST.includes(m.judgment) && (
+                        <span className="ml-0.5" style={{ color: JUDGMENT_COLOR[m.judgment] }}>{m.nag}</span>
                       )}
                     </button>
                   </span>
@@ -776,8 +835,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
               {(["brilliant", "great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "blunder"] as MoveJudgment[]).map((quality) => (
                 <li key={quality} className="flex min-w-0 justify-between gap-2">
-                  <span className="truncate" style={{ color: JUDGMENT_COLOR[quality] }}>
-                    {NAG[quality]} {judgmentLabel(t, quality)}
+                  <span className="flex min-w-0 items-center gap-1 truncate" style={{ color: JUDGMENT_COLOR[quality] }}>
+                    {judgmentMark(quality, 13)} <span className="truncate">{judgmentLabel(t, quality)}</span>
                   </span>
                   <span className="font-medium">{summary[quality]}</span>
                 </li>
@@ -808,6 +867,60 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               </div>
               {game.accuracy_opening == null && game.accuracy_middlegame == null && game.accuracy_endgame == null && (
                 <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("an.phaseAccuracyMissing")}</p>
+              )}
+            </Card>
+          )}
+
+          {live && (
+            <Card title={t("an.notesAndTags")}>
+              <div className="flex flex-wrap gap-1.5">
+                {(game.tags ?? []).length > 0 ? (
+                  (game.tags ?? []).map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => saveTags((game.tags ?? []).filter((v) => v !== tag))}
+                      title={t("games.removeTag")}
+                    >
+                      <Tag>{tag} ×</Tag>
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-[12px] text-ink3">{t("games.noTags")}</span>
+                )}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      addTags();
+                    }
+                  }}
+                  placeholder={t("games.tagPlaceholder")}
+                  className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+                />
+                <Button onClick={addTags} disabled={!tagDraft.trim()} className="!px-2.5 !py-1.5 !text-[12px]">
+                  <Plus size={13} /> {t("games.addTag")}
+                </Button>
+              </div>
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder={t("games.notesPlaceholder")}
+                rows={4}
+                className="mt-3 w-full resize-y rounded-lg border border-line bg-panel2 p-2.5 text-[12.5px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+              />
+              <div className="mt-2 flex justify-end">
+                <Button primary onClick={saveNote} disabled={noteDraft === (game.note ?? "")}>
+                  <Save size={14} /> {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
+                </Button>
+              </div>
+              {notesError && (
+                <div className="mt-2 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+                  {notesError}
+                </div>
               )}
             </Card>
           )}

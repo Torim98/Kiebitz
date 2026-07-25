@@ -14,11 +14,11 @@ import { useI18n, type Key } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
 import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { puzzleStats, themeLabel, type ThemeStat } from "../lib/puzzles";
-import { studyData, dayUnits, type StudyData } from "../lib/study";
+import { studyData, type StudyData } from "../lib/study";
 import { buildCoach } from "../lib/coach";
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
-import { dateLocale, de, deInt } from "../lib/util";
+import { de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
 const DAY = 86_400;
@@ -76,8 +76,10 @@ export default function Study({
       activity: pz.map((p, i) => ({
         day_ts: (today - 6 + i) * DAY,
         puzzle_attempts: p,
+        puzzle_solved: Math.round(p * 0.7),
         endgame_attempts: eg[i],
         rep_reviews: rep[i],
+        game_reviews: i === 3 ? 1 : 0,
       })),
       streak_days: 3,
     };
@@ -197,29 +199,6 @@ export default function Study({
   }, [data, t, go, openPuzzles]);
   const allDone = tasks.length > 0 && tasks.every((task) => task.done);
 
-  // ── Wochenkalender (Mo–So, UTC-Tage wie im Backend) ────────────────────────
-  const week = useMemo(() => {
-    if (!data) return [];
-    const todayDay = Math.floor(Date.now() / 1000 / DAY);
-    const monday = todayDay - ((todayDay + 3) % 7); // Tag 0 (1970-01-01) war ein Donnerstag
-    return [...Array(7)].map((_, i) => {
-      const day = monday + i;
-      const date = new Date(day * DAY * 1000);
-      const act = data.activity.find((a) => Math.floor(a.day_ts / DAY) === day);
-      const units = act ? dayUnits(act) : 0;
-      const dueOffset = day - todayDay;
-      return {
-        day,
-        label: date.toLocaleDateString(dateLocale(), { weekday: "short" }),
-        dayNum: date.getUTCDate(),
-        isToday: day === todayDay,
-        isFuture: day > todayDay,
-        units,
-        due: dueOffset >= 0 && dueOffset < 7 ? data.due_week[dueOffset] : 0,
-      };
-    });
-  }, [data]);
-
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
@@ -321,46 +300,7 @@ export default function Study({
         </Card>
       </div>
 
-      {/* Woche */}
-      <Card title={t("st.week")} className="mt-4">
-        <div className="grid grid-cols-7 gap-2">
-          {week.map((d) => (
-            <div
-              key={d.day}
-              className={`rounded-lg border px-2 py-2.5 text-center ${
-                d.isToday ? "border-accent-dim bg-accent-soft" : "border-line bg-panel2"
-              }`}
-            >
-              <div className="text-[11px] uppercase tracking-wide text-ink3">
-                {d.label} {d.dayNum}
-              </div>
-              {d.isFuture ? (
-                <>
-                  <div className={`mt-1.5 text-[20px] font-semibold leading-none ${d.due > 0 ? "text-gold" : "text-ink3"}`}>
-                    {d.due > 0 ? deInt(d.due) : "—"}
-                  </div>
-                  <div className="mt-1 text-[10.5px] text-ink3">
-                    {d.due > 0 ? t("st.dueLabel") : " "}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={`mt-1.5 text-[20px] font-semibold leading-none ${d.units > 0 ? "text-ink" : "text-ink3"}`}>
-                    {d.units > 0 ? deInt(d.units) : "—"}
-                  </div>
-                  <div className="mt-1 text-[10.5px] text-ink3">
-                    {d.units > 0
-                      ? t(d.units === 1 ? "st.units.one" : "st.units.many")
-                      : " "}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
-      </Card>
-
+      {/* Wochenkalender: erledigte Einheiten, Fälligkeiten und geplante Units. */}
       <StudyPlanner desktop={desktop} />
     </div>
   );

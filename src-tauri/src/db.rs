@@ -51,6 +51,59 @@ pub struct UpsertResult {
     pub total: i64,
 }
 
+/// Startvorlagen des Studienkalenders (Titel, Dauer, Tool, Beschreibung).
+const DEFAULT_STUDY_TEMPLATES: [(&str, i64, &str, &str); 4] = [
+    (
+        "Opening training",
+        20,
+        "Kiebitz Repertoire",
+        "Pick one opening for White and one for Black. Learn the first 8–10 moves and the ideas behind them.",
+    ),
+    (
+        "Endgame training",
+        20,
+        "Kiebitz Endgames",
+        "Fundamentals in order: queen vs. king, rook vs. king, pawn endings with opposition and the square rule.",
+    ),
+    (
+        "Tactics",
+        20,
+        "Kiebitz Puzzles",
+        "15–20 puzzles, slow and accurate. Focus: forks, pins, skewers and discovered attacks.",
+    ),
+    (
+        "Game + analysis",
+        40,
+        "Lichess + Kiebitz Analysis",
+        "Play one rapid game, review it yourself first, then understand the three biggest engine mistakes.",
+    ),
+];
+
+/// Deutsche Startvorlagen aus v0.5.x auf die englischen Texte heben — aber nur,
+/// solange sie unverändert sind. Selbst bearbeitete Einheiten bleiben, wie sie
+/// sind (Titelvergleich schützt sie).
+fn translate_seeded_study_templates(conn: &Connection) -> Result<(), String> {
+    if meta_get(conn, "study_templates_en").is_some() {
+        return Ok(());
+    }
+    let legacy = [
+        ("Eröffnungs-Training", 0usize),
+        ("Endspiel-Training", 1),
+        ("Taktik", 2),
+        ("Partie + Analyse", 3),
+    ];
+    for (german_title, index) in legacy {
+        let (title, duration, tool, description) = DEFAULT_STUDY_TEMPLATES[index];
+        conn.execute(
+            "UPDATE study_templates SET title = ?1, duration_min = ?2, tool = ?3, description = ?4
+             WHERE title = ?5",
+            params![title, duration, tool, description, german_title],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    meta_set(conn, "study_templates_en", "1")
+}
+
 pub fn init(conn: &Connection) -> Result<(), String> {
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
     conn.execute_batch(
@@ -201,6 +254,9 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE games ADD COLUMN analysis_excluded INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE games ADD COLUMN my_name TEXT NOT NULL DEFAULT ''",
+        // Migration v10: Zeitpunkt der Auto-Analyse — der Wochenkalender zählt
+        // ein vollständiges Partie-Review als Lerneinheit an genau diesem Tag.
+        "ALTER TABLE games ADD COLUMN analyzed_ts INTEGER NOT NULL DEFAULT 0",
     ] {
         let _ = conn.execute(sql, []);
     }
@@ -255,34 +311,11 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("Kalender-Schema fehlgeschlagen: {e}"))?;
 
     // Einmalige, danach vollständig editier- und löschbare Startvorlagen.
+    // Englisch ausgeliefert, weil die App zweisprachig ist und Englisch die
+    // kleinste gemeinsame Basis aller Nutzer ist.
     if meta_get(conn, "study_templates_seeded").is_none() {
         let now = now_ts();
-        for (title, duration, tool, description) in [
-            (
-                "Eröffnungs-Training",
-                20,
-                "Kiebitz Repertoire",
-                "Wähle eine Eröffnung für Weiß und eine für Schwarz. Lerne die ersten 8–10 Züge und die Ideen dahinter.",
-            ),
-            (
-                "Endspiel-Training",
-                20,
-                "Kiebitz Endgames",
-                "Grundlagen in Reihenfolge: Dame gegen König, Turm gegen König, Bauernendspiele mit Opposition und Quadratregel.",
-            ),
-            (
-                "Taktik",
-                20,
-                "Kiebitz Puzzles",
-                "15–20 Aufgaben, langsam und korrekt. Fokus: Gabel, Fesselung, Spieß und Abzug.",
-            ),
-            (
-                "Partie + Analyse",
-                40,
-                "Lichess + Kiebitz Analysis",
-                "Eine Rapid-Partie spielen, zuerst selbst prüfen und danach die drei größten Engine-Fehler verstehen.",
-            ),
-        ] {
+        for (title, duration, tool, description) in DEFAULT_STUDY_TEMPLATES {
             conn.execute(
                 "INSERT INTO study_templates
                  (title, duration_min, tool, description, created_ts, updated_ts)
@@ -293,6 +326,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         }
         meta_set(conn, "study_templates_seeded", "1")?;
     }
+    translate_seeded_study_templates(conn)?;
     let _ = conn.execute(
         "CREATE TABLE IF NOT EXISTS rep_tombstones (
             side       TEXT NOT NULL,

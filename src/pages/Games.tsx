@@ -13,6 +13,7 @@ import {
   History,
   Loader2,
   FolderOpen,
+  Plus,
   Save,
   Search,
   StickyNote,
@@ -705,18 +706,29 @@ export default function Games({
                     : !selected.analysisExcluded && <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
                 </div>
                 {selected.dbId && (
-                  <input
-                    value={tagDraft}
-                    onChange={(e) => setTagDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                        e.preventDefault();
-                        addTags();
-                      }
-                    }}
-                    placeholder={t("games.tagPlaceholder")}
-                    className="mt-2 w-full rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-                  />
+                  // Der Button ist nicht nur Komfort: auf Android gibt es keine
+                  // Enter-Taste, die das Feld abschicken könnte.
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={tagDraft}
+                      onChange={(e) => setTagDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          addTags();
+                        }
+                      }}
+                      placeholder={t("games.tagPlaceholder")}
+                      className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+                    />
+                    <Button
+                      onClick={addTags}
+                      disabled={!tagDraft.trim()}
+                      className="!px-2.5 !py-1.5 !text-[12px]"
+                    >
+                      <Plus size={13} /> {t("games.addTag")}
+                    </Button>
+                  </div>
                 )}
               </div>
             </Card>

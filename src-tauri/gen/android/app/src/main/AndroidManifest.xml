@@ -4,6 +4,8 @@
     <!-- QR-Pairing: Kamera zum Scannen des Desktop-QR-Codes. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Tägliche Trainings-Erinnerung (ab Android 13 laufzeitpflichtig). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:icon="@mipmap/ic_launcher"

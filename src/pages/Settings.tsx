@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
   ArchiveRestore,
+  Bell,
   Cpu,
   Database,
   Download,
@@ -58,6 +59,7 @@ import {
   type SyncInfo,
 } from "../lib/sync";
 import { configureAutoSync } from "../lib/syncManager";
+import { sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
@@ -136,6 +138,9 @@ export default function SettingsPage() {
   const [scanning, setScanning] = useState(false);
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
 
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [pzRunning, setPzRunning] = useState(false);
@@ -459,6 +464,19 @@ export default function SettingsPage() {
       setSyncErr(String(e));
     } finally {
       setSyncBusy(false);
+    }
+  };
+
+  /** Testerinnerung — holt bei Bedarf auch die Android-Systemberechtigung. */
+  const runNotifyTest = async () => {
+    setNotifyBusy(true);
+    setNotifyMsg(null);
+    try {
+      setNotifyMsg(t((await sendTestReminder()) ? "set.notifySent" : "set.notifyDenied"));
+    } catch (e) {
+      setNotifyMsg(String(e));
+    } finally {
+      setNotifyBusy(false);
     }
   };
 
@@ -852,6 +870,71 @@ export default function SettingsPage() {
                   {pzMsg}
                 </div>
               )}
+            </>
+          ) : (
+            <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
+          )}
+        </Card>
+
+        {/* Erinnerungen */}
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <Bell size={14} className="text-accent" /> {t("set.notify")}
+            </span>
+          }
+        >
+          {desktop && draft ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={draft.notify_enabled}
+                  onChange={(e) => patch({ notify_enabled: e.target.checked })}
+                  className="h-4 w-4 accent-[#22c08a]"
+                />
+                <span className="text-[13px] text-ink">{t("set.notifyToggle")}</span>
+              </label>
+              <div className="mt-4 grid grid-cols-1 gap-3 min-[640px]:grid-cols-[160px_minmax(0,1fr)] min-[640px]:items-end">
+                <Field label={t("set.notifyTime")}>
+                  <input
+                    type="time"
+                    value={draft.notify_time}
+                    onChange={(e) => patch({ notify_time: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={() => !notifyBusy && runNotifyTest()}>
+                    {notifyBusy ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
+                    {t("set.notifyTest")}
+                  </Button>
+                  {notifyMsg && <span className="text-[12px] text-ink3">{notifyMsg}</span>}
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-2 min-[640px]:grid-cols-2">
+                {(
+                  [
+                    ["notify_study", t("set.notifyStudy")],
+                    ["notify_repertoire", t("set.notifyRepertoire")],
+                    ["notify_puzzles", t("set.notifyPuzzles")],
+                    ["notify_endgame", t("set.notifyEndgame")],
+                    ["notify_analysis", t("set.notifyAnalysis")],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={draft[key]}
+                      disabled={!draft.notify_enabled}
+                      onChange={(e) => patch({ [key]: e.target.checked })}
+                      className="h-4 w-4 accent-[#22c08a] disabled:opacity-40"
+                    />
+                    <span className={`text-[13px] ${draft.notify_enabled ? "text-ink" : "text-ink3"}`}>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.notifyNote")}</p>
             </>
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>

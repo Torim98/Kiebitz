@@ -671,6 +671,235 @@ fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleSt
     })
 }
 
+// ── Detailanalyse (Insights-Unterreiter) ─────────────────────────────────────
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct BucketStat {
+    /// Untergrenze des Ratingfensters bzw. Index (Wochentag 0 = Montag, Stunde).
+    pub key: i64,
+    pub attempts: i64,
+    pub solved: i64,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct DayPoint {
+    /// Unix-Sekunden des UTC-Tagesbeginns.
+    pub day_ts: i64,
+    pub attempts: i64,
+    pub solved: i64,
+    /// Persönliches Rating am Ende dieses Tages.
+    pub rating: i64,
+}
+
+#[derive(Serialize)]
+pub struct PuzzleInsights {
+    pub personal_rating: i64,
+    pub attempts: i64,
+    pub solved: i64,
+    /// Ø Rating der versuchten Aufgaben; 0 ohne Versuche.
+    pub avg_puzzle_rating: i64,
+    /// Ø Rating der gelösten Aufgaben — die tatsächlich geknackte Härte.
+    pub avg_solved_rating: i64,
+    /// Längste Serie gelöster Aufgaben in Folge.
+    pub best_run: i64,
+    /// Aktuelle Serie gelöster Aufgaben (0 nach einem Fehlversuch).
+    pub current_run: i64,
+    /// Alle Motive mit mindestens einem Versuch, absteigend nach Versuchen.
+    pub themes: Vec<ThemeStat>,
+    /// Trefferquote nach Aufgabenschwierigkeit (400er-Fenster).
+    pub by_rating: Vec<BucketStat>,
+    /// Trefferquote nach Wochentag (0 = Montag) und Tagesstunde (UTC).
+    pub by_weekday: Vec<BucketStat>,
+    pub by_hour: Vec<BucketStat>,
+    /// Tagesverlauf der letzten Wochen (aufsteigend).
+    pub timeline: Vec<DayPoint>,
+}
+
+#[tauri::command]
+pub async fn puzzle_insights(app: tauri::AppHandle, days: Option<i64>) -> Result<PuzzleInsights, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        puzzle_insights_from_conn(&conn, now, days.unwrap_or(30).clamp(7, 365))
+    })
+    .await
+    .map_err(|e| format!("Puzzle-Analyse fehlgeschlagen: {e}"))?
+}
+
+fn puzzle_insights_from_conn(
+    conn: &Connection,
+    now: i64,
+    window_days: i64,
+) -> Result<PuzzleInsights, String> {
+    // Ein Durchlauf über alle Versuche — die Tabelle bleibt auch nach Jahren
+    // klein genug, und so bleiben alle Auswertungen konsistent zueinander.
+    struct Attempt {
+        ts: i64,
+        solved: bool,
+        rating_after: i64,
+        puzzle_rating: i64,
+        themes: String,
+    }
+    let attempts: Vec<Attempt> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT ts, solved, rating_after, puzzle_rating, themes
+                 FROM puzzle_attempts ORDER BY ts, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Attempt {
+                    ts: r.get(0)?,
+                    solved: r.get::<_, i64>(1)? != 0,
+                    rating_after: r.get(2)?,
+                    puzzle_rating: r.get(3)?,
+                    themes: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+
+    let solved = attempts.iter().filter(|a| a.solved).count() as i64;
+    let rated: Vec<&Attempt> = attempts.iter().filter(|a| a.puzzle_rating > 0).collect();
+    let avg = |values: &[i64]| -> i64 {
+        if values.is_empty() {
+            0
+        } else {
+            values.iter().sum::<i64>() / values.len() as i64
+        }
+    };
+    let avg_puzzle_rating = avg(&rated.iter().map(|a| a.puzzle_rating).collect::<Vec<_>>());
+    let avg_solved_rating = avg(
+        &rated
+            .iter()
+            .filter(|a| a.solved)
+            .map(|a| a.puzzle_rating)
+            .collect::<Vec<_>>(),
+    );
+
+    let (mut best_run, mut current_run) = (0i64, 0i64);
+    for attempt in &attempts {
+        current_run = if attempt.solved { current_run + 1 } else { 0 };
+        best_run = best_run.max(current_run);
+    }
+
+    let mut theme_map: std::collections::HashMap<&str, (i64, i64)> =
+        std::collections::HashMap::new();
+    let mut rating_map: std::collections::BTreeMap<i64, (i64, i64)> =
+        std::collections::BTreeMap::new();
+    let mut weekday = [(0i64, 0i64); 7];
+    let mut hour = [(0i64, 0i64); 24];
+    for attempt in &attempts {
+        let ok = i64::from(attempt.solved);
+        for theme in attempt.themes.split_whitespace() {
+            let entry = theme_map.entry(theme).or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += ok;
+        }
+        if attempt.puzzle_rating > 0 {
+            let bucket = (attempt.puzzle_rating / 400) * 400;
+            let entry = rating_map.entry(bucket).or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += ok;
+        }
+        // 1970-01-01 war ein Donnerstag → Index 3 in einer Montagswoche.
+        let index = ((attempt.ts.div_euclid(86_400) + 3).rem_euclid(7)) as usize;
+        weekday[index].0 += 1;
+        weekday[index].1 += ok;
+        let slot = (attempt.ts.rem_euclid(86_400) / 3_600) as usize;
+        hour[slot].0 += 1;
+        hour[slot].1 += ok;
+    }
+
+    let mut themes: Vec<ThemeStat> = theme_map
+        .into_iter()
+        .map(|(theme, (attempts, solved))| ThemeStat {
+            theme: theme.to_string(),
+            attempts,
+            solved,
+        })
+        .collect();
+    themes.sort_by(|a, b| b.attempts.cmp(&a.attempts).then(a.theme.cmp(&b.theme)));
+
+    let bucket_list = |entries: Vec<(i64, (i64, i64))>| -> Vec<BucketStat> {
+        entries
+            .into_iter()
+            .map(|(key, (attempts, solved))| BucketStat {
+                key,
+                attempts,
+                solved,
+            })
+            .collect()
+    };
+
+    // Tagesverlauf: letzte `window_days` Tage, Rating vom letzten Versuch des Tages.
+    let today = now.div_euclid(86_400);
+    let first_day = today - window_days + 1;
+    let mut timeline: Vec<DayPoint> = (0..window_days)
+        .map(|offset| DayPoint {
+            day_ts: (first_day + offset) * 86_400,
+            attempts: 0,
+            solved: 0,
+            rating: 0,
+        })
+        .collect();
+    let mut rating_before_window = personal_rating(conn);
+    for attempt in &attempts {
+        let day = attempt.ts.div_euclid(86_400);
+        if day < first_day {
+            rating_before_window = attempt.rating_after;
+            continue;
+        }
+        let Some(point) = timeline.get_mut((day - first_day) as usize) else {
+            continue;
+        };
+        point.attempts += 1;
+        point.solved += i64::from(attempt.solved);
+        point.rating = attempt.rating_after;
+    }
+    // Tage ohne Versuch übernehmen das Rating des Vortags.
+    let mut carried = if attempts.is_empty() {
+        personal_rating(conn)
+    } else {
+        rating_before_window
+    };
+    for point in timeline.iter_mut() {
+        if point.rating == 0 {
+            point.rating = carried;
+        } else {
+            carried = point.rating;
+        }
+    }
+
+    Ok(PuzzleInsights {
+        personal_rating: personal_rating(conn),
+        attempts: attempts.len() as i64,
+        solved,
+        avg_puzzle_rating,
+        avg_solved_rating,
+        best_run,
+        current_run,
+        themes,
+        by_rating: bucket_list(rating_map.into_iter().collect()),
+        by_weekday: bucket_list(
+            weekday
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (i as i64, *v))
+                .collect(),
+        ),
+        by_hour: bucket_list(hour.iter().enumerate().map(|(i, v)| (i as i64, *v)).collect()),
+        timeline,
+    })
+}
+
 fn solved_streak(days: &[i64], today: i64) -> i64 {
     let mut streak = 0i64;
     let mut expect = today;
@@ -771,6 +1000,60 @@ mod tests {
             db::meta_get(&conn, "puzzle_lichess_total"),
             Some("2".into())
         );
+    }
+
+    #[test]
+    fn insights_aggregate_themes_ratings_and_timeline() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1200, "fork short");
+        puzzle(&conn, "fork-2", 1600, "fork long");
+        puzzle(&conn, "pin-1", 1600, "pin short");
+        let today = 20_000i64;
+        let now = today * 86_400 + 12 * 3_600;
+
+        // Zwei gelöste Aufgaben gestern, ein Fehlversuch heute.
+        record_attempt_at(&conn, "fork-1", true, (today - 1) * 86_400 + 3_600).unwrap();
+        record_attempt_at(&conn, "fork-2", true, (today - 1) * 86_400 + 7_200).unwrap();
+        record_attempt_at(&conn, "pin-1", false, today * 86_400 + 3_600).unwrap();
+
+        let insights = puzzle_insights_from_conn(&conn, now, 30).unwrap();
+        assert_eq!(insights.attempts, 3);
+        assert_eq!(insights.solved, 2);
+        assert_eq!(insights.best_run, 2);
+        assert_eq!(insights.current_run, 0);
+        assert_eq!(insights.avg_puzzle_rating, (1200 + 1600 + 1600) / 3);
+        assert_eq!(insights.avg_solved_rating, (1200 + 1600) / 2);
+
+        let fork = insights
+            .themes
+            .iter()
+            .find(|theme| theme.theme == "fork")
+            .unwrap();
+        assert_eq!((fork.attempts, fork.solved), (2, 2));
+
+        // Ratingfenster in 400er-Schritten: 1200 und 1600.
+        assert_eq!(
+            insights.by_rating,
+            vec![
+                BucketStat {
+                    key: 1200,
+                    attempts: 1,
+                    solved: 1
+                },
+                BucketStat {
+                    key: 1600,
+                    attempts: 2,
+                    solved: 1
+                },
+            ]
+        );
+        assert_eq!(insights.timeline.len(), 30);
+        assert_eq!(insights.timeline[29].day_ts, today * 86_400);
+        assert_eq!(insights.timeline[29].attempts, 1);
+        assert_eq!(insights.timeline[28].solved, 2);
+        // Tage ohne Versuch tragen das zuletzt bekannte Rating weiter.
+        assert!(insights.timeline[0].rating > 0);
     }
 
     #[test]

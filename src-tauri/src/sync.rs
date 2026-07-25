@@ -89,6 +89,10 @@ pub struct SyncGame {
     #[serde(default)]
     pub tags_ts: i64,
     pub analyzed: bool,
+    /// Zeitpunkt der Auto-Analyse — der Wochenkalender zählt Partie-Reviews
+    /// dadurch auf jedem Gerät am selben Tag.
+    #[serde(default)]
+    pub analyzed_ts: i64,
     #[serde(default)]
     pub analysis_excluded: bool,
     /// Ursprungszeit der letzten Änderung; entscheidet gegen Löschmarker.
@@ -190,7 +194,8 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
                     my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
-                    moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts
+                    moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
+                    analyzed_ts
              FROM games WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -226,6 +231,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     analyzed: r.get::<_, i64>(25)? != 0,
                     analysis_excluded: r.get::<_, i64>(26)? != 0,
                     updated_ts: r.get(27)?,
+                    analyzed_ts: r.get(28)?,
                     evals: Vec::new(),
                 },
             ))
@@ -566,15 +572,17 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
                         color, my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
-                        moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)",
+                        moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
+                        analyzed_ts)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.my_name, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
                         g.moves_count, g.accuracy, g.accuracy_opening, g.accuracy_middlegame,
                         g.accuracy_endgame, g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
-                        g.analyzed as i64, g.analysis_excluded as i64, incoming_updated
+                        g.analyzed as i64, g.analysis_excluded as i64, incoming_updated,
+                        g.analyzed_ts
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -589,6 +597,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         accuracy_middlegame = COALESCE(accuracy_middlegame, ?4),
                         accuracy_endgame = COALESCE(accuracy_endgame, ?5),
                         analyzed = MAX(analyzed, ?6),
+                        -- Erste bekannte Analysezeit gewinnt (0 = noch keine).
+                        analyzed_ts = CASE WHEN analyzed_ts = 0 THEN ?11 ELSE analyzed_ts END,
                         analysis_excluded = CASE WHEN ?7 >= updated_ts THEN ?8 ELSE analysis_excluded END,
                         time_class = CASE WHEN ?7 >= updated_ts THEN ?9 ELSE time_class END,
                         my_name = CASE WHEN ?7 >= updated_ts AND ?10 != '' THEN ?10 ELSE my_name END,
@@ -604,7 +614,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         incoming_updated,
                         g.analysis_excluded as i64,
                         g.time_class,
-                        g.my_name
+                        g.my_name,
+                        g.analyzed_ts
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -1446,6 +1457,7 @@ mod tests {
             tags: Vec::new(),
             tags_ts: 0,
             analyzed: false,
+            analyzed_ts: 0,
             analysis_excluded: false,
             updated_ts: 100,
             evals: Vec::new(),
@@ -1555,6 +1567,26 @@ mod tests {
             .query_row("SELECT eval_cp FROM move_evals", [], |r| r.get(0))
             .unwrap();
         assert_eq!(cp, 30);
+    }
+
+    #[test]
+    fn analysis_time_travels_and_is_not_overwritten() {
+        let mut conn = mem_db();
+        let mut g = sample_game("g3");
+        g.analyzed = true;
+        g.analyzed_ts = 1_784_000_000;
+        apply_games(&mut conn, &[g.clone()]).unwrap();
+        let stored = |c: &Connection| -> i64 {
+            c.query_row("SELECT analyzed_ts FROM games", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(stored(&conn), 1_784_000_000);
+
+        // Ein späterer Sync verschiebt den Review-Tag nicht mehr.
+        g.analyzed_ts = 1_790_000_000;
+        g.updated_ts += 10;
+        apply_games(&mut conn, &[g]).unwrap();
+        assert_eq!(stored(&conn), 1_784_000_000);
     }
 
     #[test]

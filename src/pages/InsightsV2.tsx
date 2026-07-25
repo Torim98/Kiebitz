@@ -5,6 +5,8 @@ import {
   BookOpen,
   BrainCircuit,
   CalendarClock,
+  Gauge,
+  Puzzle as PuzzleIcon,
   ShieldCheck,
   Target,
   TrendingUp,
@@ -29,10 +31,11 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
 import { errorStats, type PhaseErrors } from "../lib/analysis";
+import { puzzleInsights, themeLabel, type PuzzleInsights } from "../lib/puzzles";
 import { buildInsights, type LiveInsights } from "../lib/stats";
-import { de, deInt } from "../lib/util";
+import { dateLocale, de, deInt } from "../lib/util";
 
-type InsightTab = "overview" | "performance" | "openings" | "patterns";
+type InsightTab = "overview" | "performance" | "openings" | "patterns" | "puzzles";
 
 const DEMO_OPENINGS = ["Italian Game", "Sicilian Defense", "Queen's Gambit", "Caro-Kann Defense", "London System"];
 const DEMO_RECORDS: GameRecord[] = Array.from({ length: 96 }, (_, index) => {
@@ -73,11 +76,56 @@ const DEMO_ERRORS: PhaseErrors[] = [
 ];
 
 const TAB_KEYS: { id: InsightTab; key: Key; icon: typeof Activity }[] = [
-  { id: "overview", key: "ins.tabOverview", icon: BrainCircuit },
+  { id: "overview", key: "ins.tabOverview", icon: Gauge },
   { id: "performance", key: "ins.tabPerformance", icon: BarChart3 },
   { id: "openings", key: "ins.tabOpenings", icon: BookOpen },
   { id: "patterns", key: "ins.tabPatterns", icon: CalendarClock },
+  { id: "puzzles", key: "ins.tabPuzzles", icon: PuzzleIcon },
 ];
+
+/** Web-Preview: plausible Puzzle-Zahlen, damit der Reiter etwas zeigt. */
+function demoPuzzleInsights(): PuzzleInsights {
+  const today = Math.floor(Date.now() / 1000 / 86_400);
+  const themes = [
+    ["fork", 64, 47],
+    ["pin", 51, 33],
+    ["backRankMate", 38, 31],
+    ["skewer", 30, 17],
+    ["discoveredAttack", 27, 14],
+    ["hangingPiece", 24, 20],
+    ["deflection", 19, 8],
+  ] as const;
+  return {
+    personal_rating: 1568,
+    attempts: 312,
+    solved: 214,
+    avg_puzzle_rating: 1520,
+    avg_solved_rating: 1462,
+    best_run: 11,
+    current_run: 3,
+    themes: themes.map(([theme, attempts, solved]) => ({ theme, attempts, solved })),
+    by_rating: [800, 1200, 1600, 2000].map((key, index) => ({
+      key,
+      attempts: [46, 118, 106, 42][index],
+      solved: [42, 92, 63, 17][index],
+    })),
+    by_weekday: [...Array(7)].map((_, key) => ({
+      key,
+      attempts: [58, 41, 47, 39, 33, 52, 42][key],
+      solved: [41, 27, 33, 26, 19, 38, 30][key],
+    })),
+    by_hour: [...Array(24)].map((_, key) => {
+      const attempts = key >= 7 && key <= 22 ? 8 + ((key * 7) % 17) : 1;
+      return { key, attempts, solved: Math.round(attempts * (0.45 + ((key * 3) % 9) / 20)) };
+    }),
+    timeline: [...Array(30)].map((_, index) => ({
+      day_ts: (today - 29 + index) * 86_400,
+      attempts: index % 4 === 0 ? 0 : 4 + ((index * 3) % 9),
+      solved: index % 4 === 0 ? 0 : 2 + ((index * 2) % 6),
+      rating: 1480 + index * 3 + ((index * 7) % 11),
+    })),
+  };
+}
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
@@ -89,14 +137,21 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub: string 
   );
 }
 
-function MetricBar({ label, games, score, accuracy }: { label: string; games: number; score: number; accuracy: number | null }) {
+function MetricBar({ label, games, score, accuracy, unit }: {
+  label: string;
+  games: number;
+  score: number;
+  accuracy: number | null;
+  /** Eigene Einheit statt „Partien“ (z. B. Puzzle-Versuche). */
+  unit?: string;
+}) {
   const { t } = useI18n();
   return (
     <div className="grid grid-cols-[minmax(105px,1fr)_2fr_52px] items-center gap-3">
       <div className="min-w-0">
         <div className="truncate text-[12px] text-ink2">{label}</div>
         <div className="text-[10.5px] text-ink3">
-          {t("ins.metricGames", { n: games })}
+          {unit ? `${deInt(games)} ${unit}` : t("ins.metricGames", { n: games })}
           {accuracy != null ? ` · ${t("ins.metricAccuracy", { p: de(accuracy) })}` : ""}
         </div>
       </div>
@@ -321,12 +376,192 @@ function Patterns({ data }: { data: LiveInsights }) {
   );
 }
 
+function solveRate(entry: { attempts: number; solved: number }): number {
+  return entry.attempts === 0 ? 0 : Math.round((entry.solved / entry.attempts) * 100);
+}
+
+function Puzzles({ data }: { data: PuzzleInsights }) {
+  const { locale, t } = useI18n();
+  const rate = solveRate(data);
+  const weekdayLabel = (key: number) =>
+    // 2024-01-01 war ein Montag — passend zu Index 0 aus dem Backend.
+    new Date(Date.UTC(2024, 0, 1 + key)).toLocaleDateString(dateLocale(), {
+      weekday: "short",
+      timeZone: "UTC",
+    });
+  const timeline = data.timeline.map((point) => ({
+    ...point,
+    failed: point.attempts - point.solved,
+    label: new Date(point.day_ts * 1000).toLocaleDateString(dateLocale(), {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: "UTC",
+    }),
+  }));
+  // Belastbare Motive: ab fünf Versuchen; sonst dominiert der Zufall.
+  const reliable = data.themes.filter((theme) => theme.attempts >= 5);
+  const weakest = [...reliable].sort((a, b) => solveRate(a) - solveRate(b)).slice(0, 5);
+  const strongest = [...reliable].sort((a, b) => solveRate(b) - solveRate(a)).slice(0, 5);
+  const activeHours = data.by_hour.filter((slot) => slot.attempts > 0);
+
+  if (data.attempts === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-line2 px-4 py-8 text-center text-[12.5px] text-ink3">
+        {t("ins.pzNoAttempts")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 min-[1050px]:grid-cols-4">
+        <Kpi label={t("ins.pzRating")} value={deInt(data.personal_rating)} sub={t("ins.pzRatingSub")} />
+        <Kpi label={t("ins.pzSolveRate")} value={`${rate} %`} sub={t("ins.pzSolveRateSub", { s: deInt(data.solved), n: deInt(data.attempts) })} />
+        <Kpi label={t("ins.pzHardest")} value={deInt(data.avg_solved_rating)} sub={t("ins.pzHardestSub", { n: deInt(data.avg_puzzle_rating) })} />
+        <Kpi label={t("ins.pzRun")} value={deInt(data.best_run)} sub={t("ins.pzRunSub", { n: deInt(data.current_run) })} />
+      </div>
+
+      <div className="grid gap-4 min-[950px]:grid-cols-2">
+        <Card title={t("ins.pzRatingTrend")}>
+          <ResponsiveContainer width="100%" height={245}>
+            <LineChart data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -12 }}>
+              <CartesianGrid stroke={chart.grid} vertical={false} />
+              <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
+              <YAxis domain={["dataMin - 40", "dataMax + 40"]} tick={chart.tick} tickLine={false} axisLine={false} />
+              <Tooltip content={<DarkTooltip />} />
+              <Line type="monotone" dataKey="rating" name={t("ins.pzRating")} stroke={chart.accent} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card title={t("ins.pzVolume")}>
+          <ResponsiveContainer width="100%" height={245}>
+            <BarChart data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
+              <CartesianGrid stroke={chart.grid} vertical={false} />
+              <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
+              <YAxis tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip content={<DarkTooltip />} />
+              <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="solved" name={t("ins.pzSolved")} stackId="attempts" fill={chart.win} />
+              <Bar dataKey="failed" name={t("ins.pzFailed")} stackId="attempts" fill={chart.loss} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 min-[950px]:grid-cols-2">
+        <Card title={t("ins.pzByDifficulty")}>
+          <div className="space-y-4 py-2">
+            {data.by_rating.map((bucket) => (
+              <MetricBar
+                key={bucket.key}
+                label={`${deInt(bucket.key)}–${deInt(bucket.key + 399)}`}
+                games={bucket.attempts}
+                score={solveRate(bucket)}
+                accuracy={null}
+                unit={t("ins.pzAttempts")}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("ins.pzByDifficultyNote")}</p>
+        </Card>
+        <Card title={t("ins.pzWeakThemes")}>
+          <div className="space-y-4 py-2">
+            {weakest.length > 0 ? (
+              weakest.map((theme) => (
+                <MetricBar
+                  key={theme.theme}
+                  label={themeLabel(theme.theme, locale)}
+                  games={theme.attempts}
+                  score={solveRate(theme)}
+                  accuracy={null}
+                  unit={t("ins.pzAttempts")}
+                />
+              ))
+            ) : (
+              <p className="text-[12px] text-ink3">{t("ins.pzThemesTooFew")}</p>
+            )}
+          </div>
+          {strongest.length > 0 && (
+            <div className="mt-3 border-t border-line pt-3 text-[12px] text-ink3">
+              {t("ins.pzStrongThemes")}{" "}
+              <span className="text-ink2">
+                {strongest.map((theme) => `${themeLabel(theme.theme, locale)} ${solveRate(theme)} %`).join(" · ")}
+              </span>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid gap-4 min-[950px]:grid-cols-2">
+        <Card title={t("ins.pzByWeekday")}>
+          <div className="space-y-3 py-1">
+            {data.by_weekday.map((day) => (
+              <MetricBar key={day.key} label={weekdayLabel(day.key)} games={day.attempts} score={solveRate(day)} accuracy={null} unit={t("ins.pzAttempts")} />
+            ))}
+          </div>
+        </Card>
+        <Card title={t("ins.pzByHour")}>
+          {activeHours.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={activeHours.map((slot) => ({ ...slot, label: `${slot.key}`, rate: solveRate(slot) }))}
+                margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
+              >
+                <CartesianGrid stroke={chart.grid} vertical={false} />
+                <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
+                <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
+                <Tooltip content={<DarkTooltip />} />
+                <Bar dataKey="rate" name={t("ins.pzSolveRate")} radius={[4, 4, 0, 0]}>
+                  {activeHours.map((slot) => (
+                    <Cell key={slot.key} fill={solveRate(slot) >= 60 ? chart.win : solveRate(slot) >= 45 ? chart.draw : chart.loss} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-[260px] items-center justify-center text-[12px] text-ink3">{t("ins.pzNoAttempts")}</div>
+          )}
+          <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("ins.pzByHourNote")}</p>
+        </Card>
+      </div>
+
+      <Card title={t("ins.pzThemeTable")} pad={false}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left">
+            <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
+              <tr>
+                <th className="px-4 py-2.5">{t("ins.pzTheme")}</th>
+                <th className="px-3 py-2.5 text-right">{t("ins.pzAttempts")}</th>
+                <th className="px-3 py-2.5 text-right">{t("ins.pzSolved")}</th>
+                <th className="px-4 py-2.5 text-right">{t("ins.pzSolveRate")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.themes.map((theme) => (
+                <tr key={theme.theme} className="border-b border-line/70 last:border-0">
+                  <td className="max-w-[280px] truncate px-4 py-2.5 text-[12.5px] text-ink">{themeLabel(theme.theme, locale)}</td>
+                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">{deInt(theme.attempts)}</td>
+                  <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">{deInt(theme.solved)}</td>
+                  <td className={`px-4 py-2.5 text-right text-[12px] font-medium tabular-nums ${solveRate(theme) >= 60 ? "text-win" : solveRate(theme) < 45 ? "text-loss" : "text-ink2"}`}>
+                    {solveRate(theme)} %
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function InsightsV2() {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const [tab, setTab] = useState<InsightTab>("overview");
   const [records, setRecords] = useState<GameRecord[]>([]);
   const [errors, setErrors] = useState<PhaseErrors[]>([]);
+  const [puzzles, setPuzzles] = useState<PuzzleInsights | null>(null);
 
   useEffect(() => {
     if (backend.mode !== "desktop") return;
@@ -344,9 +579,22 @@ export default function InsightsV2() {
     };
   }, [backend.mode]);
 
+  // Puzzle-Detailanalyse erst laden, wenn der Reiter wirklich geöffnet wird.
+  useEffect(() => {
+    if (backend.mode !== "desktop" || tab !== "puzzles" || puzzles) return;
+    let cancelled = false;
+    puzzleInsights()
+      .then((next) => !cancelled && setPuzzles(next))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [backend.mode, tab, puzzles]);
+
   const analysisRecords = backend.mode === "desktop" ? records : DEMO_RECORDS;
   const data = useMemo(() => buildInsights(analysisRecords, locale), [analysisRecords, locale]);
   const analysisErrors = backend.mode === "desktop" ? errors : DEMO_ERRORS;
+  const puzzleData = backend.mode === "desktop" ? puzzles : demoPuzzleInsights();
   const phaseLabel = (phase: string) => t(`ins.phase.${phase}` as Key);
 
   return (
@@ -369,13 +617,21 @@ export default function InsightsV2() {
         ))}
       </nav>
 
-      {records.length === 0 && backend.mode === "desktop" && (
+      {records.length === 0 && backend.mode === "desktop" && tab !== "puzzles" && (
         <div className="mb-4 rounded-lg border border-dashed border-line2 px-4 py-3 text-[12.5px] text-ink3">{t("ins.noGames")}</div>
       )}
       {tab === "overview" && <Overview data={data} phaseLabel={phaseLabel} />}
       {tab === "performance" && <Performance data={data} errors={analysisErrors} phaseLabel={phaseLabel} />}
       {tab === "openings" && <Openings data={data} />}
       {tab === "patterns" && <Patterns data={data} />}
+      {tab === "puzzles" &&
+        (puzzleData ? (
+          <Puzzles data={puzzleData} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-line2 px-4 py-8 text-center text-[12.5px] text-ink3">
+            {t("common.loading")}
+          </div>
+        ))}
     </div>
   );
 }

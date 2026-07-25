@@ -77,8 +77,10 @@ describe("Study page", () => {
     mockBackend();
     renderStudy();
 
-    expect(await screen.findByText("7 fällig")).toBeTruthy();
-    expect(screen.getByText("3 / 10")).toBeTruthy();
+    // Der Wochenkalender zeigt vor dem Backend-Callback Demo-Werte — daher auf
+    // eine Zahl warten, die nur aus den Live-Daten stammen kann.
+    expect(await screen.findByText("3 / 10")).toBeTruthy();
+    expect(screen.getAllByText("7 fällig").length).toBeGreaterThan(0);
     expect(screen.getByText("2 Partien offen")).toBeTruthy();
     expect(screen.getByText("4 Tage Serie")).toBeTruthy();
     expect(invokeMock).toHaveBeenCalledWith("study_data");
@@ -118,12 +120,11 @@ describe("Study page", () => {
     });
   });
 
-  it("opens the persistent planner and schedules an editable unit", async () => {
+  it("schedules an editable unit from the always-visible week calendar", async () => {
     mockBackend();
     renderStudy();
-    await screen.findByText("7 fällig");
+    await screen.findByText("3 / 10");
 
-    fireEvent.click(screen.getByRole("button", { name: /Planung öffnen/ }));
     expect(await screen.findByText("15–20 Aufgaben")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Planen" }));
 

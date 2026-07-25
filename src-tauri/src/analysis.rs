@@ -344,7 +344,7 @@ fn run_worker(
         if walked.is_empty() {
             // Nichts zu analysieren (abgebrochene/leere Partie) — aus der Queue nehmen.
             conn.execute(
-                "UPDATE games SET analyzed = 1, updated_ts = ?2 WHERE id = ?1",
+                "UPDATE games SET analyzed = 1, updated_ts = ?2, analyzed_ts = ?2 WHERE id = ?1",
                 params![game_id, crate::db::now_ts()],
             )
             .map_err(|e| e.to_string())?;
@@ -488,7 +488,7 @@ fn run_worker(
         conn.execute(
             "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2),
                 accuracy_opening = ?3, accuracy_middlegame = ?4, accuracy_endgame = ?5,
-                updated_ts = ?6 WHERE id = ?1",
+                updated_ts = ?6, analyzed_ts = ?6 WHERE id = ?1",
             params![
                 game_id,
                 accuracy,

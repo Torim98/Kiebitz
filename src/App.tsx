@@ -21,6 +21,7 @@ import { dbStats } from "./lib/db";
 import { getSettings } from "./lib/settings";
 import { syncInfo } from "./lib/sync";
 import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
+import { startReminders, stopReminders } from "./lib/notify";
 import {
   installUpdate,
   onUpdateAvailable,
@@ -113,6 +114,14 @@ export default function App() {
       )
       .catch(() => {});
   }, [backend.mode, isMobile]);
+
+  // Trainings-Erinnerungen: der Prüf-Timer liest die Einstellungen bei jedem
+  // Durchlauf selbst, Änderungen greifen also ohne Neustart.
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    startReminders();
+    return stopReminders;
+  }, [backend.mode]);
 
   // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
   // kommentarlos passieren); Fehler zeigt die Settings-Seite.
