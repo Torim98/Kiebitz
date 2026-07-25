@@ -8,7 +8,8 @@
  * 50-Züge-Regel oder ungenügendes Material zählen als Erfolg).
  */
 
-export type EndgameCategory = "mates" | "pawn" | "rook" | "queen";
+/** `random` sind erzeugte Stellungen (siehe lib/randomEndgame.ts). */
+export type EndgameCategory = "mates" | "pawn" | "rook" | "queen" | "random";
 
 export interface EndgameDrill {
   id: string;

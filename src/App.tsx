@@ -18,10 +18,11 @@ import {
 } from "lucide-react";
 import { useBackendInfo } from "./lib/backend";
 import { dbStats } from "./lib/db";
-import { getSettings } from "./lib/settings";
+import { getSettings, type Settings } from "./lib/settings";
 import { syncInfo } from "./lib/sync";
 import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
 import { startReminders, stopReminders } from "./lib/notify";
+import { startAutoImport, stopAutoImport } from "./lib/autoImport";
 import {
   installUpdate,
   onUpdateAvailable,
@@ -39,6 +40,7 @@ import Puzzles from "./pages/Puzzles";
 import Study from "./pages/Study";
 import Insights from "./pages/InsightsV2";
 import SettingsPage from "./pages/Settings";
+import Onboarding from "./components/Onboarding";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
 
@@ -97,6 +99,15 @@ export default function App() {
     }
   }, [backend.mode, page]);
 
+  // Ersteinrichtung: nur beim allerersten Start, danach nie wieder.
+  const [onboarding, setOnboarding] = useState<Settings | null>(null);
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    getSettings()
+      .then((s) => setOnboarding(s.onboarded ? null : s))
+      .catch(() => {});
+  }, [backend.mode]);
+
   // Auto-Sync (Mobile-Client) nach den Einstellungen scharfschalten. Läuft nur,
   // wenn wir mobil sind, es aktiviert ist und ein Hub konfiguriert wurde.
   const isMobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
@@ -120,7 +131,11 @@ export default function App() {
   useEffect(() => {
     if (backend.mode !== "desktop") return;
     startReminders();
-    return stopReminders;
+    startAutoImport();
+    return () => {
+      stopReminders();
+      stopAutoImport();
+    };
   }, [backend.mode]);
 
   // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
@@ -314,6 +329,17 @@ export default function App() {
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}
       </main>
+
+      {onboarding && (
+        <Onboarding
+          settings={onboarding}
+          onDone={(applied) => {
+            setOnboarding(null);
+            // Neue Konten sofort nutzen (Sprache steckt schon im Provider).
+            void applied;
+          }}
+        />
+      )}
 
       {update ? (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">

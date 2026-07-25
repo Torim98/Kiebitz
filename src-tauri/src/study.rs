@@ -123,7 +123,7 @@ fn day_start_ts(day: &str) -> Option<i64> {
 }
 
 /// ISO-Tag aus Unix-Sekunden (UTC), Gegenstück zu `day_start_ts`.
-fn iso_day(ts: i64) -> String {
+pub fn iso_day(ts: i64) -> String {
     let days = ts.div_euclid(86_400) + 719_468;
     let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
     let day_of_era = days - era * 146_097;

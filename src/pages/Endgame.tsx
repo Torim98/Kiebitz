@@ -6,6 +6,7 @@ import {
   Lightbulb,
   Loader2,
   RotateCcw,
+  Shuffle,
   SkipForward,
   Trophy,
   XCircle,
@@ -20,6 +21,8 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { endgameMove, endgameRecord, endgameStats, type DrillStat } from "../lib/endgame";
 import Board from "../components/Board";
+import { moveTargetStyles } from "../lib/boardMoves";
+import { randomDrill } from "../lib/randomEndgame";
 import { Button, Card } from "../components/ui";
 import { deInt } from "../lib/util";
 
@@ -28,6 +31,7 @@ const CATEGORY_KEY: Record<EndgameCategory, Key> = {
   pawn: "eg.catPawn",
   rook: "eg.catRook",
   queen: "eg.catQueen",
+  random: "eg.randomTitle",
 };
 
 type Status = "playing" | "thinking" | "solved" | "failed";
@@ -186,7 +190,10 @@ export default function Endgame() {
       .finally(() => setHintLoading(false));
   };
 
-  const squareStyles: Record<string, React.CSSProperties> = {};
+  const squareStyles: Record<string, React.CSSProperties> = {
+    // Zugpunkte wie im Analyse-Brett.
+    ...(status === "playing" ? moveTargetStyles(fen, selected) : {}),
+  };
   if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
   if (hintMove) {
     squareStyles[hintMove.slice(0, 2)] = { boxShadow: "inset 0 0 0 3px #d9a028" };
@@ -261,6 +268,7 @@ export default function Endgame() {
             squareStyles={squareStyles}
             orientation={drill.side}
             shake={shake}
+            mouseDrag
           />
 
           <div className="mt-3 min-h-[52px]">
@@ -284,7 +292,13 @@ export default function Endgame() {
                   <Button onClick={() => start(drill)}>
                     <RotateCcw size={14} /> {t("eg.retry")}
                   </Button>
-                  {status === "solved" && nextUnsolved() && (
+                  {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
+                  {status === "solved" && drill.category === "random" && (
+                    <Button primary onClick={() => start(randomDrill())}>
+                      <Shuffle size={15} /> {t("eg.randomNext")}
+                    </Button>
+                  )}
+                  {status === "solved" && drill.category !== "random" && nextUnsolved() && (
                     <Button primary onClick={() => start(nextUnsolved()!)}>
                       <SkipForward size={15} /> {t("eg.nextDrill")}
                     </Button>
@@ -324,6 +338,13 @@ export default function Endgame() {
 
         {/* Aufgabenliste */}
         <div className="flex max-w-[460px] flex-col gap-4">
+          <Card title={t("eg.randomTitle")}>
+            <p className="text-[12.5px] leading-relaxed text-ink3">{t("eg.randomHint")}</p>
+            <Button primary onClick={() => start(randomDrill())} className="mt-3">
+              <Shuffle size={15} /> {t("eg.randomStart")}
+            </Button>
+          </Card>
+
           <Card title={t("eg.drills")}>
             <div className="flex flex-col gap-4">
               {CATEGORY_ORDER.map((cat) => (

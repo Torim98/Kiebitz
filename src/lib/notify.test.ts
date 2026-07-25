@@ -16,7 +16,8 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     live_depth: 24,
     batch_depth: 14,
     syzygy_path: null,
-    chessdb_enabled: false,
+    chessdb_enabled: true,
+    auto_import: true,
     cc_user: "",
     li_user: "",
     display_name: "",
@@ -35,6 +36,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     notify_puzzles: true,
     notify_endgame: true,
     notify_analysis: true,
+    onboarded: true,
     ...overrides,
   };
 }

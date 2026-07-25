@@ -70,6 +70,8 @@ export async function importChessCom(
   months?: number,
   onProgress?: (current: number, total: number) => void
 ): Promise<GameRecord[]> {
+  // Kein Konto hinterlegt: nichts holen, statt fremde Partien zu laden.
+  if (!user.trim()) return [];
   const res = await fetch(`https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`);
   if (!res.ok) throw new Error(`chess.com: ${res.status}`);
   const all: string[] = (await res.json()).archives ?? [];
@@ -133,6 +135,7 @@ interface LiGame {
 
 /** Import von Lichess als NDJSON; ohne `max` die komplette Historie. */
 export async function importLichess(user: string, max?: number): Promise<GameRecord[]> {
+  if (!user.trim()) return [];
   const maxParam = max != null ? `max=${max}&` : "";
   const res = await fetch(
     `https://lichess.org/api/games/user/${user}?${maxParam}opening=true`,

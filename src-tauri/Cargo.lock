@@ -2215,6 +2215,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "tiny_http",
  "ureq",
  "zstd",

@@ -47,6 +47,11 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+/** Die Vorlagen sind standardmäßig eingeklappt. */
+async function openLibrary() {
+  fireEvent.click(await screen.findByRole("button", { name: /Lerneinheiten/ }));
+}
+
 /**
  * Drag simulieren: die Zielzelle liegt laut elementFromPoint unter dem Zeiger.
  * jsdom kennt die Methode nicht — sie wird für den Test ergänzt.
@@ -69,6 +74,7 @@ describe("Week calendar", () => {
 
   it("schedules a dragged template on the day under the pointer", async () => {
     render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+    await openLibrary();
     const grip = (await screen.findAllByLabelText("Einheit ziehen"))[0];
 
     pointToDay(monday);
@@ -86,6 +92,7 @@ describe("Week calendar", () => {
 
   it("ignores a click that never moved", async () => {
     render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+    await openLibrary();
     const grip = (await screen.findAllByLabelText("Einheit ziehen"))[0];
 
     pointToDay(monday);

@@ -12,6 +12,8 @@ export interface Settings {
   batch_depth: number;
   syzygy_path: string | null;
   chessdb_enabled: boolean;
+  /** Neue Partien beim Start und im Hintergrund nachladen. */
+  auto_import: boolean;
   cc_user: string;
   li_user: string;
   /** Anzeigename fürs Dashboard (leer = Benutzername). */
@@ -38,6 +40,8 @@ export interface Settings {
   notify_puzzles: boolean;
   notify_endgame: boolean;
   notify_analysis: boolean;
+  /** Wurde die Ersteinrichtung durchlaufen? */
+  onboarded: boolean;
 }
 
 export interface EngineTest {
@@ -102,6 +106,11 @@ export function restoreDatabase(source: string): Promise<DbInfo> {
 
 export function chessdbQuery(fen: string): Promise<ChessDbResult> {
   return invoke<ChessDbResult>("chessdb_query", { fen });
+}
+
+/** Leert die Datenbank und setzt alle Einstellungen zurück. */
+export function factoryReset(): Promise<void> {
+  return invoke("factory_reset");
 }
 
 /** Bytes menschenlesbar (1 Dezimalstelle ab MB). */

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import {
+  Check,
   CheckCircle2,
+  ChevronDown,
   Download,
   Eye,
   Flame,
@@ -9,6 +11,7 @@ import {
   Loader2,
   SkipForward,
   Target,
+  X,
 } from "lucide-react";
 import { puzzles as demoPuzzles, puzzleStats as demoStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
@@ -18,15 +21,17 @@ import {
   nextPuzzle,
   onPuzzleImportDone,
   onPuzzleImportProgress,
+  puzzleHistory,
   puzzleStats,
   recordAttempt,
   themeLabel,
+  type AttemptRow,
   type PuzzleOut,
   type PuzzleStats,
 } from "../lib/puzzles";
 import Board from "../components/Board";
 import { Button, Card, Chip, Spark } from "../components/ui";
-import { deInt } from "../lib/util";
+import { dateLocale, deInt } from "../lib/util";
 
 export default function Puzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const backend = useBackendInfo();
@@ -515,9 +520,92 @@ function TrainerView({
               {t("pz.bandInfo")}
             </div>
           </Card>
+
+          <PuzzleHistory />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Verlauf der letzten Versuche — standardmäßig zugeklappt. */
+function PuzzleHistory() {
+  const { locale, t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<AttemptRow[] | null>(null);
+
+  useEffect(() => {
+    if (!open || rows) return;
+    puzzleHistory(25)
+      .then(setRows)
+      .catch(() => setRows([]));
+  }, [open, rows]);
+
+  return (
+    <Card
+      title={t("pz.history")}
+      action={
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-ink3 hover:bg-panel2 hover:text-ink"
+        >
+          {t(open ? "pz.historyHide" : "pz.historyShow")}
+          <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      }
+    >
+      {!open ? (
+        <p className="text-[12px] leading-relaxed text-ink3">{t("pz.historyHint")}</p>
+      ) : rows == null ? (
+        <div className="text-[12px] text-ink3">{t("common.loading")}</div>
+      ) : rows.length === 0 ? (
+        <div className="text-[12px] text-ink3">{t("pz.noAttempts")}</div>
+      ) : (
+        <ul className="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto pr-1">
+          {rows.map((row) => {
+            const delta = row.rating_after - row.rating_before;
+            return (
+              <li
+                key={`${row.puzzle_id}-${row.ts}`}
+                className="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel2 px-2.5 py-1.5"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  {row.solved ? (
+                    <Check size={13} className="shrink-0 text-win" />
+                  ) : (
+                    <X size={13} className="shrink-0 text-loss" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] text-ink2">
+                      {row.themes.slice(0, 2).map((theme) => themeLabel(theme, locale)).join(" · ") ||
+                        row.puzzle_id}
+                    </div>
+                    <div className="text-[10.5px] text-ink3">
+                      {new Date(row.ts * 1000).toLocaleString(dateLocale(), {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {row.puzzle_rating > 0 ? ` · ${deInt(row.puzzle_rating)}` : ""}
+                    </div>
+                  </div>
+                </div>
+                <span
+                  className="shrink-0 text-[12px] font-medium tabular-nums"
+                  style={{ color: delta >= 0 ? "var(--color-win)" : "var(--color-loss)" }}
+                >
+                  {delta >= 0 ? "+" : "−"}
+                  {Math.abs(delta)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }
 

@@ -66,7 +66,8 @@ function dayAtPoint(x: number, y: number): string | null {
 
 export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const { locale, t } = useI18n();
-  const [libraryOpen, setLibraryOpen] = useState(true);
+  // Der Kalender ist der Hauptinhalt; die Vorlagen bleiben bis zum Aufklappen aus dem Weg.
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [calendar, setCalendar] = useState<StudyCalendar>({ templates: [], events: [], days: [] });
   const [planningDay, setPlanningDay] = useState(() => isoDay(new Date()));

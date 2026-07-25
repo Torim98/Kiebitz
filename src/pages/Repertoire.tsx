@@ -28,6 +28,7 @@ import {
   type RepStats,
 } from "../lib/repertoire";
 import Board from "../components/Board";
+import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "../components/ui";
 import { de, fenAfter } from "../lib/util";
 
@@ -431,6 +432,7 @@ function AddLine({
       return false;
     }
   };
+  const addSelection = useBoardSelection(fen, tryMove);
 
   const save = async () => {
     if (draft.length === 0) return;
@@ -450,7 +452,17 @@ function AddLine({
     <div className="min-[1240px]:col-span-2">
       <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-[380px_1fr]">
         <div>
-          <Board boardId="rep-add" fen={fen} width={380} draggable onPieceDrop={tryMove} orientation={side} />
+          <Board
+            boardId="rep-add"
+            fen={fen}
+            width={380}
+            draggable
+            onPieceDrop={tryMove}
+            onSquareClick={addSelection.onSquareClick}
+            squareStyles={addSelection.squareStyles}
+            orientation={side}
+            mouseDrag
+          />
           <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
             {moveText || t("rep.playOnBoard")}
           </div>
@@ -561,6 +573,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
     setTimeout(() => setShake(false), 600);
     return false;
   };
+  const trainSelection = useBoardSelection(fen, tryMove, state !== "correct");
 
   if (items == null) return null;
   if (!item) {
@@ -600,8 +613,11 @@ function Trainer({ onExit }: { onExit: () => void }) {
           width={420}
           draggable={state !== "correct"}
           onPieceDrop={tryMove}
+          onSquareClick={trainSelection.onSquareClick}
+          squareStyles={trainSelection.squareStyles}
           orientation={item.side}
           shake={shake}
+          mouseDrag
         />
         <div className="mt-3 flex h-[52px] items-center">
           {state === "correct" ? (

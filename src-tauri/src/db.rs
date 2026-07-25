@@ -106,6 +106,12 @@ fn translate_seeded_study_templates(conn: &Connection) -> Result<(), String> {
 
 pub fn init(conn: &Connection) -> Result<(), String> {
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    // Ohne Größenbremse wächst das WAL nach einem Puzzle-Import auf mehrere
+    // Gigabyte an; jede Leseabfrage muss es dann durchsuchen, was Puzzles und
+    // Statistiken spürbar ausbremst. 8 MB reichen als Schreibpuffer.
+    let _ = conn.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024);
+    let _ = conn.pragma_update(None, "wal_autocheckpoint", 1_000);
+    checkpoint(conn);
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS games (
             id          INTEGER PRIMARY KEY,
@@ -356,6 +362,12 @@ pub fn init(conn: &Connection) -> Result<(), String> {
 }
 
 /// Unix-Zeit in Sekunden — der gemeinsame Zeitstempel für Sync-Spalten.
+/// Schreibt das WAL in die Datenbank zurück und kürzt es. Nach großen Importen
+/// und beim Start hält das die Datei klein und die Lesezugriffe schnell.
+pub fn checkpoint(conn: &Connection) {
+    let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+}
+
 pub fn now_ts() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

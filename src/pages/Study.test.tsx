@@ -120,11 +120,13 @@ describe("Study page", () => {
     });
   });
 
-  it("schedules an editable unit from the always-visible week calendar", async () => {
+  it("schedules an editable unit from the week calendar", async () => {
     mockBackend();
     renderStudy();
     await screen.findByText("3 / 10");
 
+    // Die Vorlagen liegen eingeklappt unter dem Kalender.
+    fireEvent.click(screen.getByRole("button", { name: /Lerneinheiten/ }));
     expect(await screen.findByText("15–20 Aufgaben")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Planen" }));
 

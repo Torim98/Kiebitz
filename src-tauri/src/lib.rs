@@ -6,6 +6,7 @@ mod endgame;
 mod engine;
 mod live;
 mod puzzles;
+mod reminder;
 mod repertoire;
 mod settings;
 mod study;
@@ -263,6 +264,11 @@ fn stop_live(state: tauri::State<live::LiveEngine>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Von der Aufgabenplanung gestartet: erinnern und beenden, ohne Fenster.
+    #[cfg(desktop)]
+    if reminder::run_headless("de.torim.kiebitz") {
+        return;
+    }
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -275,6 +281,14 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_opener::init())?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
+            // Windows verwirft Toasts unbekannter Absender — AppUserModelID
+            // registrieren, bevor die erste Erinnerung ansteht.
+            #[cfg(windows)]
+            reminder::register_windows_app_id(
+                &app.handle().config().identifier.clone(),
+                "Kiebitz",
+                app.path().resource_dir().ok().map(|d| d.join("icons/icon.ico")),
+            );
 
             // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.
             #[cfg(mobile)]
@@ -379,6 +393,10 @@ pub fn run() {
             puzzles::record_attempt,
             puzzles::puzzle_stats,
             puzzles::puzzle_insights,
+            puzzles::puzzle_history,
+            reminder::notify_now,
+            reminder::sync_reminder_schedule,
+            reminder::save_reminder_snapshot,
             settings::get_settings,
             settings::set_settings,
             settings::test_engine,
@@ -387,6 +405,7 @@ pub fn run() {
             settings::backup_database,
             settings::restore_database,
             settings::db_info,
+            settings::factory_reset,
             chessdb::chessdb_query,
             endgame::endgame_move,
             endgame::endgame_record,

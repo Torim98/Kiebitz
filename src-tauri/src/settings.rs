@@ -32,6 +32,8 @@ pub struct Settings {
     pub syzygy_path: Option<String>,
     /// Online-Eröffnungsbuch chessdb.cn (Cloud-Evals), cache-gestützt.
     pub chessdb_enabled: bool,
+    /// Neue Partien beim Start und im Hintergrund nachladen.
+    pub auto_import: bool,
     pub cc_user: String,
     pub li_user: String,
     /// Anzeigename fürs Dashboard (leer = chess.com-/Lichess-Benutzername).
@@ -65,6 +67,8 @@ pub struct Settings {
     pub notify_puzzles: bool,
     pub notify_endgame: bool,
     pub notify_analysis: bool,
+    /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
+    pub onboarded: bool,
 }
 
 /// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf 18:00 zurück.
@@ -90,7 +94,8 @@ impl Default for Settings {
         #[cfg(not(target_os = "android"))]
         let (threads, hash, live, batch) = (0, 256, 24, 14);
         Self {
-            locale: "de".into(),
+            // Englisch ist die kleinste gemeinsame Basis; umstellbar bleibt es.
+            locale: "en".into(),
             db_path: None,
             engine_path: None,
             engine_threads: threads,
@@ -99,9 +104,11 @@ impl Default for Settings {
             live_depth: live,
             batch_depth: batch,
             syzygy_path: None,
-            chessdb_enabled: false,
-            cc_user: "Torim98".into(),
-            li_user: "Torim98".into(),
+            // Beide Komfortfunktionen sind ab Werk an; abschaltbar bleiben sie.
+            chessdb_enabled: true,
+            auto_import: true,
+            cc_user: String::new(),
+            li_user: String::new(),
             display_name: String::new(),
             import_months: 3,
             puzzle_goal: 20,
@@ -118,6 +125,7 @@ impl Default for Settings {
             notify_puzzles: true,
             notify_endgame: true,
             notify_analysis: true,
+            onboarded: false,
         }
     }
 }
@@ -452,6 +460,57 @@ pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo,
     db_info(app.clone(), app.state())
 }
 
+/// Setzt die App auf Werkseinstellungen zurück: Datenbankinhalt leeren,
+/// Einstellungen verwerfen, Hilfsdateien löschen. Die Datenbankdatei selbst
+/// bleibt bestehen (der Connection-Handle wird weiterverwendet), aber sie ist
+/// danach leer und frisch migriert.
+#[tauri::command]
+pub fn factory_reset(app: tauri::AppHandle) -> Result<(), String> {
+    ensure_workers_idle(&app)?;
+    {
+        let state = app.state::<db::Db>();
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        let tables: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN")
+            .map_err(|e| e.to_string())?;
+        for table in &tables {
+            conn.execute(&format!("DELETE FROM \"{table}\""), [])
+                .map_err(|e| e.to_string())?;
+        }
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        // Schema und Startvorlagen neu anlegen, dann die Datei schrumpfen.
+        db::init(&conn)?;
+        let _ = conn.execute_batch("VACUUM");
+        db::checkpoint(&conn);
+    }
+
+    // Einstellungen auf Werk zurück (inkl. Sync-Kopplung und Onboarding).
+    let defaults = Settings::default();
+    save(&app, &defaults)?;
+    *app.state::<SettingsState>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())? = defaults;
+
+    // Abgeleitete Dateien: Sync-Zertifikat, Pairing und Erinnerungs-Snapshot.
+    if let Ok(dir) = app.path().app_config_dir() {
+        for name in ["reminder.json", "sync-cert.pem", "sync-key.pem"] {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+    }
+    app.state::<live::LiveEngine>().shutdown();
+    app.state::<endgame::EndgameEngine>().shutdown();
+    Ok(())
+}
+
 #[tauri::command]
 pub fn db_info(app: tauri::AppHandle, db: tauri::State<db::Db>) -> Result<DbInfo, String> {
     let path = app
@@ -524,14 +583,30 @@ mod tests {
         let s = Settings::default();
         let json = serde_json::to_string(&s).unwrap();
         let back: Settings = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.locale, "de");
+        assert_eq!(back.locale, "en");
         assert_eq!(back.engine_hash_mb, 256);
     }
 
     #[test]
+    fn fresh_installs_start_empty_and_in_english() {
+        let s = Settings::default();
+        assert_eq!(s.locale, "en");
+        // Keine fremden Konten, keine Pfade eines anderen Rechners.
+        assert_eq!(s.cc_user, "");
+        assert_eq!(s.li_user, "");
+        assert_eq!(s.engine_path, None);
+        assert_eq!(s.db_path, None);
+        assert_eq!(s.syzygy_path, None);
+        // Komfortfunktionen an, Ersteinrichtung offen.
+        assert!(s.chessdb_enabled);
+        assert!(s.auto_import);
+        assert!(!s.onboarded);
+    }
+
+    #[test]
     fn missing_fields_fall_back_to_defaults() {
-        let back: Settings = serde_json::from_str(r#"{"locale":"en"}"#).unwrap();
-        assert_eq!(back.locale, "en");
+        let back: Settings = serde_json::from_str(r#"{"locale":"de"}"#).unwrap();
+        assert_eq!(back.locale, "de");
         assert_eq!(back.engine_multipv, 3);
         assert_eq!(back.import_months, 3);
         assert!(back.auto_update);

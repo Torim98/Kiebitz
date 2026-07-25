@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "./lib/i18n";
 import App from "./App";
@@ -8,9 +8,12 @@ vi.mock("./lib/backend", () => ({
 }));
 vi.mock("./lib/db", () => ({ dbStats: () => Promise.resolve({ total: 12 }) }));
 vi.mock("./lib/settings", () => ({
-  getSettings: () => Promise.resolve({ sync_auto: false, sync_host: "" }),
+  // `onboarded` verhindert, dass die Ersteinrichtung die Navigation überdeckt.
+  getSettings: () => Promise.resolve({ sync_auto: false, sync_host: "", onboarded: true }),
 }));
 vi.mock("./lib/sync", () => ({ syncInfo: () => Promise.resolve({ last_sync: 0 }) }));
+vi.mock("./lib/notify", () => ({ startReminders: vi.fn(), stopReminders: vi.fn() }));
+vi.mock("./lib/autoImport", () => ({ startAutoImport: vi.fn(), stopAutoImport: vi.fn() }));
 vi.mock("./lib/syncManager", () => ({
   configureAutoSync: vi.fn(),
   useSyncStatus: () => ({ active: false, phase: "idle", lastSync: 0 }),
@@ -29,6 +32,11 @@ vi.mock("./pages/Puzzles", () => ({ default: () => <div>Puzzles</div> }));
 vi.mock("./pages/Study", () => ({ default: () => <div>Study</div> }));
 vi.mock("./pages/InsightsV2", () => ({ default: () => <div>Insights</div> }));
 vi.mock("./pages/Settings", () => ({ default: () => <div>Settings</div> }));
+
+beforeEach(() => {
+  // Ab Werk startet die App auf Englisch; hier werden deutsche Labels geprüft.
+  localStorage.setItem("kiebitz.locale", "de");
+});
 
 afterEach(cleanup);
 

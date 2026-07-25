@@ -3,11 +3,12 @@ import {
   Activity,
   BarChart3,
   BookOpen,
-  BrainCircuit,
   CalendarClock,
+  ChevronDown,
   Gauge,
   Puzzle as PuzzleIcon,
   ShieldCheck,
+  Stethoscope,
   Target,
   TrendingUp,
 } from "lucide-react";
@@ -26,7 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card } from "../components/ui";
-import { chart, DarkTooltip } from "../components/chartTheme";
+import { barCursor, chart, DarkTooltip } from "../components/chartTheme";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
@@ -187,7 +188,7 @@ function Overview({ data, phaseLabel }: { data: LiveInsights; phaseLabel: (phase
       </div>
 
       <Card
-        title={<span className="flex items-center gap-2"><BrainCircuit size={15} className="text-accent" /> {t("ins.diagnosisTitle")}</span>}
+        title={<span className="flex items-center gap-2"><Stethoscope size={15} className="text-accent" /> {t("ins.diagnosisTitle")}</span>}
       >
         <div className="grid gap-3 min-[800px]:grid-cols-3">
           <div className="rounded-lg border border-line bg-panel2 p-3.5">
@@ -231,6 +232,9 @@ function Overview({ data, phaseLabel }: { data: LiveInsights; phaseLabel: (phase
               </LineChart>
             </ResponsiveContainer>
           ) : <div className="flex h-[245px] items-center justify-center text-[12px] text-ink3">{t("ins.tooFewData")}</div>}
+          <p className="mt-3 border-t border-line pt-3 text-[11.5px] leading-relaxed text-ink3">
+            {t("ins.resultTrendNote")}
+          </p>
         </Card>
         <Card title={t("ins.dataQualityTitle")}>
           <div className="space-y-4 py-1">
@@ -272,7 +276,7 @@ function Performance({ data, errors, phaseLabel }: { data: LiveInsights; errors:
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
                 <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
-                <Tooltip content={<DarkTooltip />} />
+                <Tooltip content={<DarkTooltip />} cursor={barCursor} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="inaccuracy" name={t("ins.legInaccuracies")} stackId="errors" fill={chart.inaccuracy} />
                 <Bar dataKey="mistake" name={t("ins.legMistakes")} stackId="errors" fill={chart.mistake} />
@@ -310,7 +314,7 @@ function Openings({ data }: { data: LiveInsights }) {
           <BarChart data={data.openings} layout="vertical" margin={{ top: 0, right: 42, bottom: 0, left: 12 }} barSize={17}>
             <XAxis type="number" domain={[0, 100]} hide />
             <YAxis type="category" dataKey="name" width={170} tick={{ ...chart.tick, fontSize: 11 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} />
+            <Tooltip content={<DarkTooltip />} cursor={barCursor} />
             <Bar dataKey="win" name={t("ins.winRate")} radius={[0, 4, 4, 0]}>
               {data.openings.map((opening) => <Cell key={opening.name} fill={opening.win >= 50 ? chart.win : chart.loss} />)}
               <LabelList dataKey="win" position="right" formatter={(value: number) => `${value} %`} style={{ fill: "#b9b8ae", fontSize: 11 }} />
@@ -382,6 +386,7 @@ function solveRate(entry: { attempts: number; solved: number }): number {
 
 function Puzzles({ data }: { data: PuzzleInsights }) {
   const { locale, t } = useI18n();
+  const [themesOpen, setThemesOpen] = useState(false);
   const rate = solveRate(data);
   const weekdayLabel = (key: number) =>
     // 2024-01-01 war ein Montag — passend zu Index 0 aus dem Backend.
@@ -439,7 +444,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
               <YAxis tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip content={<DarkTooltip />} />
+              <Tooltip content={<DarkTooltip />} cursor={barCursor} />
               <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="solved" name={t("ins.pzSolved")} stackId="attempts" fill={chart.win} />
               <Bar dataKey="failed" name={t("ins.pzFailed")} stackId="attempts" fill={chart.loss} radius={[4, 4, 0, 0]} />
@@ -510,7 +515,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
                 <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
-                <Tooltip content={<DarkTooltip />} />
+                <Tooltip content={<DarkTooltip />} cursor={barCursor} />
                 <Bar dataKey="rate" name={t("ins.pzSolveRate")} radius={[4, 4, 0, 0]}>
                   {activeHours.map((slot) => (
                     <Cell key={slot.key} fill={solveRate(slot) >= 60 ? chart.win : solveRate(slot) >= 45 ? chart.draw : chart.loss} />
@@ -525,7 +530,22 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
         </Card>
       </div>
 
-      <Card title={t("ins.pzThemeTable")} pad={false}>
+      <Card
+        title={t("ins.pzThemeTable")}
+        pad={false}
+        action={
+          <button
+            type="button"
+            onClick={() => setThemesOpen((open) => !open)}
+            aria-expanded={themesOpen}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-ink3 hover:bg-panel2 hover:text-ink"
+          >
+            {t(themesOpen ? "ins.collapse" : "ins.expand", { n: data.themes.length })}
+            <ChevronDown size={15} className={`transition-transform ${themesOpen ? "rotate-180" : ""}`} />
+          </button>
+        }
+      >
+        {themesOpen && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-left">
             <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
@@ -550,6 +570,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
             </tbody>
           </table>
         </div>
+        )}
       </Card>
     </div>
   );

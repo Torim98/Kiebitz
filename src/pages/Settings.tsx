@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   Check,
   ArchiveRestore,
   Bell,
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   ScanLine,
   Smartphone,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -23,6 +25,7 @@ import { useI18n, type Locale } from "../lib/i18n";
 import {
   dbInfo,
   backupDatabase,
+  factoryReset,
   formatBytes,
   getSettings,
   moveDatabase,
@@ -59,7 +62,7 @@ import {
   type SyncInfo,
 } from "../lib/sync";
 import { configureAutoSync } from "../lib/syncManager";
-import { sendTestReminder } from "../lib/notify";
+import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
@@ -75,6 +78,35 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none";
+
+/** Beispielpfade passend zur Plattform — auf Android sind C:\-Pfade sinnlos. */
+function examplePaths(platform?: string) {
+  if (platform === "android" || platform === "ios") {
+    return {
+      engine: "/data/local/tmp/stockfish",
+      syzygy: "/storage/emulated/0/Kiebitz/syzygy",
+      db: "/storage/emulated/0/Kiebitz/kiebitz.db",
+      backup: "/storage/emulated/0/Kiebitz/kiebitz-backup.db",
+      puzzleDump: "/storage/emulated/0/Download/lichess_db_puzzle.csv.zst",
+    };
+  }
+  if (platform === "linux" || platform === "macos") {
+    return {
+      engine: "/usr/local/bin/stockfish",
+      syzygy: "~/chess/syzygy",
+      db: "~/Kiebitz/kiebitz.db",
+      backup: "~/Kiebitz/kiebitz-backup.db",
+      puzzleDump: "~/Downloads/lichess_db_puzzle.csv.zst",
+    };
+  }
+  return {
+    engine: "C:\\Engines\\stockfish.exe",
+    syzygy: "D:\\Schach\\syzygy",
+    db: "C:\\Kiebitz\\kiebitz.db",
+    backup: "C:\\Kiebitz\\kiebitz-backup.db",
+    puzzleDump: "C:\\Downloads\\lichess_db_puzzle.csv.zst",
+  };
+}
 
 function NumberField({
   label,
@@ -138,6 +170,10 @@ export default function SettingsPage() {
   const [scanning, setScanning] = useState(false);
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  const examplePath = useMemo(() => examplePaths(backend.info?.platform), [backend.info?.platform]);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
@@ -234,6 +270,8 @@ export default function SettingsPage() {
         syncHost: applied.sync_host,
         lastSync: sync?.last_sync,
       });
+      // Erinnerungen laufen über das Betriebssystem — Planung nachziehen.
+      applyReminderSchedule().catch(() => {});
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
     } catch (e) {
@@ -467,14 +505,38 @@ export default function SettingsPage() {
     }
   };
 
+  /** Alles zurücksetzen und die Oberfläche mit den Werkswerten neu laden. */
+  const runFactoryReset = async () => {
+    setResetBusy(true);
+    setError(null);
+    try {
+      await factoryReset();
+      const fresh = await getSettings();
+      setSaved(fresh);
+      setDraft(fresh);
+      setLocale(fresh.locale);
+      setResetOpen(false);
+      dbInfo().then(setInfo).catch(() => {});
+      puzzleStats().then(setPz).catch(() => {});
+      setNotice(t("set.resetDone"));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   /** Testerinnerung — holt bei Bedarf auch die Android-Systemberechtigung. */
   const runNotifyTest = async () => {
     setNotifyBusy(true);
     setNotifyMsg(null);
     try {
-      setNotifyMsg(t((await sendTestReminder()) ? "set.notifySent" : "set.notifyDenied"));
+      await sendTestReminder();
+      setNotifyMsg(t("set.notifySent"));
     } catch (e) {
-      setNotifyMsg(String(e));
+      setNotifyMsg(
+        String(e).includes("permission-denied") ? t("set.notifyDenied") : String(e)
+      );
     } finally {
       setNotifyBusy(false);
     }
@@ -591,6 +653,18 @@ export default function SettingsPage() {
                 max={200}
                 onChange={(v) => patch({ puzzle_goal: v })}
               />
+              <label className="flex cursor-pointer items-start gap-3 min-[640px]:col-span-3">
+                <input
+                  type="checkbox"
+                  checked={draft.auto_import}
+                  onChange={(e) => patch({ auto_import: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                />
+                <span>
+                  <span className="block text-[13px] text-ink">{t("set.autoImportToggle")}</span>
+                  <span className="block text-[12px] leading-relaxed text-ink3">{t("set.autoImportNote")}</span>
+                </span>
+              </label>
               <p className="text-[12px] leading-relaxed text-ink3 min-[640px]:col-span-3">
                 {t("set.importMonthsNote", { n: draft.import_months })}
               </p>
@@ -615,7 +689,7 @@ export default function SettingsPage() {
                   <input
                     value={draft.engine_path ?? ""}
                     onChange={(e) => patch({ engine_path: e.target.value || null })}
-                    placeholder="C:\Engines\stockfish.exe"
+                    placeholder={examplePath.engine}
                     className={inputCls}
                   />
                   <Button onClick={runEngineTest}>
@@ -678,7 +752,7 @@ export default function SettingsPage() {
                   <input
                     value={draft.syzygy_path ?? ""}
                     onChange={(e) => patch({ syzygy_path: e.target.value || null })}
-                    placeholder="D:\Schach\syzygy"
+                    placeholder={examplePath.syzygy}
                     className={inputCls}
                   />
                 </Field>
@@ -726,7 +800,7 @@ export default function SettingsPage() {
                     <input
                       value={movePath}
                       onChange={(e) => setMovePath(e.target.value)}
-                      placeholder="C:\\Kiebitz\\kiebitz.db"
+                      placeholder={examplePath.db}
                       className={inputCls}
                     />
                     <Button onClick={() => !dbBusy && runDbAction("move")}>
@@ -739,7 +813,7 @@ export default function SettingsPage() {
                     <input
                       value={usePath}
                       onChange={(e) => setUsePath(e.target.value)}
-                      placeholder="C:\\Kiebitz\\kiebitz.db"
+                      placeholder={examplePath.db}
                       className={inputCls}
                     />
                     <Button onClick={() => !dbBusy && runDbAction("use")}>
@@ -750,7 +824,7 @@ export default function SettingsPage() {
                 <div className="my-1 border-t border-line" />
                 <Field label={t("set.dbBackupLabel")}>
                   <div className="flex gap-2">
-                    <input value={backupPath} onChange={(e) => setBackupPath(e.target.value)} placeholder="C:\\Kiebitz\\kiebitz-backup.db" className={inputCls} />
+                    <input value={backupPath} onChange={(e) => setBackupPath(e.target.value)} placeholder={examplePath.backup} className={inputCls} />
                     <Button onClick={async () => {
                       const chosen = await saveDialog({ defaultPath: "kiebitz-backup.db", filters: [{ name: "SQLite database", extensions: ["db"] }] });
                       if (chosen) setBackupPath(chosen.toLowerCase().endsWith(".db") ? chosen : `${chosen}.db`);
@@ -764,7 +838,7 @@ export default function SettingsPage() {
                 </Field>
                 <Field label={t("set.dbRestoreLabel")}>
                   <div className="flex gap-2">
-                    <input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="C:\\Kiebitz\\kiebitz-backup.db" className={inputCls} />
+                    <input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder={examplePath.backup} className={inputCls} />
                     <Button onClick={async () => {
                       const chosen = await openDialog({ multiple: false, directory: false, filters: [{ name: "SQLite database", extensions: ["db"] }] });
                       if (typeof chosen === "string") setRestorePath(chosen);
@@ -855,7 +929,7 @@ export default function SettingsPage() {
                       <input
                         value={pzPath}
                         onChange={(e) => setPzPath(e.target.value)}
-                        placeholder="C:\Downloads\lichess_db_puzzle.csv.zst"
+                        placeholder={examplePath.puzzleDump}
                         className={inputCls}
                       />
                       <Button onClick={() => pzPath.trim() && startPuzzleImport(pzPath.trim())}>
@@ -1190,7 +1264,70 @@ export default function SettingsPage() {
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
         </Card>
+
+        {/* Zurücksetzen — bewusst ganz unten und in Warnfarbe. */}
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={14} className="text-loss" /> {t("set.reset")}
+            </span>
+          }
+        >
+          {desktop ? (
+            <>
+              <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.resetNote")}</p>
+              <button
+                type="button"
+                disabled={resetBusy}
+                onClick={() => setResetOpen(true)}
+                className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3.5 py-2 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {t("set.resetAction")}
+              </button>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
+          )}
+        </Card>
       </div>
+
+      {resetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !resetBusy) setResetOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+            <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">Kiebitz</div>
+                <h2 id="reset-title" className="text-[16px] font-semibold">{t("set.resetConfirmTitle")}</h2>
+              </div>
+            </div>
+            <p className="px-5 py-4 text-[13px] leading-relaxed text-ink2">{t("set.resetConfirm")}</p>
+            <div className="flex justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
+              <Button onClick={() => setResetOpen(false)} disabled={resetBusy}>{t("common.cancel")}</Button>
+              <button
+                type="button"
+                disabled={resetBusy}
+                onClick={runFactoryReset}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d] disabled:opacity-45"
+              >
+                {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {t("set.resetAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

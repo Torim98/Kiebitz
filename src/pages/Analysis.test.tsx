@@ -98,6 +98,9 @@ const excludedGame = {
 };
 
 beforeEach(() => {
+  // Die Oberfläche startet ab Werk auf Englisch; diese Tests prüfen die
+  // deutschen Texte und stellen die Sprache deshalb explizit ein.
+  localStorage.setItem("kiebitz.locale", "de");
   mocks.listGames.mockResolvedValue([excludedGame]);
   mocks.gameAnalysis.mockResolvedValue([]);
   mocks.startAnalysis.mockResolvedValue(undefined);

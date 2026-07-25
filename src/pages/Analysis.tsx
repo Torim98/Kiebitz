@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
-import { useI18n, type TFunc } from "../lib/i18n";
+import { useI18n, type Key, type TFunc } from "../lib/i18n";
 import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
@@ -38,6 +38,7 @@ import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ResultBadge, Tag } from "../components/ui";
 import { de, evalLabel, fenAfter, winProb } from "../lib/util";
+import { selectionStyles } from "../lib/boardMoves";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
@@ -89,9 +90,12 @@ const JUDGMENT_COLOR: Record<MoveJudgment, string> = {
 /** Bewertungen, die in der Zugliste ein Kürzel hinter dem Zug tragen. */
 const MARKED_IN_LIST: MoveJudgment[] = ["brilliant", "excellent", "inaccuracy", "blunder"];
 
-/** Kürzel bzw. Symbol einer Bewertung; `size` gilt nur für das Buch-Symbol. */
-function judgmentMark(judgment: MoveJudgment, size: number | string = "64%"): ReactNode {
-  return judgment === "book" ? <BookOpen size={size} strokeWidth={2.4} /> : NAG[judgment];
+/**
+ * Kürzel bzw. Symbol einer Bewertung. Das Buch bleibt so groß wie die Kürzel
+ * daneben, damit alle Marker gleich wirken.
+ */
+function judgmentMark(judgment: MoveJudgment, size: number | string = "48%"): ReactNode {
+  return judgment === "book" ? <BookOpen size={size} strokeWidth={2.6} /> : NAG[judgment];
 }
 
 function judgmentLabel(t: TFunc, judgment: string): string {
@@ -113,6 +117,40 @@ function judgmentLabel(t: TFunc, judgment: string): string {
 function evalNum(cp: number | null, mate: number | null): number {
   if (mate != null) return mate > 0 ? 1000 : -1000;
   return cp ?? 0;
+}
+
+type Phase = "opening" | "middlegame" | "endgame";
+
+/**
+ * Halbzug, an dem Mittel- bzw. Endspiel beginnen — gleiche Regel wie
+ * `chess::phase_of` im Backend: Endspiel ab höchstens sechs Offizieren,
+ * Eröffnung bis Halbzug 20.
+ */
+function phaseStarts(sans: string[]): { middlegame: number | null; endgame: number | null } {
+  const chess = new Chess();
+  let middlegame: number | null = null;
+  let endgame: number | null = null;
+  for (let i = 0; i < sans.length; i++) {
+    try {
+      chess.move(sans[i]);
+    } catch {
+      break;
+    }
+    const ply = i + 1;
+    const officers = chess
+      .board()
+      .flat()
+      .filter((square) => square && "nbrq".includes(square.type)).length;
+    const phase: Phase = officers <= 6 ? "endgame" : ply <= 20 ? "opening" : "middlegame";
+    if (phase === "middlegame" && middlegame == null) middlegame = ply;
+    if (phase === "endgame" && endgame == null) {
+      endgame = ply;
+      break;
+    }
+  }
+  // Ein Endspiel, das vor Halbzug 21 beginnt, überspringt das Mittelspiel.
+  if (endgame != null && middlegame != null && middlegame >= endgame) middlegame = null;
+  return { middlegame, endgame };
 }
 
 function rowsToViewMoves(sans: string[], rows: MoveEvalRow[]): ViewMove[] {
@@ -499,6 +537,16 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
     .filter((_, i) => !live || (rows ?? []).length > i);
 
+  // Phasengrenzen und aktuelle Position für die Bewertungskurve.
+  const phaseMarkers = useMemo(() => {
+    const { middlegame, endgame } = phaseStarts(sans);
+    const marks: { phase: Phase; ply: number }[] = [{ phase: "opening", ply: 1 }];
+    if (middlegame != null) marks.push({ phase: "middlegame", ply: middlegame });
+    if (endgame != null) marks.push({ phase: "endgame", ply: endgame });
+    return marks;
+  }, [sans]);
+  const currentPly = variation?.basePly ?? ply;
+
   const summary = useMemo(() => {
     const counts: Record<MoveJudgment, number> = {
       book: 0,
@@ -695,7 +743,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 draggable={scratch || live}
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
                 onSquareClick={scratch || live ? onBoardSquareClick : undefined}
-                squareStyles={scratchSelected ? { [scratchSelected]: { background: "rgba(34, 192, 138, 0.42)" } } : undefined}
+                squareStyles={selectionStyles(fen, scratchSelected)}
                 arrows={variation || scratch ? liveArrows : previewArrows}
                 badges={currentQuality && currentTarget ? [{
                   square: currentTarget,
@@ -793,10 +841,31 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               {evalSeries.length >= 2 ? (
                 <ResponsiveContainer width="100%" height={110}>
                   <AreaChart data={evalSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}
-                    onClick={(e) => e?.activeLabel != null && setPly(Number(e.activeLabel))}>
+                    onClick={(e) => e?.activeLabel != null && goToPly(Number(e.activeLabel))}>
                     <XAxis dataKey="ply" hide />
                     <YAxis domain={[-6, 6]} hide />
                     <ReferenceLine y={0} stroke="#3a3a37" />
+                    {/* Phasengrenzen: dünne Linie mit stehendem Namen. */}
+                    {phaseMarkers.map((marker) => (
+                      <ReferenceLine
+                        key={marker.phase}
+                        x={marker.ply}
+                        stroke="var(--color-line2)"
+                        strokeDasharray="2 3"
+                        label={{
+                          value: t(`ins.phase.${marker.phase}` as Key),
+                          position: "insideTopLeft",
+                          angle: -90,
+                          offset: 8,
+                          fill: "var(--color-ink3)",
+                          fontSize: 9.5,
+                        }}
+                      />
+                    ))}
+                    {/* Aktueller Zug. */}
+                    {currentPly > 0 && currentPly <= evalSeries.length && (
+                      <ReferenceLine x={currentPly} stroke="var(--color-accent)" strokeWidth={1.5} />
+                    )}
                     <Tooltip
                       content={({ active, payload }) =>
                         active && payload?.length ? (

@@ -121,6 +121,25 @@ export function puzzleInsights(days = 30): Promise<PuzzleInsights> {
   return invoke<PuzzleInsights>("puzzle_insights", { days });
 }
 
+/** Ein Eintrag im Puzzle-Verlauf (spiegelt puzzles::AttemptRow). */
+export interface AttemptRow {
+  puzzle_id: string;
+  ts: number;
+  solved: boolean;
+  rating_before: number;
+  rating_after: number;
+  puzzle_rating: number;
+  themes: string[];
+  fen: string | null;
+}
+
+export function puzzleHistory(limit = 25): Promise<AttemptRow[]> {
+  return invoke<AttemptRow[]>("puzzle_history", { limit });
+}
+
+/** Sperrfrist, nach der eine gelöste Aufgabe wieder auftauchen darf. */
+export const SOLVED_COOLDOWN_DAYS = 30;
+
 export function onPuzzleImportProgress(
   cb: (p: PuzzleImportProgress) => void
 ): Promise<UnlistenFn> {

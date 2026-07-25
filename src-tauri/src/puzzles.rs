@@ -305,6 +305,9 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
         )
         .map_err(|e| e.to_string())?;
     let total = lichess_total + own_total;
+    // Millionen frisch geschriebener Zeilen liegen sonst im WAL und bremsen
+    // jede spätere Puzzle-Abfrage aus.
+    db::checkpoint(&conn);
     Ok((imported, total))
 }
 
@@ -349,12 +352,31 @@ pub async fn next_puzzle(
     .map_err(|e| format!("Puzzle-Auswahl fehlgeschlagen: {e}"))?
 }
 
+/// Nach dieser Zeit darf eine gelöste Aufgabe wieder drankommen — Taktik will
+/// wiederholt werden, nur eben nicht am selben Tag.
+pub const SOLVED_COOLDOWN_DAYS: i64 = 30;
+
 fn next_puzzle_from_conn(
     conn: &Connection,
     theme: Option<String>,
     source: Option<String>,
     min_rating: Option<i64>,
     max_rating: Option<i64>,
+) -> Result<Option<PuzzleOut>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    next_puzzle_at(conn, theme, source, min_rating, max_rating, now)
+}
+
+fn next_puzzle_at(
+    conn: &Connection,
+    theme: Option<String>,
+    source: Option<String>,
+    min_rating: Option<i64>,
+    max_rating: Option<i64>,
+    now: i64,
 ) -> Result<Option<PuzzleOut>, String> {
     let me = personal_rating(conn);
     let (base_lo, base_hi) = match (min_rating, max_rating) {
@@ -364,56 +386,49 @@ fn next_puzzle_from_conn(
 
     let theme_filter = theme.filter(|t| !t.is_empty());
     let source_filter = source.filter(|s| s == "lichess" || s == "own");
-    // Fenster schrittweise weiten, bis etwas gefunden wird.
-    for widen in [0i64, 150, 400, 1200, 4000] {
-        let lo = base_lo - widen;
-        let hi = base_hi + widen;
-        let filter = "FROM puzzles INDEXED BY idx_puzzles_rating
+    let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
+    let cooldown = now - SOLVED_COOLDOWN_DAYS * 86_400;
+    // Kürzlich gelöste Aufgaben überspringen; ältere dürfen zurückkommen.
+    let filter = "FROM puzzles INDEXED BY idx_puzzles_rating
              WHERE rating BETWEEN ?1 AND ?2
                AND (?3 IS NULL OR source = ?3)
                AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
                AND NOT EXISTS (
                  SELECT 1 FROM puzzle_attempts AS pa
-                 WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1
+                 WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
                )";
-        let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
-        let count_sql = format!("SELECT COUNT(*) {filter}");
-        let count: i64 = conn
-            .query_row(
-                &count_sql,
-                params![lo, hi, source_filter.as_deref(), theme_pattern.as_deref()],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        if count == 0 {
-            continue;
-        }
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let offset = (nanos % count as u128) as i64;
-        // OFFSET scans the rating index linearly, but avoids SQLite's costly
-        // random sort over tens of thousands of candidates on mobile.
-        let sql = format!(
-            "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies
-             {filter} ORDER BY rating LIMIT 1 OFFSET ?5"
-        );
-        let row = conn.query_row(
-            &sql,
-            params![
-                lo,
-                hi,
-                source_filter.as_deref(),
-                theme_pattern.as_deref(),
-                offset
-            ],
-            map_puzzle,
-        );
-        match row {
-            Ok(p) => return Ok(Some(p)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => continue,
-            Err(e) => return Err(e.to_string()),
+    let columns = "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies";
+    // Ein zufälliges Zielrating und je ein Indexsprung nach oben und unten:
+    // das ist auch bei Millionen Aufgaben konstant schnell, während COUNT(*)
+    // plus OFFSET über das ganze Fenster laufen musste.
+    let mut seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(1);
+    for widen in [0i64, 150, 400, 1200, 4000] {
+        let lo = base_lo - widen;
+        let hi = base_hi + widen;
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        let span = (hi - lo).max(1) as u64;
+        let target = lo + (seed >> 33).rem_euclid(span) as i64;
+        for (window_lo, window_hi, order) in [(target, hi, "ASC"), (lo, target, "DESC")] {
+            let sql = format!("{columns} {filter} ORDER BY rating {order} LIMIT 1");
+            let row = conn.query_row(
+                &sql,
+                params![
+                    window_lo,
+                    window_hi,
+                    source_filter.as_deref(),
+                    theme_pattern.as_deref(),
+                    cooldown
+                ],
+                map_puzzle,
+            );
+            match row {
+                Ok(p) => return Ok(Some(p)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => continue,
+                Err(e) => return Err(e.to_string()),
+            }
         }
     }
     Ok(None)
@@ -669,6 +684,61 @@ fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleSt
         importing,
         imported_at,
     })
+}
+
+// ── Verlauf ──────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct AttemptRow {
+    pub puzzle_id: String,
+    pub ts: i64,
+    pub solved: bool,
+    pub rating_before: i64,
+    pub rating_after: i64,
+    pub puzzle_rating: i64,
+    pub themes: Vec<String>,
+    /// FEN der Aufgabe, sofern sie noch in der Datenbank liegt.
+    pub fen: Option<String>,
+}
+
+/// Die letzten Versuche, neueste zuerst.
+#[tauri::command]
+pub async fn puzzle_history(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec<AttemptRow>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        puzzle_history_from_conn(&conn, limit.unwrap_or(25).clamp(1, 200))
+    })
+    .await
+    .map_err(|e| format!("Puzzle-Verlauf fehlgeschlagen: {e}"))?
+}
+
+fn puzzle_history_from_conn(conn: &Connection, limit: i64) -> Result<Vec<AttemptRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT a.puzzle_id, a.ts, a.solved, a.rating_before, a.rating_after,
+                    a.puzzle_rating, a.themes, p.fen
+             FROM puzzle_attempts AS a
+             LEFT JOIN puzzles AS p ON p.id = a.puzzle_id
+             ORDER BY a.ts DESC, a.id DESC LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![limit], |r| {
+            let themes: String = r.get(6)?;
+            Ok(AttemptRow {
+                puzzle_id: r.get(0)?,
+                ts: r.get(1)?,
+                solved: r.get::<_, i64>(2)? != 0,
+                rating_before: r.get(3)?,
+                rating_after: r.get(4)?,
+                puzzle_rating: r.get(5)?,
+                themes: themes.split_whitespace().map(String::from).collect(),
+                fen: r.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 // ── Detailanalyse (Insights-Unterreiter) ─────────────────────────────────────
@@ -977,12 +1047,61 @@ mod tests {
         assert_eq!(selected.moves, vec!["a1a2", "h1h2"]);
         assert_eq!(selected.themes, vec!["fork", "short"]);
 
-        record_attempt_at(&conn, "fork-1", true, 1234).unwrap();
+        // Gerade gelöst — innerhalb der Sperrfrist kommt nichts zurück.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        record_attempt_at(&conn, "fork-1", true, now).unwrap();
         assert!(
             next_puzzle_from_conn(&conn, Some("fork".into()), None, Some(1400), Some(1600),)
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn solved_puzzles_return_after_the_cooldown() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+        let solved_at = 1_800_000_000i64;
+        record_attempt_at(&conn, "fork-1", true, solved_at).unwrap();
+
+        let pick = |now: i64| {
+            next_puzzle_at(&conn, None, None, Some(1400), Some(1600), now)
+                .unwrap()
+                .map(|p| p.id)
+        };
+        // Frisch gelöst: nicht noch einmal.
+        assert_eq!(pick(solved_at + 86_400), None);
+        assert_eq!(pick(solved_at + (SOLVED_COOLDOWN_DAYS - 1) * 86_400), None);
+        // Nach der Sperrfrist darf dieselbe Aufgabe wiederkommen.
+        assert_eq!(
+            pick(solved_at + (SOLVED_COOLDOWN_DAYS + 1) * 86_400),
+            Some("fork-1".to_string())
+        );
+    }
+
+    #[test]
+    fn selection_covers_the_whole_rating_window() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        for rating in [1200, 1300, 1400, 1500, 1600] {
+            puzzle(&conn, &format!("p{rating}"), rating, "fork short");
+        }
+        // Über viele Ziehungen müssen mehrere Aufgaben vorkommen — sonst
+        // liefert der Indexsprung immer dieselbe Kante.
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..40 {
+            if let Some(p) =
+                next_puzzle_at(&conn, None, None, Some(1200), Some(1600), 1_800_000_000 + i).unwrap()
+            {
+                seen.insert(p.id);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(seen.len() >= 3, "zu wenig Streuung: {seen:?}");
     }
 
     #[test]
@@ -1054,6 +1173,26 @@ mod tests {
         assert_eq!(insights.timeline[28].solved, 2);
         // Tage ohne Versuch tragen das zuletzt bekannte Rating weiter.
         assert!(insights.timeline[0].rating > 0);
+    }
+
+    #[test]
+    fn history_returns_newest_attempts_with_puzzle_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+        puzzle(&conn, "pin-1", 1600, "pin short");
+        record_attempt_at(&conn, "fork-1", true, 1_800_000_000).unwrap();
+        record_attempt_at(&conn, "pin-1", false, 1_800_000_100).unwrap();
+
+        let history = puzzle_history_from_conn(&conn, 25).unwrap();
+        assert_eq!(history.len(), 2);
+        // Neueste zuerst.
+        assert_eq!(history[0].puzzle_id, "pin-1");
+        assert!(!history[0].solved);
+        assert_eq!(history[0].puzzle_rating, 1600);
+        assert_eq!(history[1].themes, vec!["fork", "short"]);
+        assert!(history[1].fen.is_some());
+        assert_eq!(puzzle_history_from_conn(&conn, 1).unwrap().len(), 1);
     }
 
     #[test]

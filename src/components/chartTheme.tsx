@@ -15,6 +15,12 @@ export const chart = {
   accent: "#22c08a",
 };
 
+/**
+ * Hover-Fläche der Balkendiagramme. Recharts hebt die Spalte sonst mit einem
+ * hellen Grau hervor, das im dunklen Layout wie ein Fehler aussieht.
+ */
+export const barCursor = { fill: "rgba(34, 192, 138, 0.10)", radius: 6 } as const;
+
 export function DarkTooltip({ active, payload, label }: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null;
   return (

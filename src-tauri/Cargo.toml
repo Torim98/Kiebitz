@@ -40,6 +40,11 @@ sha2 = "0.10"
 # qrcode: erzeugt den Pairing-QR (Desktop-Hub zeigt ihn, das Handy scannt).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+# Windows-Toasts direkt ansteuern: das Notification-Plugin verschluckt Fehler,
+# und die Erinnerung soll melden, wenn Windows sie ablehnt.
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
 qrcode = { version = "0.14", default-features = false }
 # Sync-Server (Desktop als Hub) — HTTPS mit dauerhaftem selbstsigniertem Zertifikat.
 tiny_http = { version = "0.12", features = ["ssl-rustls"] }

@@ -38,7 +38,12 @@ export default function Dashboard({
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
-  const [users, setUsers] = useState({ cc: profile.ccUser, li: profile.liUser, name: "" });
+  // Desktop startet ohne Demo-Konto; die echten Werte kommen aus den Settings.
+  const [users, setUsers] = useState(
+    backend.mode === "desktop"
+      ? { cc: "", li: "", name: "" }
+      : { cc: profile.ccUser, li: profile.liUser, name: "" }
+  );
   const [goal, setGoal] = useState(puzzleStats.todayGoal);
 
   useEffect(() => {

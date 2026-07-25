@@ -69,7 +69,7 @@ export default function Games({
   const [tagDraft, setTagDraft] = useState("");
   const [pgnPath, setPgnPath] = useState("");
   const [pgnExportPath, setPgnExportPath] = useState("");
-  const [pgnPlayer, setPgnPlayer] = useState(profile.ccUser);
+  const [pgnPlayer, setPgnPlayer] = useState("");
   const [pgnBusy, setPgnBusy] = useState(false);
   const [pgnExcludeFromAnalysis, setPgnExcludeFromAnalysis] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -158,8 +158,14 @@ export default function Games({
     setImportMsg(full ? t("games.loadingFull") : t("games.loadingLatest"));
     try {
       const settings = await getSettings().catch(() => null);
-      const ccUser = settings?.cc_user || profile.ccUser;
-      const liUser = settings?.li_user || profile.liUser;
+      const ccUser = settings?.cc_user ?? "";
+      const liUser = settings?.li_user ?? "";
+      if (!ccUser && !liUser) {
+        setImporting(false);
+        setImportTone("warning");
+        setImportMsg(t("games.noAccounts"));
+        return;
+      }
       const { games: fetched, summary } = await fetchAll(ccUser, liUser, {
         full,
         months: settings?.import_months,
@@ -292,13 +298,16 @@ export default function Games({
     }
   };
 
-  const [myUser, setMyUser] = useState(profile.ccUser);
+  // Ohne hinterlegtes Konto bleibt der eigene Name leer statt auf Demo-Daten
+  // zurückzufallen — sonst importierte eine frische Installation fremde Partien.
+  const [myUser, setMyUser] = useState(backend.mode === "desktop" ? "" : profile.ccUser);
   useEffect(() => {
     if (backend.mode === "desktop") {
       getSettings()
         .then((s) => {
-          setMyUser(s.cc_user || profile.ccUser);
-          setPgnPlayer(s.display_name || s.cc_user || profile.ccUser);
+          const own = s.display_name || s.cc_user || s.li_user;
+          setMyUser(own);
+          setPgnPlayer(own);
         })
         .catch(() => {});
     }
