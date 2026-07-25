@@ -11,6 +11,8 @@ export interface GameRecord {
   played_ts: number; // Unix-Sekunden (Partie-Ende)
   time_class: string;
   color: "white" | "black";
+  /** Der in dieser konkreten Partie gefuehrte eigene Spielername. */
+  my_name?: string;
   opponent: string;
   opp_elo: number;
   my_elo: number;

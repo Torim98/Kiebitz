@@ -59,7 +59,7 @@ type MoveJudgment =
   | "blunder";
 
 const NAG: Record<MoveJudgment, string> = {
-  book: "B",
+  book: "📖",
   brilliant: "!!",
   great: "!",
   best: "★",
@@ -462,7 +462,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
   const orientation = live && game.color === "black" ? "black" : "white";
   const ownPlayerName = live
-    ? (game.source === "chess.com" ? playerProfile.cc : game.source === "lichess" ? playerProfile.li : "")
+    ? game.my_name?.trim()
+      || (game.source === "chess.com" ? playerProfile.cc : game.source === "lichess" ? playerProfile.li : "")
       || playerProfile.display
       || t("an.me")
     : t("an.me");
@@ -480,14 +481,16 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
   const currentQuality = currentMove?.judgment;
   const currentTarget = currentMove?.playedUci?.slice(2, 4);
-  const storedArrows: [string, string, string?][] = currentMove
+  const nextMove = !variation ? viewMoves[ply] : null;
+  const nextBestUci = liveBestUci || nextMove?.bestUci || "";
+  const previewArrows: [string, string, string?][] = nextMove
     ? [
-        ...(currentMove.bestUci ? [[currentMove.bestUci.slice(0, 2), currentMove.bestUci.slice(2, 4), "rgba(34,192,138,0.78)"] as [string, string, string]] : []),
-        ...(currentMove.playedUci && currentMove.playedUci.slice(0, 4) !== currentMove.bestUci?.slice(0, 4)
-          ? [[currentMove.playedUci.slice(0, 2), currentMove.playedUci.slice(2, 4), "rgba(217,160,40,0.78)"] as [string, string, string]]
+        ...(nextBestUci ? [[nextBestUci.slice(0, 2), nextBestUci.slice(2, 4), "rgba(34,192,138,0.78)"] as [string, string, string]] : []),
+        ...(nextMove.playedUci && nextMove.playedUci.slice(0, 4) !== nextBestUci.slice(0, 4)
+          ? [[nextMove.playedUci.slice(0, 2), nextMove.playedUci.slice(2, 4), "rgba(217,160,40,0.78)"] as [string, string, string]]
           : []),
       ]
-    : [];
+    : nextBestUci ? [[nextBestUci.slice(0, 2), nextBestUci.slice(2, 4), "rgba(34,192,138,0.78)"]] : [];
   const liveArrows: [string, string, string?][] = liveBestUci
     ? [[liveBestUci.slice(0, 2), liveBestUci.slice(2, 4), "rgba(34,192,138,0.78)"]]
     : [];
@@ -499,7 +502,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     setPly(Math.max(0, Math.min(sans.length, next)));
   };
   const headerSub = live
-    ? `${game.color === "white" ? t("an.me") : game.opponent} vs. ${game.color === "white" ? game.opponent : t("an.meLower")} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
       ? t("an.freeBoardHint")
       : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
@@ -613,12 +616,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 min-[1440px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(400px,528px)_minmax(320px,1fr)] min-[1660px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
         {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
-        <div className="min-w-0 min-[1440px]:w-[560px]">
-          <div className="mb-2 flex items-center justify-between pl-8 text-[12.5px]">
-            <span className="font-semibold text-ink2">{topPlayer.name}</span>
-            {topPlayer.elo > 0 && <span className="tabular-nums text-ink3">{topPlayer.elo}</span>}
+        <div className="min-w-0 min-[1660px]:w-[560px]">
+          <div className="mb-2 pl-8 text-[12.5px]">
+            <span className="font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</span>
           </div>
           <div className="flex gap-3">
             <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
@@ -635,7 +637,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
                 onSquareClick={scratch || live ? onBoardSquareClick : undefined}
                 squareStyles={scratchSelected ? { [scratchSelected]: { background: "rgba(34, 192, 138, 0.42)" } } : undefined}
-                arrows={variation || scratch || !currentMove ? liveArrows : storedArrows}
+                arrows={variation || scratch ? liveArrows : previewArrows}
                 badges={currentQuality && currentTarget ? [{
                   square: currentTarget,
                   label: NAG[currentQuality],
@@ -643,12 +645,12 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   title: judgmentLabel(t, currentQuality),
                 }] : []}
                 muted={!!variation}
+                mouseDrag
               />
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between pl-8 text-[12.5px]">
-            <span className="font-semibold text-ink2">{bottomPlayer.name}</span>
-            {bottomPlayer.elo > 0 && <span className="tabular-nums text-ink3">{bottomPlayer.elo}</span>}
+          <div className="mt-2 pl-8 text-[12.5px]">
+            <span className="font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</span>
           </div>
           {variation && (
             <div className="ml-8 mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
@@ -703,7 +705,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                       }`}
                     >
                       {m.san}
-                      {m.nag && (
+                      {m.nag && m.judgment && (["brilliant", "inaccuracy", "blunder"] as MoveJudgment[]).includes(m.judgment) && (
                         <span className="ml-0.5" style={{ color: m.judgment ? JUDGMENT_COLOR[m.judgment] : undefined }}>{m.nag}</span>
                       )}
                     </button>
@@ -762,7 +764,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
         </div>
 
         {/* Engine-Panel + Annotationen + Positionssuche */}
-        <div className="flex flex-col gap-4 min-[1440px]:contents">
+        <div className="flex min-w-0 flex-col gap-4 min-[1100px]:contents">
           <LiveEngine
             fen={fen}
             demoLines={scratch ? [] : featuredGame.pvLines}

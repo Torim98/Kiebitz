@@ -65,6 +65,8 @@ pub struct SyncGame {
     pub played_ts: i64,
     pub time_class: String,
     pub color: String,
+    #[serde(default)]
+    pub my_name: String,
     pub opponent: String,
     pub opp_elo: i64,
     pub my_elo: i64,
@@ -186,7 +188,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
     let mut stmt = conn
         .prepare(
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
-                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                    my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
                     moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts
              FROM games WHERE updated_ts >= ?1",
@@ -204,25 +206,26 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     played_ts: r.get(5)?,
                     time_class: r.get(6)?,
                     color: r.get(7)?,
-                    opponent: r.get(8)?,
-                    opp_elo: r.get(9)?,
-                    my_elo: r.get(10)?,
-                    result: r.get(11)?,
-                    opening: r.get(12)?,
-                    eco: r.get(13)?,
-                    moves_count: r.get(14)?,
-                    accuracy: r.get(15)?,
-                    accuracy_opening: r.get(16)?,
-                    accuracy_middlegame: r.get(17)?,
-                    accuracy_endgame: r.get(18)?,
-                    moves: r.get(19)?,
-                    note: r.get(20)?,
-                    note_ts: r.get(21)?,
-                    tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
-                    tags_ts: r.get(23)?,
-                    analyzed: r.get::<_, i64>(24)? != 0,
-                    analysis_excluded: r.get::<_, i64>(25)? != 0,
-                    updated_ts: r.get(26)?,
+                    my_name: r.get(8)?,
+                    opponent: r.get(9)?,
+                    opp_elo: r.get(10)?,
+                    my_elo: r.get(11)?,
+                    result: r.get(12)?,
+                    opening: r.get(13)?,
+                    eco: r.get(14)?,
+                    moves_count: r.get(15)?,
+                    accuracy: r.get(16)?,
+                    accuracy_opening: r.get(17)?,
+                    accuracy_middlegame: r.get(18)?,
+                    accuracy_endgame: r.get(19)?,
+                    moves: r.get(20)?,
+                    note: r.get(21)?,
+                    note_ts: r.get(22)?,
+                    tags: serde_json::from_str(&r.get::<_, String>(23)?).unwrap_or_default(),
+                    tags_ts: r.get(24)?,
+                    analyzed: r.get::<_, i64>(25)? != 0,
+                    analysis_excluded: r.get::<_, i64>(26)? != 0,
+                    updated_ts: r.get(27)?,
                     evals: Vec::new(),
                 },
             ))
@@ -561,13 +564,13 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
             None => {
                 tx.execute(
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
-                        color, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
+                        color, my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
                         moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)",
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
-                        g.color, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
+                        g.color, g.my_name, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
                         g.moves_count, g.accuracy, g.accuracy_opening, g.accuracy_middlegame,
                         g.accuracy_endgame, g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
@@ -588,6 +591,7 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         analyzed = MAX(analyzed, ?6),
                         analysis_excluded = CASE WHEN ?7 >= updated_ts THEN ?8 ELSE analysis_excluded END,
                         time_class = CASE WHEN ?7 >= updated_ts THEN ?9 ELSE time_class END,
+                        my_name = CASE WHEN ?7 >= updated_ts AND ?10 != '' THEN ?10 ELSE my_name END,
                         updated_ts = MAX(updated_ts, ?7)
                      WHERE id = ?1",
                     params![
@@ -599,7 +603,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.analyzed as i64,
                         incoming_updated,
                         g.analysis_excluded as i64,
-                        g.time_class
+                        g.time_class,
+                        g.my_name
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -1423,6 +1428,7 @@ mod tests {
             played_ts: 100,
             time_class: "rapid".into(),
             color: "white".into(),
+            my_name: "Torim98".into(),
             opponent: "opp".into(),
             opp_elo: 1500,
             my_elo: 1490,

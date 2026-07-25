@@ -115,6 +115,7 @@ export function importPgn(
       played_ts: date.ts,
       time_class: timeClass(h),
       color,
+      my_name: (color === "white" ? h.White : h.Black) || playerName.trim(),
       opponent: opponent || "?",
       opp_elo: Number(color === "white" ? h.BlackElo : h.WhiteElo) || 0,
       my_elo: Number(color === "white" ? h.WhiteElo : h.BlackElo) || 0,
@@ -147,8 +148,9 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
   const player = playerName.trim() || "Kiebitz user";
   return games.map((game) => {
     const chess = new Chess();
-    const white = game.color === "white" ? player : game.opponent;
-    const black = game.color === "black" ? player : game.opponent;
+    const ownName = game.my_name?.trim() || player;
+    const white = game.color === "white" ? ownName : game.opponent;
+    const black = game.color === "black" ? ownName : game.opponent;
     const values: Record<string, string> = {
       Event: "Kiebitz export",
       Site: game.source === "manual" ? "OTB" : game.source,

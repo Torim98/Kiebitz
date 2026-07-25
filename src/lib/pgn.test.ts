@@ -20,7 +20,7 @@ const SAMPLE = `[Event "Club game"]
 describe("PGN import/export", () => {
   it("imports player perspective, metadata, notes and tags", () => {
     const [game] = importPgn(SAMPLE, "Tom");
-    expect(game).toMatchObject({ source: "manual", color: "black", result: "win", opponent: "Alice", eco: "C20" });
+    expect(game).toMatchObject({ source: "manual", color: "black", my_name: "Tom", result: "win", opponent: "Alice", eco: "C20" });
     expect(game.moves).toBe("e4 e5 Nf3 Nc6");
     expect(game.tags).toEqual(["OTB", "Club"]);
     expect(game.note).toBe("Good finish");

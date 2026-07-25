@@ -27,8 +27,22 @@ vi.mock("../lib/analysis", () => ({
   startAnalysis: mocks.startAnalysis,
 }));
 vi.mock("../components/Board", () => ({
-  default: ({ onPieceDrop, draggable, muted }: { onPieceDrop?: (from: string, to: string) => boolean; draggable?: boolean; muted?: boolean }) => (
-    <div data-testid="analysis-board" data-draggable={String(!!draggable)} data-muted={String(!!muted)}>
+  default: ({ onPieceDrop, draggable, muted, mouseDrag, arrows, badges }: {
+    onPieceDrop?: (from: string, to: string) => boolean;
+    draggable?: boolean;
+    muted?: boolean;
+    mouseDrag?: boolean;
+    arrows?: unknown[];
+    badges?: unknown[];
+  }) => (
+    <div
+      data-testid="analysis-board"
+      data-draggable={String(!!draggable)}
+      data-mouse-drag={String(!!mouseDrag)}
+      data-muted={String(!!muted)}
+      data-arrows={JSON.stringify(arrows ?? [])}
+      data-badges={JSON.stringify(badges ?? [])}
+    >
       {onPieceDrop && <button onClick={() => onPieceDrop("e2", "e4")}>play e4</button>}
       {onPieceDrop && <button onClick={() => onPieceDrop("e7", "e5")}>play e5</button>}
     </div>
@@ -58,6 +72,7 @@ const excludedGame = {
   played_ts: 1_784_500_000,
   time_class: "rapid",
   color: "white",
+  my_name: "Dr. Tom Maurer",
   opponent: "Friend",
   opp_elo: 1400,
   my_elo: 1500,
@@ -108,6 +123,7 @@ describe("Analysis page", () => {
 
     await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
     expect(screen.getByTestId("analysis-board").dataset.draggable).toBe("true");
+    expect(screen.getByTestId("analysis-board").dataset.mouseDrag).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "e4" }));
     fireEvent.click(screen.getByRole("button", { name: "play e5" }));
 
@@ -115,5 +131,27 @@ describe("Analysis page", () => {
     expect(screen.getByTestId("analysis-board").dataset.muted).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Zurück zur Partie" }));
     expect(screen.getByTestId("analysis-board").dataset.muted).toBe("false");
+  });
+
+  it("shows database player names with parenthesized ratings and previews the next move", async () => {
+    mocks.gameAnalysis.mockResolvedValue([
+      { ply: 1, san: "e4", eval_cp: 20, mate_in: null, best_uci: "e2e4", judgment: "book", phase: "opening" },
+      { ply: 2, san: "e5", eval_cp: 80, mate_in: null, best_uci: "c7c5", judgment: "inaccuracy", phase: "opening" },
+      { ply: 3, san: "Nf3", eval_cp: 70, mate_in: null, best_uci: "g1f3", judgment: "best", phase: "opening" },
+      { ply: 4, san: "Nc6", eval_cp: 160, mate_in: null, best_uci: "g8f6", judgment: "blunder", phase: "opening" },
+    ]);
+    render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+
+    expect(await screen.findByText("Dr. Tom Maurer (1500)")).toBeTruthy();
+    expect(screen.getByText("Friend (1400)")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "e4" }));
+
+    const board = screen.getByTestId("analysis-board");
+    expect(board.dataset.badges).toContain("📖");
+    expect(board.dataset.arrows).toContain("c7");
+    expect(board.dataset.arrows).toContain("e7");
+    expect(screen.getByRole("button", { name: "e4" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "e5 ?!" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Nf3" })).toBeTruthy();
   });
 });

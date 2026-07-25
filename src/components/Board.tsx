@@ -1,4 +1,5 @@
 import { Chessboard } from "react-chessboard";
+import { TouchBackend } from "react-dnd-touch-backend";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 const boardTheme = {
@@ -28,6 +29,7 @@ export default function Board({
   arrows = [],
   badges = [],
   muted = false,
+  mouseDrag = false,
 }: {
   fen: string;
   /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
@@ -45,6 +47,8 @@ export default function Board({
   badges?: { square: string; label: string; color: string; title?: string }[];
   /** Varianten werden durch entsaettigte Felder vom Partieverlauf abgesetzt. */
   muted?: boolean;
+  /** Windows-WebView: Touch-Backend explizit auch fuer Maus-Pointer aktivieren. */
+  mouseDrag?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
@@ -96,6 +100,8 @@ export default function Board({
           onSquareClick={onSquareClick}
           customSquareStyles={squareStyles}
           customArrows={arrows as never}
+          customDndBackend={mouseDrag ? TouchBackend : undefined}
+          customDndBackendOptions={mouseDrag ? { enableMouseEvents: true } : undefined}
           boardOrientation={orientation}
           animationDuration={150}
           {...boardTheme}

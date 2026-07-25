@@ -18,6 +18,8 @@ pub struct GameRecord {
     pub played_ts: i64,
     pub time_class: String,
     pub color: String,
+    #[serde(default)]
+    pub my_name: String,
     pub opponent: String,
     pub opp_elo: i64,
     pub my_elo: i64,
@@ -60,6 +62,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             played_at   TEXT NOT NULL DEFAULT '',
             time_class  TEXT NOT NULL DEFAULT '',
             color       TEXT NOT NULL DEFAULT '',
+            my_name     TEXT NOT NULL DEFAULT '',
             opponent    TEXT NOT NULL DEFAULT '',
             opp_elo     INTEGER NOT NULL DEFAULT 0,
             my_elo      INTEGER NOT NULL DEFAULT 0,
@@ -197,6 +200,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
         "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE games ADD COLUMN analysis_excluded INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE games ADD COLUMN my_name TEXT NOT NULL DEFAULT ''",
     ] {
         let _ = conn.execute(sql, []);
     }
@@ -366,14 +370,19 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
         let mut upsert_stmt = tx
             .prepare(
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
-                    opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                    my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
                     note, note_ts, tags, tags_ts, analysis_excluded, updated_ts)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
                     played_ts = excluded.played_ts,
+                    color = excluded.color,
+                    my_name = CASE WHEN excluded.my_name != '' THEN excluded.my_name ELSE games.my_name END,
+                    opponent = excluded.opponent,
+                    opp_elo = excluded.opp_elo,
+                    my_elo = excluded.my_elo,
                     accuracy = COALESCE(excluded.accuracy, games.accuracy),
                     accuracy_opening = COALESCE(excluded.accuracy_opening, games.accuracy_opening),
                     accuracy_middlegame = COALESCE(excluded.accuracy_middlegame, games.accuracy_middlegame),
@@ -407,6 +416,7 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.played_ts,
                     g.time_class,
                     g.color,
+                    g.my_name,
                     g.opponent,
                     g.opp_elo,
                     g.my_elo,
@@ -443,7 +453,7 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
 pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, opponent,
+            "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, my_name, opponent,
                     opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
                     note, tags, analyzed, analysis_excluded
@@ -461,22 +471,23 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 played_ts: r.get(5)?,
                 time_class: r.get(6)?,
                 color: r.get(7)?,
-                opponent: r.get(8)?,
-                opp_elo: r.get(9)?,
-                my_elo: r.get(10)?,
-                result: r.get(11)?,
-                opening: r.get(12)?,
-                eco: r.get(13)?,
-                moves_count: r.get(14)?,
-                accuracy: r.get(15)?,
-                accuracy_opening: r.get(16)?,
-                accuracy_middlegame: r.get(17)?,
-                accuracy_endgame: r.get(18)?,
-                moves: r.get(19)?,
-                note: r.get(20)?,
-                tags: serde_json::from_str(&r.get::<_, String>(21)?).unwrap_or_default(),
-                analyzed: r.get::<_, i64>(22)? != 0,
-                analysis_excluded: r.get::<_, i64>(23)? != 0,
+                my_name: r.get(8)?,
+                opponent: r.get(9)?,
+                opp_elo: r.get(10)?,
+                my_elo: r.get(11)?,
+                result: r.get(12)?,
+                opening: r.get(13)?,
+                eco: r.get(14)?,
+                moves_count: r.get(15)?,
+                accuracy: r.get(16)?,
+                accuracy_opening: r.get(17)?,
+                accuracy_middlegame: r.get(18)?,
+                accuracy_endgame: r.get(19)?,
+                moves: r.get(20)?,
+                note: r.get(21)?,
+                tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
+                analyzed: r.get::<_, i64>(23)? != 0,
+                analysis_excluded: r.get::<_, i64>(24)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -573,6 +584,7 @@ mod tests {
             played_ts: 1_783_769_082,
             time_class: "rapid".into(),
             color: "white".into(),
+            my_name: "Torim98".into(),
             opponent: "PagasusFantasy".into(),
             opp_elo: 1203,
             my_elo: 1076,
