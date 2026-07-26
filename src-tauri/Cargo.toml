@@ -4,6 +4,9 @@ name = "kiebitz"
 version = "0.1.1"
 description = "Kiebitz — local-first desktop chess companion"
 authors = ["Torim98"]
+# Source-available, kein OSI-Open-Source — Bedingungen in ../LICENSE.
+license-file = "../LICENSE"
+publish = false
 edition = "2021"
 rust-version = "1.77.2"
 

@@ -6,19 +6,52 @@ authors and contributors. Stockfish is distributed under the GNU General Public
 License version 3 (GPL-3.0). The complete license is included next to this file
 as COPYING.txt.
 
+Kiebitz starts Stockfish as a separate process and communicates with it through
+the public UCI text protocol. Stockfish is not modified by Kiebitz and no part
+of Stockfish is linked into the Kiebitz binary.
+
 Exact corresponding source
 --------------------------
 
 Release: Stockfish 18 (tag sf_18)
 Commit:  cb3d4ee9b47d0c5aae855b12379378ea1439675c
 Source:  https://github.com/official-stockfish/Stockfish/tree/cb3d4ee9b47d0c5aae855b12379378ea1439675c
-Archive: https://github.com/official-stockfish/Stockfish/archive/cb3d4ee9b47d0c5aae855b12379378ea1439675c.tar.gz
 
 The source tree contains the build instructions, Makefile, authorship
 information, and NNUE network information needed for the official binaries.
 
+Written offer for the corresponding source (GPL-3.0, section 6)
+--------------------------------------------------------------
+
+The complete corresponding source code of the bundled Stockfish version is
+distributed alongside every Kiebitz release, at no charge, as the release asset
+
+  stockfish-18-source-cb3d4ee9b47d.tar.gz
+
+Permanent download link (always resolves to the current Kiebitz release):
+
+  https://github.com/Torim98/Kiebitz/releases/latest/download/stockfish-18-source-cb3d4ee9b47d.tar.gz
+
+The archive is generated directly from the Git commit named above, so its
+contents are verifiable against that commit.
+
+In addition, and valid for at least three years from the date you received this
+copy of Kiebitz, the Kiebitz author hereby offers to provide any third party
+with a complete machine-readable copy of that corresponding source code, for no
+more than the cost of physically performing the distribution. Requests can be
+made at:
+
+  https://github.com/Torim98/Kiebitz/issues
+
+This offer is valid to anyone who received the Stockfish binary as part of
+Kiebitz, regardless of the channel it was obtained from.
+
 Bundled official binary archives
 ---------------------------------
+
+The engine binaries shipped with Kiebitz are the unmodified official releases
+published by the Stockfish project. Kiebitz builds verify these SHA-256 hashes
+before packaging and abort on any mismatch.
 
 Android arm64:
 https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-android-armv8.tar
@@ -27,6 +60,3 @@ SHA-256: e2eca54b0e3189ec7de338133c2b34fa8f5cdec3d2473519b414a5cb6815e768
 Windows x86-64 AVX2:
 https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip
 SHA-256: 6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900
-
-Kiebitz starts Stockfish as a separate process and communicates with it through
-the public UCI text protocol. Stockfish is not modified by Kiebitz.

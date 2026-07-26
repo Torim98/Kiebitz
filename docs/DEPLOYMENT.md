@@ -8,7 +8,7 @@ to each release (no auto-update on mobile); see *Android build* below.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
-- Current version: `0.4.4` (`src-tauri/tauri.conf.json` → `version`)
+- Current version: see `src-tauri/tauri.conf.json` → `version`
 
 ## Prerequisites
 
@@ -124,11 +124,14 @@ Notes:
 - **Licensing**: Stockfish is **GPL-3.0** and Kiebitz distributes its unmodified
   official binary as a separate UCI process. `resources/stockfish/NOTICE.txt`
   records Stockfish 18, the exact source commit, official binary URLs and their
-  SHA-256 hashes; `COPYING.txt` contains the complete GPL-3.0. Both files are
-  bundled on desktop and Android and are also referenced by
-  `THIRD_PARTY_NOTICES.md`. CI downloads only the pinned `sf_18` archives and
-  aborts if a hash differs. Keep this provenance in sync whenever Stockfish is
-  upgraded.
+  SHA-256 hashes, plus a **written offer for the corresponding source** (GPL-3.0
+  §6); `COPYING.txt` contains the complete GPL-3.0. Both files are bundled on
+  desktop and Android and are also referenced by `THIRD_PARTY_NOTICES.md`. CI
+  downloads only the pinned `sf_18` archives and aborts if a hash differs, and a
+  separate `stockfish-source` job attaches the engine's source archive to every
+  release (see below). Keep all of this in sync whenever Stockfish is upgraded —
+  the commit, the two binary hashes, the archive **filename** in `NOTICE.txt` and
+  `THIRD_PARTY_NOTICES.md`, and the commit in the workflow job.
 
 ## Android build (APK)
 
@@ -396,8 +399,17 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 - **Signing**: passes `TAURI_SIGNING_PRIVATE_KEY`, so `.sig` files and
   `latest.json` are produced and uploaded automatically.
 - **Release orchestration**: `prepare-release` creates (or reuses) a private
-  draft. `desktop` and `android` both depend only on that small setup job, so
-  they run in parallel. `publish` depends on both and publishes the draft last.
+  draft. `desktop`, `android` and `stockfish-source` all depend only on that
+  small setup job, so they run in parallel. `publish` depends on all three and
+  publishes the draft last.
+- **GPL source (`stockfish-source` job)**: fetches the pinned Stockfish commit
+  with `git` — which validates the tree against the commit hash intrinsically,
+  unlike a SHA-256 over GitHub's generated archives, which are not byte-stable —
+  and uploads `git archive`'s tarball as
+  `stockfish-18-source-<short-commit>.tar.gz` (~250 KB). The filename carries the
+  **commit**, not the Kiebitz version, so the `/releases/latest/download/` URL
+  quoted in `NOTICE.txt` stays valid across releases. Because `publish` needs
+  this job, no public release can ever ship the engine binary without its source.
 - **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
   Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, downloads
   the pinned Stockfish 18 `stockfish-android-armv8` engine into

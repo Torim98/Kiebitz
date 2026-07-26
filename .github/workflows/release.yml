@@ -5,9 +5,11 @@ name: Release
 # Installierte Apps holen sich das Update dann beim nächsten Start.
 #
 # Drei Phasen:
-#   prepare-release — legt einen privaten Draft-Release an.
-#   desktop/android — bauen danach parallel und hängen ihre Artefakte an den Draft.
-#   publish         — veröffentlicht den Draft erst, wenn beide Jobs erfolgreich sind.
+#   prepare-release  — legt einen privaten Draft-Release an.
+#   desktop/android/ — bauen danach parallel und hängen ihre Artefakte an den
+#   stockfish-source   Draft (Letzterer den GPL-Quellcode der Engine).
+#   publish          — veröffentlicht den Draft erst, wenn alle drei erfolgreich
+#                      waren.
 on:
   push:
     tags:
@@ -38,6 +40,47 @@ jobs:
               --notes "Automatically built from $TAG. Desktop installations update after publication; Android offers the signed APK in Settings."
           fi
           echo "release_id=$(gh release view "$TAG" --json id --jq .id)" >> "$GITHUB_OUTPUT"
+
+  stockfish-source:
+    # GPL-3.0 §6: Wer ein Binary ausliefert, muss den exakt korrespondierenden
+    # Quellcode mitliefern oder anbieten. Damit das Angebot in NOTICE.txt nicht
+    # von der Erreichbarkeit fremder Server abhängt, landet der Stockfish-
+    # Quellstand als Asset an *demselben* Release wie die Binaries.
+    #
+    # Der Baum wird per git geholt und über die Objekt-Hashes gegen den
+    # gepinnten Commit geprüft — verlässlicher als ein SHA-256 auf GitHubs
+    # generierte Archive, die nicht byte-stabil sind. `git archive` erzeugt
+    # daraus ein Tarball, das genau diesen Commit-Baum enthält.
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stockfish-Quellcode holen und ans Release hängen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          commit=cb3d4ee9b47d0c5aae855b12379378ea1439675c
+          # Der Dateiname trägt den Commit, nicht die Kiebitz-Version: so bleibt
+          # die in NOTICE.txt genannte /releases/latest/download/-URL stabil.
+          out="$GITHUB_WORKSPACE/stockfish-18-source-${commit:0:12}.tar.gz"
+
+          git init -q sf-src
+          git -C sf-src remote add origin https://github.com/official-stockfish/Stockfish
+          git -C sf-src fetch -q --depth 1 origin "$commit"
+          git -C sf-src checkout -q FETCH_HEAD
+          have=$(git -C sf-src rev-parse HEAD)
+          if [ "$have" != "$commit" ]; then
+            echo "::error::Stockfish-Quellcode: erwartet $commit, erhalten $have"
+            exit 1
+          fi
+
+          git -C sf-src archive --format=tar.gz \
+            --prefix="stockfish-18-${commit:0:12}/" -o "$out" FETCH_HEAD
+
+          echo "Quellarchiv: $(basename "$out") ($(du -h "$out" | cut -f1))"
+          echo "SHA-256: $(sha256sum "$out" | cut -d' ' -f1)"
+          gh release upload "$TAG" "$out" --clobber
 
   desktop:
     needs: prepare-release
@@ -236,8 +279,9 @@ jobs:
 
   publish:
     # Bei einem fehlgeschlagenen Build bleibt der Draft als Diagnose-Artefakt
-    # erhalten; nur ein vollständiger Release wird öffentlich.
-    needs: [desktop, android]
+    # erhalten; nur ein vollständiger Release wird öffentlich. stockfish-source
+    # gehört bewusst dazu: kein öffentliches Binary ohne seinen Quellcode.
+    needs: [stockfish-source, desktop, android]
     runs-on: ubuntu-latest
     steps:
       - name: Draft-Release veröffentlichen

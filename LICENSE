@@ -1,0 +1,128 @@
+Kiebitz Source-Available License
+================================
+
+Copyright (c) 2026 Torim98 (Kiebitz). All rights reserved.
+
+Kiebitz is **source-available, not open source**. The source code is published
+so that anyone can read it, audit it, and build it for their own private use.
+It is not placed in the public domain and it does not carry an open-source
+license: every right not expressly granted below is reserved by the copyright
+holder.
+
+1. Definitions
+--------------
+
+"Software" means the Kiebitz source code, build scripts, assets and
+documentation contained in this repository, excluding the Third-Party
+Components described in section 6.
+
+"You" means the individual exercising the rights granted in section 2.
+
+2. What you may do
+------------------
+
+Permission is granted, free of charge, to any individual to:
+
+  a) view, read, study and privately modify the Software;
+  b) compile and run the Software, including privately modified versions, on
+     devices you own or personally control, for your own personal,
+     non-commercial use;
+  c) create and keep private copies and backups for the purposes above;
+  d) quote short excerpts of the source code for the purpose of discussion,
+     review, teaching, bug reports or academic citation, with attribution.
+
+3. What you may not do
+----------------------
+
+Except as expressly permitted in section 2 or by mandatory applicable law, you
+may not:
+
+  a) distribute, publish, sublicense, lend, rent, sell or otherwise make
+     available the Software or any derivative of it, in source or binary form,
+     to any third party;
+  b) publish or submit the Software, or any derivative or repackaged form of
+     it, to any application store, package repository or other distribution
+     channel;
+  c) use the Software, or any part of it, in a commercial product or service,
+     or otherwise for commercial advantage or monetary compensation;
+  d) use the Software to create a product that substitutes for or competes with
+     Kiebitz;
+  e) remove, obscure or alter any copyright, license, attribution or
+     third-party notice contained in the Software, including the files under
+     `src-tauri/resources/stockfish/` and `THIRD_PARTY_NOTICES.md`;
+  f) use the name "Kiebitz", the Kiebitz logo or the Kiebitz visual identity to
+     identify any product other than the original Software, or in a way that
+     suggests endorsement.
+
+Rights beyond this license — commercial use, redistribution, forking as a
+separate product — may be granted individually. Ask via
+https://github.com/Torim98/Kiebitz/issues.
+
+4. Official binaries
+--------------------
+
+Binaries published by the copyright holder (GitHub releases, and any app store
+listing) are made available for personal use under this same license. Nothing in
+this license restricts your rights under section 6 with regard to the
+Third-Party Components bundled in those binaries.
+
+5. Contributions
+----------------
+
+Contributions are welcome but not required. By submitting a contribution (for
+example a pull request or a patch in an issue) you grant the copyright holder a
+perpetual, worldwide, irrevocable, royalty-free, non-exclusive right to use,
+modify, relicense and distribute that contribution as part of the Software,
+including in commercially distributed versions. You confirm that you are
+entitled to grant that right. You retain the copyright in your contribution.
+
+6. Third-party components
+-------------------------
+
+The Software uses and, in its distributed builds, bundles third-party
+components that are licensed by their respective authors under their own terms.
+Those terms govern those components and are **not** superseded by this license.
+In particular:
+
+  - **Stockfish** (chess engine) is licensed under GPL-3.0. Kiebitz runs it as
+    an unmodified separate process communicating over the UCI text protocol; no
+    part of Stockfish is linked into Kiebitz. Notices, the full license text,
+    the exact source commit, and a written offer for the corresponding source
+    are in `src-tauri/resources/stockfish/` and `THIRD_PARTY_NOTICES.md`.
+  - **Lichess puzzle database** — CC0 1.0 (public domain dedication).
+  - Third-party libraries pulled in via npm and Cargo remain under their own
+    licenses (MIT, Apache-2.0, ISC, BSD, OFL and others).
+
+Where this license and a third-party license conflict for a given component,
+the third-party license prevails for that component.
+
+7. No warranty
+--------------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+8. Limitation of liability
+--------------------------
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER SHALL NOT BE
+LIABLE FOR ANY CLAIM, DAMAGES, DATA LOSS OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OF OR OTHER DEALINGS IN THE SOFTWARE. Liability
+for intent and gross negligence, and any liability that cannot be excluded
+under mandatory law, remains unaffected.
+
+9. Termination
+--------------
+
+The permissions in section 2 end automatically if you breach section 3. They
+are reinstated if you cure the breach and the copyright holder does not object.
+
+10. Governing law
+-----------------
+
+This license is governed by the laws of the Federal Republic of Germany,
+excluding its conflict-of-law rules and the UN Convention on Contracts for the
+International Sale of Goods. Mandatory consumer protection rules of your place
+of residence remain unaffected.
