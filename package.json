@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.5.10",
   "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://torim98.github.io/kiebitz-site/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Torim98/Kiebitz.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

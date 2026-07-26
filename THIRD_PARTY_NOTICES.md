@@ -57,12 +57,11 @@ the dependency set, so it cannot silently go stale.
 Development-only dependencies are excluded on purpose: they are not distributed
 and therefore trigger no obligation.
 
-### shakmaty is GPL-3.0-or-later
+### No copyleft in the linked dependencies
 
-The Rust crate `shakmaty` (chess rules, used in `src-tauri/src/chess.rs` and
-`repertoire.rs`) is licensed **GPL-3.0-or-later** and is statically linked into
-the Kiebitz binary. Unlike Stockfish — a separate process, cleanly at arm's
-length — static linking makes the combined work a derivative, which is
-incompatible with the terms in [`LICENSE`](LICENSE). This is tracked in
-[`docs/ROADMAP.md`](docs/ROADMAP.md) and must be resolved before Kiebitz is
-distributed under those terms.
+Everything statically linked into Kiebitz is permissively licensed (MIT,
+Apache-2.0, ISC, BSD, MPL-2.0). The chess-rules crate is `owlchess` (MIT); the
+GPL-3.0-or-later `shakmaty` it replaced would have made the binary a derivative
+work. Stockfish is the one GPL component and stays at arm's length as a separate
+UCI process. Keep it that way: a copyleft crate in the link graph would override
+the terms in [`LICENSE`](LICENSE).

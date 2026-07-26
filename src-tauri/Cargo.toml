@@ -4,6 +4,8 @@ name = "kiebitz"
 version = "0.1.1"
 description = "Kiebitz — local-first desktop chess companion"
 authors = ["Torim98"]
+homepage = "https://torim98.github.io/kiebitz-site/"
+repository = "https://github.com/Torim98/Kiebitz"
 # Source-available, kein OSI-Open-Source — Bedingungen in ../LICENSE.
 license-file = "../LICENSE"
 publish = false
@@ -30,7 +32,10 @@ tauri-plugin-dialog = "2"
 # Lokale Erinnerungen an fälliges Training (Desktop und Android).
 tauri-plugin-notification = "2"
 rusqlite = { version = "0.33", features = ["bundled", "backup"] }
-shakmaty = "0.27.3"
+# Schachregeln, SAN und FEN. Bewusst owlchess (MIT) und nicht shakmaty: das ist
+# GPL-3.0+ und hätte Kiebitz statisch gelinkt zu einem abgeleiteten Werk
+# gemacht. Stockfish ist davon unberührt — eigener Prozess über UCI.
+owlchess = "0.4.1"
 csv = "1.4.0"
 ureq = "2"
 zstd = "0.13.3"

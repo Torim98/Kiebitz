@@ -5,8 +5,6 @@ use crate::chess;
 use crate::db;
 use rusqlite::{params, Connection};
 use serde::Serialize;
-use shakmaty::san::SanPlus;
-use shakmaty::{Chess, Position};
 use std::collections::HashMap;
 use tauri::State;
 
@@ -162,20 +160,17 @@ pub fn rep_add_line(
     }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    let mut pos = Chess::default();
+    let mut pos = chess::Position::initial();
     let mut parent_id = 0i64;
     let mut leaf_id = 0i64;
     for (i, san_str) in sans.iter().enumerate() {
-        let san: SanPlus = san_str
-            .parse()
-            .map_err(|_| format!("Zug {} nicht lesbar: {san_str}", i + 1))?;
-        let m = san
-            .san
-            .to_move(&pos)
+        // parse_san liefert "nicht lesbar: …" bzw. "illegal: …", die Meldung
+        // bleibt damit wortgleich zur früheren Fassung.
+        let m = chess::parse_san(&pos, san_str).map_err(|e| format!("Zug {} {e}", i + 1))?;
+        let clean_san = chess::canonical_san(&pos, m)
             .map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
-        let clean_san = SanPlus::from_move(pos.clone(), &m).to_string();
         pos = pos
-            .play(&m)
+            .make_move(m)
             .map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
         let key = chess::fen_key(&pos);
         let depth = (i + 1) as i64;

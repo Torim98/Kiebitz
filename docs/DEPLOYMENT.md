@@ -9,6 +9,12 @@ to each release (no auto-update on mobile); see *Android build* below.
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
 - Current version: see `src-tauri/tauri.conf.json` → `version`
+- Website: <https://torim98.github.io/kiebitz-site/> — a **separate** repository,
+  [`Torim98/kiebitz-site`](https://github.com/Torim98/kiebitz-site), served by
+  GitHub Pages from `main`/root. It hosts the privacy policy that Google Play
+  requires, so that URL has to stay reachable and stable. Referenced from
+  `README.md`, `package.json` → `homepage`, `Cargo.toml` → `homepage`, and from
+  Settings → About Kiebitz in the app.
 
 ## Prerequisites
 
@@ -221,8 +227,10 @@ add it to `DOCS` in `legal.rs` **and** to `bundle.resources` in both
 document is missing from the repository, but nothing catches a missing bundle
 entry except an installed build.
 
-> **Open licensing issue:** the `shakmaty` crate is GPL-3.0-or-later and is
-> statically linked, which conflicts with `LICENSE`. See `ROADMAP.md`.
+> **Keep the link graph copyleft-free.** Everything linked into Kiebitz is
+> permissively licensed; a GPL/LGPL crate would override the terms in `LICENSE`.
+> The generated file surfaces each component's license, so check it after adding
+> a dependency — that is how the `shakmaty` conflict was found.
 
 ## Icons
 

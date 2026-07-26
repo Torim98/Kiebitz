@@ -8,6 +8,9 @@ on your own devices.
 No account, no cloud, no telemetry. Devices sync directly with each other over
 the local network.
 
+**Website:** <https://torim98.github.io/kiebitz-site/> · **Downloads:**
+[latest release](https://github.com/Torim98/Kiebitz/releases/latest)
+
 ## Features
 
 - **Dashboard** — ratings, recent games, quick jumps to chess.com & Lichess.

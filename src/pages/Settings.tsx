@@ -1309,6 +1309,13 @@ export default function SettingsPage() {
             </span>
             <button
               type="button"
+              onClick={() => openExternal("https://torim98.github.io/kiebitz-site/")}
+              className="inline-flex items-center gap-1 text-accent transition-colors hover:text-ink"
+            >
+              <ExternalLink size={12} /> {t("set.aboutWebsite")}
+            </button>
+            <button
+              type="button"
               onClick={() => openExternal("https://github.com/Torim98/Kiebitz")}
               className="inline-flex items-center gap-1 text-accent transition-colors hover:text-ink"
             >

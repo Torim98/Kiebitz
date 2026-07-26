@@ -33,23 +33,6 @@ Shipped:
 
 Current priorities (added 2026-07-21):
 
-- [ ] **Resolve the `shakmaty` GPL conflict (blocker for any release under the
-  current LICENSE).** `shakmaty` 0.27.3 (`src-tauri/src/chess.rs`,
-  `repertoire.rs`) is **GPL-3.0-or-later** with no linking exception and is
-  statically linked into the binary, which makes Kiebitz a derivative work. That
-  contradicts `LICENSE` (source-available, no redistribution, no commercial use)
-  and rules out a proprietary Play Store release. Stockfish is unaffected — it
-  runs as a separate process. Found 2026-07-26 while bundling the third-party
-  license texts. Options, cheapest first:
-  - replace it with a permissively licensed crate — the used surface is small
-    (13 references across the two files: `Fen`/`Epd` parsing, `SanPlus`,
-    `Chess::play`, `turn`), and the MIT-licensed `chess` crate covers all of it
-    including `ChessMove::from_san`; re-verify SAN replay and the repertoire
-    path handling afterwards;
-  - move the rules engine to the frontend, which already uses `chess.js`
-    (BSD-2-Clause) for the same job;
-  - license Kiebitz itself under GPL-3.0-or-later and drop the paid-unlock
-    option.
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
 - [x] **Deepen Insights** (2026-07-22). Insights now has four focused sub-pages:
@@ -160,8 +143,19 @@ Open:
   attaches the engine's exact source archive to every release, with `publish`
   depending on it. The license texts of all ~650 shipped npm packages and Rust
   crates are generated into a bundled resource, surfaced under Settings → About
-  Kiebitz, and kept honest by a `licenses` CI job. This surfaced the `shakmaty`
-  GPL conflict above.
+  Kiebitz, and kept honest by a `licenses` CI job.
+- [x] **Replaced the GPL chess-rules crate** (2026-07-26). The license sweep
+  found `shakmaty` (GPL-3.0-or-later, no linking exception) statically linked in
+  `chess.rs` and `repertoire.rs` — that made the binary a derivative work and
+  contradicted `LICENSE`. Swapped for `owlchess` (MIT), which covers FEN with
+  counters, SAN parsing *and* canonical SAN formatting, and legal move
+  generation. Because `fen_key` values are stored in the database, the old
+  implementation was kept temporarily to generate golden values over a corpus
+  covering legal/illegal en passant (including the pin case where the capture
+  would expose the king), castling-right loss, capture-promotion, half-move
+  counters and early-abort lines; the new implementation reproduces all of them
+  byte-for-byte, so existing databases keep working. `tests::golden_keys` locks
+  that in. The dependency graph now contains no copyleft crate.
 - [ ] **Play Store distribution** (account, signing policy, review overhead).
   Sideloading the signed GitHub-release APK already works.
 
