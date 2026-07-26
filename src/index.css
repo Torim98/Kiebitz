@@ -69,6 +69,15 @@ body {
   animation: shake 0.25s ease-in-out 2;
 }
 
+/* Der gemeinsame WebView-Pointer-Drag deaktiviert das interne react-dnd,
+   deshalb setzen wir den passenden Mauszeiger am Figuren-DOM selbst. */
+.board-pointer-drag [data-piece] {
+  cursor: grab !important;
+}
+.board-pointer-drag [data-piece]:active {
+  cursor: grabbing !important;
+}
+
 /* Android WebViews melden den Drei-Tasten-/Gestenbereich je nach OEM als
    safe-area 0. Der Mindestabstand haelt Drawer-Aktionen und Seiteninhalt frei. */
 .android-safe-bottom {

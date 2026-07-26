@@ -549,6 +549,21 @@ function Trainer({ onExit }: { onExit: () => void }) {
     setState("ask");
   }, [promptFen, idx, item?.prompt_sans.length]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setViewPly((value) => Math.max(0, value - 1));
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setViewPly((value) => Math.min(promptSans.length, value + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [promptSans.length]);
+
   const next = () => {
     setIdx((i) => i + 1);
   };

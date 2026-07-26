@@ -855,9 +855,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                         strokeDasharray="2 3"
                         label={{
                           value: t(`ins.phase.${marker.phase}` as Key),
-                          position: "insideBottomLeft",
+                          position: { x: 8, y: 6 },
                           angle: -90,
-                          offset: 8,
                           fill: "var(--color-ink3)",
                           fontSize: 9.5,
                         }}

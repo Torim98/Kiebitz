@@ -1,12 +1,18 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Board from "./Board";
 
 const boardMock = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
 vi.mock("react-chessboard", () => ({
   Chessboard: (props: Record<string, unknown>) => {
     boardMock.props = props;
-    return <div data-testid="chessboard" />;
+    return (
+      <div data-testid="chessboard">
+        <div data-square="e2"><div data-piece="wP" /></div>
+        <div data-square="e3" />
+        <div data-square="e4" />
+      </div>
+    );
   },
 }));
 
@@ -37,6 +43,51 @@ describe("Board badges", () => {
       (boardMock.props?.onPieceDragEnd as () => void)();
     });
     expect(boardMock.props?.customSquareStyles).toEqual({});
+  });
+
+  it("uses the shared pointer fallback without rebuilding react-dnd", () => {
+    const onPieceDrop = vi.fn(() => true);
+    render(
+      <Board
+        boardId="test"
+        fen={FEN}
+        width={400}
+        draggable
+        mouseDrag
+        onPieceDrop={onPieceDrop}
+      />
+    );
+
+    expect(boardMock.props?.arePiecesDraggable).toBe(false);
+    const piece = document.querySelector<HTMLElement>('[data-piece="wP"]')!;
+    const target = document.querySelector<HTMLElement>('[data-square="e4"]')!;
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => target),
+    });
+
+    fireEvent.mouseDown(piece, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 20, clientY: 20 });
+
+    const styles = boardMock.props?.customSquareStyles as Record<string, CSSStyleDeclaration>;
+    expect(Object.keys(styles).sort()).toEqual(["e2", "e3", "e4"]);
+
+    fireEvent.mouseUp(window, { button: 0, clientX: 20, clientY: 20 });
+    expect(onPieceDrop).toHaveBeenCalledWith("e2", "e4");
+    expect(piece.style.visibility).toBe("");
+
+    if (originalElementFromPoint) {
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: originalElementFromPoint,
+      });
+    } else {
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: undefined,
+      });
+    }
   });
 
   it("centers the marker on the top-right corner of the target square", () => {

@@ -1,7 +1,6 @@
 import { Chessboard } from "react-chessboard";
-import { TouchBackend } from "react-dnd-touch-backend";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { selectionStyles } from "../lib/boardMoves";
+import { moveTargetStyles, selectionStyles } from "../lib/boardMoves";
 
 const boardTheme = {
   customDarkSquareStyle: { backgroundColor: "#6f8155" },
@@ -48,12 +47,20 @@ export default function Board({
   badges?: { square: string; label: ReactNode; color: string; title?: string }[];
   /** Varianten werden durch entsaettigte Felder vom Partieverlauf abgesetzt. */
   muted?: boolean;
-  /** Windows-WebView: Touch-Backend explizit auch fuer Maus-Pointer aktivieren. */
+  /** Gemeinsamer WebView-Drag fuer Maus, Stift und Touch statt react-dnd. */
   mouseDrag?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
   const [dragSource, setDragSource] = useState<string | null>(null);
+  const dropRef = useRef(onPieceDrop);
+  const draggableRef = useRef(draggable);
+  const fenRef = useRef(fen);
+  const suppressClickRef = useRef(false);
+
+  dropRef.current = onPieceDrop;
+  draggableRef.current = draggable;
+  fenRef.current = fen;
 
   useEffect(() => {
     const el = ref.current;
@@ -71,6 +78,170 @@ export default function Board({
   // A new position always ends the old drag, including moves completed by an
   // automated opponent response.
   useEffect(() => setDragSource(null), [fen]);
+
+  /**
+   * Windows WebView2 and Android WebView do not consistently deliver the
+   * HTML5/react-dnd event sequence.  The affected boards therefore use one
+   * small Pointer Events implementation for mouse, pen and touch alike.
+   *
+   * We keep the drag preview outside React so showing the legal targets cannot
+   * rebuild the drag source while the pointer is already moving.
+   */
+  useEffect(() => {
+    if (!mouseDrag) return;
+    const board = ref.current;
+    if (!board) return;
+
+    type DragSession = {
+      pointerId: number;
+      source: string;
+      piece: HTMLElement;
+      ghost: HTMLElement | null;
+      started: boolean;
+      startX: number;
+      startY: number;
+      offsetX: number;
+      offsetY: number;
+    };
+
+    let session: DragSession | null = null;
+
+    const removePreview = () => {
+      if (!session) return;
+      session.piece.style.visibility = "";
+      session.ghost?.remove();
+      session = null;
+      setDragSource(null);
+    };
+
+    type DragEvent = PointerEvent | MouseEvent;
+    const eventId = (event: DragEvent) => ("pointerId" in event ? event.pointerId : -1);
+
+    const movePreview = (event: DragEvent) => {
+      if (!session?.ghost) return;
+      session.ghost.style.transform = `translate3d(${
+        event.clientX - session.offsetX
+      }px, ${event.clientY - session.offsetY}px, 0)`;
+    };
+
+    const beginPreview = (event: DragEvent) => {
+      if (!session || session.started) return;
+      session.started = true;
+
+      const rect = session.piece.getBoundingClientRect();
+      const ghost = session.piece.cloneNode(true) as HTMLElement;
+      Object.assign(ghost.style, {
+        position: "fixed",
+        left: "0",
+        top: "0",
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        margin: "0",
+        opacity: "0.94",
+        pointerEvents: "none",
+        transition: "none",
+        zIndex: "2147483000",
+        cursor: "grabbing",
+      });
+      document.body.appendChild(ghost);
+      session.ghost = ghost;
+      session.piece.style.visibility = "hidden";
+      setDragSource(session.source);
+      movePreview(event);
+    };
+
+    const onDragDown = (event: DragEvent) => {
+      if (
+        session
+        || !draggableRef.current
+        || !dropRef.current
+        || event.button !== 0
+        || ("isPrimary" in event && event.isPrimary === false)
+      ) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      const piece = target?.closest<HTMLElement>("[data-piece]");
+      const square = piece?.closest<HTMLElement>("[data-square]");
+      const source = square?.dataset.square;
+      if (!piece || !source || !board.contains(piece)) return;
+      if (Object.keys(moveTargetStyles(fenRef.current, source)).length === 0) return;
+
+      const rect = piece.getBoundingClientRect();
+      session = {
+        pointerId: eventId(event),
+        source,
+        piece,
+        ghost: null,
+        started: false,
+        startX: event.clientX,
+        startY: event.clientY,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+      };
+    };
+
+    const onDragMove = (event: DragEvent) => {
+      if (!session || eventId(event) !== session.pointerId) return;
+      if (
+        !session.started
+        && Math.hypot(event.clientX - session.startX, event.clientY - session.startY) < 4
+      ) {
+        return;
+      }
+      beginPreview(event);
+      event.preventDefault();
+      event.stopPropagation();
+      movePreview(event);
+    };
+
+    const onDragUp = (event: DragEvent) => {
+      if (!session || eventId(event) !== session.pointerId) return;
+      if (!session.started) {
+        session = null;
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const source = session.source;
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-square]")
+        ?.dataset.square;
+
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      removePreview();
+      if (target) dropRef.current?.(source, target);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (!session || eventId(event) !== session.pointerId) return;
+      removePreview();
+    };
+
+    board.addEventListener("pointerdown", onDragDown, true);
+    board.addEventListener("mousedown", onDragDown, true);
+    window.addEventListener("pointermove", onDragMove, { capture: true, passive: false });
+    window.addEventListener("mousemove", onDragMove, { capture: true, passive: false });
+    window.addEventListener("pointerup", onDragUp, { capture: true, passive: false });
+    window.addEventListener("mouseup", onDragUp, { capture: true, passive: false });
+    window.addEventListener("pointercancel", onPointerCancel, true);
+    return () => {
+      removePreview();
+      board.removeEventListener("pointerdown", onDragDown, true);
+      board.removeEventListener("mousedown", onDragDown, true);
+      window.removeEventListener("pointermove", onDragMove, true);
+      window.removeEventListener("mousemove", onDragMove, true);
+      window.removeEventListener("pointerup", onDragUp, true);
+      window.removeEventListener("mouseup", onDragUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
+    };
+  }, [mouseDrag]);
 
   // Der Marker sitzt wie bei chess.com mittig auf der oberen rechten Ecke des
   // Zielfelds und ueberlappt das Nachbarfeld nur minimal.
@@ -96,26 +267,30 @@ export default function Board({
   return (
     <div
       ref={ref}
-      className={shake ? "animate-shake" : ""}
+      className={`${shake ? "animate-shake " : ""}${draggable && mouseDrag ? "board-pointer-drag" : ""}`}
       style={{ width: "100%", maxWidth: width }}
+      onClickCapture={(event) => {
+        if (!suppressClickRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClickRef.current = false;
+      }}
     >
       <div className="relative" style={{ width: w, height: w }}>
         <Chessboard
           id={boardId}
           position={fen}
           boardWidth={w}
-          arePiecesDraggable={draggable}
-          onPieceDrop={onPieceDrop ? (s, t) => onPieceDrop(s, t) : undefined}
-          onPieceDragBegin={draggable ? (_piece, source) => setDragSource(source) : undefined}
-          onPieceDragEnd={draggable ? () => setDragSource(null) : undefined}
+          arePiecesDraggable={draggable && !mouseDrag}
+          onPieceDrop={!mouseDrag && onPieceDrop ? (s, t) => onPieceDrop(s, t) : undefined}
+          onPieceDragBegin={draggable && !mouseDrag ? (_piece, source) => setDragSource(source) : undefined}
+          onPieceDragEnd={draggable && !mouseDrag ? () => setDragSource(null) : undefined}
           onSquareClick={onSquareClick}
           customSquareStyles={{
             ...selectionStyles(fen, dragSource),
             ...squareStyles,
           }}
           customArrows={arrows as never}
-          customDndBackend={mouseDrag ? TouchBackend : undefined}
-          customDndBackendOptions={mouseDrag ? { enableMouseEvents: true } : undefined}
           boardOrientation={orientation}
           animationDuration={150}
           {...boardTheme}
