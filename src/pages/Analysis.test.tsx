@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   gameAnalysis: vi.fn(),
   setGameNote: vi.fn(),
   setGameTags: vi.fn(),
+  getSettings: vi.fn(),
 }));
 
 vi.mock("../lib/backend", () => ({
@@ -20,7 +21,7 @@ vi.mock("../lib/db", () => ({
   setGameTags: mocks.setGameTags,
 }));
 vi.mock("../lib/settings", () => ({
-  getSettings: () => Promise.resolve({ chessdb_enabled: false }),
+  getSettings: mocks.getSettings,
   chessdbQuery: vi.fn(),
 }));
 vi.mock("../lib/analysis", () => ({
@@ -97,10 +98,22 @@ const excludedGame = {
   analysis_excluded: true,
 };
 
+/** Importierte Partie mit gespeicherter Original-URL. */
+const onlineGame = {
+  ...excludedGame,
+  id: 11,
+  source: "chess.com",
+  source_id: "cc-123",
+  url: "https://www.chess.com/game/live/123456789",
+  opponent: "Rival",
+  analysis_excluded: false,
+};
+
 beforeEach(() => {
   // Die Oberfläche startet ab Werk auf Englisch; diese Tests prüfen die
   // deutschen Texte und stellen die Sprache deshalb explizit ein.
   localStorage.setItem("kiebitz.locale", "de");
+  mocks.getSettings.mockResolvedValue({ chessdb_enabled: false, cc_user: "Torim98", li_user: "Torim98" });
   mocks.listGames.mockResolvedValue([excludedGame]);
   mocks.gameAnalysis.mockResolvedValue([]);
   mocks.startAnalysis.mockResolvedValue(undefined);
@@ -188,5 +201,45 @@ describe("Analysis page", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Notiz speichern/ }));
     await waitFor(() => expect(mocks.setGameNote).toHaveBeenCalledWith(7, "Zu passiv gespielt."));
+  });
+
+  describe("link to the original game", () => {
+    const originLink = () => screen.queryByRole("link", { name: /Original/ });
+
+    it("uses the stored game URL", async () => {
+      mocks.listGames.mockResolvedValue([onlineGame]);
+      render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+
+      await waitFor(() => expect(originLink()).toBeTruthy());
+      expect(originLink()?.getAttribute("href")).toBe("https://www.chess.com/game/live/123456789");
+    });
+
+    it("falls back to the account archive when the game has no URL", async () => {
+      mocks.listGames.mockResolvedValue([{ ...onlineGame, source: "lichess", url: "" }]);
+      render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+
+      await waitFor(() =>
+        expect(originLink()?.getAttribute("href")).toBe("https://lichess.org/@/Torim98/all")
+      );
+    });
+
+    /** Eine Archiv-URL ohne Benutzernamen wäre ein Link ins Leere. */
+    it("omits the link when neither a URL nor an account handle is known", async () => {
+      mocks.getSettings.mockResolvedValue({ chessdb_enabled: false, cc_user: "", li_user: "" });
+      mocks.listGames.mockResolvedValue([{ ...onlineGame, url: "" }]);
+      render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+
+      expect(originLink()).toBeNull();
+    });
+
+    it("omits the link for manually recorded games", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+      expect(originLink()).toBeNull();
+    });
   });
 });

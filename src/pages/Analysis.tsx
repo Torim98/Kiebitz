@@ -36,7 +36,7 @@ import {
 } from "../lib/analysis";
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
-import { Button, Card, ResultBadge, Tag } from "../components/ui";
+import { Button, Card, ExtLink, ResultBadge, Tag } from "../components/ui";
 import { de, evalLabel, fenAfter, winProb } from "../lib/util";
 import { selectionStyles } from "../lib/boardMoves";
 import { tcLabel } from "../lib/gameUi";
@@ -609,6 +609,23 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     setLiveBestUci(null);
     setPly(Math.max(0, Math.min(sans.length, next)));
   };
+  /**
+   * Direktsprung zur Originalpartie, wie im Dashboard und im Partien-Tab.
+   * Fehlt die gespeicherte URL (ältere Importe, PGN-Import), führt der Link
+   * ersatzweise ins Partiearchiv des eigenen Kontos. Ohne konfigurierten
+   * Kontonamen entfällt der Link ganz — eine Archiv-URL ohne Benutzernamen
+   * wäre ein Link ins Leere. Manuell erfasste Partien haben kein Original.
+   */
+  const originUrl = useMemo(() => {
+    if (!live || game.source === "manual") return null;
+    if (game.url) return game.url;
+    const handle = (game.source === "chess.com" ? playerProfile.cc : playerProfile.li).trim();
+    if (!handle) return null;
+    return game.source === "chess.com"
+      ? `https://www.chess.com/games/archive/${encodeURIComponent(handle)}`
+      : `https://lichess.org/@/${encodeURIComponent(handle)}/all`;
+  }, [live, game, playerProfile.cc, playerProfile.li]);
+
   const headerSub = live
     ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
@@ -622,7 +639,18 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
           <h1 className="text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
         </div>
-        {live && <ResultBadge result={game.result} />}
+        {live && (
+          <div className="flex shrink-0 items-center gap-3">
+            {originUrl && (
+              <ExtLink
+                href={originUrl}
+                label={t("an.original")}
+                title={t("an.originalTitle", { p: game.source })}
+              />
+            )}
+            <ResultBadge result={game.result} />
+          </div>
+        )}
       </header>
 
       {desktop && (

@@ -93,10 +93,11 @@ export function SourceBadge({ source }: { source: Source }) {
   );
 }
 
-export function ExtLink({ href, label }: { href: string; label?: string }) {
+export function ExtLink({ href, label, title }: { href: string; label?: string; title?: string }) {
   return (
     <a
       href={href}
+      title={title}
       target="_blank"
       rel="noreferrer"
       onClick={(e) => {

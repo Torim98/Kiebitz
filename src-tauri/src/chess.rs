@@ -280,6 +280,36 @@ pub(crate) mod tests {
         assert_eq!(phase_of(&endgame, 60), "endgame");
     }
 
+    /// Der Import darf nicht stillschweigend mitten in der Partie abbrechen.
+    /// `walk_sans` bricht bei unlesbarer Notation ab, deshalb muss der Parser
+    /// alles verstehen, was `chess.js` in den `moves`-String schreibt:
+    /// Rochade, Präzisierung, Umwandlung, Schach- und Mattzeichen. Geprüft wird
+    /// nicht der Inhalt, sondern dass *jeder* Zug verarbeitet wurde.
+    #[test]
+    fn consumes_every_move_of_real_games() {
+        let games = [
+            // Morphy – Herzog von Braunschweig/Graf Isouard, 1858: enthält
+            // Nbd7 (Präzisierung), O-O-O, Schach- und Mattzeichen.
+            "e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 \
+             Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#",
+            // Beide Seiten rochieren kurz.
+            "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Nb8 d4 Nbd7",
+            // Umwandlung mit Schlag.
+            "e4 d5 exd5 c6 dxc6 Nf6 cxb7 Ne4 bxc8=Q",
+        ];
+        for game in games {
+            let expected = game.split_whitespace().count();
+            let walked = walk_sans(game);
+            assert_eq!(
+                walked.len(),
+                expected,
+                "abgebrochen bei Halbzug {} ({:?})",
+                walked.len() + 1,
+                game.split_whitespace().nth(walked.len()),
+            );
+        }
+    }
+
     /// Schlüssel und FEN sind Datenbankinhalt. Die Erwartungswerte stammen aus
     /// der früheren shakmaty-Implementierung (`EnPassantMode::Legal`) und
     /// dürfen sich nicht ändern — sonst finden bestehende Datenbanken ihre
