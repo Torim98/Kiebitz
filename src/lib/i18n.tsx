@@ -723,6 +723,18 @@ const de = {
   "set.updateInstalling": "Installiere — Kiebitz startet gleich neu …",
   "set.updateFailed": "Update fehlgeschlagen: {e}",
   "set.desktopOnly": "Nur in der Desktop-App verfügbar.",
+  "set.about": "Über Kiebitz",
+  "set.aboutVersion": "Kiebitz {v} · {p}",
+  "set.aboutNote": "Kiebitz ist quelloffen einsehbar, aber kein Open Source: Lesen, Selbst-Bauen und private Nutzung sind erlaubt, Weiterverbreitung und kommerzielle Nutzung nicht. Die mitgelieferten Bibliotheken und die Stockfish-Engine behalten ihre eigenen Lizenzen — sie stehen vollständig unten.",
+  "set.aboutRepo": "Projektseite öffnen",
+  "set.legal": "Lizenzen & Hinweise",
+  "set.legalNote": "Diese Texte werden mit der App ausgeliefert, weil die Lizenzen der verwendeten Bibliotheken das verlangen.",
+  "set.legalOpen": "Anzeigen",
+  "set.legalSize": "{n} KB",
+  "set.legalLoading": "Lade Text …",
+  "set.legalFailed": "Text konnte nicht geladen werden: {e}",
+  "set.legalMissing": "Die Lizenzdateien sind in dieser Version nicht gebündelt.",
+  "set.legalClose": "Schließen",
 } as const;
 
 export type Key = keyof typeof de;
@@ -1426,6 +1438,18 @@ const en: Record<Key, string> = {
   "set.updateInstalling": "Installing — Kiebitz will restart in a moment …",
   "set.updateFailed": "Update failed: {e}",
   "set.desktopOnly": "Only available in the desktop app.",
+  "set.about": "About Kiebitz",
+  "set.aboutVersion": "Kiebitz {v} · {p}",
+  "set.aboutNote": "Kiebitz is source-available, not open source: reading the code, building it and using it privately are allowed; redistribution and commercial use are not. The bundled libraries and the Stockfish engine keep their own licenses — they are reproduced in full below.",
+  "set.aboutRepo": "Open project page",
+  "set.legal": "Licenses & notices",
+  "set.legalNote": "These texts ship with the app because the licenses of the libraries it uses require it.",
+  "set.legalOpen": "View",
+  "set.legalSize": "{n} KB",
+  "set.legalLoading": "Loading text …",
+  "set.legalFailed": "Could not load the text: {e}",
+  "set.legalMissing": "The license files are not bundled in this build.",
+  "set.legalClose": "Close",
 };
 
 const dicts: Record<Locale, Record<Key, string>> = { de, en };

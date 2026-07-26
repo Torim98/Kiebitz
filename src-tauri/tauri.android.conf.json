@@ -3,7 +3,8 @@
   "bundle": {
     "resources": [
       "resources/stockfish/NOTICE.txt",
-      "resources/stockfish/COPYING.txt"
+      "resources/stockfish/COPYING.txt",
+      "resources/licenses/THIRD_PARTY_LICENSES.txt"
     ],
     "createUpdaterArtifacts": false
   }

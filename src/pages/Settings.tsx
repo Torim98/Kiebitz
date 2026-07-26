@@ -11,10 +11,12 @@ import {
   Globe,
   FolderOpen,
   Loader2,
+  ExternalLink,
   Puzzle as PuzzleIcon,
   QrCode,
   RefreshCw,
   ScanLine,
+  Scale,
   Smartphone,
   Trash2,
   UserRound,
@@ -61,6 +63,8 @@ import {
   type PairInfo,
   type SyncInfo,
 } from "../lib/sync";
+import { legalDocument, legalDocuments, type LegalDoc } from "../lib/legal";
+import { openExternal } from "../lib/ext";
 import { configureAutoSync } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
@@ -184,6 +188,13 @@ export default function SettingsPage() {
   const [pzMsg, setPzMsg] = useState<string | null>(null);
   const [pzPath, setPzPath] = useState("");
 
+  // Rechtstexte: Verzeichnis früh, Volltext erst beim Öffnen — die
+  // Lizenzsammlung ist mehrere hundert Kilobyte groß.
+  const [legalDocs, setLegalDocs] = useState<LegalDoc[]>([]);
+  const [legalShown, setLegalShown] = useState<LegalDoc | null>(null);
+  const [legalText, setLegalText] = useState<string | null>(null);
+  const [legalError, setLegalError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!desktop) return;
     getSettings()
@@ -194,6 +205,7 @@ export default function SettingsPage() {
       .catch((e) => setError(String(e)));
     dbInfo().then(setInfo).catch(() => {});
     syncInfo().then(setSync).catch(() => {});
+    legalDocuments().then(setLegalDocs).catch(() => {});
     // QR-Pairing-Infos nur auf dem Desktop-Hub (das Handy scannt sie nur).
     if (!mobile) syncPair().then(setPair).catch(() => {});
     puzzleStats()
@@ -524,6 +536,18 @@ export default function SettingsPage() {
       setError(String(e));
     } finally {
       setResetBusy(false);
+    }
+  };
+
+  /** Öffnet einen Rechtstext und lädt ihn erst dabei nach. */
+  const showLegal = async (doc: LegalDoc) => {
+    setLegalShown(doc);
+    setLegalText(null);
+    setLegalError(null);
+    try {
+      setLegalText(await legalDocument(doc.id));
+    } catch (e) {
+      setLegalError(String(e));
     }
   };
 
@@ -1266,6 +1290,63 @@ export default function SettingsPage() {
           )}
         </Card>
 
+        {/* Über Kiebitz — Lizenz der App und die mitgelieferten Rechtstexte.
+            Die Bibliothekslizenzen verlangen, dass ihr Text das Binary
+            begleitet; hier ist die Stelle, an der er erreichbar ist. */}
+        <Card
+          title={
+            <span className="flex items-center gap-2">
+              <Scale size={14} className="text-accent" /> {t("set.about")}
+            </span>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink2">
+            <span className="font-medium text-ink">
+              {t("set.aboutVersion", {
+                v: backend.info?.version ?? "?",
+                p: backend.info?.platform ?? "web",
+              })}
+            </span>
+            <button
+              type="button"
+              onClick={() => openExternal("https://github.com/Torim98/Kiebitz")}
+              className="inline-flex items-center gap-1 text-accent transition-colors hover:text-ink"
+            >
+              <ExternalLink size={12} /> {t("set.aboutRepo")}
+            </button>
+          </div>
+          <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.aboutNote")}</p>
+
+          <div className="mt-4 border-t border-line pt-3">
+            <div className="text-[12px] font-medium uppercase tracking-[0.1em] text-ink3">
+              {t("set.legal")}
+            </div>
+            {legalDocs.length ? (
+              <>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {legalDocs.map((doc) => (
+                    <li
+                      key={doc.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel2 px-3 py-2"
+                    >
+                      <span className="min-w-0 text-[12.5px] text-ink2">
+                        <span className="block truncate">{doc.title}</span>
+                        <span className="text-[11px] text-ink3">
+                          {t("set.legalSize", { n: Math.max(1, Math.round(doc.bytes / 1024)) })}
+                        </span>
+                      </span>
+                      <Button onClick={() => showLegal(doc)}>{t("set.legalOpen")}</Button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.legalNote")}</p>
+              </>
+            ) : (
+              <p className="mt-2 text-[12.5px] text-ink3">{t("set.legalMissing")}</p>
+            )}
+          </div>
+        </Card>
+
         {/* Zurücksetzen — bewusst ganz unten und in Warnfarbe. */}
         <Card
           title={
@@ -1292,6 +1373,47 @@ export default function SettingsPage() {
           )}
         </Card>
       </div>
+
+      {legalShown && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="legal-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLegalShown(null);
+          }}
+        >
+          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+                  {t("set.legal")}
+                </div>
+                <h2 id="legal-title" className="truncate text-[15px] font-semibold">
+                  {legalShown.title}
+                </h2>
+              </div>
+              <Button onClick={() => setLegalShown(null)}>{t("set.legalClose")}</Button>
+            </div>
+            {/* Lizenztexte sind bewusst unformatiert: Zeilenumbrüche und
+                Einrückung gehören zum Text, den sie mitliefern. */}
+            <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+              {legalError ? (
+                <p className="text-[12.5px] text-loss">{t("set.legalFailed", { e: legalError })}</p>
+              ) : legalText === null ? (
+                <p className="flex items-center gap-2 text-[12.5px] text-ink3">
+                  <Loader2 size={14} className="animate-spin text-accent" /> {t("set.legalLoading")}
+                </p>
+              ) : (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-ink2">
+                  {legalText}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {resetOpen && (
         <div

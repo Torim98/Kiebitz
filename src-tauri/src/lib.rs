@@ -4,6 +4,7 @@ mod chessdb;
 mod db;
 mod endgame;
 mod engine;
+mod legal;
 mod live;
 mod puzzles;
 mod reminder;
@@ -427,7 +428,9 @@ pub fn run() {
             sync::sync_discover,
             sync::sync_pair,
             updater::check_update,
-            updater::install_update
+            updater::install_update,
+            legal::legal_documents,
+            legal::legal_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

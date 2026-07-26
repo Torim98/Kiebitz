@@ -190,6 +190,40 @@ it to the GitHub release (see *Releasing a new version* → *One-time setup* for
 keystore secrets). The steps above stay valid for local/manual builds. Still open:
 multi-ABI packaging and a Play-Store track — see `ROADMAP.md`, Phase 4.
 
+## Third-party license notices
+
+MIT, BSD and ISC require their license text and copyright notice to accompany
+the distributed binary — having them in the repository is not enough. The full
+texts of every shipped npm package and Rust crate are therefore generated into
+one resource and bundled on both platforms:
+
+```sh
+npm run licenses         # regenerate after any dependency change
+npm run licenses:check   # verify it matches the dependency set (runs in CI)
+```
+
+Output: `src-tauri/resources/licenses/THIRD_PARTY_LICENSES.txt` (~410 KB, ~650
+components). It is **committed**, so every build has it without extra tooling,
+and the `licenses` job in `ci.yml` fails if it drifts from the dependency set.
+
+The generator takes the npm production tree from `package-lock.json` (`dev: true`
+entries are skipped — they are not distributed) and the Rust graph from `cargo
+metadata`, then reads each component's own license file, falling back to the text
+of another component under the same license plus that component's own copyright
+line. It deliberately uses no external tooling: everything it needs is already in
+`node_modules` and the Cargo registry cache, so the CI check needs no build.
+
+In the app the texts are reachable under **Settings → About Kiebitz → Licenses &
+notices** (`src-tauri/src/legal.rs`, `src/lib/legal.ts`); the same place also
+shows the Stockfish notice and the GPL-3.0 text. When adding a document there,
+add it to `DOCS` in `legal.rs` **and** to `bundle.resources` in both
+`tauri.conf.json` and `tauri.android.conf.json` — a Rust test fails if a declared
+document is missing from the repository, but nothing catches a missing bundle
+entry except an installed build.
+
+> **Open licensing issue:** the `shakmaty` crate is GPL-3.0-or-later and is
+> statically linked, which conflicts with `LICENSE`. See `ROADMAP.md`.
+
 ## Icons
 
 App icons for **all** targets — desktop (`.ico`/`.icns`/`.png`), iOS, and the

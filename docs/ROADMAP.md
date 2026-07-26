@@ -33,6 +33,23 @@ Shipped:
 
 Current priorities (added 2026-07-21):
 
+- [ ] **Resolve the `shakmaty` GPL conflict (blocker for any release under the
+  current LICENSE).** `shakmaty` 0.27.3 (`src-tauri/src/chess.rs`,
+  `repertoire.rs`) is **GPL-3.0-or-later** with no linking exception and is
+  statically linked into the binary, which makes Kiebitz a derivative work. That
+  contradicts `LICENSE` (source-available, no redistribution, no commercial use)
+  and rules out a proprietary Play Store release. Stockfish is unaffected — it
+  runs as a separate process. Found 2026-07-26 while bundling the third-party
+  license texts. Options, cheapest first:
+  - replace it with a permissively licensed crate — the used surface is small
+    (13 references across the two files: `Fen`/`Epd` parsing, `SanPlus`,
+    `Chess::play`, `turn`), and the MIT-licensed `chess` crate covers all of it
+    including `ChessMove::from_san`; re-verify SAN replay and the repertoire
+    path handling afterwards;
+  - move the rules engine to the frontend, which already uses `chess.js`
+    (BSD-2-Clause) for the same job;
+  - license Kiebitz itself under GPL-3.0-or-later and drop the paid-unlock
+    option.
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
 - [x] **Deepen Insights** (2026-07-22). Insights now has four focused sub-pages:
@@ -136,6 +153,15 @@ Open:
   bundled Stockfish 18 release is pinned to its exact source commit; CI verifies
   the official Android/Windows archive hashes, and GPL-3.0, source and binary
   provenance notices are bundled as app resources on both platforms.
+- [x] **Licensing made explicit** (2026-07-26). `LICENSE` states
+  source-available terms (read, build, private use — no redistribution, no
+  commercial use). Stockfish' notice carries a written offer for the
+  corresponding source per GPL-3.0 §6, and a `stockfish-source` release job
+  attaches the engine's exact source archive to every release, with `publish`
+  depending on it. The license texts of all ~650 shipped npm packages and Rust
+  crates are generated into a bundled resource, surfaced under Settings → About
+  Kiebitz, and kept honest by a `licenses` CI job. This surfaced the `shakmaty`
+  GPL conflict above.
 - [ ] **Play Store distribution** (account, signing policy, review overhead).
   Sideloading the signed GitHub-release APK already works.
 

@@ -64,3 +64,29 @@ jobs:
       - name: Tests
         working-directory: src-tauri
         run: cargo test
+
+  licenses:
+    # Prüft, dass die gebündelte Lizenzsammlung zu den aktuellen Abhängigkeiten
+    # passt. MIT/BSD/ISC verlangen die Weitergabe ihres Textes — eine veraltete
+    # Sammlung wäre eine Lizenzverletzung, die sonst niemandem auffällt.
+    #
+    # Kein Build nötig: `cargo metadata` (im Skript) entpackt die Crate-Quellen
+    # bereits, und npm ci liefert die Lizenzdateien der npm-Pakete.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Node einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Rust einrichten
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Lizenzsammlung aktuell?
+        run: npm run licenses:check

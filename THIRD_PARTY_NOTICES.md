@@ -33,7 +33,36 @@ device and is not redistributed by Kiebitz.
 
 ## Libraries
 
-Frontend dependencies (npm) and backend dependencies (Cargo) remain under their
-own licenses — predominantly MIT, Apache-2.0, ISC and BSD; the bundled Inter
-font is under the SIL Open Font License 1.1. See `package.json` and
-`src-tauri/Cargo.toml` for the dependency lists.
+MIT, BSD and ISC require the license text and copyright notice to travel with
+the binary, so the full texts of every shipped npm package and Rust crate are
+bundled as an application resource:
+
+[`src-tauri/resources/licenses/THIRD_PARTY_LICENSES.txt`](src-tauri/resources/licenses/THIRD_PARTY_LICENSES.txt)
+
+The app reaches them under **Settings → About Kiebitz → Licenses & notices**,
+next to the Stockfish notice and the GPL-3.0 text.
+
+Regenerate after changing dependencies:
+
+```sh
+npm run licenses
+```
+
+The generator (`scripts/generate-third-party-licenses.mjs`) reads the npm
+production tree from `package-lock.json` and the Rust graph from `cargo
+metadata`, then takes each component's license text from the package itself.
+CI runs `npm run licenses:check` and fails if the bundled file no longer matches
+the dependency set, so it cannot silently go stale.
+
+Development-only dependencies are excluded on purpose: they are not distributed
+and therefore trigger no obligation.
+
+### shakmaty is GPL-3.0-or-later
+
+The Rust crate `shakmaty` (chess rules, used in `src-tauri/src/chess.rs` and
+`repertoire.rs`) is licensed **GPL-3.0-or-later** and is statically linked into
+the Kiebitz binary. Unlike Stockfish — a separate process, cleanly at arm's
+length — static linking makes the combined work a derivative, which is
+incompatible with the terms in [`LICENSE`](LICENSE). This is tracked in
+[`docs/ROADMAP.md`](docs/ROADMAP.md) and must be resolved before Kiebitz is
+distributed under those terms.
