@@ -160,6 +160,7 @@ describe("Analysis page", () => {
 
     expect(await screen.findByText("Dr. Tom Maurer (1500)")).toBeTruthy();
     expect(screen.getByText("Friend (1400)")).toBeTruthy();
+    expect(screen.getByText(/Dr\. Tom Maurer vs\. Friend · Rapid · Italian Game/)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "e4" }));
 
     const board = screen.getByTestId("analysis-board");

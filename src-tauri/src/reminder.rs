@@ -57,7 +57,9 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
             )
             .unwrap_or(0),
         repertoire: one(
-            &format!("SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"),
+            &format!(
+                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
+            ),
             &[day_end],
         )?,
         puzzles_left: (puzzle_goal
@@ -143,7 +145,15 @@ pub fn register_windows_app_id(app_id: &str, display_name: &str, icon: Option<Pa
     let key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{app_id}");
     let mut base = Command::new("reg");
     base.args([
-        "add", &key, "/v", "DisplayName", "/t", "REG_SZ", "/d", display_name, "/f",
+        "add",
+        &key,
+        "/v",
+        "DisplayName",
+        "/t",
+        "REG_SZ",
+        "/d",
+        display_name,
+        "/f",
     ]);
     no_window(&mut base);
     let _ = base.output();

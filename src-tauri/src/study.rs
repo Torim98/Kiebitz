@@ -167,7 +167,8 @@ fn valid_day(day: &str) -> bool {
 
 fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
     conn.query_row(
-        "SELECT id, title, duration_min, tool, description FROM study_templates WHERE id = ?1",
+        "SELECT id, title, duration_min, tool, description
+         FROM study_templates WHERE id = ?1 AND deleted = 0",
         params![id],
         |r| {
             Ok(StudyTemplate {
@@ -217,7 +218,9 @@ fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, St
     } else if day_start == today_start {
         // Heute: alles Überfällige plus neue Karten.
         conn.query_row(
-            &format!("SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"),
+            &format!(
+                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
+            ),
             params![day_end],
             |r| r.get(0),
         )
@@ -257,7 +260,7 @@ fn calendar_from_conn(
         let mut stmt = conn
             .prepare(
                 "SELECT id, title, duration_min, tool, description
-                 FROM study_templates ORDER BY id",
+                 FROM study_templates WHERE deleted = 0 ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -282,6 +285,7 @@ fn calendar_from_conn(
                         t.id, t.title, t.duration_min, t.tool, t.description
                  FROM study_events e JOIN study_templates t ON t.id = e.template_id
                  WHERE e.day >= ?1 AND e.day <= ?2
+                   AND e.deleted = 0 AND t.deleted = 0
                  ORDER BY e.day, e.position, e.id",
             )
             .map_err(|e| e.to_string())?;
@@ -353,7 +357,7 @@ pub fn save_study_template(
         let changed = conn
             .execute(
                 "UPDATE study_templates SET title=?1, duration_min=?2, tool=?3,
-                    description=?4, updated_ts=?5 WHERE id=?6",
+                    description=?4, updated_ts=?5, deleted=0 WHERE id=?6",
                 params![title, duration, tool, description, now, id],
             )
             .map_err(|e| e.to_string())?;
@@ -364,8 +368,8 @@ pub fn save_study_template(
     } else {
         conn.execute(
             "INSERT INTO study_templates
-             (title, duration_min, tool, description, created_ts, updated_ts)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+             (sync_key, title, duration_min, tool, description, created_ts, updated_ts)
+             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5, ?5)",
             params![title, duration, tool, description, now],
         )
         .map_err(|e| e.to_string())?;
@@ -377,14 +381,15 @@ pub fn save_study_template(
 #[tauri::command]
 pub fn delete_study_template(db: State<db::Db>, template_id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let now = now_ts();
     conn.execute(
-        "DELETE FROM study_events WHERE template_id = ?1",
-        params![template_id],
+        "UPDATE study_events SET deleted = 1, updated_ts = ?2 WHERE template_id = ?1",
+        params![template_id, now],
     )
     .map_err(|e| e.to_string())?;
     conn.execute(
-        "DELETE FROM study_templates WHERE id = ?1",
-        params![template_id],
+        "UPDATE study_templates SET deleted = 1, updated_ts = ?2 WHERE id = ?1",
+        params![template_id, now],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -405,8 +410,9 @@ pub fn schedule_study_unit(db: State<db::Db>, template_id: i64, day: String) -> 
         )
         .map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO study_events (template_id, day, position, created_ts)
-         VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO study_events
+         (sync_key, template_id, day, position, created_ts, updated_ts)
+         VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?4)",
         params![template_id, day, position, now_ts()],
     )
     .map_err(|e| e.to_string())?;
@@ -426,8 +432,9 @@ pub fn move_study_unit(
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let changed = conn
         .execute(
-            "UPDATE study_events SET day = ?1, position = ?2 WHERE id = ?3",
-            params![day, position.max(0), event_id],
+            "UPDATE study_events SET day = ?1, position = ?2, updated_ts = ?3
+             WHERE id = ?4 AND deleted = 0",
+            params![day, position.max(0), now_ts(), event_id],
         )
         .map_err(|e| e.to_string())?;
     if changed == 0 {
@@ -444,8 +451,15 @@ pub fn complete_study_unit(
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "UPDATE study_events SET completed = ?1, completed_ts = ?2 WHERE id = ?3",
-        params![completed, if completed { now_ts() } else { 0 }, event_id],
+        "UPDATE study_events
+         SET completed = ?1, completed_ts = ?2, updated_ts = ?3
+         WHERE id = ?4 AND deleted = 0",
+        params![
+            completed,
+            if completed { now_ts() } else { 0 },
+            now_ts(),
+            event_id
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -454,8 +468,11 @@ pub fn complete_study_unit(
 #[tauri::command]
 pub fn delete_study_unit(db: State<db::Db>, event_id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM study_events WHERE id = ?1", params![event_id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE study_events SET deleted = 1, updated_ts = ?2 WHERE id = ?1",
+        params![event_id, now_ts()],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -521,9 +538,12 @@ fn study_data_from_conn(
 
     // ── Backlog & Tagesziel ──────────────────────────────────────────────────
     let unanalyzed: i64 = conn
-        .query_row("SELECT COUNT(*) FROM games WHERE analyzed = 0 AND analysis_excluded = 0", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM games
+             WHERE analyzed = 0 AND analysis_excluded = 0 AND TRIM(moves) != ''",
+            [],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     let today_puzzle_attempts = count(
         conn,
@@ -623,7 +643,8 @@ mod tests {
         db::init(&conn).unwrap();
 
         conn.execute(
-            "INSERT INTO games (source, source_id, analyzed) VALUES ('manual', 'open', 0)",
+            "INSERT INTO games (source, source_id, analyzed, moves)
+             VALUES ('manual', 'open', 0, 'e4 e5')",
             [],
         )
         .unwrap();

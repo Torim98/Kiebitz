@@ -492,6 +492,7 @@ export default function SettingsPage() {
           r: deInt(s.rep_merged),
           p: deInt(s.puzzle_attempts_pulled),
           e: deInt(s.endgame_attempts_pulled),
+          s: deInt(s.study_merged),
         })
       );
       // Stellungsindex und Anzeigen im Hintergrund auffrischen.

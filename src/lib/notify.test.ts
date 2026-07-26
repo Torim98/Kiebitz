@@ -1,9 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { translator } from "./i18n";
 import type { Settings } from "./settings";
-import { localDay, minutesOfDay, reminderBody, type ReminderInput } from "./notify";
+import {
+  ensurePermission,
+  localDay,
+  minutesOfDay,
+  notify,
+  reminderBody,
+  type ReminderInput,
+} from "./notify";
+
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const t = translator("de");
+
+beforeEach(() => invokeMock.mockReset());
 
 function settings(overrides: Partial<Settings> = {}): Settings {
   return {
@@ -89,5 +101,44 @@ describe("reminder text", () => {
   it("builds a local day key", () => {
     expect(localDay(new Date(2026, 6, 5, 23, 30))).toBe("2026-07-05");
     expect(localDay(new Date(2026, 11, 31, 0, 5))).toBe("2026-12-31");
+  });
+});
+
+describe("native notification bridge", () => {
+  it("requests Android permission through the native plugin", async () => {
+    invokeMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("granted");
+
+    await expect(ensurePermission()).resolves.toBe(true);
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      1,
+      "plugin:notification|is_permission_granted"
+    );
+    expect(invokeMock).toHaveBeenNthCalledWith(
+      2,
+      "plugin:notification|request_permission"
+    );
+  });
+
+  it("sends an Android test notification without window.Notification", async () => {
+    invokeMock.mockImplementation((command?: string) => {
+      // The notification package performs one capability probe without a
+      // command in jsdom; it is unrelated to the native path under test.
+      if (!command) return Promise.resolve();
+      if (command === "plugin:notification|is_permission_granted") {
+        return Promise.resolve(true);
+      }
+      if (command === "app_info") {
+        return Promise.resolve({ version: "test", backend: "tauri", platform: "android" });
+      }
+      if (command === "plugin:notification|notify") return Promise.resolve();
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await notify("Kiebitz", "Test");
+    expect(invokeMock).toHaveBeenCalledWith("plugin:notification|notify", {
+      options: { title: "Kiebitz", body: "Test" },
+    });
   });
 });

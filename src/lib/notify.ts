@@ -13,10 +13,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   cancel,
-  isPermissionGranted,
-  requestPermission,
   Schedule,
-  sendNotification,
 } from "@tauri-apps/plugin-notification";
 import { translator, type TFunc } from "./i18n";
 import { getSettings, type Settings } from "./settings";
@@ -27,6 +24,13 @@ const LAST_SENT_KEY = "kiebitz.notify.lastDay";
 const CHECK_INTERVAL_MS = 60_000;
 /** Feste ID der geplanten Android-Erinnerung, damit sie ersetzbar bleibt. */
 const SCHEDULED_ID = 4711;
+
+type NativeNotificationOptions = {
+  id?: number;
+  title: string;
+  body: string;
+  schedule?: ReturnType<typeof Schedule.interval>;
+};
 
 /** Was heute noch offen ist — Datenbasis des Erinnerungstexts. */
 export interface ReminderInput {
@@ -105,12 +109,24 @@ async function isMobile(): Promise<boolean> {
 /** Systemberechtigung sicherstellen (Android fragt beim ersten Mal nach). */
 export async function ensurePermission(): Promise<boolean> {
   try {
-    if (await isPermissionGranted()) return true;
-    return (await requestPermission()) === "granted";
+    const granted = await invoke<boolean | null>(
+      "plugin:notification|is_permission_granted"
+    );
+    if (granted === true) return true;
+    if (granted === false) return false;
+    return (
+      (await invoke<string>("plugin:notification|request_permission")) ===
+      "granted"
+    );
   } catch {
     // Desktop-Backends ohne Berechtigungskonzept melden hier einen Fehler.
     return true;
   }
+}
+
+/** Native plugin call; avoids Android WebView's non-constructable Notification shim. */
+function nativeNotification(options: NativeNotificationOptions): Promise<void> {
+  return invoke<void>("plugin:notification|notify", { options });
 }
 
 /**
@@ -120,7 +136,7 @@ export async function ensurePermission(): Promise<boolean> {
 export async function notify(title: string, body: string): Promise<void> {
   if (!(await ensurePermission())) throw new Error("permission-denied");
   if (await isMobile()) {
-    sendNotification({ title, body });
+    await nativeNotification({ title, body });
     return;
   }
   await invoke("notify_now", { title, body });
@@ -139,7 +155,7 @@ export async function applyReminderSchedule(): Promise<void> {
     const t = translator(settings.locale);
     const due = await collectDue().catch(() => null);
     const [hour, minute] = settings.notify_time.split(":").map(Number);
-    sendNotification({
+    await nativeNotification({
       id: SCHEDULED_ID,
       title: t("notify.title"),
       // Der Alarm trägt den Stand des letzten App-Starts; Details stehen in

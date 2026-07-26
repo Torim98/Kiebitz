@@ -3,6 +3,9 @@ import { Chess } from "chess.js";
 import {
   Check,
   ChevronDown,
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
   ChevronRight,
   CornerUpLeft,
   GraduationCap,
@@ -31,6 +34,8 @@ import Board from "../components/Board";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "../components/ui";
 import { de, fenAfter } from "../lib/util";
+
+const EMPTY_SANS: string[] = [];
 
 export default function Repertoire() {
   const backend = useBackendInfo();
@@ -523,6 +528,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
   const [state, setState] = useState<"ask" | "correct" | "wrong">("ask");
   const [shake, setShake] = useState(false);
   const [doneCount, setDoneCount] = useState({ ok: 0, fail: 0 });
+  const [viewPly, setViewPly] = useState(0);
   const failedRef = useRef(false);
   const chessRef = useRef<Chess>(new Chess());
 
@@ -531,20 +537,24 @@ function Trainer({ onExit }: { onExit: () => void }) {
   }, []);
 
   const item = items?.[idx] ?? null;
-  const fen = useMemo(() => fenAfter(item?.prompt_sans), [item]);
+  const promptSans = item?.prompt_sans ?? EMPTY_SANS;
+  const promptFen = useMemo(() => fenAfter(promptSans), [promptSans]);
+  const fen = useMemo(() => fenAfter(promptSans.slice(0, viewPly)), [promptSans, viewPly]);
+  const atPrompt = viewPly === promptSans.length;
 
   useEffect(() => {
-    chessRef.current = new Chess(fen);
+    chessRef.current = new Chess(promptFen);
+    setViewPly(item?.prompt_sans.length ?? 0);
     failedRef.current = false;
     setState("ask");
-  }, [fen, idx]);
+  }, [promptFen, idx, item?.prompt_sans.length]);
 
   const next = () => {
     setIdx((i) => i + 1);
   };
 
   const tryMove = (from: string, to: string): boolean => {
-    if (!item || state === "correct") return false;
+    if (!item || state === "correct" || !atPrompt) return false;
     let san: string;
     try {
       const move = chessRef.current.move({ from, to, promotion: "q" });
@@ -573,7 +583,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
     setTimeout(() => setShake(false), 600);
     return false;
   };
-  const trainSelection = useBoardSelection(fen, tryMove, state !== "correct");
+  const trainSelection = useBoardSelection(fen, tryMove, state !== "correct" && atPrompt);
 
   if (items == null) return null;
   if (!item) {
@@ -596,6 +606,11 @@ function Trainer({ onExit }: { onExit: () => void }) {
   }
 
   const moveNo = Math.floor(item.prompt_sans.length / 2) + 1;
+  const previousPly = item.prompt_sans.length;
+  const previousSan = item.prompt_sans[item.prompt_sans.length - 1];
+  const previousMove = previousSan
+    ? `${Math.ceil(previousPly / 2)}${previousPly % 2 === 1 ? "." : "…"}${previousSan}`
+    : t("rep.startPos");
   return (
     <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
       <div>
@@ -611,7 +626,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
           boardId="rep-train"
           fen={fen}
           width={420}
-          draggable={state !== "correct"}
+          draggable={state !== "correct" && atPrompt}
           onPieceDrop={tryMove}
           onSquareClick={trainSelection.onSquareClick}
           squareStyles={trainSelection.squareStyles}
@@ -619,6 +634,28 @@ function Trainer({ onExit }: { onExit: () => void }) {
           shake={shake}
           mouseDrag
         />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
+          <span className="text-[12.5px] text-ink2">
+            {t("rep.lastMove", { move: previousMove })}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button onClick={() => setViewPly(0)} className="px-2" title={t("rep.firstPosition")}>
+              <ChevronFirst size={14} />
+            </Button>
+            <Button onClick={() => setViewPly((value) => Math.max(0, value - 1))} className="px-2" title={t("rep.previousPosition")}>
+              <ChevronLeft size={14} />
+            </Button>
+            <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
+              {viewPly} / {item.prompt_sans.length}
+            </span>
+            <Button onClick={() => setViewPly((value) => Math.min(item.prompt_sans.length, value + 1))} className="px-2" title={t("rep.nextPosition")}>
+              <ChevronRight size={14} />
+            </Button>
+            <Button onClick={() => setViewPly(item.prompt_sans.length)} className="px-2" title={t("rep.promptPosition")}>
+              <ChevronLast size={14} />
+            </Button>
+          </div>
+        </div>
         <div className="mt-3 flex h-[52px] items-center">
           {state === "correct" ? (
             <div className="flex w-full items-center gap-2 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[13.5px] font-medium text-accent">

@@ -287,7 +287,10 @@ pub fn run() {
             reminder::register_windows_app_id(
                 &app.handle().config().identifier.clone(),
                 "Kiebitz",
-                app.path().resource_dir().ok().map(|d| d.join("icons/icon.ico")),
+                app.path()
+                    .resource_dir()
+                    .ok()
+                    .map(|d| d.join("icons/icon.ico")),
             );
 
             // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.

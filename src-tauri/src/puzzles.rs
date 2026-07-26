@@ -703,7 +703,10 @@ pub struct AttemptRow {
 
 /// Die letzten Versuche, neueste zuerst.
 #[tauri::command]
-pub async fn puzzle_history(app: tauri::AppHandle, limit: Option<i64>) -> Result<Vec<AttemptRow>, String> {
+pub async fn puzzle_history(
+    app: tauri::AppHandle,
+    limit: Option<i64>,
+) -> Result<Vec<AttemptRow>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -738,7 +741,8 @@ fn puzzle_history_from_conn(conn: &Connection, limit: i64) -> Result<Vec<Attempt
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 // ── Detailanalyse (Insights-Unterreiter) ─────────────────────────────────────
@@ -786,7 +790,10 @@ pub struct PuzzleInsights {
 }
 
 #[tauri::command]
-pub async fn puzzle_insights(app: tauri::AppHandle, days: Option<i64>) -> Result<PuzzleInsights, String> {
+pub async fn puzzle_insights(
+    app: tauri::AppHandle,
+    days: Option<i64>,
+) -> Result<PuzzleInsights, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -846,13 +853,11 @@ fn puzzle_insights_from_conn(
         }
     };
     let avg_puzzle_rating = avg(&rated.iter().map(|a| a.puzzle_rating).collect::<Vec<_>>());
-    let avg_solved_rating = avg(
-        &rated
-            .iter()
-            .filter(|a| a.solved)
-            .map(|a| a.puzzle_rating)
-            .collect::<Vec<_>>(),
-    );
+    let avg_solved_rating = avg(&rated
+        .iter()
+        .filter(|a| a.solved)
+        .map(|a| a.puzzle_rating)
+        .collect::<Vec<_>>());
 
     let (mut best_run, mut current_run) = (0i64, 0i64);
     for attempt in &attempts {
@@ -965,7 +970,12 @@ fn puzzle_insights_from_conn(
                 .map(|(i, v)| (i as i64, *v))
                 .collect(),
         ),
-        by_hour: bucket_list(hour.iter().enumerate().map(|(i, v)| (i as i64, *v)).collect()),
+        by_hour: bucket_list(
+            hour.iter()
+                .enumerate()
+                .map(|(i, v)| (i as i64, *v))
+                .collect(),
+        ),
         timeline,
     })
 }
@@ -1095,7 +1105,8 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for i in 0..40 {
             if let Some(p) =
-                next_puzzle_at(&conn, None, None, Some(1200), Some(1600), 1_800_000_000 + i).unwrap()
+                next_puzzle_at(&conn, None, None, Some(1200), Some(1600), 1_800_000_000 + i)
+                    .unwrap()
             {
                 seen.insert(p.id);
             }

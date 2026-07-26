@@ -39,6 +39,7 @@ import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ResultBadge, Tag } from "../components/ui";
 import { de, evalLabel, fenAfter, winProb } from "../lib/util";
 import { selectionStyles } from "../lib/boardMoves";
+import { tcLabel } from "../lib/gameUi";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
@@ -239,7 +240,7 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
 
 export default function Analysis({ targetGameId }: { targetGameId: number | null }) {
   const backend = useBackendInfo();
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
 
   const [games, setGames] = useState<GameRecord[]>([]);
@@ -609,7 +610,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     setPly(Math.max(0, Math.min(sans.length, next)));
   };
   const headerSub = live
-    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
       ? t("an.freeBoardHint")
       : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
@@ -854,7 +855,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                         strokeDasharray="2 3"
                         label={{
                           value: t(`ins.phase.${marker.phase}` as Key),
-                          position: "insideTopLeft",
+                          position: "insideBottomLeft",
                           angle: -90,
                           offset: 8,
                           fill: "var(--color-ink3)",

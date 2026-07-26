@@ -22,7 +22,7 @@ function g(partial: Partial<GameRecord> = {}): GameRecord {
     eco: "C50",
     moves_count: 20,
     accuracy: null,
-    moves: "",
+    moves: "e4 e5",
     note: "",
     analyzed: true,
     ...partial,
@@ -53,6 +53,14 @@ describe("buildDashboard", () => {
     );
     expect(d.cards.find((c) => c.id === "chess.com-rapid" && c.value === 0)).toBeUndefined();
     expect(d.unanalyzed).toBe(2);
+  });
+
+  it("does not count metadata-only games that the engine cannot queue", () => {
+    const d = buildDashboard(
+      [g({ analyzed: false, moves: "" }), g({ analyzed: false, moves: "   " })],
+      { locale: "en", ccUser: "u", liUser: "u" }
+    );
+    expect(d.unanalyzed).toBe(0);
   });
 
   it("caps cards at four and recent at five", () => {

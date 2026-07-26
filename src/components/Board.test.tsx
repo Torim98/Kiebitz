@@ -1,8 +1,14 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import Board from "./Board";
 
-vi.mock("react-chessboard", () => ({ Chessboard: () => <div data-testid="chessboard" /> }));
+const boardMock = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
+vi.mock("react-chessboard", () => ({
+  Chessboard: (props: Record<string, unknown>) => {
+    boardMock.props = props;
+    return <div data-testid="chessboard" />;
+  },
+}));
 
 // jsdom kennt den ResizeObserver nicht, den das Brett fürs Mitwachsen nutzt.
 beforeAll(() => {
@@ -18,6 +24,21 @@ afterEach(cleanup);
 const FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 describe("Board badges", () => {
+  it("shows legal targets while a piece is being dragged", () => {
+    render(<Board boardId="test" fen={FEN} width={400} draggable />);
+
+    act(() => {
+      (boardMock.props?.onPieceDragBegin as (piece: string, square: string) => void)("wP", "e2");
+    });
+    const styles = boardMock.props?.customSquareStyles as Record<string, CSSStyleDeclaration>;
+    expect(Object.keys(styles).sort()).toEqual(["e2", "e3", "e4"]);
+
+    act(() => {
+      (boardMock.props?.onPieceDragEnd as () => void)();
+    });
+    expect(boardMock.props?.customSquareStyles).toEqual({});
+  });
+
   it("centers the marker on the top-right corner of the target square", () => {
     render(
       <Board

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitDataChange } from "./changes";
 
 /** Pairing-Infos des Desktop-Hubs für den QR-Code. */
 export interface PairInfo {
@@ -34,6 +35,7 @@ export interface SyncSummary {
   rep_merged: number;
   puzzle_attempts_pulled: number;
   endgame_attempts_pulled: number;
+  study_merged: number;
 }
 
 export function syncInfo(): Promise<SyncInfo> {
@@ -47,7 +49,10 @@ export function syncServerStart(): Promise<SyncInfo> {
 
 /** Mobile: kompletter Sync-Roundtrip gegen den Desktop-Hub. */
 export function syncNow(): Promise<SyncSummary> {
-  return invoke<SyncSummary>("sync_now");
+  return invoke<SyncSummary>("sync_now").then((summary) => {
+    emitDataChange();
+    return summary;
+  });
 }
 
 /** Mobile: sucht den Desktop-Hub per UDP-Broadcast ("ip:port" oder null). */

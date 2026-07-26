@@ -25,6 +25,7 @@ import {
   type StudyTemplate,
   type StudyTemplateInput,
 } from "../lib/study";
+import { onDataChange } from "../lib/changes";
 
 const DAY_MS = 86_400_000;
 const EMPTY_TEMPLATE: StudyTemplateInput = {
@@ -122,6 +123,10 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   useEffect(() => {
     if (!desktop) return;
     refresh().catch((reason) => setError(String(reason)));
+    const unsubscribe = onDataChange(() => {
+      refresh().catch((reason) => setError(String(reason)));
+    });
+    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desktop, weekStart]);
 

@@ -13,8 +13,8 @@ use tauri::State;
 // ── FSRS-Scheduler (Default-Gewichte, Retention 0,9) ─────────────────────────
 
 const W: [f64; 17] = [
-    0.4872, 1.4003, 3.7145, 13.8206, 5.1618, 1.2298, 0.8975, 0.031, 1.6474, 0.1367, 1.0461,
-    2.1072, 0.0793, 0.3246, 1.587, 0.2272, 2.8755,
+    0.4872, 1.4003, 3.7145, 13.8206, 5.1618, 1.2298, 0.8975, 0.031, 1.6474, 0.1367, 1.0461, 2.1072,
+    0.0793, 0.3246, 1.587, 0.2272, 2.8755,
 ];
 const FACTOR: f64 = 19.0 / 81.0;
 const DECAY: f64 = -0.5;
@@ -68,7 +68,11 @@ fn fsrs_review(
         )
     };
     // Bei Retention 0,9 entspricht das Intervall der Stabilität.
-    let interval = if grade == 1 { 0 } else { (s.round() as i64).clamp(1, 365) };
+    let interval = if grade == 1 {
+        0
+    } else {
+        (s.round() as i64).clamp(1, 365)
+    };
     (s, d, interval)
 }
 
@@ -131,7 +135,8 @@ fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -169,7 +174,9 @@ pub fn rep_add_line(
             .to_move(&pos)
             .map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
         let clean_san = SanPlus::from_move(pos.clone(), &m).to_string();
-        pos = pos.play(&m).map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
+        pos = pos
+            .play(&m)
+            .map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
         let key = chess::fen_key(&pos);
         let depth = (i + 1) as i64;
 
@@ -218,7 +225,13 @@ pub fn rep_delete(db: State<db::Db>, id: i64) -> Result<(), String> {
             .query_row(
                 "SELECT parent_id, san, side FROM rep_nodes WHERE id = ?1",
                 params![cur],
-                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                },
             )
             .ok()
         {
@@ -354,7 +367,11 @@ pub fn rep_review(db: State<db::Db>, node_id: i64, grade: u8) -> Result<ReviewRe
     let now = now_ts();
     let elapsed_days = (now - last_ts) as f64 / 86_400.0;
     let (s, d, interval) = fsrs_review(stability, difficulty, reps, elapsed_days, grade);
-    let due_ts = if grade == 1 { now + 600 } else { now + interval * 86_400 };
+    let due_ts = if grade == 1 {
+        now + 600
+    } else {
+        now + interval * 86_400
+    };
     let lapses = lapses + i64::from(grade == 1 && reps > 0);
 
     conn.execute(
@@ -486,7 +503,8 @@ pub fn rep_node_games(db: State<db::Db>, node_id: i64) -> Result<NodeGameStats, 
         let rows = stmt
             .query_map(params![node_id], |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
 
     let mut stmt = conn

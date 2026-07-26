@@ -210,21 +210,32 @@ mod tests {
     fn analyzes_italian_position() {
         let exe = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries")
-            .join(if cfg!(windows) { "stockfish.exe" } else { "stockfish" });
+            .join(if cfg!(windows) {
+                "stockfish.exe"
+            } else {
+                "stockfish"
+            });
         if !exe.exists() {
             eprintln!("übersprungen: keine Engine unter {}", exe.display());
             return;
         }
 
         let mut e = UciEngine::spawn(&exe.to_string_lossy()).expect("Engine-Start");
-        assert!(e.name().contains("Stockfish"), "unerwarteter Name: {}", e.name());
+        assert!(
+            e.name().contains("Stockfish"),
+            "unerwarteter Name: {}",
+            e.name()
+        );
 
         let fen = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1";
         let r = e.analyze(fen, 18).expect("Analyse");
 
         assert_eq!(r.depth, 18);
         assert!(!r.bestmove.is_empty(), "bestmove leer");
-        assert!(r.eval_cp.is_some() || r.mate_in.is_some(), "keine Bewertung");
+        assert!(
+            r.eval_cp.is_some() || r.mate_in.is_some(),
+            "keine Bewertung"
+        );
         assert!(!r.pv.is_empty(), "keine Hauptvariante");
         eprintln!(
             "OK: name={} bestmove={} eval_cp={:?} depth={} pv={:?}",

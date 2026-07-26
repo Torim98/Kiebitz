@@ -118,7 +118,10 @@ export function buildDashboard(
     cards: cards.slice(0, 4),
     history,
     recent: libraryRecords.slice(0, 5).map((r) => toUi(r, opts.locale)),
-    unanalyzed: records.filter((g) => !g.analyzed).length,
+    // Keep this definition identical to the native analysis queue. Imported
+    // metadata-only games without SAN moves cannot be analyzed and therefore
+    // must not appear as a phantom backlog on the dashboard.
+    unanalyzed: records.filter((g) => !g.analyzed && g.moves.trim().length > 0).length,
   };
 }
 

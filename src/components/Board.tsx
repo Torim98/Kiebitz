@@ -1,6 +1,7 @@
 import { Chessboard } from "react-chessboard";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { selectionStyles } from "../lib/boardMoves";
 
 const boardTheme = {
   customDarkSquareStyle: { backgroundColor: "#6f8155" },
@@ -52,6 +53,7 @@ export default function Board({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
+  const [dragSource, setDragSource] = useState<string | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -65,6 +67,10 @@ export default function Board({
     ro.observe(el);
     return () => ro.disconnect();
   }, [width]);
+
+  // A new position always ends the old drag, including moves completed by an
+  // automated opponent response.
+  useEffect(() => setDragSource(null), [fen]);
 
   // Der Marker sitzt wie bei chess.com mittig auf der oberen rechten Ecke des
   // Zielfelds und ueberlappt das Nachbarfeld nur minimal.
@@ -100,8 +106,13 @@ export default function Board({
           boardWidth={w}
           arePiecesDraggable={draggable}
           onPieceDrop={onPieceDrop ? (s, t) => onPieceDrop(s, t) : undefined}
+          onPieceDragBegin={draggable ? (_piece, source) => setDragSource(source) : undefined}
+          onPieceDragEnd={draggable ? () => setDragSource(null) : undefined}
           onSquareClick={onSquareClick}
-          customSquareStyles={squareStyles}
+          customSquareStyles={{
+            ...selectionStyles(fen, dragSource),
+            ...squareStyles,
+          }}
           customArrows={arrows as never}
           customDndBackend={mouseDrag ? TouchBackend : undefined}
           customDndBackendOptions={mouseDrag ? { enableMouseEvents: true } : undefined}

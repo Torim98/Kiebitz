@@ -30,6 +30,7 @@ import {
   type PuzzleStats,
 } from "../lib/puzzles";
 import Board from "../components/Board";
+import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
 
@@ -321,7 +322,9 @@ function TrainerView({
   };
 
   const hintSquare = puzzle && status === "playing" ? puzzle.moves[idxRef.current]?.slice(0, 2) : null;
-  const squareStyles: Record<string, React.CSSProperties> = {};
+  const squareStyles: Record<string, React.CSSProperties> = {
+    ...(status === "playing" ? moveTargetStyles(fen, selected) : {}),
+  };
   if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
   if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px #d9a028" };
 
@@ -389,6 +392,7 @@ function TrainerView({
             squareStyles={squareStyles}
             orientation={orientation}
             shake={shake}
+            mouseDrag
           />
 
           <div className="mt-3 flex min-h-[52px] items-center">
@@ -698,9 +702,13 @@ function DemoPuzzles() {
             draggable={status !== "solved"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
-            squareStyles={selected ? { [selected]: { boxShadow: "inset 0 0 0 3px #22c08a" } } : undefined}
+            squareStyles={{
+              ...moveTargetStyles(fen, selected),
+              ...(selected ? { [selected]: { boxShadow: "inset 0 0 0 3px #22c08a" } } : {}),
+            }}
             orientation={puzzle.sideToMove}
             shake={shake}
+            mouseDrag
           />
 
           <div className="mt-3 flex h-[52px] items-center">

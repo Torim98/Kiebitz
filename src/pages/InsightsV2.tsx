@@ -308,8 +308,8 @@ function Performance({ data, errors, phaseLabel }: { data: LiveInsights; errors:
 function Openings({ data }: { data: LiveInsights }) {
   const { t } = useI18n();
   return (
-    <div className="grid gap-4 min-[1000px]:grid-cols-[1fr_1.4fr]">
-      <Card title={t("ins.openingsTitle")}>
+    <div className="grid min-w-0 gap-4 min-[1000px]:grid-cols-[1fr_1.4fr]">
+      <Card title={t("ins.openingsTitle")} className="min-w-0">
         <ResponsiveContainer width="100%" height={340}>
           <BarChart data={data.openings} layout="vertical" margin={{ top: 0, right: 42, bottom: 0, left: 12 }} barSize={17}>
             <XAxis type="number" domain={[0, 100]} hide />
@@ -322,8 +322,8 @@ function Openings({ data }: { data: LiveInsights }) {
           </BarChart>
         </ResponsiveContainer>
       </Card>
-      <Card title={t("ins.openingTableTitle")} pad={false}>
-        <div className="overflow-x-auto">
+      <Card title={t("ins.openingTableTitle")} pad={false} className="min-w-0">
+        <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-[620px] text-left">
             <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
               <tr><th className="px-4 py-2.5">{t("ins.opening")}</th><th className="px-3 py-2.5">{t("ins.color")}</th><th className="px-3 py-2.5 text-right">{t("ins.games")}</th><th className="px-3 py-2.5 text-right">{t("ins.scoreRate")}</th><th className="px-4 py-2.5 text-right">{t("ins.accuracyShort")}</th></tr>

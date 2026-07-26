@@ -15,6 +15,8 @@
 //!   Löschungen propagieren in v1 nicht.
 //! - Puzzle-/Endspiel-Versuche: append-only-Union, Duplikate über
 //!   (puzzle_id|drill_id, ts) erkannt.
+//! - Study: Vorlagen und Kalendereinträge per stabiler Sync-ID; der neuere
+//!   `updated_ts`-Stand gewinnt, einschließlich Abschluss und Löschung.
 //! - Nicht gesynct: Puzzle-DB, positions-Index (wird lokal neu aufgebaut),
 //!   Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
 //!
@@ -157,6 +159,31 @@ pub struct SyncEndgameAttempt {
     pub moves: i64,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncStudyTemplate {
+    pub sync_key: String,
+    pub title: String,
+    pub duration_min: i64,
+    pub tool: String,
+    pub description: String,
+    pub created_ts: i64,
+    pub updated_ts: i64,
+    pub deleted: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncStudyEvent {
+    pub sync_key: String,
+    pub template_sync_key: String,
+    pub day: String,
+    pub position: i64,
+    pub completed: bool,
+    pub completed_ts: i64,
+    pub created_ts: i64,
+    pub updated_ts: i64,
+    pub deleted: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SyncRequest {
     pub code: String,
@@ -170,6 +197,10 @@ pub struct SyncRequest {
     pub rep_tombstones: Vec<SyncTombstone>,
     pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
     pub endgame_attempts: Vec<SyncEndgameAttempt>,
+    #[serde(default)]
+    pub study_templates: Vec<SyncStudyTemplate>,
+    #[serde(default)]
+    pub study_events: Vec<SyncStudyEvent>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -183,6 +214,10 @@ pub struct SyncResponse {
     pub rep_tombstones: Vec<SyncTombstone>,
     pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
     pub endgame_attempts: Vec<SyncEndgameAttempt>,
+    #[serde(default)]
+    pub study_templates: Vec<SyncStudyTemplate>,
+    #[serde(default)]
+    pub study_events: Vec<SyncStudyEvent>,
 }
 
 // ── Collect: lokale Daten für die Gegenseite einsammeln ─────────────────────
@@ -495,6 +530,66 @@ fn collect_endgame_attempts(
                 ts: r.get(1)?,
                 solved: r.get::<_, i64>(2)? != 0,
                 moves: r.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+fn collect_study_templates(
+    conn: &Connection,
+    since: i64,
+) -> Result<Vec<SyncStudyTemplate>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sync_key, title, duration_min, tool, description,
+                    created_ts, updated_ts, deleted
+             FROM study_templates WHERE updated_ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncStudyTemplate {
+                sync_key: r.get(0)?,
+                title: r.get(1)?,
+                duration_min: r.get(2)?,
+                tool: r.get(3)?,
+                description: r.get(4)?,
+                created_ts: r.get(5)?,
+                updated_ts: r.get(6)?,
+                deleted: r.get::<_, i64>(7)? != 0,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEvent>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT e.sync_key, t.sync_key, e.day, e.position, e.completed,
+                    e.completed_ts, e.created_ts, e.updated_ts, e.deleted
+             FROM study_events e
+             JOIN study_templates t ON t.id = e.template_id
+             WHERE e.updated_ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncStudyEvent {
+                sync_key: r.get(0)?,
+                template_sync_key: r.get(1)?,
+                day: r.get(2)?,
+                position: r.get(3)?,
+                completed: r.get::<_, i64>(4)? != 0,
+                completed_ts: r.get(5)?,
+                created_ts: r.get(6)?,
+                updated_ts: r.get(7)?,
+                deleted: r.get::<_, i64>(8)? != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -856,6 +951,132 @@ fn apply_endgame_attempts(
     Ok(n)
 }
 
+fn apply_study_templates(
+    conn: &Connection,
+    templates: &[SyncStudyTemplate],
+) -> Result<usize, String> {
+    let mut merged = 0usize;
+    for template in templates {
+        let existing = conn.query_row(
+            "SELECT id, updated_ts FROM study_templates WHERE sync_key = ?1",
+            params![template.sync_key],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        );
+        match existing {
+            Ok((id, updated_ts)) if template.updated_ts > updated_ts => {
+                merged += conn
+                    .execute(
+                        "UPDATE study_templates
+                         SET title=?1, duration_min=?2, tool=?3, description=?4,
+                             created_ts=?5, updated_ts=?6, deleted=?7
+                         WHERE id=?8",
+                        params![
+                            template.title,
+                            template.duration_min,
+                            template.tool,
+                            template.description,
+                            template.created_ts,
+                            template.updated_ts,
+                            template.deleted as i64,
+                            id
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(_) => {}
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                merged += conn
+                    .execute(
+                        "INSERT INTO study_templates
+                         (sync_key, title, duration_min, tool, description,
+                          created_ts, updated_ts, deleted)
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                        params![
+                            template.sync_key,
+                            template.title,
+                            template.duration_min,
+                            template.tool,
+                            template.description,
+                            template.created_ts,
+                            template.updated_ts,
+                            template.deleted as i64
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(merged)
+}
+
+fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<usize, String> {
+    let mut merged = 0usize;
+    for event in events {
+        let template_id = match conn.query_row(
+            "SELECT id FROM study_templates WHERE sync_key = ?1",
+            params![event.template_sync_key],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(id) => id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        let existing = conn.query_row(
+            "SELECT id, updated_ts FROM study_events WHERE sync_key = ?1",
+            params![event.sync_key],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        );
+        match existing {
+            Ok((id, updated_ts)) if event.updated_ts > updated_ts => {
+                merged += conn
+                    .execute(
+                        "UPDATE study_events
+                         SET template_id=?1, day=?2, position=?3, completed=?4,
+                             completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8
+                         WHERE id=?9",
+                        params![
+                            template_id,
+                            event.day,
+                            event.position,
+                            event.completed as i64,
+                            event.completed_ts,
+                            event.created_ts,
+                            event.updated_ts,
+                            event.deleted as i64,
+                            id
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(_) => {}
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                merged += conn
+                    .execute(
+                        "INSERT INTO study_events
+                         (sync_key, template_id, day, position, completed,
+                          completed_ts, created_ts, updated_ts, deleted)
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                        params![
+                            event.sync_key,
+                            template_id,
+                            event.day,
+                            event.position,
+                            event.completed as i64,
+                            event.completed_ts,
+                            event.created_ts,
+                            event.updated_ts,
+                            event.deleted as i64
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(merged)
+}
+
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
     apply_game_tombstones(conn, &req.game_tombstones)?;
@@ -867,6 +1088,8 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         replay_puzzle_ratings(conn)?;
     }
     apply_endgame_attempts(conn, &req.endgame_attempts)?;
+    apply_study_templates(conn, &req.study_templates)?;
+    apply_study_events(conn, &req.study_events)?;
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
@@ -875,6 +1098,8 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         rep_tombstones: collect_tombstones(conn)?,
         puzzle_attempts: collect_puzzle_attempts(conn, req.since)?,
         endgame_attempts: collect_endgame_attempts(conn, req.since)?,
+        study_templates: collect_study_templates(conn, req.since)?,
+        study_events: collect_study_events(conn, req.since)?,
     })
 }
 
@@ -1341,6 +1566,7 @@ pub struct SyncSummary {
     pub rep_merged: usize,
     pub puzzle_attempts_pulled: usize,
     pub endgame_attempts_pulled: usize,
+    pub study_merged: usize,
 }
 
 /// Client-Seite: kompletter Sync-Roundtrip gegen den Desktop-Hub.
@@ -1377,6 +1603,8 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 rep_tombstones: collect_tombstones(&conn)?,
                 puzzle_attempts: collect_puzzle_attempts(&conn, since)?,
                 endgame_attempts: collect_endgame_attempts(&conn, since)?,
+                study_templates: collect_study_templates(&conn, since)?,
+                study_events: collect_study_events(&conn, since)?,
             };
             (since, req)
         };
@@ -1408,12 +1636,15 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
             replay_puzzle_ratings(&mut conn)?;
         }
         let eg = apply_endgame_attempts(&conn, &resp.endgame_attempts)?;
+        let study_templates = apply_study_templates(&conn, &resp.study_templates)?;
+        let study_events = apply_study_events(&conn, &resp.study_events)?;
         db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
         Ok(SyncSummary {
             games_pulled,
             rep_merged,
             puzzle_attempts_pulled: pz,
             endgame_attempts_pulled: eg,
+            study_merged: study_templates + study_events,
         })
     })
     .await
@@ -1480,7 +1711,9 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         let (tags, opening): (String, Option<f64>) = conn
-            .query_row("SELECT tags, accuracy_opening FROM games", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row("SELECT tags, accuracy_opening FROM games", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
             .unwrap();
         assert_eq!(tags, r#"["OTB"]"#);
         assert_eq!(opening, Some(91.0));
@@ -1526,13 +1759,17 @@ mod tests {
         };
         assert_eq!(apply_game_tombstones(&mut conn, &[tombstone]).unwrap(), 1);
         assert_eq!(apply_games(&mut conn, &[old.clone()]).unwrap(), 0);
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 0);
 
         let mut reimported = old;
         reimported.updated_ts = 300;
         assert_eq!(apply_games(&mut conn, &[reimported]).unwrap(), 1);
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1, "a genuinely newer reimport may recreate the game");
     }
 
@@ -1652,6 +1889,60 @@ mod tests {
         };
         assert_eq!(apply_endgame_attempts(&conn, &[e.clone()]).unwrap(), 1);
         assert_eq!(apply_endgame_attempts(&conn, &[e]).unwrap(), 0);
+    }
+
+    #[test]
+    fn study_plan_syncs_templates_events_completion_and_deletion() {
+        let conn = mem_db();
+        let template = SyncStudyTemplate {
+            sync_key: "custom-calculation".into(),
+            title: "Calculation".into(),
+            duration_min: 30,
+            tool: "Board".into(),
+            description: "Candidate moves".into(),
+            created_ts: 100,
+            updated_ts: 100,
+            deleted: false,
+        };
+        let mut event = SyncStudyEvent {
+            sync_key: "event-calculation-monday".into(),
+            template_sync_key: template.sync_key.clone(),
+            day: "2026-07-27".into(),
+            position: 0,
+            completed: false,
+            completed_ts: 0,
+            created_ts: 110,
+            updated_ts: 110,
+            deleted: false,
+        };
+
+        assert_eq!(
+            apply_study_templates(&conn, &[template.clone()]).unwrap(),
+            1
+        );
+        assert_eq!(apply_study_events(&conn, &[event.clone()]).unwrap(), 1);
+        assert_eq!(apply_study_events(&conn, &[event.clone()]).unwrap(), 0);
+
+        event.completed = true;
+        event.completed_ts = 200;
+        event.updated_ts = 200;
+        assert_eq!(apply_study_events(&conn, &[event.clone()]).unwrap(), 1);
+        let completed: i64 = conn
+            .query_row(
+                "SELECT completed FROM study_events WHERE sync_key = ?1",
+                params![event.sync_key],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(completed, 1);
+
+        event.deleted = true;
+        event.updated_ts = 300;
+        assert_eq!(apply_study_events(&conn, &[event.clone()]).unwrap(), 1);
+        assert!(collect_study_events(&conn, 250)
+            .unwrap()
+            .iter()
+            .any(|entry| entry.sync_key == event.sync_key && entry.deleted));
     }
 
     #[test]
@@ -1822,6 +2113,8 @@ mod tests {
             rep_tombstones: vec![],
             puzzle_attempts: vec![],
             endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
         };
         let tls_config = pinned_tls_config(&fingerprint).unwrap();
         let agent = ureq::AgentBuilder::new()
@@ -1874,6 +2167,8 @@ mod tests {
                 puzzle_rating: 1450,
             }],
             endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
         };
         let resp = handle_sync(&mut desktop, &req).unwrap();
         assert_eq!(resp.games.len(), 1);

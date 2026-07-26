@@ -373,8 +373,8 @@ fn backup_to(source: &Connection, target: &std::path::Path) -> Result<(), String
     if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).map_err(|e| format!("Zielordner nicht anlegbar: {e}"))?;
     }
-    let mut destination = Connection::open(target)
-        .map_err(|e| format!("Sicherungsdatei nicht anlegbar: {e}"))?;
+    let mut destination =
+        Connection::open(target).map_err(|e| format!("Sicherungsdatei nicht anlegbar: {e}"))?;
     let result = (|| {
         let backup = rusqlite::backup::Backup::new(source, &mut destination)
             .map_err(|e| format!("Backup nicht startbar: {e}"))?;
@@ -406,11 +406,9 @@ pub fn backup_database(app: tauri::AppHandle, target: String) -> Result<String, 
 /// Validiert einen Snapshot und spielt ihn über die SQLite Backup API in die
 /// aktuell geöffnete Datenbank ein. Der Connection-Handle bleibt dabei stabil.
 fn restore_from(source_path: &std::path::Path, destination: &mut Connection) -> Result<(), String> {
-    let source = Connection::open_with_flags(
-        source_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| format!("Sicherung nicht lesbar: {e}"))?;
+    let source =
+        Connection::open_with_flags(source_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("Sicherung nicht lesbar: {e}"))?;
     let check: String = source
         .query_row("PRAGMA quick_check", [], |r| r.get(0))
         .map_err(|e| format!("Sicherung ungültig: {e}"))?;
@@ -618,7 +616,9 @@ mod tests {
         let source = Connection::open_in_memory().unwrap();
         db::init(&source).unwrap();
         source
-            .execute_batch("CREATE TABLE backup_marker (value TEXT); INSERT INTO backup_marker VALUES ('ok');")
+            .execute_batch(
+                "CREATE TABLE backup_marker (value TEXT); INSERT INTO backup_marker VALUES ('ok');",
+            )
             .unwrap();
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

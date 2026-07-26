@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emitDataChange } from "./changes";
 
 /** Spiegelt study::DayActivity. */
 export interface DayActivity {
@@ -86,25 +87,28 @@ export function getStudyCalendar(startDay: string, endDay: string): Promise<Stud
 }
 
 export function saveStudyTemplate(template: StudyTemplateInput): Promise<StudyTemplate> {
-  return invoke<StudyTemplate>("save_study_template", { template });
+  return invoke<StudyTemplate>("save_study_template", { template }).then((result) => {
+    emitDataChange();
+    return result;
+  });
 }
 
 export function deleteStudyTemplate(templateId: number): Promise<void> {
-  return invoke("delete_study_template", { templateId });
+  return invoke<void>("delete_study_template", { templateId }).then(() => emitDataChange());
 }
 
 export function scheduleStudyUnit(templateId: number, day: string): Promise<void> {
-  return invoke("schedule_study_unit", { templateId, day });
+  return invoke<void>("schedule_study_unit", { templateId, day }).then(() => emitDataChange());
 }
 
 export function moveStudyUnit(eventId: number, day: string, position: number): Promise<void> {
-  return invoke("move_study_unit", { eventId, day, position });
+  return invoke<void>("move_study_unit", { eventId, day, position }).then(() => emitDataChange());
 }
 
 export function completeStudyUnit(eventId: number, completed: boolean): Promise<void> {
-  return invoke("complete_study_unit", { eventId, completed });
+  return invoke<void>("complete_study_unit", { eventId, completed }).then(() => emitDataChange());
 }
 
 export function deleteStudyUnit(eventId: number): Promise<void> {
-  return invoke("delete_study_unit", { eventId });
+  return invoke<void>("delete_study_unit", { eventId }).then(() => emitDataChange());
 }

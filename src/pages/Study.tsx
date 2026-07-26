@@ -18,6 +18,7 @@ import { studyData, type StudyData } from "../lib/study";
 import { buildCoach } from "../lib/coach";
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
+import { onDataChange } from "../lib/changes";
 import { de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 
@@ -55,10 +56,14 @@ export default function Study({
 
   useEffect(() => {
     if (!desktop) return;
-    studyData().then(setLive).catch(() => {});
-    listGames().then(setRecords).catch(() => {});
-    puzzleStats().then((s) => setThemes(s.themes)).catch(() => {});
-    errorStats().then(setPhaseErrors).catch(() => {});
+    const refresh = () => {
+      studyData().then(setLive).catch(() => {});
+      listGames().then(setRecords).catch(() => {});
+      puzzleStats().then((s) => setThemes(s.themes)).catch(() => {});
+      errorStats().then(setPhaseErrors).catch(() => {});
+    };
+    refresh();
+    return onDataChange(refresh);
   }, [desktop]);
 
   // Web-Preview: statische Demo-Daten, damit das Layout erlebbar bleibt.

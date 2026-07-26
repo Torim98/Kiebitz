@@ -295,38 +295,76 @@ pub fn init(conn: &Connection) -> Result<(), String> {
 
          CREATE TABLE IF NOT EXISTS study_templates (
             id           INTEGER PRIMARY KEY,
+            sync_key     TEXT NOT NULL DEFAULT '',
             title        TEXT NOT NULL,
             duration_min INTEGER NOT NULL DEFAULT 20,
             tool         TEXT NOT NULL DEFAULT '',
             description  TEXT NOT NULL DEFAULT '',
             created_ts   INTEGER NOT NULL DEFAULT 0,
-            updated_ts   INTEGER NOT NULL DEFAULT 0
+            updated_ts   INTEGER NOT NULL DEFAULT 0,
+            deleted      INTEGER NOT NULL DEFAULT 0
          );
 
          CREATE TABLE IF NOT EXISTS study_events (
             id           INTEGER PRIMARY KEY,
+            sync_key     TEXT NOT NULL DEFAULT '',
             template_id  INTEGER NOT NULL,
             day          TEXT NOT NULL,
             position     INTEGER NOT NULL DEFAULT 0,
             completed    INTEGER NOT NULL DEFAULT 0,
             completed_ts INTEGER NOT NULL DEFAULT 0,
-            created_ts   INTEGER NOT NULL DEFAULT 0
+            created_ts   INTEGER NOT NULL DEFAULT 0,
+            updated_ts   INTEGER NOT NULL DEFAULT 0,
+            deleted      INTEGER NOT NULL DEFAULT 0
          );
          CREATE INDEX IF NOT EXISTS idx_study_events_day ON study_events(day, position, id);",
     )
     .map_err(|e| format!("Kalender-Schema fehlgeschlagen: {e}"))?;
+    // Sync-fähiger Kalender (v11). Soft deletes prevent removed units from
+    // reappearing when an older peer reconnects.
+    for sql in [
+        "ALTER TABLE study_templates ADD COLUMN sync_key TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE study_templates ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE study_events ADD COLUMN sync_key TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE study_events ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE study_events ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+    ] {
+        let _ = conn.execute(sql, []);
+    }
+    conn.execute_batch(
+        "UPDATE study_templates
+           SET sync_key = CASE
+             WHEN id BETWEEN 1 AND 4 THEN 'seed-' || id
+             ELSE 'template-' || created_ts || '-' || id
+           END
+         WHERE sync_key = '';
+         UPDATE study_events
+           SET sync_key = 'event-' || created_ts || '-' || id
+         WHERE sync_key = '';
+         UPDATE study_events SET updated_ts = created_ts WHERE updated_ts = 0;",
+    )
+    .map_err(|e| format!("Kalender-Sync-Migration fehlgeschlagen: {e}"))?;
 
     // Einmalige, danach vollständig editier- und löschbare Startvorlagen.
     // Englisch ausgeliefert, weil die App zweisprachig ist und Englisch die
     // kleinste gemeinsame Basis aller Nutzer ist.
     if meta_get(conn, "study_templates_seeded").is_none() {
         let now = now_ts();
-        for (title, duration, tool, description) in DEFAULT_STUDY_TEMPLATES {
+        for (index, (title, duration, tool, description)) in
+            DEFAULT_STUDY_TEMPLATES.into_iter().enumerate()
+        {
             conn.execute(
                 "INSERT INTO study_templates
-                 (title, duration_min, tool, description, created_ts, updated_ts)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-                params![title, duration, tool, description, now],
+                 (sync_key, title, duration_min, tool, description, created_ts, updated_ts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                params![
+                    format!("seed-{}", index + 1),
+                    title,
+                    duration,
+                    tool,
+                    description,
+                    now
+                ],
             )
             .map_err(|e| e.to_string())?;
         }

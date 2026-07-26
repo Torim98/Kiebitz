@@ -107,7 +107,11 @@ mod tests {
         assert!(walked[0].by_white);
         assert!(!walked[1].by_white);
         assert_eq!(walked[5].phase, "opening");
-        assert!(walked[5].key_after.contains("w KQkq"), "{}", walked[5].key_after);
+        assert!(
+            walked[5].key_after.contains("w KQkq"),
+            "{}",
+            walked[5].key_after
+        );
     }
 
     #[test]
@@ -119,9 +123,9 @@ mod tests {
     #[test]
     fn normalizes_chessjs_fen() {
         // chess.js liefert volle FEN mit Zählern — der Schlüssel lässt sie weg.
-        let key = normalize_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
+        let key =
+            normalize_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
         let walked = walk_sans("e4");
         assert_eq!(key, walked[0].key_after);
     }
-
 }

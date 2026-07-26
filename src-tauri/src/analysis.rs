@@ -294,7 +294,14 @@ fn run_worker(
             let mut v = Vec::new();
             for id in game_ids.unwrap() {
                 if let Ok(row) = stmt.query_row(params![id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get::<_, i64>(5)? != 0))
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get::<_, i64>(5)? != 0,
+                    ))
                 }) {
                     v.push(row);
                 }
@@ -304,7 +311,14 @@ fn run_worker(
             let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
             let rows = stmt
                 .query_map([], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get::<_, i64>(5)? != 0))
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get::<_, i64>(5)? != 0,
+                    ))
                 })
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<Vec<_>, _>>()
@@ -336,7 +350,9 @@ fn run_worker(
     let total = targets.len();
     let mut analyzed = 0usize;
 
-    for (idx, (game_id, moves, opponent, color, my_elo, analysis_excluded)) in targets.into_iter().enumerate() {
+    for (idx, (game_id, moves, opponent, color, my_elo, analysis_excluded)) in
+        targets.into_iter().enumerate()
+    {
         if state.cancel.load(Ordering::SeqCst) {
             break;
         }
