@@ -78,6 +78,21 @@ body {
   cursor: grabbing !important;
 }
 
+/* Koordinaten und Figuren dürfen beim Ziehen nie zur Browser-Textauswahl
+   werden. Leere Felder reagieren auf Android ohne verzögerten Tap-Klick. */
+.kiebitz-board,
+.kiebitz-board * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none;
+}
+.kiebitz-board [data-square] {
+  touch-action: manipulation;
+}
+.kiebitz-board [data-piece] {
+  touch-action: none !important;
+}
+
 /* Android WebViews melden den Drei-Tasten-/Gestenbereich je nach OEM als
    safe-area 0. Der Mindestabstand haelt Drawer-Aktionen und Seiteninhalt frei. */
 .android-safe-bottom {

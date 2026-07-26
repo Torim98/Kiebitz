@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Cpu, Pause, Play } from "lucide-react";
 import { engineInfo, type EngineInfo } from "../lib/backend";
@@ -9,6 +9,9 @@ type EngineState =
   | { mode: "checking" }
   | { mode: "web" }
   | { mode: "desktop"; info: EngineInfo };
+
+/** Engine-Werte müssen nicht häufiger als die Oberfläche sichtbar neu zeichnen. */
+const ENGINE_UI_INTERVAL_MS = 100;
 
 /** Wandelt die UCI-Hauptvariante (z. B. "e2e4") in lesbares SAN um. */
 function pvToSan(fen: string, pv: string[]): string {
@@ -69,6 +72,8 @@ export default function LiveEngine({
   onEvalRef.current = onEval;
   const onBestMoveRef = useRef(onBestMove);
   onBestMoveRef.current = onBestMove;
+  const pendingInfoRef = useRef<Map<number, LiveInfo>>(new Map());
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     engineInfo()
@@ -84,27 +89,48 @@ export default function LiveEngine({
     let unInfo: (() => void) | undefined;
     let unDone: (() => void) | undefined;
     let disposed = false;
+
+    const flushInfo = () => {
+      flushTimerRef.current = null;
+      const pending = pendingInfoRef.current;
+      pendingInfoRef.current = new Map();
+      if (pending.size === 0) return;
+
+      const newest = [...pending.values()].sort((a, b) => b.depth - a.depth)[0];
+      const primary = pending.get(1);
+      startTransition(() => {
+        setLines((prev) => {
+          const next = new Map(prev);
+          pending.forEach((info, multipv) => next.set(multipv, info));
+          return next;
+        });
+        if (newest?.nps != null) setNps(newest.nps);
+
+        if (primary && onEvalRef.current) {
+          const blackToMove = fenRef.current.split(" ")[1] === "b";
+          const sign = blackToMove ? -1 : 1;
+          onEvalRef.current(
+            primary.eval_cp != null ? sign * primary.eval_cp : null,
+            primary.mate_in != null ? sign * primary.mate_in : null
+          );
+        }
+        if (primary) onBestMoveRef.current?.(primary.pv[0] ?? null);
+      });
+    };
+
     onEngineInfo((info) => {
       if (info.generation !== genRef.current) return;
-      setLines((prev) => {
-        const next = new Map(prev);
-        next.set(info.multipv, info);
-        return next;
-      });
-      if (info.nps != null) setNps(info.nps);
-      if (info.multipv === 1 && onEvalRef.current) {
-        const blackToMove = fenRef.current.split(" ")[1] === "b";
-        const sign = blackToMove ? -1 : 1;
-        onEvalRef.current(
-          info.eval_cp != null ? sign * info.eval_cp : null,
-          info.mate_in != null ? sign * info.mate_in : null
-        );
+      pendingInfoRef.current.set(info.multipv, info);
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = setTimeout(flushInfo, ENGINE_UI_INTERVAL_MS);
       }
-      if (info.multipv === 1) onBestMoveRef.current?.(info.pv[0] ?? null);
     }).then((u) => (disposed ? u() : (unInfo = u)));
     onEngineDone(() => {}).then((u) => (disposed ? u() : (unDone = u)));
     return () => {
       disposed = true;
+      if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+      pendingInfoRef.current.clear();
       unInfo?.();
       unDone?.();
     };
@@ -113,9 +139,19 @@ export default function LiveEngine({
   // Bei Stellungswechsel (oder Start/Stopp) neu analysieren.
   useEffect(() => {
     if (!available) return;
+    if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = null;
+    pendingInfoRef.current.clear();
+    // Bis analyzeLive die neue Generation liefert, keine Rest-Events der
+    // vorherigen Stellung mehr annehmen.
+    genRef.current = -1;
     setLines(new Map());
+    setNps(null);
     onBestMoveRef.current?.(null);
-    if (!running) return;
+    if (!running) {
+      stopLive().catch(() => {});
+      return;
+    }
     let stale = false;
     analyzeLive(fen)
       .then((generation) => {

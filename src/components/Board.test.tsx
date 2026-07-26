@@ -10,7 +10,10 @@ vi.mock("react-chessboard", () => ({
       <div data-testid="chessboard">
         <div data-square="e2"><div data-piece="wP" /></div>
         <div data-square="e3" />
-        <div data-square="e4" />
+        <div
+          data-square="e4"
+          onClick={() => (props.onSquareClick as ((square: string) => void) | undefined)?.("e4")}
+        />
       </div>
     );
   },
@@ -25,7 +28,10 @@ beforeAll(() => {
   } as unknown as typeof ResizeObserver;
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 const FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -47,6 +53,7 @@ describe("Board badges", () => {
 
   it("uses the shared pointer fallback without rebuilding react-dnd", () => {
     const onPieceDrop = vi.fn(() => true);
+    const onSquareClick = vi.fn();
     render(
       <Board
         boardId="test"
@@ -55,6 +62,7 @@ describe("Board badges", () => {
         draggable
         mouseDrag
         onPieceDrop={onPieceDrop}
+        onSquareClick={onSquareClick}
       />
     );
 
@@ -77,6 +85,11 @@ describe("Board badges", () => {
     expect(onPieceDrop).toHaveBeenCalledWith("e2", "e4");
     expect(piece.style.visibility).toBe("");
 
+    // Ein verspäteter Android-Kompatibilitätsklick darf den Zug nicht als
+    // Click-&-Move-Eingabe wiederholen.
+    fireEvent.click(target);
+    expect(onSquareClick).not.toHaveBeenCalled();
+
     if (originalElementFromPoint) {
       Object.defineProperty(document, "elementFromPoint", {
         configurable: true,
@@ -88,6 +101,17 @@ describe("Board badges", () => {
         value: undefined,
       });
     }
+  });
+
+  it("disables move animation on Android and blocks native text dragging", () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36"
+    );
+    render(<Board boardId="android" fen={FEN} width={400} draggable mouseDrag />);
+
+    expect(boardMock.props?.animationDuration).toBe(0);
+    const wrapper = screen.getByTestId("chessboard").closest(".kiebitz-board")!;
+    expect(fireEvent.dragStart(wrapper)).toBe(false);
   });
 
   it("centers the marker on the top-right corner of the target square", () => {

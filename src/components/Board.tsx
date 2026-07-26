@@ -12,6 +12,10 @@ const boardTheme = {
   },
 };
 
+function isAndroidWebView(): boolean {
+  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+}
+
 /**
  * Schachbrett mit responsiver Breite: `width` ist die Maximalbreite; auf
  * schmalen Screens (Mobile) schrumpft das Brett auf die Containerbreite.
@@ -56,7 +60,7 @@ export default function Board({
   const dropRef = useRef(onPieceDrop);
   const draggableRef = useRef(draggable);
   const fenRef = useRef(fen);
-  const suppressClickRef = useRef(false);
+  const suppressClickUntilRef = useRef(0);
 
   dropRef.current = onPieceDrop;
   draggableRef.current = draggable;
@@ -127,6 +131,9 @@ export default function Board({
     const beginPreview = (event: DragEvent) => {
       if (!session || session.started) return;
       session.started = true;
+      // Falls die WebView beim ersten Pixel bereits eine Koordinate markiert
+      // hat, wird diese Auswahl beim tatsächlichen Drag sofort entfernt.
+      window.getSelection()?.removeAllRanges();
 
       const rect = session.piece.getBoundingClientRect();
       const ghost = session.piece.cloneNode(true) as HTMLElement;
@@ -211,10 +218,12 @@ export default function Board({
         ?.closest<HTMLElement>("[data-square]")
         ?.dataset.square;
 
-      suppressClickRef.current = true;
-      window.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 0);
+      // Android kann den zum Pointer-Up gehörenden Kompatibilitäts-Klick erst
+      // deutlich später senden. Er darf den eben ausgeführten Zug nicht noch
+      // einmal als Click-&-Move-Eingabe behandeln.
+      const delayedCompatibilityClick =
+        isAndroidWebView() || ("pointerType" in event && event.pointerType === "touch");
+      suppressClickUntilRef.current = Date.now() + (delayedCompatibilityClick ? 600 : 50);
       removePreview();
       if (target) dropRef.current?.(source, target);
     };
@@ -267,14 +276,15 @@ export default function Board({
   return (
     <div
       ref={ref}
-      className={`${shake ? "animate-shake " : ""}${draggable && mouseDrag ? "board-pointer-drag" : ""}`}
+      className={`kiebitz-board ${shake ? "animate-shake " : ""}${draggable && mouseDrag ? "board-pointer-drag" : ""}`}
       style={{ width: "100%", maxWidth: width }}
       onClickCapture={(event) => {
-        if (!suppressClickRef.current) return;
+        if (Date.now() > suppressClickUntilRef.current) return;
         event.preventDefault();
         event.stopPropagation();
-        suppressClickRef.current = false;
+        suppressClickUntilRef.current = 0;
       }}
+      onDragStartCapture={(event) => event.preventDefault()}
     >
       <div className="relative" style={{ width: w, height: w }}>
         <Chessboard
@@ -292,7 +302,7 @@ export default function Board({
           }}
           customArrows={arrows as never}
           boardOrientation={orientation}
-          animationDuration={150}
+          animationDuration={isAndroidWebView() ? 0 : 150}
           {...boardTheme}
           {...squareTheme}
         />
