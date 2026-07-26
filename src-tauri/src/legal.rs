@@ -2,8 +2,10 @@
 //!
 //! MIT, BSD und ISC verlangen, dass Lizenztext und Copyright-Hinweis das
 //! ausgelieferte Binary begleiten — es genügt nicht, sie nur im Repository zu
-//! haben. Die Dateien werden deshalb als App-Ressourcen gebündelt (Desktop und
-//! Android) und hier zum Anzeigen ausgelesen.
+//! haben. Die Dateien werden deshalb als App-Ressourcen gebündelt. Android
+//! liefert Tauri-Ressourcen allerdings als APK-Assets aus, die nicht über
+//! `std::fs` erreichbar sind. Dort werden die Texte daher zusätzlich direkt
+//! in die native Bibliothek eingebettet.
 //!
 //! Zwei Kommandos statt einem: `legal_documents` liefert nur das Verzeichnis,
 //! `legal_document` den Text. Die Lizenzsammlung ist ein paar hundert Kilobyte
@@ -45,6 +47,21 @@ const DOCS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Android-Assets haben keinen normalen Dateisystempfad. `include_str!`
+/// garantiert, dass die rechtlich erforderlichen Texte dennoch im APK liegen
+/// und ohne einen zusätzlichen Asset-Reader verfügbar sind.
+#[cfg(target_os = "android")]
+fn embedded_document(id: &str) -> Option<&'static str> {
+    match id {
+        "third-party" => Some(include_str!(
+            "../resources/licenses/THIRD_PARTY_LICENSES.txt"
+        )),
+        "stockfish-notice" => Some(include_str!("../resources/stockfish/NOTICE.txt")),
+        "stockfish-gpl" => Some(include_str!("../resources/stockfish/COPYING.txt")),
+        _ => None,
+    }
+}
+
 /// Sucht eine gebündelte Ressource: erst im Ressourcenverzeichnis der
 /// installierten App, dann im Entwicklungsbaum. Gleiche Reihenfolge wie
 /// `resolve_engine` in `lib.rs`, damit `tauri dev` ohne Bundle funktioniert.
@@ -67,12 +84,23 @@ fn resolve(app: &tauri::AppHandle, relative: &str) -> Option<PathBuf> {
 
 #[tauri::command]
 pub fn legal_documents(app: tauri::AppHandle) -> Vec<LegalDoc> {
+    #[cfg(target_os = "android")]
+    let _ = app;
     DOCS.iter()
         .filter_map(|(id, title, relative)| {
+            #[cfg(target_os = "android")]
+            let bytes = {
+                let _ = relative;
+                embedded_document(id)?.len() as u64
+            };
+            #[cfg(not(target_os = "android"))]
             let path = resolve(&app, relative)?;
             Some(LegalDoc {
                 id: (*id).to_string(),
                 title: (*title).to_string(),
+                #[cfg(target_os = "android")]
+                bytes,
+                #[cfg(not(target_os = "android"))]
                 bytes: path.metadata().map(|meta| meta.len()).unwrap_or(0),
             })
         })
@@ -85,9 +113,19 @@ pub fn legal_document(app: tauri::AppHandle, id: String) -> Result<String, Strin
         .iter()
         .find(|(candidate, _, _)| *candidate == id)
         .ok_or_else(|| format!("Unbekanntes Dokument: {id}"))?;
-    let path = resolve(&app, relative)
-        .ok_or_else(|| format!("Nicht gebündelt: {relative}"))?;
-    std::fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        let _ = relative;
+        return embedded_document(&id)
+            .map(str::to_owned)
+            .ok_or_else(|| format!("Nicht gebündelt: {id}"));
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let path = resolve(&app, relative).ok_or_else(|| format!("Nicht gebündelt: {relative}"))?;
+        std::fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))
+    }
 }
 
 #[cfg(test)]
