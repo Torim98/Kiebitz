@@ -40,7 +40,7 @@ vi.mock("../components/Board", () => ({
     muted?: boolean;
     mouseDrag?: boolean;
     arrows?: unknown[];
-    // `label` kann ein React-Element sein (Buch-Symbol) — nicht serialisierbar.
+    // `label` kann ein React-Element sein (Buch-Symbol) · nicht serialisierbar.
     badges?: { square: string; color: string; title?: string }[];
   }) => (
     <div
@@ -177,7 +177,7 @@ describe("Analysis page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "e4" }));
 
     const board = screen.getByTestId("analysis-board");
-    // Buchzüge tragen ein Symbol statt eines Kürzels — der Titel bleibt lesbar.
+    // Buchzüge tragen ein Symbol statt eines Kürzels · der Titel bleibt lesbar.
     expect(board.dataset.badges).toContain("Buchzug");
     expect(board.dataset.arrows).toContain("c7");
     expect(board.dataset.arrows).toContain("e7");

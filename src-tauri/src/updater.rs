@@ -90,7 +90,7 @@ fn emit_state(app: &AppHandle, state: UpdateState) {
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
-    // App-Version aus tauri.conf.json (nicht CARGO_PKG_VERSION) — genau die
+    // App-Version aus tauri.conf.json (nicht CARGO_PKG_VERSION) · genau die
     // Version, gegen die auch der Updater vergleicht.
     let current = app.package_info().version.to_string();
     let update = app
@@ -260,7 +260,7 @@ async fn download_and_install(app: &AppHandle) -> Result<bool, String> {
         .download_and_install(
             move |chunk, total| {
                 received += chunk as u64;
-                // Nicht jeden Chunk melden — alle 256 KB reichen fürs UI.
+                // Nicht jeden Chunk melden · alle 256 KB reichen fürs UI.
                 if should_emit_progress(received, last_emitted, total) {
                     last_emitted = received;
                     emit_state(

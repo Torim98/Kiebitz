@@ -533,7 +533,7 @@ function TrainerView({
   );
 }
 
-/** Verlauf der letzten Versuche — standardmäßig zugeklappt. */
+/** Verlauf der letzten Versuche · standardmäßig zugeklappt. */
 function PuzzleHistory() {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -728,7 +728,7 @@ function DemoPuzzles() {
               <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
                 <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
                   <CheckCircle2 size={17} />
-                  {t("pz.correct")} {puzzle.solutionSan} — {captureTheme}
+                  {t("pz.correct")} {puzzle.solutionSan} · {captureTheme}
                 </div>
                 <Button primary onClick={next}>
                   <SkipForward size={15} /> {t("common.next")}

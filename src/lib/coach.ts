@@ -1,7 +1,7 @@
 /**
  * Coach: leitet aus den vorhandenen Daten (Partien, Puzzle-Versuche,
  * Fehlerstatistik) Trainingsempfehlungen ab. Reine Funktionen ohne
- * Backend-Zugriff — die Seite liefert die Rohdaten und rendert die Texte.
+ * Backend-Zugriff · die Seite liefert die Rohdaten und rendert die Texte.
  */
 import type { GameRecord } from "./db";
 import type { PhaseErrors } from "./analysis";

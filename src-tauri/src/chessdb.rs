@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::Manager;
 
 const API: &str = "https://www.chessdb.cn/cdb.php";
-/// Cloud-Evals ändern sich langsam — 30 Tage Cache genügen.
+/// Cloud-Evals ändern sich langsam · 30 Tage Cache genügen.
 const CACHE_TTL_SECS: i64 = 30 * 86_400;
 
 #[derive(Serialize, Clone)]

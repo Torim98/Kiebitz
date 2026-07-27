@@ -1,7 +1,7 @@
 /**
  * Leichter Signalkanal für lokale Datenänderungen (Import, Notiz, Puzzle-/
  * Endspiel-Versuch, Repertoire-Änderung). Der Auto-Sync hört darauf und stößt
- * einen gebündelten Sync an — so bleibt die Mutations-Schicht entkoppelt
+ * einen gebündelten Sync an · so bleibt die Mutations-Schicht entkoppelt
  * (kein Import des Sync-Managers in db.ts & Co.).
  */
 const CHANGE_EVENT = "kiebitz:data-change";

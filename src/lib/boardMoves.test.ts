@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { moveTargetStyles, selectionStyles } from "./boardMoves";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-// Weißer Springer auf f3, schwarzer Bauer auf e5 — ein Schlag- und drei
+// Weißer Springer auf f3, schwarzer Bauer auf e5 · ein Schlag- und drei
 // ruhige Züge.
 const CAPTURE = "rnbqkbnr/pppp1ppp/8/4p3/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 2";
 

@@ -2,7 +2,7 @@
  * Zufällige Endspielstellungen für den Trainer.
  *
  * Die Materialverteilungen sind so gewählt, dass das Ergebnis allein am
- * Material hängt (Matt erzwingbar bzw. Remis haltbar) — die Aufgabe bleibt
+ * Material hängt (Matt erzwingbar bzw. Remis haltbar) · die Aufgabe bleibt
  * dadurch auch bei zufälliger Aufstellung eindeutig. Damit nichts sofort
  * hängt, hält der verteidigende König Abstand zu den gegnerischen Figuren.
  */
@@ -10,7 +10,7 @@ import { Chess } from "chess.js";
 import type { EndgameDrill } from "../data/endgames";
 
 interface Template {
-  /** Stabile ID — sie zählt die Statistik je Materialbild, nicht je Stellung. */
+  /** Stabile ID · sie zählt die Statistik je Materialbild, nicht je Stellung. */
   id: string;
   /** Figuren der Gewinnerseite (ohne König), FEN-Buchstaben. */
   strong: string[];
@@ -29,8 +29,8 @@ const TEMPLATES: Template[] = [
     goal: "win",
     name: { de: "Zufall: Dame gegen König", en: "Random: queen vs. king" },
     hint: {
-      de: "Springerabstand halten, den König an den Rand drängen, eigenen König nachführen — und auf Patt achten.",
-      en: "Keep a knight's distance, push the king to the edge, bring your king up — and watch for stalemate.",
+      de: "Springerabstand halten, den König an den Rand drängen, eigenen König nachführen · und auf Patt achten.",
+      en: "Keep a knight's distance, push the king to the edge, bring your king up · and watch for stalemate.",
     },
   },
   {
@@ -73,8 +73,8 @@ const TEMPLATES: Template[] = [
     goal: "win",
     name: { de: "Zufall: Dame und Turm gegen König", en: "Random: queen and rook vs. king" },
     hint: {
-      de: "Treppenmatt mit Dame und Turm — Reihe für Reihe abschneiden, ohne dass eine Figur ungedeckt steht.",
-      en: "Ladder mate with queen and rook — cut off rank by rank without leaving a piece hanging.",
+      de: "Treppenmatt mit Dame und Turm · Reihe für Reihe abschneiden, ohne dass eine Figur ungedeckt steht.",
+      en: "Ladder mate with queen and rook · cut off rank by rank without leaving a piece hanging.",
     },
   },
   {
@@ -84,8 +84,8 @@ const TEMPLATES: Template[] = [
     goal: "draw",
     name: { de: "Zufall: Läufer hält gegen Turm", en: "Random: bishop holds vs. rook" },
     hint: {
-      de: "Zur richtigen Ecke laufen und den Läufer aktiv halten — Turm allein setzt nicht matt.",
-      en: "Head for the right corner and keep the bishop active — a lone rook cannot mate.",
+      de: "Zur richtigen Ecke laufen und den Läufer aktiv halten · Turm allein setzt nicht matt.",
+      en: "Head for the right corner and keep the bishop active · a lone rook cannot mate.",
     },
   },
   {
@@ -144,7 +144,7 @@ function buildFen(pieces: Map<number, string>, sideToMove: "w" | "b"): string {
 export function randomDrill(random: () => number = Math.random): EndgameDrill {
   const template = TEMPLATES[Math.floor(random() * TEMPLATES.length) % TEMPLATES.length];
   // Der Spieler zieht immer zuerst: bei „win" die starke, bei „draw" die
-  // schwache Seite — so kann ihm nichts vor dem ersten Zug abhandenkommen.
+  // schwache Seite · so kann ihm nichts vor dem ersten Zug abhandenkommen.
   const playerIsWhite = random() < 0.5;
   const strongColor: "w" | "b" = template.goal === "win" ? (playerIsWhite ? "w" : "b") : playerIsWhite ? "b" : "w";
   const side = playerIsWhite ? "white" : "black";
@@ -196,7 +196,7 @@ export function randomDrill(random: () => number = Math.random): EndgameDrill {
     const fen = buildFen(pieces, playerIsWhite ? "w" : "b");
     try {
       const chess = new Chess(fen);
-      // Weder sofort entschieden noch bereits Schach — die Aufgabe soll erst
+      // Weder sofort entschieden noch bereits Schach · die Aufgabe soll erst
       // durch Technik entschieden werden.
       if (chess.isGameOver() || chess.isCheck() || chess.moves().length === 0) continue;
       return {
@@ -225,5 +225,5 @@ export function randomDrill(random: () => number = Math.random): EndgameDrill {
   };
 }
 
-/** Alle Materialbilder — für die Fortschrittsanzeige der Zufallsaufgaben. */
+/** Alle Materialbilder · für die Fortschrittsanzeige der Zufallsaufgaben. */
 export const RANDOM_TEMPLATE_IDS = TEMPLATES.map((template) => template.id);

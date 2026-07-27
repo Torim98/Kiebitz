@@ -7,7 +7,7 @@
 //!     Android weckt die vom Frontend vorab geplante Notification per
 //!     AlarmManager.
 //!
-//! Windows verwirft Toasts ohne registrierte AppUserModelID kommentarlos —
+//! Windows verwirft Toasts ohne registrierte AppUserModelID kommentarlos ·
 //! deshalb legt `register_windows_app_id` den passenden Registry-Eintrag an.
 
 use crate::settings::Settings;
@@ -101,9 +101,9 @@ fn phrase(locale: &str, key: &str, n: i64) -> String {
 
 pub fn title(locale: &str) -> String {
     if locale == "en" {
-        "Kiebitz — training".into()
+        "Kiebitz · training".into()
     } else {
-        "Kiebitz — Training".into()
+        "Kiebitz · Training".into()
     }
 }
 
@@ -136,7 +136,7 @@ pub fn reminder_body(settings: &Settings, due: &DueSummary) -> Option<String> {
 // ── Zustellung ───────────────────────────────────────────────────────────────
 
 /// Registriert die AppUserModelID in HKCU. Ohne sie verwirft Windows Toasts
-/// stillschweigend — auch die des Tauri-Plugins.
+/// stillschweigend · auch die des Tauri-Plugins.
 #[cfg(windows)]
 pub fn register_windows_app_id(app_id: &str, display_name: &str, icon: Option<PathBuf>) {
     use std::process::Command;
@@ -393,7 +393,7 @@ pub fn run_headless(identifier: &str) -> bool {
         .map(PathBuf::from)
         .unwrap_or_else(|| dir.join("kiebitz.db"));
     // Erste Wahl: frisch aus der Datenbank. Normal öffnen (WAL braucht
-    // Schreibzugriff auf die -shm-Datei), aber ohne `db::init` — der
+    // Schreibzugriff auf die -shm-Datei), aber ohne `db::init` · der
     // Erinnerungslauf migriert nichts.
     let fresh = Connection::open(&db_file)
         .map_err(|e| format!("Datenbank {}: {e}", db_file.display()))
@@ -541,6 +541,6 @@ mod tests {
             ..DueSummary::default()
         };
         assert_eq!(reminder_body(&english, &due).unwrap(), "5 reviews due");
-        assert_eq!(title("en"), "Kiebitz — training");
+        assert_eq!(title("en"), "Kiebitz · training");
     }
 }

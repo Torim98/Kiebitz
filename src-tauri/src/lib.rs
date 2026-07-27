@@ -22,7 +22,7 @@ use tauri::Manager;
 struct AppInfo {
     version: String,
     backend: String,
-    /// Betriebssystem ("windows", "android", …) — steuert u. a. die Sync-UI.
+    /// Betriebssystem ("windows", "android", …) · steuert u. a. die Sync-UI.
     platform: String,
     /// Vertriebskanal; Play-Builds dürfen keine externen APK-Updates anbieten.
     distribution: String,
@@ -39,7 +39,7 @@ fn app_info(app: tauri::AppHandle) -> AppInfo {
     };
     AppInfo {
         // Version aus tauri.conf.json (das Feld, das beim Release erhöht wird),
-        // nicht aus Cargo.toml — sonst driften Anzeige und Release auseinander.
+        // nicht aus Cargo.toml · sonst driften Anzeige und Release auseinander.
         version: app.package_info().version.to_string(),
         backend: "tauri".to_string(),
         platform: std::env::consts::OS.to_string(),
@@ -77,7 +77,7 @@ pub(crate) fn resolve_engine(app: &tauri::AppHandle) -> Option<PathBuf> {
         }
     }
     // Android: Stockfish liegt als libstockfish.so im nativeLibraryDir der
-    // App — dem einzigen Ort, aus dem Android das Ausführen erlaubt. Den
+    // App · dem einzigen Ort, aus dem Android das Ausführen erlaubt. Den
     // Ordner liefert der Ladepfad unserer eigenen Bibliothek (libapp_lib.so)
     // in /proc/self/maps.
     #[cfg(target_os = "android")]
@@ -292,7 +292,7 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_opener::init())?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
-            // Windows verwirft Toasts unbekannter Absender — AppUserModelID
+            // Windows verwirft Toasts unbekannter Absender · AppUserModelID
             // registrieren, bevor die erste Erinnerung ansteht.
             #[cfg(windows)]
             reminder::register_windows_app_id(
@@ -340,7 +340,7 @@ pub fn run() {
             app.manage(sync::SyncServer::default());
 
             // Sync-Server (Desktop-Hub) automatisch starten, wenn aktiviert.
-            // Nur auf dem Desktop sinnvoll — das Handy ist im v1-Modell Client.
+            // Nur auf dem Desktop sinnvoll · das Handy ist im v1-Modell Client.
             #[cfg(desktop)]
             {
                 let sync_enabled = app

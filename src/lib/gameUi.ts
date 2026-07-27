@@ -12,7 +12,7 @@ export interface UiGame extends Omit<Game, "tc"> {
 
 /**
  * Vorfilter für die Partien-Liste (z. B. von einem Klick im Dashboard).
- * Alle Felder matchen exakt gegen die jeweiligen `UiGame`-Felder — `date` und
+ * Alle Felder matchen exakt gegen die jeweiligen `UiGame`-Felder · `date` und
  * `tc` sind bereits lokalisierte Anzeige-Strings, die zwischen Dashboard und
  * Games übereinstimmen, solange dieselbe Locale gilt.
  */
@@ -50,7 +50,7 @@ export function tcLabel(timeClass: string, locale: Locale): string {
 
 /**
  * Anzeige-Datum einer Partie. Bevorzugt `played_ts` (Unix, überall die
- * kanonische Sortier-Zeit — bei chess.com das Partie-ENDE), damit Anzeige und
+ * kanonische Sortier-Zeit · bei chess.com das Partie-ENDE), damit Anzeige und
  * Reihenfolge übereinstimmen. Bei chess.com-Fernpartien weicht `played_at`
  * (Start-Datum aus dem PGN) sonst von der Sortierung ab. Fallback auf
  * `played_at` für Alt-Datensätze ohne Zeitstempel.

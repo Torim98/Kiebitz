@@ -66,7 +66,7 @@ impl LiveEngine {
         let proc = guard.as_mut().unwrap();
         let cmd = format!("stop\nposition fen {fen}\ngo depth {depth}\n");
         if proc.stdin.write_all(cmd.as_bytes()).is_err() {
-            // Engine-Prozess ist gestorben — einmal neu starten.
+            // Engine-Prozess ist gestorben · einmal neu starten.
             *guard = Some(self.spawn(app, engine_path)?);
             let proc = guard.as_mut().unwrap();
             proc.stdin
@@ -84,7 +84,7 @@ impl LiveEngine {
         }
     }
 
-    /// Beendet die Engine vollständig — z. B. nach geänderten Einstellungen.
+    /// Beendet die Engine vollständig · z. B. nach geänderten Einstellungen.
     /// Die nächste Analyse startet sie mit den aktuellen Optionen neu.
     pub fn shutdown(&self) {
         if let Ok(mut guard) = self.inner.lock() {

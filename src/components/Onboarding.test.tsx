@@ -39,7 +39,7 @@ describe("Onboarding", () => {
     );
     goToAccounts();
 
-    // Nur Lichess — chess.com bleibt leer.
+    // Nur Lichess · chess.com bleibt leer.
     fireEvent.change(screen.getByLabelText(/Lichess/i), { target: { value: "Torim98" } });
     fireEvent.click(screen.getByRole("button", { name: /Start and import/i }));
 

@@ -83,7 +83,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 const inputCls =
   "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none";
 
-/** Beispielpfade passend zur Plattform — auf Android sind C:\-Pfade sinnlos. */
+/** Beispielpfade passend zur Plattform · auf Android sind C:\-Pfade sinnlos. */
 function examplePaths(platform?: string) {
   if (platform === "android" || platform === "ios") {
     return {
@@ -189,7 +189,7 @@ export default function SettingsPage() {
   const [pzMsg, setPzMsg] = useState<string | null>(null);
   const [pzPath, setPzPath] = useState("");
 
-  // Rechtstexte: Verzeichnis früh, Volltext erst beim Öffnen — die
+  // Rechtstexte: Verzeichnis früh, Volltext erst beim Öffnen · die
   // Lizenzsammlung ist mehrere hundert Kilobyte groß.
   const [legalDocs, setLegalDocs] = useState<LegalDoc[]>([]);
   const [legalShown, setLegalShown] = useState<LegalDoc | null>(null);
@@ -283,7 +283,7 @@ export default function SettingsPage() {
         syncHost: applied.sync_host,
         lastSync: sync?.last_sync,
       });
-      // Erinnerungen laufen über das Betriebssystem — Planung nachziehen.
+      // Erinnerungen laufen über das Betriebssystem · Planung nachziehen.
       await applyReminderSchedule();
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
@@ -552,7 +552,7 @@ export default function SettingsPage() {
     }
   };
 
-  /** Testerinnerung — holt bei Bedarf auch die Android-Systemberechtigung. */
+  /** Testerinnerung · holt bei Bedarf auch die Android-Systemberechtigung. */
   const runNotifyTest = async () => {
     setNotifyBusy(true);
     setNotifyMsg(null);
@@ -1302,7 +1302,7 @@ export default function SettingsPage() {
           )}
         </Card>
 
-        {/* Über Kiebitz — Lizenz der App und die mitgelieferten Rechtstexte.
+        {/* Über Kiebitz · Lizenz der App und die mitgelieferten Rechtstexte.
             Die Bibliothekslizenzen verlangen, dass ihr Text das Binary
             begleitet; hier ist die Stelle, an der er erreichbar ist. */}
         <Card
@@ -1366,7 +1366,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        {/* Zurücksetzen — bewusst ganz unten und in Warnfarbe. */}
+        {/* Zurücksetzen · bewusst ganz unten und in Warnfarbe. */}
         <Card
           title={
             <span className="flex items-center gap-2">

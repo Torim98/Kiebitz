@@ -28,7 +28,7 @@ export interface SyncStatus {
 export interface SyncManagerOptions {
   /** Führt einen Sync-Roundtrip aus (wirft bei Fehler). */
   run: () => Promise<unknown>;
-  /** Zeitquelle in ms (Default Date.now) — für Tests injizierbar. */
+  /** Zeitquelle in ms (Default Date.now) · für Tests injizierbar. */
   now?: () => number;
   /** Änderungs-Bursts zu einem Roundtrip bündeln. */
   debounceMs?: number;
@@ -97,7 +97,7 @@ export class AutoSyncManager {
     this.emit();
   }
 
-  /** Eine lokale Änderung — plant einen entprellten Sync. */
+  /** Eine lokale Änderung · plant einen entprellten Sync. */
   notifyChange(): void {
     if (!this.active) return;
     this.clearTimer("debounce");
@@ -107,7 +107,7 @@ export class AutoSyncManager {
     }, this.opts.debounceMs);
   }
 
-  /** Sofort-Trigger (App-Fokus/Timer) — respektiert aber den Mindestabstand. */
+  /** Sofort-Trigger (App-Fokus/Timer) · respektiert aber den Mindestabstand. */
   kick(): void {
     if (!this.active) return;
     this.clearTimer("debounce");

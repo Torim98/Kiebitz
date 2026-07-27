@@ -54,7 +54,7 @@ async function openLibrary() {
 
 /**
  * Drag simulieren: die Zielzelle liegt laut elementFromPoint unter dem Zeiger.
- * jsdom kennt die Methode nicht — sie wird für den Test ergänzt.
+ * jsdom kennt die Methode nicht · sie wird für den Test ergänzt.
  */
 function pointToDay(day: string) {
   const cell = document.querySelector(`[data-study-day="${day}"]`);

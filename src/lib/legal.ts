@@ -9,7 +9,7 @@ export interface LegalDoc {
 
 /**
  * Verzeichnis der gebündelten Rechtstexte. Im Web-Preview gibt es keine
- * Ressourcen — dann bleibt die Liste leer und die UI zeigt den Hinweis.
+ * Ressourcen · dann bleibt die Liste leer und die UI zeigt den Hinweis.
  */
 export async function legalDocuments(): Promise<LegalDoc[]> {
   try {
@@ -19,7 +19,7 @@ export async function legalDocuments(): Promise<LegalDoc[]> {
   }
 }
 
-/** Volltext eines Dokuments — erst beim Öffnen geladen, nicht vorab. */
+/** Volltext eines Dokuments · erst beim Öffnen geladen, nicht vorab. */
 export function legalDocument(id: string): Promise<string> {
   return invoke<string>("legal_document", { id });
 }

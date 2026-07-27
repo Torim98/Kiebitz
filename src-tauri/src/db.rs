@@ -79,7 +79,7 @@ const DEFAULT_STUDY_TEMPLATES: [(&str, i64, &str, &str); 4] = [
     ),
 ];
 
-/// Deutsche Startvorlagen aus v0.5.x auf die englischen Texte heben — aber nur,
+/// Deutsche Startvorlagen aus v0.5.x auf die englischen Texte heben · aber nur,
 /// solange sie unverändert sind. Selbst bearbeitete Einheiten bleiben, wie sie
 /// sind (Titelvergleich schützt sie).
 fn translate_seeded_study_templates(conn: &Connection) -> Result<(), String> {
@@ -137,7 +137,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         );
         CREATE INDEX IF NOT EXISTS idx_games_played_at ON games(played_at DESC);
 
-        -- v3: Auto-Analyse — ein Eintrag pro gespieltem Halbzug
+        -- v3: Auto-Analyse · ein Eintrag pro gespieltem Halbzug
         CREATE TABLE IF NOT EXISTS move_evals (
             game_id  INTEGER NOT NULL,
             ply      INTEGER NOT NULL,          -- 1-basiert
@@ -223,7 +223,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             ts      INTEGER NOT NULL
         );
 
-        -- v5: Endspiel-Trainer — ein Eintrag pro ausgespieltem Drill-Versuch
+        -- v5: Endspiel-Trainer · ein Eintrag pro ausgespieltem Drill-Versuch
         CREATE TABLE IF NOT EXISTS endgame_attempts (
             id       INTEGER PRIMARY KEY,
             drill_id TEXT NOT NULL,               -- ID aus src/data/endgames.ts
@@ -235,13 +235,13 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;
 
-    // Migration v2: Zeitstempel-Spalte. Schlägt fehl, wenn sie schon existiert — ok.
+    // Migration v2: Zeitstempel-Spalte. Schlägt fehl, wenn sie schon existiert · ok.
     let _ = conn.execute(
         "ALTER TABLE games ADD COLUMN played_ts INTEGER NOT NULL DEFAULT 0",
         [],
     );
     // Migration v6 (Sync): Änderungs-Zeitstempel für den Delta-Sync und
-    // Last-Write-Wins bei Notizen. DEFAULT 0 = "vor Einführung des Syncs" —
+    // Last-Write-Wins bei Notizen. DEFAULT 0 = "vor Einführung des Syncs" ·
     // der erste Sync (Cursor 0) überträgt damit den kompletten Bestand.
     let _ = conn.execute(
         "ALTER TABLE games ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
@@ -260,14 +260,14 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE games ADD COLUMN analysis_excluded INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE games ADD COLUMN my_name TEXT NOT NULL DEFAULT ''",
-        // Migration v10: Zeitpunkt der Auto-Analyse — der Wochenkalender zählt
+        // Migration v10: Zeitpunkt der Auto-Analyse · der Wochenkalender zählt
         // ein vollständiges Partie-Review als Lerneinheit an genau diesem Tag.
         "ALTER TABLE games ADD COLUMN analyzed_ts INTEGER NOT NULL DEFAULT 0",
     ] {
         let _ = conn.execute(sql, []);
     }
     // Migration v7 (Sync-Grenzen): Repertoire-Löschungen propagieren über
-    // Tombstones (Löschung gewinnt nur gegen ältere Knoten — created_ts
+    // Tombstones (Löschung gewinnt nur gegen ältere Knoten · created_ts
     // erlaubt das Wieder-Anlegen), und Puzzle-Versuche merken sich das
     // Puzzle-Rating zur Versuchszeit, damit die Elo-Kette nach einem Merge
     // deterministisch neu berechnet werden kann.
@@ -399,7 +399,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// Unix-Zeit in Sekunden — der gemeinsame Zeitstempel für Sync-Spalten.
+/// Unix-Zeit in Sekunden · der gemeinsame Zeitstempel für Sync-Spalten.
 /// Schreibt das WAL in die Datenbank zurück und kürzt es. Nach großen Importen
 /// und beim Start hält das die Datei klein und die Lesezugriffe schnell.
 pub fn checkpoint(conn: &Connection) {

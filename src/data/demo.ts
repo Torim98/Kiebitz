@@ -93,7 +93,7 @@ export const games: Game[] = [
     opponent: "DragonSlayer_88", oppElo: 1448, myElo: 1462, result: "win",
     opening: "Italienische Partie", eco: "C50", moves: 19, accuracy: 91.2, analyzed: true,
     tags: ["Italienisch", "Miniatur"],
-    note: "Springergabel-Motiv nach d4-Durchbruch — genau die Struktur aus dem Repertoire-Training.",
+    note: "Springergabel-Motiv nach d4-Durchbruch · genau die Struktur aus dem Repertoire-Training.",
     sans: ["e4","e5","Nf3","Nc6","Bc4","Bc5","c3","Nf6","d3","d6","O-O","O-O","Re1","a6","Bb3","Ba7","h3","h6","Nbd2","Be6","Bxe6","fxe6","Nf1","Qe8","Ng3","Nh7","d4","exd4","cxd4","e5","dxe5","dxe5","Nxe5","Nxe5","Qd5+","Kh8","Qxe5","Qg6"],
   },
   {
@@ -212,7 +212,7 @@ export const featuredGame = {
     { san: "Nh7", eval: 90, nag: "?", comment: "Der Springer steht am Rand ohne Perspektive. Weiß bekommt freie Hand im Zentrum." },
     { san: "d4", eval: 85 }, { san: "exd4", eval: 95 },
     { san: "cxd4", eval: 90 },
-    { san: "e5", eval: 190, nag: "?", comment: "Öffnet die Stellung zum falschen Zeitpunkt — die weißen Figuren stehen besser." },
+    { san: "e5", eval: 190, nag: "?", comment: "Öffnet die Stellung zum falschen Zeitpunkt · die weißen Figuren stehen besser." },
     { san: "dxe5", eval: 185 }, { san: "dxe5", eval: 195 },
     { san: "Nxe5", eval: 210, nag: "!", comment: "Nutzt die Fesselung des e-Bauern: nach 17…Nxe5 folgt die Gabel auf d5." },
     { san: "Nxe5", eval: 520, nag: "??", comment: "Verliert eine Figur. Nach 18.Dd5+ gibt es keine Verteidigung von e5 und g8 zugleich." },
@@ -220,9 +220,9 @@ export const featuredGame = {
     { san: "Qxe5", eval: 505 }, { san: "Qg6", eval: 540 },
   ] as AnalyzedMove[],
   pvLines: [
-    { eval: "+5,4", depth: 24, line: "20.Sf5 Dxg2+?? 21.Dxg2 — oder 20…Df7 21.Dxc7 mit Mehrfigur und Angriff" },
-    { eval: "+4,9", depth: 24, line: "20.Te3 Tf6 21.Dxc7 Taf8 22.De5 — Weiß konsolidiert mit Mehrfigur" },
-    { eval: "+4,1", depth: 23, line: "20.De3 e5 21.Sf5 Tf6 22.Dg3 — auch hier bleibt die Figur mehr" },
+    { eval: "+5,4", depth: 24, line: "20.Sf5 Dxg2+?? 21.Dxg2 · oder 20…Df7 21.Dxc7 mit Mehrfigur und Angriff" },
+    { eval: "+4,9", depth: 24, line: "20.Te3 Tf6 21.Dxc7 Taf8 22.De5 · Weiß konsolidiert mit Mehrfigur" },
+    { eval: "+4,1", depth: 23, line: "20.De3 e5 21.Sf5 Tf6 22.Dg3 · auch hier bleibt die Figur mehr" },
   ],
 };
 

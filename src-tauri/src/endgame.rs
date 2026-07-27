@@ -1,7 +1,7 @@
 //! Endspiel-Trainer: die Engine spielt die Gegenseite theoretischer
 //! Endspiele (Lucena, Philidor, Grundmatts …), der Fortschritt pro Drill
 //! landet in `endgame_attempts`. Die Drill-Definitionen selbst leben im
-//! Frontend (`src/data/endgames.ts`) — hier gibt es nur Züge und Zahlen.
+//! Frontend (`src/data/endgames.ts`) · hier gibt es nur Züge und Zahlen.
 
 use crate::{db, engine::UciEngine, settings};
 use rusqlite::params;
@@ -55,9 +55,9 @@ pub fn endgame_move(
     }
     match guard.as_mut().unwrap().analyze(&fen, REPLY_DEPTH) {
         Ok(r) if !r.bestmove.is_empty() && r.bestmove != "(none)" => Ok(r.bestmove),
-        Ok(_) => Err("Keine Züge möglich — die Partie ist beendet.".into()),
+        Ok(_) => Err("Keine Züge möglich · die Partie ist beendet.".into()),
         Err(e) => {
-            // Engine-Prozess gestorben — verwerfen, nächster Aufruf startet neu.
+            // Engine-Prozess gestorben · verwerfen, nächster Aufruf startet neu.
             *guard = None;
             Err(e)
         }

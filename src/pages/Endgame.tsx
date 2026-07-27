@@ -238,7 +238,7 @@ export default function Endgame() {
       )}
 
       <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
-        {/* Brett + Statuszeile — auf Brettbreite begrenzt, damit lange
+        {/* Brett + Statuszeile · auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
         <div className="max-w-[420px]">
           <div className="mb-3 flex items-center justify-between gap-2">

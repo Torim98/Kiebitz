@@ -2,7 +2,7 @@
 //! (fen_key) und die Spielphase bestimmen.
 //!
 //! Basis ist `owlchess` (MIT). Vorher stand hier `shakmaty`, das GPL-3.0+ ist
-//! und statisch gelinkt Kiebitz zu einem abgeleiteten Werk gemacht hätte —
+//! und statisch gelinkt Kiebitz zu einem abgeleiteten Werk gemacht hätte ·
 //! anders als Stockfish, das als eigener Prozess über UCI angesprochen wird.
 //!
 //! **Die von `fen_key` erzeugten Schlüssel stehen in der Datenbank** (Tabelle
@@ -14,7 +14,7 @@
 use owlchess::movegen::legal;
 use owlchess::{Board, Color, MoveKind, Piece};
 
-/// Die Stellungsrepräsentation dieses Moduls — Aufrufer sollen `owlchess` nicht
+/// Die Stellungsrepräsentation dieses Moduls · Aufrufer sollen `owlchess` nicht
 /// direkt importieren müssen.
 pub type Position = Board;
 
@@ -41,7 +41,7 @@ pub struct WalkedMove {
 /// niemand dort schlagen kann. Für einen Stellungsschlüssel ist das schädlich:
 /// dieselbe Stellung bekäme aus verschiedenen Partien verschiedene Schlüssel.
 /// Deshalb wird das Feld nur gesetzt, wenn es einen legalen En-passant-Zug gibt
-/// — das entspricht `EnPassantMode::Legal` der früheren Implementierung.
+/// · das entspricht `EnPassantMode::Legal` der früheren Implementierung.
 fn has_legal_en_passant(pos: &Position) -> bool {
     legal::gen_all(pos)
         .iter()
@@ -59,7 +59,7 @@ fn normalized_fen(pos: &Position) -> String {
 }
 
 /// Normalisierter Stellungsschlüssel: Figuren, Zugrecht, Rochade und legales
-/// En passant — ohne Zugzähler, damit identische Stellungen aus verschiedenen
+/// En passant · ohne Zugzähler, damit identische Stellungen aus verschiedenen
 /// Partien denselben Schlüssel bekommen.
 pub fn fen_key(pos: &Position) -> String {
     let fen = normalized_fen(pos);
@@ -232,7 +232,7 @@ pub(crate) mod tests {
 
     #[test]
     fn normalizes_chessjs_fen() {
-        // chess.js liefert volle FEN mit Zählern — der Schlüssel lässt sie weg.
+        // chess.js liefert volle FEN mit Zählern · der Schlüssel lässt sie weg.
         let key =
             normalize_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1").unwrap();
         let walked = walk_sans("e4");
@@ -312,7 +312,7 @@ pub(crate) mod tests {
 
     /// Schlüssel und FEN sind Datenbankinhalt. Die Erwartungswerte stammen aus
     /// der früheren shakmaty-Implementierung (`EnPassantMode::Legal`) und
-    /// dürfen sich nicht ändern — sonst finden bestehende Datenbanken ihre
+    /// dürfen sich nicht ändern · sonst finden bestehende Datenbanken ihre
     /// Stellungen nicht mehr wieder.
     #[test]
     fn golden_keys() {

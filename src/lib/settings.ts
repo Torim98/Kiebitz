@@ -23,7 +23,7 @@ export interface Settings {
   auto_update: boolean;
   /** Sync-Server (Desktop-Hub) beim Start mitstarten. */
   sync_enabled: boolean;
-  /** Pairing-Code — Desktop: generiert/angezeigt; Mobile: vom Desktop übernommen. */
+  /** Pairing-Code · Desktop: generiert/angezeigt; Mobile: vom Desktop übernommen. */
   sync_code: string;
   /** Mobile: Adresse des Desktop-Hubs ("host:port"). */
   sync_host: string;

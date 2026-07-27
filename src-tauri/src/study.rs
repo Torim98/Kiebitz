@@ -2,7 +2,7 @@
 //! rechnet im Frontend auf den vorhandenen Insights-Daten; hier kommt nur
 //! zusammen, was der Tagesplan und der Wochenkalender brauchen.
 //!
-//! Tagesgrenzen sind bewusst UTC (wie in puzzles.rs) — für Streaks und
+//! Tagesgrenzen sind bewusst UTC (wie in puzzles.rs) · für Streaks und
 //! Kalenderkacheln ist das genau genug.
 
 use crate::{db, settings};
@@ -16,7 +16,7 @@ pub struct DayActivity {
     /// Unix-Sekunden des UTC-Tagesbeginns.
     pub day_ts: i64,
     pub puzzle_attempts: i64,
-    /// Gelöste Puzzles — sie zählen als Lerneinheiten im Wochenkalender.
+    /// Gelöste Puzzles · sie zählen als Lerneinheiten im Wochenkalender.
     pub puzzle_solved: i64,
     pub endgame_attempts: i64,
     /// Approximation: Knoten, deren letzte Wiederholung an diesem Tag war.
@@ -95,7 +95,7 @@ pub struct StudyCalendar {
     pub days: Vec<StudyDay>,
 }
 
-/// Ein vollständiges Partie-Review ist eine große Einheit — es zählt zehnfach.
+/// Ein vollständiges Partie-Review ist eine große Einheit · es zählt zehnfach.
 const GAME_REVIEW_UNITS: i64 = 10;
 
 /// Tage seit 1970-01-01 (Howard Hinnants `days_from_civil`).

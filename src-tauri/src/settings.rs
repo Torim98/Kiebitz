@@ -87,7 +87,7 @@ fn normalize_time(value: &str) -> String {
 
 impl Default for Settings {
     fn default() -> Self {
-        // Mobile: konservative Engine-Defaults (Akku/Thermik) — weniger
+        // Mobile: konservative Engine-Defaults (Akku/Thermik) · weniger
         // Threads, kleiner Hash, geringere Tiefe als auf dem Desktop.
         #[cfg(target_os = "android")]
         let (threads, hash, live, batch) = (2, 64, 14, 10);
@@ -332,7 +332,7 @@ pub fn move_database(app: tauri::AppHandle, target: String) -> Result<DbInfo, St
     }
     if target.exists() {
         return Err(
-            "Die Zieldatei existiert bereits — nutze „Vorhandene Datenbank verwenden“.".into(),
+            "Die Zieldatei existiert bereits · nutze „Vorhandene Datenbank verwenden“.".into(),
         );
     }
     if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {

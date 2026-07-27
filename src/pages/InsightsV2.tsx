@@ -389,7 +389,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
   const [themesOpen, setThemesOpen] = useState(false);
   const rate = solveRate(data);
   const weekdayLabel = (key: number) =>
-    // 2024-01-01 war ein Montag — passend zu Index 0 aus dem Backend.
+    // 2024-01-01 war ein Montag · passend zu Index 0 aus dem Backend.
     new Date(Date.UTC(2024, 0, 1 + key)).toLocaleDateString(dateLocale(), {
       weekday: "short",
       timeZone: "UTC",

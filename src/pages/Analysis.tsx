@@ -124,7 +124,7 @@ function evalNum(cp: number | null, mate: number | null): number {
 type Phase = "opening" | "middlegame" | "endgame";
 
 /**
- * Halbzug, an dem Mittel- bzw. Endspiel beginnen — gleiche Regel wie
+ * Halbzug, an dem Mittel- bzw. Endspiel beginnen · gleiche Regel wie
  * `chess::phase_of` im Backend: Endspiel ab höchstens sechs Offizieren,
  * Eröffnung bis Halbzug 20.
  */
@@ -230,7 +230,7 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
       });
       best = move.san;
     } catch {
-      /* Zug nicht rekonstruierbar — Kommentar ohne Alternative */
+      /* Zug nicht rekonstruierbar · Kommentar ohne Alternative */
     }
   }
   const from = evalLabel(prevEval);
@@ -617,7 +617,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
    * Direktsprung zur Originalpartie, wie im Dashboard und im Partien-Tab.
    * Fehlt die gespeicherte URL (ältere Importe, PGN-Import), führt der Link
    * ersatzweise ins Partiearchiv des eigenen Kontos. Ohne konfigurierten
-   * Kontonamen entfällt der Link ganz — eine Archiv-URL ohne Benutzernamen
+   * Kontonamen entfällt der Link ganz · eine Archiv-URL ohne Benutzernamen
    * wäre ein Link ins Leere. Manuell erfasste Partien haben kein Original.
    */
   const originUrl = useMemo(() => {

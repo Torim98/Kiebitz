@@ -1,7 +1,7 @@
 //! Rechtliche Hinweise für den „Über Kiebitz"-Bereich in den Einstellungen.
 //!
 //! MIT, BSD und ISC verlangen, dass Lizenztext und Copyright-Hinweis das
-//! ausgelieferte Binary begleiten — es genügt nicht, sie nur im Repository zu
+//! ausgelieferte Binary begleiten · es genügt nicht, sie nur im Repository zu
 //! haben. Die Dateien werden deshalb als App-Ressourcen gebündelt. Android
 //! liefert Tauri-Ressourcen allerdings als APK-Assets aus, die nicht über
 //! `std::fs` erreichbar sind. Dort werden die Texte daher zusätzlich direkt
@@ -37,12 +37,12 @@ const DOCS: &[(&str, &str, &str)] = &[
     ),
     (
         "stockfish-notice",
-        "Stockfish — notice & source offer",
+        "Stockfish · notice & source offer",
         "resources/stockfish/NOTICE.txt",
     ),
     (
         "stockfish-gpl",
-        "Stockfish — GNU GPL v3",
+        "Stockfish · GNU GPL v3",
         "resources/stockfish/COPYING.txt",
     ),
 ];
@@ -133,7 +133,7 @@ mod tests {
     use super::{locate, DOCS};
     use std::path::{Path, PathBuf};
 
-    /// Die gebündelten Dateien müssen im Repository existieren — sonst
+    /// Die gebündelten Dateien müssen im Repository existieren · sonst
     /// verspricht `bundle.resources` etwas, das der Build nicht liefern kann,
     /// und die Auslieferung wäre lizenzrechtlich unvollständig.
     #[test]
@@ -158,7 +158,7 @@ mod tests {
 
     /// Ohne Ressourcenverzeichnis (also unter `tauri dev`) und bei einem
     /// Ressourcenverzeichnis ohne die Dateien muss der Entwicklungsbaum
-    /// greifen — sonst zeigen die Einstellungen im Dev-Build nichts an.
+    /// greifen · sonst zeigen die Einstellungen im Dev-Build nichts an.
     #[test]
     fn falls_back_to_the_development_tree() {
         for (_, _, relative) in DOCS {
@@ -181,7 +181,7 @@ mod tests {
                 "third-party" => "Third-party licenses",
                 "stockfish-notice" => "Written offer for the corresponding source",
                 "stockfish-gpl" => "GNU GENERAL PUBLIC LICENSE",
-                other => panic!("Test kennt {other} nicht — Marker ergänzen"),
+                other => panic!("Test kennt {other} nicht · Marker ergänzen"),
             };
             assert!(text.contains(marker), "{id}: erwartet \"{marker}\" in {}", path.display());
         }

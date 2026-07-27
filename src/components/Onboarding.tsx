@@ -8,7 +8,7 @@ import { Button, Card, Chip } from "./ui";
 /**
  * Ersteinrichtung beim allerersten Start. Sie fragt genau zwei Dinge:
  * Sprache und (optional) die Online-Konten. Ohne Konto bleibt Kiebitz voll
- * nutzbar — Partien lassen sich später per PGN importieren.
+ * nutzbar · Partien lassen sich später per PGN importieren.
  */
 export default function Onboarding({
   settings,
@@ -30,7 +30,7 @@ export default function Onboarding({
     setSettings({ ...settings, locale: next }).catch(() => {});
   };
 
-  /** Speichert die Angaben und startet — je nach Konto — den ersten Import. */
+  /** Speichert die Angaben und startet · je nach Konto · den ersten Import. */
   const finish = async (withImport: boolean) => {
     setBusy(true);
     setError(null);

@@ -352,7 +352,7 @@ pub async fn next_puzzle(
     .map_err(|e| format!("Puzzle-Auswahl fehlgeschlagen: {e}"))?
 }
 
-/// Nach dieser Zeit darf eine gelöste Aufgabe wieder drankommen — Taktik will
+/// Nach dieser Zeit darf eine gelöste Aufgabe wieder drankommen · Taktik will
 /// wiederholt werden, nur eben nicht am selben Tag.
 pub const SOLVED_COOLDOWN_DAYS: i64 = 30;
 
@@ -527,7 +527,7 @@ pub struct PuzzleStats {
     pub attempts: i64,
     pub solved: i64,
     pub today_solved: i64,
-    /// Alle heutigen Versuche (gelöst oder nicht) — fürs Tagesziel im Dashboard.
+    /// Alle heutigen Versuche (gelöst oder nicht) · fürs Tagesziel im Dashboard.
     pub today_attempts: i64,
     pub streak_days: i64,
     pub history: Vec<i64>,
@@ -592,7 +592,7 @@ fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleSt
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    // Lokale Tagesgrenzen sind hier nicht kritisch — UTC-Tage genügen.
+    // Lokale Tagesgrenzen sind hier nicht kritisch · UTC-Tage genügen.
     let day_start = now - now.rem_euclid(86_400);
     let today_solved: i64 = conn
         .query_row(
@@ -772,7 +772,7 @@ pub struct PuzzleInsights {
     pub solved: i64,
     /// Ø Rating der versuchten Aufgaben; 0 ohne Versuche.
     pub avg_puzzle_rating: i64,
-    /// Ø Rating der gelösten Aufgaben — die tatsächlich geknackte Härte.
+    /// Ø Rating der gelösten Aufgaben · die tatsächlich geknackte Härte.
     pub avg_solved_rating: i64,
     /// Längste Serie gelöster Aufgaben in Folge.
     pub best_run: i64,
@@ -812,7 +812,7 @@ fn puzzle_insights_from_conn(
     now: i64,
     window_days: i64,
 ) -> Result<PuzzleInsights, String> {
-    // Ein Durchlauf über alle Versuche — die Tabelle bleibt auch nach Jahren
+    // Ein Durchlauf über alle Versuche · die Tabelle bleibt auch nach Jahren
     // klein genug, und so bleiben alle Auswertungen konsistent zueinander.
     struct Attempt {
         ts: i64,
@@ -1057,7 +1057,7 @@ mod tests {
         assert_eq!(selected.moves, vec!["a1a2", "h1h2"]);
         assert_eq!(selected.themes, vec!["fork", "short"]);
 
-        // Gerade gelöst — innerhalb der Sperrfrist kommt nichts zurück.
+        // Gerade gelöst · innerhalb der Sperrfrist kommt nichts zurück.
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -1100,7 +1100,7 @@ mod tests {
         for rating in [1200, 1300, 1400, 1500, 1600] {
             puzzle(&conn, &format!("p{rating}"), rating, "fork short");
         }
-        // Über viele Ziehungen müssen mehrere Aufgaben vorkommen — sonst
+        // Über viele Ziehungen müssen mehrere Aufgaben vorkommen · sonst
         // liefert der Indexsprung immer dieselbe Kante.
         let mut seen = std::collections::HashSet::new();
         for i in 0..40 {

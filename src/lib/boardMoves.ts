@@ -1,7 +1,7 @@
 /**
  * Zughilfen fürs Brett: Zielfelder eines gewählten Steins als Punkte bzw.
  * Ringe (Schlagzug), im Kiebitz-Grün. Die Markierung läuft über
- * `customSquareStyles` von react-chessboard — kein zusätzliches DOM.
+ * `customSquareStyles` von react-chessboard · kein zusätzliches DOM.
  */
 import { Chess } from "chess.js";
 import { useEffect, useState, type CSSProperties } from "react";
@@ -43,7 +43,7 @@ export function moveTargetStyles(fen: string, from: string | null): Record<strin
   }
 }
 
-/** Gewähltes Feld plus seine Zielfelder — der übliche Aufruf in den Seiten. */
+/** Gewähltes Feld plus seine Zielfelder · der übliche Aufruf in den Seiten. */
 export function selectionStyles(
   fen: string,
   selected: string | null

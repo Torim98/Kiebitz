@@ -77,7 +77,7 @@ describe("Study page", () => {
     mockBackend();
     renderStudy();
 
-    // Der Wochenkalender zeigt vor dem Backend-Callback Demo-Werte — daher auf
+    // Der Wochenkalender zeigt vor dem Backend-Callback Demo-Werte · daher auf
     // eine Zahl warten, die nur aus den Live-Daten stammen kann.
     expect(await screen.findByText("3 / 10")).toBeTruthy();
     expect(screen.getAllByText("7 fällig").length).toBeGreaterThan(0);
@@ -114,7 +114,7 @@ describe("Study page", () => {
     );
     renderStudy();
 
-    expect(await screen.findByText("Tagesplan komplett — starke Arbeit!")).toBeTruthy();
+    expect(await screen.findByText("Tagesplan komplett · starke Arbeit!")).toBeTruthy();
     await waitFor(() => {
       expect(screen.getAllByText("Erledigt")).toHaveLength(3);
     });

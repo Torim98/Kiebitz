@@ -11,7 +11,7 @@ export interface DayActivity {
   game_reviews: number;
 }
 
-/** Ein vollständiges Partie-Review ist eine große Einheit — es zählt zehnfach. */
+/** Ein vollständiges Partie-Review ist eine große Einheit · es zählt zehnfach. */
 export const GAME_REVIEW_UNITS = 10;
 
 /** Spiegelt study::StudyData. */

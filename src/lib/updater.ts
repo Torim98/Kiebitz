@@ -27,7 +27,7 @@ export function checkUpdate(): Promise<UpdateCheck> {
   return invoke<UpdateCheck>("check_update");
 }
 
-/** Lädt, installiert und startet die App neu — das Promise löst i. d. R. nicht mehr auf. */
+/** Lädt, installiert und startet die App neu · das Promise löst i. d. R. nicht mehr auf. */
 export function installUpdate(): Promise<void> {
   return invoke("install_update");
 }

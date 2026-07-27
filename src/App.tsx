@@ -144,7 +144,7 @@ export default function App() {
   // kommentarlos passieren); Fehler zeigt die Settings-Seite.
   const [update, setUpdate] = useState<UpdateState | null>(null);
   // Bei deaktiviertem Auto-Update meldet das Backend nur, dass eine Version
-  // bereitsteht — wir zeigen dann unten rechts einen Hinweis mit Aktion.
+  // bereitsteht · wir zeigen dann unten rechts einen Hinweis mit Aktion.
   const [available, setAvailable] = useState<UpdateAvailable | null>(null);
   useEffect(() => {
     if (backend.mode !== "desktop") return;
@@ -177,7 +177,7 @@ export default function App() {
     setNavOpen(false);
   };
 
-  // Inhalt der Sidebar — identisch für Desktop-Aside und Mobile-Drawer.
+  // Inhalt der Sidebar · identisch für Desktop-Aside und Mobile-Drawer.
   const sidebarContent = (
     <>
       <div className={`flex items-center gap-2.5 ${isMobile ? "px-4 py-3" : "px-5 pb-5 pt-6"}`}>

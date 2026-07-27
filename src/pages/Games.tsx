@@ -96,7 +96,7 @@ export default function Games({
     try {
       localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
     } catch {
-      /* Storage nicht verfügbar — gilt nur für die Sitzung */
+      /* Storage nicht verfügbar · gilt nur für die Sitzung */
     }
   }, [pageSize]);
 
@@ -299,7 +299,7 @@ export default function Games({
   };
 
   // Ohne hinterlegtes Konto bleibt der eigene Name leer statt auf Demo-Daten
-  // zurückzufallen — sonst importierte eine frische Installation fremde Partien.
+  // zurückzufallen · sonst importierte eine frische Installation fremde Partien.
   const [myUser, setMyUser] = useState(backend.mode === "desktop" ? "" : profile.ccUser);
   useEffect(() => {
     if (backend.mode === "desktop") {

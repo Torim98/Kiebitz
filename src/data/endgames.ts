@@ -1,5 +1,5 @@
 /**
- * Kuratierte Endspiel-Drills für den Endspiel-Trainer. Die IDs sind stabil —
+ * Kuratierte Endspiel-Drills für den Endspiel-Trainer. Die IDs sind stabil ·
  * sie landen als drill_id in der Datenbank (endgame_attempts).
  *
  * Jede Aufgabe ist ein theoretisch eindeutiges Lehrbuch-Endspiel: Ziel „win“
@@ -44,8 +44,8 @@ export const ENDGAME_DRILLS: EndgameDrill[] = [
     fen: "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
     name: { de: "Turmmatt", en: "Rook checkmate" },
     hint: {
-      de: "Der Turm sperrt eine Reihe, der König erkämpft die Opposition — dann Schach und die nächste Reihe abschneiden (Box-Methode).",
-      en: "The rook fences off a rank, your king fights for the opposition — then check and shrink the box.",
+      de: "Der Turm sperrt eine Reihe, der König erkämpft die Opposition · dann Schach und die nächste Reihe abschneiden (Box-Methode).",
+      en: "The rook fences off a rank, your king fights for the opposition · then check and shrink the box.",
     },
   },
   {
@@ -94,8 +94,8 @@ export const ENDGAME_DRILLS: EndgameDrill[] = [
     fen: "2k5/8/K7/P7/8/8/8/8 b - - 0 1",
     name: { de: "Randbauer: Remis halten", en: "Rook pawn: hold the draw" },
     hint: {
-      de: "Gegen den Randbauern rettet die Ecke: Erreicht dein König c8/a8, kommt Weiß nie heraus — Patt oder Dauerpendeln.",
-      en: "Against a rook pawn the corner saves you: once your king reaches c8/a8, White never gets out — stalemate or endless shuffling.",
+      de: "Gegen den Randbauern rettet die Ecke: Erreicht dein König c8/a8, kommt Weiß nie heraus · Patt oder Dauerpendeln.",
+      en: "Against a rook pawn the corner saves you: once your king reaches c8/a8, White never gets out · stalemate or endless shuffling.",
     },
   },
   {
@@ -146,8 +146,8 @@ export const ENDGAME_DRILLS: EndgameDrill[] = [
     fen: "8/8/6K1/Q7/8/8/3pk3/8 w - - 0 1",
     name: { de: "Dame gegen Umwandlungsbauer", en: "Queen vs promoting pawn" },
     hint: {
-      de: "Mit Schachs den König vor den Bauern zwingen — jedes Mal, wenn er das Umwandlungsfeld blockiert, rückt dein König einen Schritt näher.",
-      en: "Check the king in front of its pawn — every time it blocks the promotion square, your own king gains a step.",
+      de: "Mit Schachs den König vor den Bauern zwingen · jedes Mal, wenn er das Umwandlungsfeld blockiert, rückt dein König einen Schritt näher.",
+      en: "Check the king in front of its pawn · every time it blocks the promotion square, your own king gains a step.",
     },
   },
 ];

@@ -1,8 +1,8 @@
-//! Geräte-Sync v1 — direkter Abgleich im lokalen Netz, Desktop als Hub.
+//! Geräte-Sync v1 · direkter Abgleich im lokalen Netz, Desktop als Hub.
 //!
 //! Das Handy stößt den Sync an (ein POST-Roundtrip): es schickt seine lokalen
 //! Änderungen und bekommt die Desktop-Änderungen seit dem letzten Sync zurück.
-//! Kein Server, keine Cloud — der Desktop lauscht nur solange die App läuft
+//! Kein Server, keine Cloud · der Desktop lauscht nur solange die App läuft
 //! auf Port 47323, abgesichert über einen Pairing-Code aus den Einstellungen.
 //!
 //! Merge-Regeln (idempotent, wiederholbar):
@@ -22,7 +22,7 @@
 //!
 //! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
 //! `sync_last_ts`) und beide Seiten filtern mit einem Sicherheitsfenster
-//! (SLACK) — Doppel-Übertragungen sind durch die idempotenten Merges gratis.
+//! (SLACK) · Doppel-Übertragungen sind durch die idempotenten Merges gratis.
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -91,7 +91,7 @@ pub struct SyncGame {
     #[serde(default)]
     pub tags_ts: i64,
     pub analyzed: bool,
-    /// Zeitpunkt der Auto-Analyse — der Wochenkalender zählt Partie-Reviews
+    /// Zeitpunkt der Auto-Analyse · der Wochenkalender zählt Partie-Reviews
     /// dadurch auf jedem Gerät am selben Tag.
     #[serde(default)]
     pub analyzed_ts: i64,
@@ -124,7 +124,7 @@ pub struct SyncRepNode {
     pub lapses: i64,
     pub due_ts: i64,
     pub last_ts: i64,
-    /// Anlage-Zeitpunkt — entscheidet gegen Tombstones (Wieder-Anlegen gewinnt).
+    /// Anlage-Zeitpunkt · entscheidet gegen Tombstones (Wieder-Anlegen gewinnt).
     #[serde(default)]
     pub created_ts: i64,
 }
@@ -145,7 +145,7 @@ pub struct SyncPuzzleAttempt {
     pub rating_before: i64,
     pub rating_after: i64,
     pub themes: String,
-    /// Puzzle-Rating zur Versuchszeit — Basis für den deterministischen
+    /// Puzzle-Rating zur Versuchszeit · Basis für den deterministischen
     /// Elo-Replay nach einem Merge (0 = unbekannt, Versuch neutral).
     #[serde(default)]
     pub puzzle_rating: i64,
@@ -380,7 +380,7 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
         } else {
             match paths.get(&r.parent_id) {
                 Some(p) => format!("{p} {}", r.san),
-                None => continue, // verwaister Knoten — überspringen
+                None => continue, // verwaister Knoten · überspringen
             }
         };
         paths.insert(r.id, path.clone());
@@ -422,7 +422,7 @@ fn collect_tombstones(conn: &Connection) -> Result<Vec<SyncTombstone>, String> {
 
 /// Tombstones der Gegenseite übernehmen (Union, neuester Zeitstempel gewinnt)
 /// und danach lokal alle abgedeckten Knoten löschen, die älter sind als die
-/// Löschung — jüngere (wieder angelegte oder frisch trainierte) überleben.
+/// Löschung · jüngere (wieder angelegte oder frisch trainierte) überleben.
 fn apply_tombstones(conn: &mut Connection, tombstones: &[SyncTombstone]) -> Result<usize, String> {
     for t in tombstones {
         conn.execute(
@@ -450,7 +450,7 @@ fn apply_tombstones(conn: &mut Connection, tombstones: &[SyncTombstone]) -> Resu
             delete_keys.push((n.side.clone(), n.path.clone()));
         }
     }
-    // Über (side, parent, san) je Ebene löschen — wir haben nur Pfade, keine IDs.
+    // Über (side, parent, san) je Ebene löschen · wir haben nur Pfade, keine IDs.
     let mut deleted = 0usize;
     if !delete_keys.is_empty() {
         // IDs nachschlagen wie in apply_rep.
@@ -821,7 +821,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                     None => 0,
                     Some(k) => match local_ids.get(k) {
                         Some((id, _)) => *id,
-                        None => continue, // Elternknoten fehlt (übersprungen) — Kind auslassen
+                        None => continue, // Elternknoten fehlt (übersprungen) · Kind auslassen
                     },
                 };
                 let san = n.path.rsplit(' ').next().unwrap_or(&n.path);
@@ -892,7 +892,7 @@ fn apply_puzzle_attempts(
     Ok(n)
 }
 
-/// Spielt die Elo-Kette über alle Versuche deterministisch neu ab — nach einem
+/// Spielt die Elo-Kette über alle Versuche deterministisch neu ab · nach einem
 /// Merge haben damit beide Geräte identische Ratings. Sortiert wird geräte-
 /// unabhängig nach (ts, puzzle_id); Versuche ohne bekanntes Puzzle-Rating
 /// (puzzle_rating = 0) lassen das Rating unverändert.
@@ -1462,7 +1462,7 @@ pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
 
 /// Pairing per QR-Code: Adresse, Code und Zertifikats-Fingerprint in eine
 /// `kiebitz://sync?...`-URI packen, die das Handy scannt. Die eingebettete Adresse
-/// ist die LAN-IP des Desktops — sie ist im Heim-WLAN *und* über das
+/// ist die LAN-IP des Desktops · sie ist im Heim-WLAN *und* über das
 /// Fritzbox-WireGuard erreichbar (die Fritzbox routet das Heimnetz in den
 /// Tunnel), anders als die UDP-Broadcast-Discovery, die Subnetzgrenzen nicht
 /// überschreitet. Deshalb funktioniert QR-Pairing auch entfernt über VPN.
@@ -1509,7 +1509,7 @@ fn qr_svg(data: &str) -> Result<String, String> {
     ))
 }
 
-/// Desktop-Hub: Pairing-Infos inkl. QR-SVG. Mobile ist Client — dort Stub.
+/// Desktop-Hub: Pairing-Infos inkl. QR-SVG. Mobile ist Client · dort Stub.
 #[cfg(desktop)]
 #[tauri::command]
 pub fn sync_pair(app: tauri::AppHandle) -> Result<PairInfo, String> {
@@ -2076,7 +2076,7 @@ mod tests {
 
     #[test]
     fn https_roundtrip_over_localhost_with_pinned_certificate() {
-        // Echter TLS-tiny_http-Server + gepinnter ureq-Client — dieselben
+        // Echter TLS-tiny_http-Server + gepinnter ureq-Client · dieselben
         // Transportbausteine wie in start_server/sync_now, ohne Tauri-AppHandle.
         let rcgen::CertifiedKey { cert, key_pair } =
             rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();

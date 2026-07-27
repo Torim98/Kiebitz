@@ -27,7 +27,7 @@ impl Default for AnalysisState {
     }
 }
 
-/// Pfad zur Datenbank — Hintergrund-Threads öffnen eigene Verbindungen.
+/// Pfad zur Datenbank · Hintergrund-Threads öffnen eigene Verbindungen.
 /// Mutex, weil der Speicherort in den Einstellungen änderbar ist.
 pub struct DbPath(pub Mutex<PathBuf>);
 
@@ -358,7 +358,7 @@ fn run_worker(
         }
         let walked = chess::walk_sans(&moves);
         if walked.is_empty() {
-            // Nichts zu analysieren (abgebrochene/leere Partie) — aus der Queue nehmen.
+            // Nichts zu analysieren (abgebrochene/leere Partie) · aus der Queue nehmen.
             conn.execute(
                 "UPDATE games SET analyzed = 1, updated_ts = ?2, analyzed_ts = ?2 WHERE id = ?1",
                 params![game_id, crate::db::now_ts()],

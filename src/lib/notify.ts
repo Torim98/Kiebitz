@@ -3,7 +3,7 @@
  *
  * Drei Wege, je nach Plattform:
  *   * Läuft die App, prüft ein Timer im Minutenraster und schickt den fertigen
- *     Text ans Backend (`notify_now`) — dort meldet Windows auch Fehler zurück.
+ *     Text ans Backend (`notify_now`) · dort meldet Windows auch Fehler zurück.
  *   * Windows plant zusätzlich eine Aufgabe, die Kiebitz zur eingestellten Zeit
  *     mit `--reminder` startet; dafür genügt ein Aufruf von
  *     `sync_reminder_schedule` nach jeder Änderung.
@@ -37,7 +37,7 @@ type PendingNotification = {
   id: number;
 };
 
-/** Was heute noch offen ist — Datenbasis des Erinnerungstexts. */
+/** Was heute noch offen ist · Datenbasis des Erinnerungstexts. */
 export interface ReminderInput {
   /** Offene geplante Lerneinheiten des Tages. */
   study: number;
@@ -51,7 +51,7 @@ export interface ReminderInput {
   unanalyzed: number;
 }
 
-/** Lokaler Tagesschlüssel (nicht UTC — die Uhrzeit ist eine lokale Angabe). */
+/** Lokaler Tagesschlüssel (nicht UTC · die Uhrzeit ist eine lokale Angabe). */
 export function localDay(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
@@ -151,7 +151,7 @@ async function nativeScheduledNotification(options: NativeNotificationOptions): 
 
 /**
  * Benachrichtigung sofort zeigen. Wirft mit Klartext, wenn das System sie
- * ablehnt — der Testknopf in den Einstellungen zeigt genau diese Meldung.
+ * ablehnt · der Testknopf in den Einstellungen zeigt genau diese Meldung.
  */
 export async function notify(title: string, body: string): Promise<void> {
   if (!(await ensurePermission())) throw new Error("permission-denied");
@@ -188,7 +188,7 @@ export async function applyReminderSchedule(): Promise<void> {
     });
     return;
   }
-  // Desktop: Aufgabenplanung anlegen und den aktuellen Text hinterlegen — der
+  // Desktop: Aufgabenplanung anlegen und den aktuellen Text hinterlegen · der
   // Hintergrundlauf greift darauf zurück, wenn er die Datenbank nicht öffnen
   // kann (WAL-Zustand, Sperren).
   await invoke<string>("sync_reminder_schedule").catch(() => "");
@@ -216,12 +216,12 @@ async function runCheck(): Promise<void> {
   if (now.getHours() * 60 + now.getMinutes() < minutesOfDay(settings.notify_time)) return;
   const today = localDay(now);
   if (localStorage.getItem(LAST_SENT_KEY) === today) return;
-  // Android erledigt die Erinnerung über den geplanten Alarm — hier nur der
+  // Android erledigt die Erinnerung über den geplanten Alarm · hier nur der
   // Fall „App läuft gerade“ auf dem Desktop.
   if (await isMobile()) return;
   const t = translator(settings.locale);
   const body = reminderBody(t, settings, await collectDue());
-  // Auch ein stiller Tag gilt als erledigt — höchstens eine Erinnerung pro Tag.
+  // Auch ein stiller Tag gilt als erledigt · höchstens eine Erinnerung pro Tag.
   localStorage.setItem(LAST_SENT_KEY, today);
   if (body) await notify(t("notify.title"), body).catch(() => {});
 }

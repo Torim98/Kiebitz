@@ -59,7 +59,7 @@ interface DragState extends DragPayload {
   over: string | null;
 }
 
-/** Tag-Zelle unter einem Bildschirmpunkt — die Zellen tragen `data-study-day`. */
+/** Tag-Zelle unter einem Bildschirmpunkt · die Zellen tragen `data-study-day`. */
 function dayAtPoint(x: number, y: number): string | null {
   const element = document.elementFromPoint(x, y);
   const cell = element?.closest("[data-study-day]") as HTMLElement | null;
