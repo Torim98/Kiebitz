@@ -8,35 +8,36 @@
 //! `update://state`-Events ans Frontend; nach der Installation startet die App
 //! neu (unter Windows beendet der Installer die App selbst).
 //!
-//! Android liest beim manuellen Check dieselbe `latest.json`, vergleicht deren
-//! Version und öffnet die passende signierte GitHub-APK im Systembrowser. Die
-//! eigentliche Installation muss Android aus Sicherheitsgründen bestätigen.
+//! Android-Sideload-Builds lesen beim manuellen Check dieselbe `latest.json`
+//! und öffnen die passende signierte GitHub-APK im Systembrowser. Builds mit
+//! dem Cargo-Feature `play-store` enthalten diesen Code und die URL nicht:
+//! Google-Play-Apps dürfen sich ausschließlich über Play aktualisieren.
 
 use serde::Serialize;
 use tauri::AppHandle;
 #[cfg(desktop)]
 use tauri::Emitter;
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 use tauri_plugin_opener::OpenerExt;
 #[cfg(desktop)]
 use tauri_plugin_updater::UpdaterExt;
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 const RELEASE_MANIFEST_URL: &str =
     "https://github.com/Torim98/Kiebitz/releases/latest/download/latest.json";
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(all(target_os = "android", not(feature = "play-store")), test))]
 fn parse_release_version(raw: &str) -> Result<semver::Version, String> {
     semver::Version::parse(raw.trim().trim_start_matches('v'))
         .map_err(|e| format!("Ungültige Release-Version '{raw}': {e}"))
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(all(target_os = "android", not(feature = "play-store")), test))]
 fn is_newer_release(current: &str, candidate: &str) -> Result<bool, String> {
     Ok(parse_release_version(candidate)? > parse_release_version(current)?)
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(all(target_os = "android", not(feature = "play-store")), test))]
 fn android_apk_url(version: &str) -> Result<String, String> {
     let version = parse_release_version(version)?.to_string();
     Ok(format!(
@@ -117,16 +118,16 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
 }
 
 // ── Mobile-Updates ───────────────────────────────────────────────────────────
-// Android prüft den Desktop-Release-Feed, installiert aber nicht still: der
-// Systembrowser lädt die APK, anschließend bestätigt der Nutzer die Installation.
+// Sideload: Desktop-Release-Feed prüfen; der Browser lädt die APK und Android
+// bestätigt die Installation. Der gesamte Pfad fehlt im Play-Build.
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 #[derive(serde::Deserialize)]
 struct AndroidReleaseManifest {
     version: String,
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 fn fetch_android_release() -> Result<AndroidReleaseManifest, String> {
     let response = ureq::get(RELEASE_MANIFEST_URL)
         .timeout(std::time::Duration::from_secs(15))
@@ -136,7 +137,7 @@ fn fetch_android_release() -> Result<AndroidReleaseManifest, String> {
         .map_err(|e| format!("Release-Feed ist ungültig: {e}"))
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
     let current = app.package_info().version.to_string();
@@ -155,7 +156,7 @@ pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
     })
 }
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", not(feature = "play-store")))]
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     let check = check_update(app.clone()).await?;
@@ -166,6 +167,24 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| format!("APK-Download konnte nicht geöffnet werden: {e}"))
+}
+
+// Play übernimmt Installation und Updates. Diese Stubs halten die gemeinsame
+// Command-Oberfläche stabil, ohne Netzwerkzugriff oder externe Download-URL.
+#[cfg(all(target_os = "android", feature = "play-store"))]
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
+    Ok(UpdateCheck {
+        current: app.package_info().version.to_string(),
+        available: None,
+        notes: None,
+    })
+}
+
+#[cfg(all(target_os = "android", feature = "play-store"))]
+#[tauri::command]
+pub async fn install_update(_app: AppHandle) -> Result<(), String> {
+    Err("Updates werden von Google Play verwaltet.".into())
 }
 
 #[cfg(target_os = "ios")]

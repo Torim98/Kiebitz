@@ -6,14 +6,6 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Tägliche Trainings-Erinnerung (ab Android 13 laufzeitpflichtig). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Der Alarm soll zur gewählten Uhrzeit und nicht erst in einem späteren
-         Doze-Wartungsfenster erscheinen. Android 12 nutzt SCHEDULE_, neuere
-         Versionen die automatisch gewährte USE_-Variante. -->
-    <uses-permission
-        android:name="android.permission.SCHEDULE_EXACT_ALARM"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

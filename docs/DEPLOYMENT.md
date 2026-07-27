@@ -4,7 +4,8 @@ How to build, package, and distribute Kiebitz. The app is a Tauri 2 project: a
 Rust core plus a Vite/React frontend. The **desktop** build is the primary
 product (a native installer per OS, with auto-update). An **Android** build
 exists too (Phase 4) — a signed, sideloaded APK that CI now builds and attaches
-to each release (no auto-update on mobile); see *Android build* below.
+to each release, plus a separate Google Play AAB flavor; see *Android build*
+below.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
@@ -133,10 +134,10 @@ Notes:
   SHA-256 hashes, plus a **written offer for the corresponding source** (GPL-3.0
   §6); `COPYING.txt` contains the complete GPL-3.0. Both files are bundled on
   desktop and Android and are also referenced by `THIRD_PARTY_NOTICES.md`. CI
-  downloads only the pinned `sf_18` archives and aborts if a hash differs, and a
+  verifies the pinned `sf_18` source, binaries and NNUE networks, and a
   separate `stockfish-source` job attaches the engine's source archive to every
   release (see below). Keep all of this in sync whenever Stockfish is upgraded —
-  the commit, the two binary hashes, the archive **filename** in `NOTICE.txt` and
+  the commit, binary/network hashes, the archive **filename** in `NOTICE.txt` and
   `THIRD_PARTY_NOTICES.md`, and the commit in the workflow job.
 
 ## Android build (APK)
@@ -179,9 +180,10 @@ committed; build outputs and the engine `.so` stay gitignored):
 
 - **Engine**: Stockfish ships per ABI as
   `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). CI stages it
-  automatically (downloads the pinned Stockfish 18 `stockfish-android-armv8`);
-  for a **local**
-  build download that asset and copy it in yourself. `resolve_engine`
+  automatically by compiling the pinned Stockfish 18 commit with NDK r28 and
+  16-KB ELF alignment. For a **local** build,
+  `scripts/build-stockfish-android.ps1` performs the identical source build and
+  verifies the NNUE checksums. `resolve_engine`
   (`src-tauri/src/lib.rs`) finds it in the app's `nativeLibraryDir` via
   `/proc/self/maps`.
 - **Native lib packaging**: `useLegacyPackaging = true` in
@@ -190,11 +192,27 @@ committed; build outputs and the engine `.so` stay gitignored):
   process (and it shrinks the APK).
 - **Config**: `src-tauri/tauri.android.conf.json` drops the desktop
   `stockfish.exe` resource and the updater artifacts from the mobile bundle.
+  `src-tauri/tauri.play.conf.json` additionally removes the external updater
+  endpoint from the Google Play flavor.
 
 CI now builds a **signed** arm64 release APK on every tagged release and attaches
 it to the GitHub release (see *Releasing a new version* → *One-time setup* for the
-keystore secrets). The steps above stay valid for local/manual builds. Still open:
-multi-ABI packaging and a Play-Store track — see `ROADMAP.md`, Phase 4.
+keystore secrets). For Google Play, build and verify the signed AAB locally:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-play-aab.ps1
+```
+
+The script securely prompts for the existing release-keystore password, builds
+Stockfish with 16-KB alignment, enables the Rust `play-store` feature, merges
+`tauri.play.conf.json`, signs the AAB, and verifies package
+`de.torim.kiebitz`, target API 36, permissions, updater removal, signature and
+every native ELF file. Output:
+`artifacts/Kiebitz_<version>_play_arm64.aab`.
+
+The Play flavor deliberately has no external APK update path and no exact-alarm
+permission. Updates are handled by Google Play; reminders use inexact scheduling.
+Still open: multi-ABI packaging — see `ROADMAP.md`, Phase 4.
 
 ## Third-party license notices
 
@@ -453,9 +471,9 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
   quoted in `NOTICE.txt` stays valid across releases. Because `publish` needs
   this job, no public release can ever ship the engine binary without its source.
 - **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
-  Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, downloads
-  the pinned Stockfish 18 `stockfish-android-armv8` engine into
-  `jniLibs/arm64-v8a/`, verifies its SHA-256 hash,
+  Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, compiles
+  the pinned Stockfish 18 commit into `jniLibs/arm64-v8a/` with 16-KB ELF
+  alignment and verified NNUE networks,
   restores the keystore from the secrets, builds a signed release APK
   (`tauri android build --apk --target aarch64`), and uploads
   `Kiebitz_<version>_arm64.apk` to the draft release. Without the keystore
@@ -476,9 +494,11 @@ the app:
   yet) are only logged.
 - **Manually**: Settings → Updates has a "check now" button and an explicit
   "download & restart" action, independent of the toggle.
-- **Android**: the same button reads the version from `latest.json` and opens
-  the matching signed arm64 APK from the GitHub release. Android requires the
-  user to confirm the sideloaded update; there is no silent restart/install.
+- **Android sideload flavor**: the same button reads the version from
+  `latest.json` and opens the matching signed arm64 APK from the GitHub release.
+  Android requires the user to confirm the sideloaded update.
+- **Google Play flavor**: contains neither that endpoint nor an external APK
+  installer. The Settings page points users to Google Play, which owns updates.
 
 The pieces that make it work:
 

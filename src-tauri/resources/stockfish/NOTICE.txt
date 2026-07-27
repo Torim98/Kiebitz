@@ -46,17 +46,18 @@ made at:
 This offer is valid to anyone who received the Stockfish binary as part of
 Kiebitz, regardless of the channel it was obtained from.
 
-Bundled official binary archives
----------------------------------
+Binary provenance
+-----------------
 
-The engine binaries shipped with Kiebitz are the unmodified official releases
-published by the Stockfish project. Kiebitz builds verify these SHA-256 hashes
-before packaging and abort on any mismatch.
+The Android arm64 engine is compiled without source modifications from the
+exact commit above. Kiebitz uses Android NDK 28.2.13676358, the generic armv8
+target, and 16-KB ELF LOAD alignment. The reproducible build commands and
+checksum verification for both NNUE networks are in
+scripts/build-stockfish-android.ps1 and .github/workflows/release.yml.
 
-Android arm64:
-https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-android-armv8.tar
-SHA-256: e2eca54b0e3189ec7de338133c2b34fa8f5cdec3d2473519b414a5cb6815e768
+The Windows x86-64 AVX2 engine is taken from the unmodified official release
+archive. Kiebitz verifies this SHA-256 hash before packaging and aborts on a
+mismatch:
 
-Windows x86-64 AVX2:
 https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip
 SHA-256: 6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900

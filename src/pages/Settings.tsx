@@ -174,6 +174,7 @@ export default function SettingsPage() {
   const [scanning, setScanning] = useState(false);
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  const playStore = backend.info?.distribution === "play-store";
   const examplePath = useMemo(() => examplePaths(backend.info?.platform), [backend.info?.platform]);
 
   const [resetOpen, setResetOpen] = useState(false);
@@ -1218,7 +1219,17 @@ export default function SettingsPage() {
           }
         >
           {desktop && draft ? (
-            <>
+            playStore ? (
+              <>
+                <span className="text-[12px] text-ink3">
+                  {t("set.updateCurrent", { v: backend.info?.version ?? "?" })}
+                </span>
+                <p className="mt-3 text-[12px] leading-relaxed text-ink3">
+                  {t("set.updatePlayNote")}
+                </p>
+              </>
+            ) : (
+              <>
               {!mobile && (
                 <label className="flex cursor-pointer items-center gap-3">
                   <input
@@ -1285,6 +1296,7 @@ export default function SettingsPage() {
                 {t(mobile ? "set.updateMobileNote" : "set.autoUpdateNote")}
               </p>
             </>
+            )
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}

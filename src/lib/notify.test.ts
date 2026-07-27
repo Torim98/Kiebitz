@@ -143,7 +143,7 @@ describe("native notification bridge", () => {
     });
   });
 
-  it("persists and verifies the daily Android alarm", async () => {
+  it("persists and verifies the inexact daily Android alarm", async () => {
     invokeMock.mockImplementation((command?: string) => {
       if (!command) return Promise.resolve();
       if (command === "get_settings") {
@@ -186,7 +186,7 @@ describe("native notification bridge", () => {
             schedule: expect.objectContaining({
               interval: {
                 interval: { hour: 7, minute: 35 },
-                allowWhileIdle: true,
+                allowWhileIdle: false,
               },
             }),
           }),

@@ -7,9 +7,11 @@ own license.
 
 ## Stockfish (GPL-3.0)
 
-Kiebitz distributes the unmodified official Stockfish 18 binary and starts it as
-a separate process, communicating over the public UCI text protocol. No part of
-Stockfish is linked into the Kiebitz binary.
+Kiebitz distributes Stockfish 18 and starts it as a separate process,
+communicating over the public UCI text protocol. The Android binary is compiled
+without source modifications from the pinned official commit; the Windows binary
+comes from the official release archive. No part of Stockfish is linked into the
+Kiebitz binary.
 
 The notices, the complete GPL-3.0 text, the exact source revision, the binary
 provenance with archive checksums, and the **written offer for the corresponding
@@ -21,9 +23,9 @@ Corresponding source, at no charge, attached to every Kiebitz release:
 
 <https://github.com/Torim98/Kiebitz/releases/latest/download/stockfish-18-source-cb3d4ee9b47d.tar.gz>
 
-The release workflow verifies the documented SHA-256 hashes of the official
-engine archives before packaging, and generates the source archive straight from
-the pinned Stockfish commit, so binary and source can never drift apart.
+The release workflow verifies the documented Windows archive and NNUE hashes,
+compiles Android Stockfish from the pinned commit, and generates the source
+archive straight from that same commit, so binary and source cannot drift apart.
 
 ## Lichess puzzle database (CC0 1.0)
 

@@ -16,6 +16,13 @@ rust-version = "1.77.2"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+# Google-Play-Build: Android darf sich ausschließlich über Play aktualisieren.
+# Der Feature-Schalter entfernt den GitHub-APK-Updater samt Download-URL aus
+# dem Mobile-Binary; Desktop- und Sideload-Builds bleiben unverändert.
+play-store = []
+
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 
@@ -43,8 +50,9 @@ zstd = "0.13.3"
 rustls = "0.23"
 sha2 = "0.10"
 
-# Signierte Desktop-Auto-Updates laufen über den Tauri-Updater. Android prüft
-# denselben Release-Feed und öffnet die signierte APK zur Systeminstallation.
+# Signierte Desktop-Auto-Updates laufen über den Tauri-Updater. Android-
+# Sideload-Builds prüfen denselben Release-Feed; Play-Builds kompilieren diesen
+# Pfad über das Feature `play-store` vollständig heraus.
 # qrcode: erzeugt den Pairing-QR (Desktop-Hub zeigt ihn, das Handy scannt).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

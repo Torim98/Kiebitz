@@ -209,26 +209,34 @@ jobs:
         if: steps.guard.outputs.has_keystore == 'true'
         run: npm ci
 
-      # Stockfish für Android (arm64) als libstockfish.so in die jniLibs legen.
-      # resolve_engine() findet sie im nativeLibraryDir der App. Plain armv8
-      # (kein -dotprod) für breite CPU-Kompatibilität.
-      - name: Stockfish holen (Android, armv8)
+      # Stockfish fuer Android reproduzierbar aus dem gepinnten sf_18-Commit
+      # bauen. NDK r28 und 16-KB-Linker-Alignment erfuellen die Play-Anforderung;
+      # plain armv8 (kein -dotprod) bleibt breit kompatibel.
+      - name: Stockfish bauen (Android, armv8, 16 KB)
         if: steps.guard.outputs.has_keystore == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          asset="https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-android-armv8.tar"
-          expected="e2eca54b0e3189ec7de338133c2b34fa8f5cdec3d2473519b414a5cb6815e768"
-          echo "Lade $asset"
-          curl -sSL "$asset" -o sf.tar
-          echo "$expected  sf.tar" | sha256sum --check --strict
-          mkdir -p sf && tar -xf sf.tar -C sf
-          bin=$(find sf -type f -name "stockfish-android-armv8" | head -n1)
-          [ -n "$bin" ] || bin=$(find sf -type f -perm -u+x ! -name "*.txt" | head -n1)
+          commit="cb3d4ee9b47d0c5aae855b12379378ea1439675c"
+          git clone --filter=blob:none --no-checkout https://github.com/official-stockfish/Stockfish.git sf-src
+          git -C sf-src fetch --depth 1 origin "$commit"
+          git -C sf-src checkout --detach "$commit"
+          test "$(git -C sf-src rev-parse HEAD)" = "$commit"
+          export PATH="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cd sf-src/src
+          ../scripts/net.sh
+          make -j2 build ARCH=armv8 COMP=ndk \
+            EXTRALDFLAGS="-Wl,-z,max-page-size=16384"
+          llvm-strip stockfish
+          while read -r alignment; do
+            if (( alignment < 0x4000 )); then
+              echo "::error::Stockfish LOAD alignment is only $(printf '0x%x' "$alignment")."
+              exit 1
+            fi
+          done < <(llvm-readelf -lW stockfish | awk '$1 == "LOAD" { print $NF }')
+          cd ../..
           dest=src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a
           mkdir -p "$dest"
-          cp "$bin" "$dest/libstockfish.so"
-          echo "Stockfish gebündelt: $(basename "$bin") -> $dest/libstockfish.so"
+          cp sf-src/src/stockfish "$dest/libstockfish.so"
+          echo "Stockfish 18 built from $commit -> $dest/libstockfish.so"
 
       # Keystore aus dem Secret wiederherstellen und die von Gradle gelesene
       # keystore.properties erzeugen (beide sind gitignored).

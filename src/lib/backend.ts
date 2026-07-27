@@ -6,6 +6,8 @@ export interface BackendInfo {
   backend: string;
   /** Betriebssystem des Backends ("windows", "android", …). */
   platform?: string;
+  /** "play-store", "sideload" oder "desktop". */
+  distribution?: string;
 }
 
 export interface AnalysisResult {

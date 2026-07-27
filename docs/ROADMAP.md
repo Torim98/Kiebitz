@@ -134,7 +134,7 @@ Open:
 - [x] **Play Store prerequisites: Android manifest and Stockfish licensing**
   (2026-07-22). Removed the unintended Android TV/Leanback declaration. The
   bundled Stockfish 18 release is pinned to its exact source commit; CI verifies
-  the official Android/Windows archive hashes, and GPL-3.0, source and binary
+  its source, Windows archive and NNUE networks, and GPL-3.0, source and binary
   provenance notices are bundled as app resources on both platforms.
 - [x] **Licensing made explicit** (2026-07-26). `LICENSE` states
   source-available terms (read, build, private use — no redistribution, no
@@ -156,8 +156,13 @@ Open:
   counters and early-abort lines; the new implementation reproduces all of them
   byte-for-byte, so existing databases keep working. `tests::golden_keys` locks
   that in. The dependency graph now contains no copyleft crate.
-- [ ] **Play Store distribution** (account, signing policy, review overhead).
-  Sideloading the signed GitHub-release APK already works.
+- [x] **Play Store technical build** (2026-07-27). Separate `play-store` flavor
+  without the external APK updater or exact-alarm permissions; signed AAB build
+  and verifier for package/API/permissions/signature; every native library,
+  including a source-built Stockfish 18, has 16-KB ELF alignment.
+- [ ] **Play Store distribution** (Play App Signing enrollment, store listing,
+  closed test, production-access request and review). Sideloading the signed
+  GitHub-release APK already works.
 
 ## Cross-cutting / nice-to-have
 

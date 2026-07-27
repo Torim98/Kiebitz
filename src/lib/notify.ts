@@ -7,8 +7,9 @@
  *   * Windows plant zusätzlich eine Aufgabe, die Kiebitz zur eingestellten Zeit
  *     mit `--reminder` startet; dafür genügt ein Aufruf von
  *     `sync_reminder_schedule` nach jeder Änderung.
- *   * Android hinterlegt die Erinnerung im AlarmManager (Schedule.interval),
- *     damit sie auch ohne laufende App kommt.
+ *   * Android hinterlegt eine ungefähre tägliche Erinnerung im AlarmManager
+ *     (Schedule.interval), damit sie auch ohne laufende App kommt. Kiebitz
+ *     fordert bewusst keine eingeschränkte Exact-Alarm-Berechtigung an.
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -180,7 +181,10 @@ export async function applyReminderSchedule(): Promise<void> {
       // Der Alarm trägt den Stand des letzten App-Starts; Details stehen in
       // der App, sobald sie geöffnet wird.
       body: (due && reminderBody(t, settings, due)) ?? t("notify.scheduled"),
-      schedule: Schedule.interval({ hour, minute }, true),
+      // Eine Trainingserinnerung ist nicht zeitkritisch. `allowWhileIdle=false`
+      // hält die Planung batterie- und Play-richtlinienfreundlich; Android darf
+      // sie im Doze-Modus auf ein geeignetes Wartungsfenster verschieben.
+      schedule: Schedule.interval({ hour, minute }, false),
     });
     return;
   }

@@ -24,16 +24,26 @@ struct AppInfo {
     backend: String,
     /// Betriebssystem ("windows", "android", …) — steuert u. a. die Sync-UI.
     platform: String,
+    /// Vertriebskanal; Play-Builds dürfen keine externen APK-Updates anbieten.
+    distribution: String,
 }
 
 #[tauri::command]
 fn app_info(app: tauri::AppHandle) -> AppInfo {
+    let distribution = if cfg!(all(target_os = "android", feature = "play-store")) {
+        "play-store"
+    } else if cfg!(target_os = "android") {
+        "sideload"
+    } else {
+        "desktop"
+    };
     AppInfo {
         // Version aus tauri.conf.json (das Feld, das beim Release erhöht wird),
         // nicht aus Cargo.toml — sonst driften Anzeige und Release auseinander.
         version: app.package_info().version.to_string(),
         backend: "tauri".to_string(),
         platform: std::env::consts::OS.to_string(),
+        distribution: distribution.to_string(),
     }
 }
 
@@ -348,8 +358,9 @@ pub fn run() {
 
             // Auto-Update (nur Desktop): Plugin registrieren und beim Start
             // prüfen; ist die Einstellung aktiv, wird direkt installiert, sonst
-            // nur eine Benachrichtigung ans Frontend geschickt. Mobile
-            // aktualisiert über Store/Sideload (Stubs in updater.rs).
+            // nur eine Benachrichtigung ans Frontend geschickt. Android-
+            // Sideload-Builds haben einen manuellen GitHub-Pfad; Play-Builds
+            // liefern in updater.rs ausschließlich Store-Stubs.
             #[cfg(desktop)]
             {
                 app.handle()

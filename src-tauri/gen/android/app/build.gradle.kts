@@ -23,6 +23,24 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// Lokal kann das Play-AAB ohne Passwortdatei gebaut werden: Das PowerShell-
+// Skript reicht die Werte nur für die Dauer des Build-Prozesses als Umgebung
+// durch. CI kann weiterhin die bestehende keystore.properties verwenden.
+fun signingValue(environmentName: String, propertyName: String): String? =
+    System.getenv(environmentName)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("ANDROID_KEYSTORE_PATH", "storeFile")
+val releaseStorePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     compileSdk = 36
     namespace = "de.torim.kiebitz"
@@ -37,12 +55,12 @@ android {
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
     signingConfigs {
-        if (keystorePropertiesFile.exists()) {
+        if (releaseSigningConfigured) {
             create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
             }
         }
     }
@@ -65,9 +83,9 @@ android {
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
-            // Nur signieren, wenn ein Keystore bereitsteht (CI). Ohne bleibt die
-            // Release-APK unsigniert — lokal ok, für Verteilung siehe DEPLOYMENT.md.
-            if (keystorePropertiesFile.exists()) {
+            // Nur signieren, wenn alle vier Werte bereitstehen. Ohne bleibt das
+            // Release-Artefakt lokal unsigniert und darf nicht zu Play.
+            if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
