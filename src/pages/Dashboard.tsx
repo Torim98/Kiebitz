@@ -23,6 +23,7 @@ import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../compo
 import { chart, DarkTooltip } from "../components/chartTheme";
 import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
+import { isStoreCapture } from "../lib/storeCapture";
 
 export default function Dashboard({
   go,
@@ -35,6 +36,7 @@ export default function Dashboard({
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  const storeCapture = isStoreCapture();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
@@ -87,8 +89,9 @@ export default function Dashboard({
     const h = new Date().getHours();
     return h < 11 ? t("dash.goodMorning") : h < 18 ? t("dash.goodDay") : t("dash.goodEvening");
   })();
-  const name =
-    backend.mode === "desktop" ? users.name || users.cc || users.li : profile.name;
+  const name = storeCapture
+    ? "Alex"
+    : backend.mode === "desktop" ? users.name || users.cc || users.li : profile.name;
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
@@ -97,14 +100,14 @@ export default function Dashboard({
           <h1 className="text-[21px] font-semibold tracking-tight">{greeting}, {name}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
             {new Date().toLocaleDateString(dateLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            {live ? t("dash.gamesInDb", { n: deInt(records!.length) }) : t("dash.demoData")}
+            {live ? t("dash.gamesInDb", { n: deInt(records!.length) }) : storeCapture ? "" : t("dash.demoData")}
           </p>
         </div>
-        <div className="flex gap-2">
+        {!storeCapture && <div className="flex gap-2">
           <ExtLink href={`https://www.chess.com/member/${users.cc}`} label="chess.com" />
           <span className="text-line2">·</span>
           <ExtLink href={`https://lichess.org/@/${users.li}`} label="lichess" />
-        </div>
+        </div>}
       </header>
 
       <div className="mb-4 grid grid-cols-2 gap-4 min-[1100px]:grid-cols-4">

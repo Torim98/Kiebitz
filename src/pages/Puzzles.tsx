@@ -33,6 +33,7 @@ import Board from "../components/Board";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
+import { isStoreCapture } from "../lib/storeCapture";
 
 export default function Puzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const backend = useBackendInfo();
@@ -616,12 +617,17 @@ function PuzzleHistory() {
 // ── Demo-Ansicht (Web-Preview) ───────────────────────────────────────────────
 
 function DemoPuzzles() {
-  const t = useT();
+  const { locale, t } = useI18n();
+  const storeCapture = isStoreCapture();
   const [idx, setIdx] = useState(0);
   const [status, setStatus] = useState<"open" | "solved" | "wrong">("open");
   const [shake, setShake] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const puzzle = demoPuzzles[idx % demoPuzzles.length];
+  const captureTheme =
+    storeCapture && locale === "en" && puzzle.theme === "Grundreihenmatt"
+      ? "Back rank mate"
+      : puzzle.theme;
 
   const chessRef = useRef(new Chess(puzzle.fen));
   const [fen, setFen] = useState(puzzle.fen);
@@ -673,7 +679,13 @@ function DemoPuzzles() {
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("pz.title")}</h1>
-          <p className="mt-0.5 text-[13px] text-ink3">{t("pz.demoSubtitle")}</p>
+          <p className="mt-0.5 text-[13px] text-ink3">
+            {storeCapture
+              ? locale === "de"
+                ? "Gezieltes Taktiktraining aus Millionen kuratierter Stellungen"
+                : "Focused tactics training from millions of curated positions"
+              : t("pz.demoSubtitle")}
+          </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
           <Flame size={15} className="text-gold" />
@@ -687,7 +699,7 @@ function DemoPuzzles() {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
               <Target size={15} className="text-accent" />
-              <span className="font-medium">{puzzle.theme}</span>
+              <span className="font-medium">{captureTheme}</span>
               <span className="text-ink3">· Rating {puzzle.rating}</span>
             </div>
             <span className="text-[12.5px] text-ink3">
@@ -716,7 +728,7 @@ function DemoPuzzles() {
               <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
                 <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
                   <CheckCircle2 size={17} />
-                  {t("pz.correct")} {puzzle.solutionSan} — {puzzle.theme}
+                  {t("pz.correct")} {puzzle.solutionSan} — {captureTheme}
                 </div>
                 <Button primary onClick={next}>
                   <SkipForward size={15} /> {t("common.next")}

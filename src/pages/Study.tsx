@@ -20,6 +20,7 @@ import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
 import { onDataChange } from "../lib/changes";
 import { de, deInt } from "../lib/util";
+import { isStoreCapture } from "../lib/storeCapture";
 import type { PageId } from "../App";
 
 const DAY = 86_400;
@@ -48,6 +49,7 @@ export default function Study({
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
+  const storeCapture = isStoreCapture();
 
   const [live, setLive] = useState<StudyData | null>(null);
   const [records, setRecords] = useState<GameRecord[]>([]);
@@ -219,7 +221,7 @@ export default function Study({
         )}
       </header>
 
-      {!desktop && (
+      {!desktop && !storeCapture && (
         <div className="mb-4 rounded-lg border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3">
           {t("st.webNote")}
         </div>

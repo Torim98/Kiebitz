@@ -20,6 +20,7 @@ import {
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key, type TFunc } from "../lib/i18n";
+import { isStoreCapture } from "../lib/storeCapture";
 import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
@@ -241,6 +242,7 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
 export default function Analysis({ targetGameId }: { targetGameId: number | null }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  const storeCapture = isStoreCapture();
   const desktop = backend.mode === "desktop";
 
   const [games, setGames] = useState<GameRecord[]>([]);
@@ -579,12 +581,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     const match = label.match(/^(.*?)\s*\((\d+)\)$/);
     return { name: match?.[1] ?? label, elo: match ? Number(match[2]) : 0 };
   };
+  const captureWhite = "Alex (1462)";
+  const captureBlack = locale === "de" ? "Springerfreund (1448)" : "KnightFriend (1448)";
   const whitePlayer = live
     ? { name: game.color === "white" ? ownPlayerName : game.opponent, elo: game.color === "white" ? game.my_elo : game.opp_elo }
-    : scratch ? { name: t("common.white"), elo: 0 } : demoPlayer(featuredGame.white);
+    : scratch ? { name: t("common.white"), elo: 0 } : demoPlayer(storeCapture ? captureWhite : featuredGame.white);
   const blackPlayer = live
     ? { name: game.color === "black" ? ownPlayerName : game.opponent, elo: game.color === "black" ? game.my_elo : game.opp_elo }
-    : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(featuredGame.black);
+    : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(storeCapture ? captureBlack : featuredGame.black);
   const topPlayer = orientation === "white" ? blackPlayer : whitePlayer;
   const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
   const currentQuality = currentMove?.judgment;
@@ -630,7 +634,9 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
       ? t("an.freeBoardHint")
-      : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
+      : storeCapture
+        ? `${captureWhite} vs. ${captureBlack} · Rapid · 1–0`
+        : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">

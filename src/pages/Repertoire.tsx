@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { repertoire as demoRepertoire, repertoireStats, type RepNode as DemoNode } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
-import { useT, type TFunc } from "../lib/i18n";
+import { useI18n, useT, type TFunc } from "../lib/i18n";
 import {
   repAddLine,
   repDelete,
@@ -34,6 +34,7 @@ import Board from "../components/Board";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "../components/ui";
 import { de, fenAfter } from "../lib/util";
+import { isStoreCapture } from "../lib/storeCapture";
 
 const EMPTY_SANS: string[] = [];
 
@@ -729,16 +730,30 @@ function flatten(nodes: DemoNode[]): DemoNode[] {
 }
 const allDemoNodes = flatten(demoRepertoire.flatMap((r) => r.nodes));
 
+const STORE_EN_NODE_LABELS: Record<string, string> = {
+  w1: "Italian Game",
+  w1a: "Giuoco Pianissimo (3…Bc5 4.c3)",
+  w1b: "Two Knights Defense (3…Nf6 4.d3)",
+  w1c: "Hungarian Defense (3…Be7)",
+  w2: "Open Sicilian",
+  w2a: "Najdorf (5…a6 6.Be3)",
+  b1: "Queen's Gambit Declined",
+  b2: "Caro–Kann",
+  b2a: "Advance Variation (3.e5 Bf5)",
+};
+
 function DemoTreeNode({
   node,
   depth,
   selected,
   onSelect,
+  englishCapture,
 }: {
   node: DemoNode;
   depth: number;
   selected: string;
   onSelect: (id: string) => void;
+  englishCapture: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const hasChildren = !!node.children?.length;
@@ -765,7 +780,9 @@ function DemoTreeNode({
         ) : (
           <span className="w-[14px]" />
         )}
-        <span className="flex-1 truncate text-[13px]">{node.label}</span>
+        <span className="flex-1 truncate text-[13px]">
+          {englishCapture ? STORE_EN_NODE_LABELS[node.id] ?? node.label : node.label}
+        </span>
         {node.due > 0 && (
           <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
             {node.due}
@@ -774,14 +791,23 @@ function DemoTreeNode({
       </div>
       {open &&
         node.children?.map((c) => (
-          <DemoTreeNode key={c.id} node={c} depth={depth + 1} selected={selected} onSelect={onSelect} />
+          <DemoTreeNode
+            key={c.id}
+            node={c}
+            depth={depth + 1}
+            selected={selected}
+            onSelect={onSelect}
+            englishCapture={englishCapture}
+          />
         ))}
     </div>
   );
 }
 
 function DemoRepertoire() {
-  const t = useT();
+  const { locale, t } = useI18n();
+  const storeCapture = isStoreCapture();
+  const englishCapture = storeCapture && locale === "en";
   const [selectedId, setSelectedId] = useState("w1a");
   const node = useMemo(() => allDemoNodes.find((n) => n.id === selectedId)!, [selectedId]);
   const fen = useMemo(() => fenAfter(node.moveSeq), [node]);
@@ -796,7 +822,11 @@ function DemoRepertoire() {
         <div>
           <h1 className="text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">
-            {t("rep.demoSummary", { n: repertoireStats.positions })}
+            {storeCapture
+              ? locale === "de"
+                ? `${repertoireStats.positions} Stellungen · dein persönlicher Eröffnungsplan`
+                : `${repertoireStats.positions} positions · your personal opening plan`
+              : t("rep.demoSummary", { n: repertoireStats.positions })}
           </p>
         </div>
         <Button primary>
@@ -814,7 +844,14 @@ function DemoRepertoire() {
                   {side.side === "Weiß" ? t("common.asWhite") : t("common.asBlack")}
                 </div>
                 {side.nodes.map((n) => (
-                  <DemoTreeNode key={n.id} node={n} depth={0} selected={selectedId} onSelect={setSelectedId} />
+                  <DemoTreeNode
+                    key={n.id}
+                    node={n}
+                    depth={0}
+                    selected={selectedId}
+                    onSelect={setSelectedId}
+                    englishCapture={englishCapture}
+                  />
                 ))}
               </div>
             ))}
@@ -829,7 +866,7 @@ function DemoRepertoire() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <Card title={node.label}>
+          <Card title={englishCapture ? STORE_EN_NODE_LABELS[node.id] ?? node.label : node.label}>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-panel2 px-3 py-2.5">
                 <div className="text-[11.5px] text-ink3">{t("rep.trainSuccess")}</div>

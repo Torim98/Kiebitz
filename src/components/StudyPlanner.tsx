@@ -26,6 +26,7 @@ import {
   type StudyTemplateInput,
 } from "../lib/study";
 import { onDataChange } from "../lib/changes";
+import { isStoreCapture } from "../lib/storeCapture";
 
 const DAY_MS = 86_400_000;
 const EMPTY_TEMPLATE: StudyTemplateInput = {
@@ -67,6 +68,7 @@ function dayAtPoint(x: number, y: number): string | null {
 
 export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const { locale, t } = useI18n();
+  const storeCapture = isStoreCapture();
   // Der Kalender ist der Hauptinhalt; die Vorlagen bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -228,7 +230,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
       }
     >
       <div className="space-y-4">
-        {!desktop && (
+        {!desktop && !storeCapture && (
           <div className="rounded-lg border border-dashed border-line2 px-3 py-2 text-[12px] text-ink3">
             {t("st.plannerDesktop")}
           </div>

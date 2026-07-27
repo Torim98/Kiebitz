@@ -43,6 +43,7 @@ import SettingsPage from "./pages/Settings";
 import Onboarding from "./components/Onboarding";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
+import { isStoreCapture } from "./lib/storeCapture";
 
 export type PageId =
   | "dashboard"
@@ -70,6 +71,7 @@ export default function App() {
   const [page, setPage] = useState<PageId>("dashboard");
   const backend = useBackendInfo();
   const t = useT();
+  const storeCapture = isStoreCapture();
   const [gameCount, setGameCount] = useState<number | null>(null);
   const [analysisGameId, setAnalysisGameId] = useState<number | null>(null);
 
@@ -206,6 +208,7 @@ export default function App() {
       </nav>
 
       <div className={`mt-auto px-3 ${isMobile ? "pb-2" : "pb-5"}`}>
+        {!storeCapture && (
         <div className={`mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5 ${isMobile ? "mobile-landscape-hide" : ""}`}>
           <div className="flex items-center gap-2 text-[12px] text-ink2">
             {syncStatus.active ? (
@@ -259,6 +262,7 @@ export default function App() {
                 : t("app.connecting")}
           </div>
         </div>
+        )}
         <button
           onClick={() => navigate("settings")}
           className={`flex w-full items-center gap-3 rounded-lg px-3 text-[13.5px] transition-colors ${isMobile ? "py-1.5" : "py-2"} ${
