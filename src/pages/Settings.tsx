@@ -283,7 +283,7 @@ export default function SettingsPage() {
         lastSync: sync?.last_sync,
       });
       // Erinnerungen laufen über das Betriebssystem — Planung nachziehen.
-      applyReminderSchedule().catch(() => {});
+      await applyReminderSchedule();
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
     } catch (e) {

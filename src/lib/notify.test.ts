@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { translator } from "./i18n";
 import type { Settings } from "./settings";
 import {
+  applyReminderSchedule,
   ensurePermission,
   localDay,
   minutesOfDay,
@@ -140,5 +141,58 @@ describe("native notification bridge", () => {
     expect(invokeMock).toHaveBeenCalledWith("plugin:notification|notify", {
       options: { title: "Kiebitz", body: "Test" },
     });
+  });
+
+  it("persists and verifies the daily Android alarm", async () => {
+    invokeMock.mockImplementation((command?: string) => {
+      if (!command) return Promise.resolve();
+      if (command === "get_settings") {
+        return Promise.resolve(settings({ notify_time: "07:35" }));
+      }
+      if (command === "app_info") {
+        return Promise.resolve({ version: "test", backend: "tauri", platform: "android" });
+      }
+      if (command === "plugin:notification|cancel") return Promise.resolve();
+      if (command === "plugin:notification|is_permission_granted") {
+        return Promise.resolve(true);
+      }
+      if (command === "study_data") {
+        return Promise.resolve({
+          due_now: 4,
+          puzzle_goal: 20,
+          today_puzzle_attempts: 2,
+          unanalyzed: 1,
+          activity: [{ endgame_attempts: 0 }],
+        });
+      }
+      if (command === "study_calendar") {
+        return Promise.resolve({ events: [] });
+      }
+      if (command === "plugin:notification|batch") return Promise.resolve([4711]);
+      if (command === "plugin:notification|get_pending") {
+        return Promise.resolve([{ id: 4711 }]);
+      }
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await applyReminderSchedule();
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "plugin:notification|batch",
+      expect.objectContaining({
+        notifications: [
+          expect.objectContaining({
+            id: 4711,
+            schedule: expect.objectContaining({
+              interval: {
+                interval: { hour: 7, minute: 35 },
+                allowWhileIdle: true,
+              },
+            }),
+          }),
+        ],
+      })
+    );
+    expect(invokeMock).toHaveBeenCalledWith("plugin:notification|get_pending");
   });
 });

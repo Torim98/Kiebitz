@@ -32,6 +32,10 @@ type NativeNotificationOptions = {
   schedule?: ReturnType<typeof Schedule.interval>;
 };
 
+type PendingNotification = {
+  id: number;
+};
+
 /** Was heute noch offen ist — Datenbasis des Erinnerungstexts. */
 export interface ReminderInput {
   /** Offene geplante Lerneinheiten des Tages. */
@@ -130,6 +134,21 @@ function nativeNotification(options: NativeNotificationOptions): Promise<void> {
 }
 
 /**
+ * Geplante Android-Benachrichtigungen müssen über `batch` angelegt werden:
+ * Nur dieser native Plugin-Pfad persistiert den Alarm für `get_pending` und
+ * stellt ihn nach einem Geräte-Neustart wieder her.
+ */
+async function nativeScheduledNotification(options: NativeNotificationOptions): Promise<void> {
+  await invoke<number[]>("plugin:notification|batch", { notifications: [options] });
+  const pending = await invoke<PendingNotification[]>(
+    "plugin:notification|get_pending"
+  );
+  if (!pending.some((notification) => notification.id === options.id)) {
+    throw new Error("Die geplante Android-Benachrichtigung wurde nicht registriert.");
+  }
+}
+
+/**
  * Benachrichtigung sofort zeigen. Wirft mit Klartext, wenn das System sie
  * ablehnt — der Testknopf in den Einstellungen zeigt genau diese Meldung.
  */
@@ -155,7 +174,7 @@ export async function applyReminderSchedule(): Promise<void> {
     const t = translator(settings.locale);
     const due = await collectDue().catch(() => null);
     const [hour, minute] = settings.notify_time.split(":").map(Number);
-    await nativeNotification({
+    await nativeScheduledNotification({
       id: SCHEDULED_ID,
       title: t("notify.title"),
       // Der Alarm trägt den Stand des letzten App-Starts; Details stehen in

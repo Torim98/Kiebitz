@@ -253,14 +253,39 @@ fn apply_windows_schedule(enabled: bool, time: &str) -> Result<String, String> {
     ]);
     no_window(&mut create);
     let output = create.output().map_err(|e| e.to_string())?;
-    if output.status.success() {
-        Ok(TASK_NAME.to_string())
-    } else {
-        Err(format!(
+    if !output.status.success() {
+        return Err(format!(
             "Aufgabenplanung meldet: {}",
             String::from_utf8_lossy(&output.stderr).trim()
-        ))
+        ));
     }
+
+    // `schtasks /Create` setzt bei einer einfachen Aufgabe standardmäßig
+    // "nicht im Akkubetrieb starten" und "bei Akkubetrieb beenden". Auf
+    // Notebooks fällt die Erinnerung dadurch unbemerkt aus. Außerdem soll
+    // Windows einen wegen Standby verpassten Termin zeitnah nachholen.
+    let script = format!(
+        "$ErrorActionPreference='Stop'; \
+         $settings=New-ScheduledTaskSettingsSet \
+           -AllowStartIfOnBatteries \
+           -DontStopIfGoingOnBatteries \
+           -StartWhenAvailable \
+           -WakeToRun \
+           -ExecutionTimeLimit (New-TimeSpan -Minutes 5); \
+         Set-ScheduledTask -TaskName '{}' -Settings $settings | Out-Null",
+        TASK_NAME.replace('\'', "''")
+    );
+    let mut configure = Command::new("powershell.exe");
+    configure.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+    no_window(&mut configure);
+    let configured = configure.output().map_err(|e| e.to_string())?;
+    if !configured.status.success() {
+        return Err(format!(
+            "Aufgabenplanung konnte nicht zuverlässig konfiguriert werden: {}",
+            String::from_utf8_lossy(&configured.stderr).trim()
+        ));
+    }
+    Ok(TASK_NAME.to_string())
 }
 
 /// Bringt die Betriebssystem-Planung mit den Einstellungen in Einklang.
