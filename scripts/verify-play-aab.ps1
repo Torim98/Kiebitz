@@ -5,6 +5,7 @@ param(
     [string]$AndroidSdk,
     [string]$JdkHome,
     [string]$BundletoolPath,
+    [string]$ExpectedVersion,
     [switch]$SkipSignature
 )
 
@@ -81,6 +82,9 @@ $requiredManifestPatterns = @(
     'android.permission.CAMERA',
     'android.permission.POST_NOTIFICATIONS'
 )
+if ($ExpectedVersion) {
+    $requiredManifestPatterns += "android:versionName=`"$ExpectedVersion`""
+}
 foreach ($pattern in $requiredManifestPatterns) {
     if ($manifest -notmatch [regex]::Escape($pattern)) {
         throw "Manifest check failed: '$pattern' is missing."

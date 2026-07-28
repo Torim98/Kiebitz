@@ -120,7 +120,8 @@ try {
             & (Join-Path $PSScriptRoot "verify-play-aab.ps1") `
                 -AabPath $destination `
                 -AndroidSdk $androidSdk `
-                -JdkHome $jdkHome
+                -JdkHome $jdkHome `
+                -ExpectedVersion $version
             if ($LASTEXITCODE -ne 0) {
                 throw "Die AAB-Prüfung ist mit Exitcode $LASTEXITCODE fehlgeschlagen."
             }

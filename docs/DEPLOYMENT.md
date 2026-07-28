@@ -197,7 +197,8 @@ committed; build outputs and the engine `.so` stay gitignored):
 
 CI now builds a **signed** arm64 release APK on every tagged release and attaches
 it to the GitHub release (see *Releasing a new version* → *One-time setup* for the
-keystore secrets). For Google Play, build and verify the signed AAB locally:
+keystore secrets). The release script builds and verifies the signed Google Play
+AAB locally as part of the release. To build only the AAB, run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-play-aab.ps1
@@ -430,15 +431,17 @@ From a clean, current `main` branch run (use the desired, strictly higher
 semantic version):
 
 ```powershell
-.\scripts\release.ps1 -Version 0.4.5
+.\scripts\release.ps1 -Version 0.6.1
 ```
 
 The command runs the frontend build, frontend tests, and Rust tests first. Only
 after all checks pass does it update `package.json`, `package-lock.json`, and
-`src-tauri/tauri.conf.json`, create `Release v0.4.5`, create the annotated tag
-`v0.4.5`, then push both `main` and that tag. It deliberately refuses a dirty
-working tree, a version that is not higher than the current one, or an existing
-remote tag.
+`src-tauri/tauri.conf.json`, prompt for the Android release-keystore password,
+build and verify `artifacts/Kiebitz_<version>_play_arm64.aab`, create the release
+commit and annotated tag, then push both `main` and that tag. A failed Play build
+therefore stops the release before commit, tag, or push. The command deliberately
+refuses a dirty working tree, a version that is not higher than the current one,
+or an existing remote tag.
 
 Then watch **GitHub → Actions**. The release starts with a private draft; the
 desktop and Android builds run in parallel and upload their artifacts to it. The

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-  Validiert, versioniert, committet und veröffentlicht einen Kiebitz-Release.
+  Validiert, versioniert, baut das Play-AAB, committet und veröffentlicht einen Kiebitz-Release.
 
 .EXAMPLE
-  .\scripts\release.ps1 -Version 0.4.5
+  .\scripts\release.ps1 -Version 0.6.1
 #>
 [CmdletBinding()]
 param(
@@ -74,12 +74,26 @@ try {
     (New-Object System.Text.UTF8Encoding($false))
   )
 
+  # Erst nach der Versionsaktualisierung bauen, damit Manifest und Dateiname des
+  # Play-Bundles die neue Release-Version tragen. Der Release wird erst
+  # committet/getaggt/gepusht, wenn Build und AAB-Prüfung erfolgreich waren.
+  Write-Host "Baue und prüfe Play-AAB für v$Version …" -ForegroundColor Cyan
+  $playAabScript = Join-Path $PSScriptRoot "build-play-aab.ps1"
+  $playAabDirectory = Join-Path $repoRoot "artifacts"
+  & $playAabScript -OutputDirectory $playAabDirectory
+
+  $playAab = Join-Path $playAabDirectory "Kiebitz_${Version}_play_arm64.aab"
+  if (-not (Test-Path -LiteralPath $playAab -PathType Leaf)) {
+    throw "Das erwartete Play-AAB wurde nicht erstellt: $playAab"
+  }
+
   Invoke-Checked git @("add", "package.json", "package-lock.json", "src-tauri/tauri.conf.json")
   Invoke-Checked git @("commit", "-m", "Release v$Version")
   Invoke-Checked git @("tag", "-a", "v$Version", "-m", "Kiebitz v$Version")
   Invoke-Checked git @("push", "origin", "main", "v$Version")
 
   Write-Host "Release v$Version gestartet: https://github.com/Torim98/Kiebitz/actions" -ForegroundColor Green
+  Write-Host "Play-AAB für die Google Play Console: $playAab" -ForegroundColor Green
 }
 finally {
   Pop-Location
