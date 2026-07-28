@@ -1,8 +1,9 @@
 import { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import type { Result, Source } from "../data/demo";
+import type { UiGame } from "../lib/gameUi";
 import { useT } from "../lib/i18n";
-import { resultColor } from "../lib/util";
+import { de, resultColor } from "../lib/util";
 import { openExternal } from "../lib/ext";
 
 export function Card({
@@ -28,6 +29,55 @@ export function Card({
       )}
       <div className={pad ? "p-4" : ""}>{children}</div>
     </section>
+  );
+}
+
+/**
+ * Eine Partie als zweizeilige Karte · die Handy-Alternative zur achtspaltigen
+ * Tabelle, die sonst quer gescrollt werden muss. Oben steht, was die Partie
+ * identifiziert (Ergebnis, Gegner, Genauigkeit), unten der Kontext.
+ *
+ * Die Filter-per-Klick-Verknüpfungen der Tabellenzellen entfallen hier · sie
+ * wären bei dieser Größe kaum treffbar, und beide Seiten haben eigene
+ * Filter-Bedienelemente.
+ */
+export function GameCard({
+  game,
+  onClick,
+  selected = false,
+  trailing,
+}: {
+  game: UiGame;
+  onClick?: () => void;
+  selected?: boolean;
+  /** Zusatz rechts unten, etwa Tags oder ein externer Link. */
+  trailing?: ReactNode;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`border-b border-line px-4 py-3 last:border-0 ${
+        selected ? "bg-panel2" : ""
+      } ${onClick ? "cursor-pointer" : ""}`}
+    >
+      <div className="flex items-center gap-2">
+        <ResultBadge result={game.result} />
+        <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink">
+          {game.opponent} <span className="text-ink3">({game.oppElo})</span>
+        </span>
+        <span className="shrink-0 text-[12px] tabular-nums text-ink2">
+          {game.accuracy != null ? `${de(game.accuracy)} %` : "—"}
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-ink3">
+        <SourceBadge source={game.source} />
+        <span className="min-w-0 flex-1 truncate">
+          {game.tc} · {game.opening}
+        </span>
+        <span className="shrink-0">{game.date}</span>
+        {trailing}
+      </div>
+    </div>
   );
 }
 

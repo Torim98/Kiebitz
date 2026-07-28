@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
 import Study from "./Study";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -59,7 +60,9 @@ function mockBackend(study = liveStudy(), themes: unknown[] = []) {
 function renderStudy(go = vi.fn(), openPuzzles = vi.fn(), mobile = false) {
   render(
     <LocaleProvider>
-      <Study go={go} openPuzzles={openPuzzles} mobile={mobile} />
+      <ShellProvider mobile={mobile}>
+        <Study go={go} openPuzzles={openPuzzles} />
+      </ShellProvider>
     </LocaleProvider>
   );
   return { go, openPuzzles };

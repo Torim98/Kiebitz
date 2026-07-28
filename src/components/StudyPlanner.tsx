@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button, Card } from "./ui";
+import { useMobileShell } from "./MobileShell";
 import { useI18n } from "../lib/i18n";
 import {
   completeStudyUnit,
@@ -69,6 +70,7 @@ function dayAtPoint(x: number, y: number): string | null {
 export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
+  const mobile = useMobileShell();
   // Der Kalender ist der Hauptinhalt; die Vorlagen bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -246,8 +248,11 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
             <div className="text-[11.5px] text-ink3">{t("st.calendarHint")}</div>
           </div>
 
-          <div className="overflow-x-auto pb-1">
-            <div className="grid min-w-[760px] grid-cols-7 gap-2">
+          {/* Mobil steht die Woche als Agenda untereinander · das Sieben-Spalten-
+              Raster braucht 760 px und wäre nur quer scrollend lesbar. Die
+              Tageszellen behalten data-study-day, damit Ziehen weiter geht. */}
+          <div className={mobile ? "" : "overflow-x-auto pb-1"}>
+            <div className={mobile ? "flex flex-col gap-2" : "grid min-w-[760px] grid-cols-7 gap-2"}>
               {days.map((date) => {
                 const day = isoDay(date);
                 const events = visibleCalendar.events.filter((event) => event.day === day);
@@ -256,11 +261,16 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                 const future = day > today;
                 const units = metrics?.units ?? 0;
                 const due = (metrics?.due_reviews ?? 0) + events.filter((event) => !event.completed).length;
+                // Leere vergangene Tage tragen mobil nichts bei und blähen die
+                // Liste auf · sie schrumpfen auf eine Zeile.
+                const collapsed = mobile && events.length === 0 && !isToday && due === 0;
                 return (
                   <div
                     key={day}
                     data-study-day={day}
-                    className={`min-h-[300px] rounded-xl border p-2 transition-colors ${
+                    className={`rounded-xl border transition-colors ${
+                      mobile ? "p-2.5" : "min-h-[300px] p-2"
+                    } ${
                       drag?.over === day
                         ? "border-accent bg-accent-soft/60"
                         : isToday
@@ -268,14 +278,28 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                           : "border-line bg-panel2"
                     }`}
                   >
-                    <div className="border-b border-line pb-2 text-center">
-                      <div className="text-[10.5px] uppercase tracking-wide text-ink3">
+                    <div
+                      className={
+                        mobile
+                          ? `flex items-baseline gap-2 ${collapsed ? "" : "border-b border-line pb-2"}`
+                          : "border-b border-line pb-2 text-center"
+                      }
+                    >
+                      <div
+                        className={`uppercase tracking-wide text-ink3 ${mobile ? "text-[11px]" : "text-[10.5px]"}`}
+                      >
                         {date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })}
                       </div>
-                      <div className={`mt-0.5 text-[18px] font-semibold ${isToday ? "text-accent" : "text-ink"}`}>
+                      <div
+                        className={`font-semibold ${mobile ? "text-[14px]" : "mt-0.5 text-[18px]"} ${isToday ? "text-accent" : "text-ink"}`}
+                      >
                         {date.getUTCDate()}
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-center justify-center gap-x-1.5 text-[10px]">
+                      <div
+                        className={`flex flex-wrap items-center gap-x-1.5 text-[10px] ${
+                          mobile ? "ml-auto justify-end" : "mt-0.5 justify-center"
+                        }`}
+                      >
                         {!future && (
                           <span className={units > 0 ? "text-ink2" : "text-ink3"}>
                             {units} {t(units === 1 ? "st.units.one" : "st.units.many")}
@@ -286,7 +310,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                         )}
                       </div>
                     </div>
-                    <div className="mt-2 flex flex-col gap-2">
+                    <div className={`flex flex-col gap-2 ${collapsed ? "hidden" : "mt-2"}`}>
                       {events.map((event) => (
                         <div
                           key={event.id}
@@ -334,7 +358,11 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                         </div>
                       ))}
                       {events.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-line px-2 py-5 text-center text-[10.5px] text-ink3">
+                        <div
+                          className={`rounded-lg border border-dashed border-line px-2 text-center text-[10.5px] text-ink3 ${
+                            mobile ? "py-2" : "py-5"
+                          }`}
+                        >
                           {t("st.dropHere")}
                         </div>
                       )}

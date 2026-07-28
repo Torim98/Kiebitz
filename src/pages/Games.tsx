@@ -31,7 +31,8 @@ import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
 import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
-import { Button, Card, Chip, ExtLink, ResultBadge, SourceBadge, Tag } from "../components/ui";
+import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
+import { useMobileShell } from "../components/MobileShell";
 import { de, deInt, fenAfter } from "../lib/util";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
@@ -59,6 +60,7 @@ export default function Games({
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  const mobile = useMobileShell();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
   const [records, setRecords] = useState<GameRecord[]>([]);
   const [importing, setImporting] = useState(false);
@@ -484,6 +486,42 @@ export default function Games({
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-3">
         <Card pad={false}>
+          {mobile ? (
+          // Auf Handybreite wird aus jeder Zeile eine Karte · die achtspaltige
+          // Tabelle liesse sich sonst nur quer scrollend lesen.
+          <div>
+            {paged.map((g) => (
+              <GameCard
+                key={g.id}
+                game={g}
+                selected={selected?.id === g.id}
+                onClick={() => {
+                  setSelectedId(g.id);
+                  setNoteDraft(null);
+                  setDeleteError(null);
+                }}
+                trailing={
+                  (g.tags.length > 0 || g.note) && (
+                    <span className="flex shrink-0 items-center gap-1">
+                      {g.tags[0] && (
+                        <span className="inline-block max-w-[68px] truncate align-middle">
+                          <Tag>{g.tags[0]}</Tag>
+                        </span>
+                      )}
+                      {g.tags.length > 1 && <span>+{g.tags.length - 1}</span>}
+                      {g.note && <StickyNote size={13} className="text-gold" />}
+                    </span>
+                  )
+                }
+              />
+            ))}
+            {filtered.length === 0 && (
+              <div className="px-4 py-8 text-center text-[13px] text-ink3">
+                {t("games.noneFound")}
+              </div>
+            )}
+          </div>
+          ) : (
           <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-[13px]">
             <thead>
@@ -589,6 +627,7 @@ export default function Games({
             </tbody>
           </table>
           </div>
+          )}
         </Card>
 
         {filtered.length > 0 && (

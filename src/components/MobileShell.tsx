@@ -6,7 +6,7 @@
  * Leiste kostet dort genau die Achse, die knapp ist, während Breite reichlich
  * vorhanden ist. Deshalb wandert dieselbe Navigation an die Seite.
  */
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import { useT, type Key } from "../lib/i18n";
 import type { PageId } from "../lib/nav";
@@ -15,6 +15,22 @@ export interface NavItem {
   id: PageId;
   labelKey: Key;
   icon: LucideIcon;
+}
+
+/**
+ * Ob die mobile Shell läuft. Seiten und tief verschachtelte Komponenten
+ * (Insights-Tabellen, Wochenkalender) brauchen das für ihr Layout, ohne dass
+ * es durch drei Ebenen Props gereicht werden muss. Ausserhalb der Shell ·
+ * etwa in Tests, die eine Seite einzeln rendern · gilt der Desktop-Fall.
+ */
+const ShellContext = createContext(false);
+
+export function ShellProvider({ mobile, children }: { mobile: boolean; children: ReactNode }) {
+  return <ShellContext.Provider value={mobile}>{children}</ShellContext.Provider>;
+}
+
+export function useMobileShell(): boolean {
+  return useContext(ShellContext);
 }
 
 const LANDSCAPE_PHONE = "(orientation: landscape) and (max-height: 600px)";
@@ -41,7 +57,7 @@ export function MobileAppBar({
   onSettings,
   settingsActive,
 }: {
-  /** Seitentitel · null zeigt stattdessen die Wortmarke (auf dem Start). */
+  /** Seitentitel · null auf dem Start, dort steht der Claim daneben. */
   title: string | null;
   showBack: boolean;
   onBack: () => void;
@@ -51,28 +67,26 @@ export function MobileAppBar({
   const t = useT();
   return (
     <header
-      className="flex shrink-0 items-center gap-1 border-b border-line bg-panel px-2 pb-2"
+      className="flex shrink-0 items-center gap-0.5 border-b border-line bg-panel px-2 pb-2"
       style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
     >
-      {showBack ? (
+      {showBack && (
         <button
           onClick={onBack}
           aria-label={t("app.back")}
-          className="rounded-lg p-2 text-ink2 transition-colors hover:bg-panel2 hover:text-ink"
+          className="-ml-0.5 rounded-lg p-1.5 text-ink2 transition-colors hover:bg-panel2 hover:text-ink"
         >
           <ArrowLeft size={20} />
         </button>
-      ) : (
-        // Die Wortmarke steht nur auf dem Start · neben einem Seitentitel
-        // wäre sie doppelte Beschriftung.
-        title === null && (
-          <span className="ml-1.5 flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <Bird size={17} />
-          </span>
-        )
       )}
-      <span className="min-w-0 flex-1 truncate px-3 text-[15px] font-semibold tracking-tight">
-        {title ?? "Kiebitz"}
+      <span className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+        <Bird size={17} />
+      </span>
+      {/* Marke bleibt auf jedem Tab stehen; dahinter der Kontext · auf dem
+          Start ist das der Claim, sonst der Seitenname. */}
+      <span className="min-w-0 flex-1 truncate px-2 text-[15px] tracking-tight">
+        <span className="font-semibold">Kiebitz</span>
+        <span className="text-ink3"> · {title ?? t("app.tagline")}</span>
       </span>
       <button
         onClick={onSettings}

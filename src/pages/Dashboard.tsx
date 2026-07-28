@@ -19,7 +19,8 @@ import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
 import { buildDashboard } from "../lib/stats";
 import type { GamesFilter, UiGame } from "../lib/gameUi";
-import { Card, ExtLink, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
+import { Card, ExtLink, GameCard, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
+import { useMobileShell } from "../components/MobileShell";
 import { chart, DarkTooltip } from "../components/chartTheme";
 import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
@@ -37,6 +38,7 @@ export default function Dashboard({
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
+  const mobile = useMobileShell();
   const [records, setRecords] = useState<GameRecord[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
@@ -229,6 +231,19 @@ export default function Dashboard({
       <Card title={t("dash.recentGames")} className="mt-4" pad={false}
         action={<button onClick={() => openGames()} className="text-[12.5px] text-ink3 hover:text-accent">{t("dash.showAll")}</button>}
       >
+        {mobile ? (
+          // Auf Handybreite wird aus jeder Zeile eine Karte · die achtspaltige
+          // Tabelle liesse sich sonst nur quer scrollend lesen.
+          <div>
+            {recent.map((g) => (
+              <GameCard
+                key={g.id}
+                game={g}
+                onClick={g.dbId != null ? () => openAnalysis(g.dbId!) : undefined}
+              />
+            ))}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-[13px]">
           <tbody>
@@ -315,6 +330,7 @@ export default function Dashboard({
           </tbody>
         </table>
         </div>
+        )}
       </Card>
     </div>
   );

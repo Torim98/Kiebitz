@@ -32,7 +32,12 @@ import {
 } from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
 import { useNavStack, type PageId } from "./lib/nav";
-import { MobileAppBar, MobileNav, useLandscapePhone } from "./components/MobileShell";
+import {
+  MobileAppBar,
+  MobileNav,
+  ShellProvider,
+  useLandscapePhone,
+} from "./components/MobileShell";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
@@ -319,9 +324,7 @@ export default function App() {
       {page === "repertoire" && <Repertoire />}
       {page === "endgame" && <Endgame />}
       {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
-      {page === "study" && (
-        <Study go={navigate} openPuzzles={openPuzzles} mobile={isMobile} />
-      )}
+      {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
       {page === "insights" && <Insights />}
       {page === "settings" && <SettingsPage />}
     </>
@@ -388,6 +391,7 @@ export default function App() {
   // in der Leiste oder unter dem Training.
   if (isMobile) {
     return (
+      <ShellProvider mobile>
       <div className={`flex h-full ${rail ? "flex-row" : "flex-col"}`}>
         {rail && (
           <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail />
@@ -409,6 +413,7 @@ export default function App() {
         )}
         {overlays}
       </div>
+      </ShellProvider>
     );
   }
 

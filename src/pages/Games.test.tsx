@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import Games from "./Games";
 
@@ -103,6 +104,29 @@ describe("Games page", () => {
 
     const warning = await screen.findByText(/stimmt bei 1 PGN-Partie/);
     expect(warning.closest("div")?.className).toContain("text-gold");
+  });
+
+  it("swaps the wide table for cards on mobile without losing the row action", async () => {
+    const { container } = render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Games openAnalysis={vi.fn()} />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByText("Testgegner");
+
+    // Die achtspaltige Tabelle erzwingt sonst 760 px Breite.
+    expect(container.querySelector("table")).toBeNull();
+    // Alles Wesentliche steht weiterhin auf der Karte.
+    const card = screen.getByText("Testgegner").closest("div")?.parentElement;
+    expect(card?.textContent).toContain("1450");
+    expect(card?.textContent).toContain("83,4 %");
+    expect(card?.textContent).toContain("Italian Game");
+
+    // Antippen wählt die Partie weiterhin aus und öffnet das Detail.
+    fireEvent.click(screen.getByText("Testgegner"));
+    expect(await screen.findByRole("button", { name: "Partie löschen" })).toBeTruthy();
   });
 
   it("keeps an excluded game individually openable in analysis", async () => {

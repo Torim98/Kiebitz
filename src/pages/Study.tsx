@@ -19,6 +19,7 @@ import { studyData, type StudyData } from "../lib/study";
 import { buildCoach } from "../lib/coach";
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
+import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
 import { de, deInt } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
@@ -43,15 +44,14 @@ interface RecCard {
 export default function Study({
   go,
   openPuzzles,
-  mobile = false,
 }: {
   go: (p: PageId) => void;
   openPuzzles: (theme?: string) => void;
-  /** Mobil ist diese Seite auch der Einstieg zu Repertoire, Puzzles und
-   *  Endspielen · am Desktop stehen die in der Sidebar. */
-  mobile?: boolean;
 }) {
   const backend = useBackendInfo();
+  // Mobil ist diese Seite auch der Einstieg zu Repertoire, Puzzles und
+  // Endspielen · am Desktop stehen die in der Sidebar.
+  const mobile = useMobileShell();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
   const storeCapture = isStoreCapture();

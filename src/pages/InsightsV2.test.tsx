@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
 import InsightsV2 from "./InsightsV2";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -85,6 +86,39 @@ describe("deep Insights", () => {
     expect(screen.getByText("Eröffnungsakte · getrennt nach Farbe")).toBeTruthy();
     expect(screen.getAllByText("Italian Game").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Weiß").length).toBeGreaterThan(0);
+  });
+
+  it("wraps the sub-tabs into two rows on mobile instead of scrolling them", async () => {
+    const { container } = render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <InsightsV2 />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByText(/Tiefenanalyse über 6 Partien/);
+
+    const tabs = container.querySelector('nav[aria-label="Insights-Bereiche"]');
+    // Quer scrollende Reiter werden übersehen · mobil stehen alle fünf sichtbar.
+    expect(tabs?.className).toContain("grid-cols-6");
+    expect(tabs?.className).not.toContain("overflow-x-auto");
+    expect(tabs?.querySelectorAll("button")).toHaveLength(5);
+  });
+
+  it("renders the opening file as cards on mobile", async () => {
+    const { container } = render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <InsightsV2 />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByText(/Tiefenanalyse über 6 Partien/);
+    fireEvent.click(screen.getByRole("button", { name: /Eröffnungen/ }));
+
+    expect(container.querySelector("table")).toBeNull();
+    // Farbe, Partienzahl und Genauigkeit rücken unter den Namen.
+    expect(screen.getAllByText(/Weiß · \d+ Partien · Genauigkeit/).length).toBeGreaterThan(0);
   });
 
   it("switches to performance and behavioral analysis", async () => {

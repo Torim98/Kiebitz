@@ -27,6 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card } from "../components/ui";
+import { useMobileShell } from "../components/MobileShell";
 import { barCursor, chart, DarkTooltip } from "../components/chartTheme";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
@@ -307,6 +308,7 @@ function Performance({ data, errors, phaseLabel }: { data: LiveInsights; errors:
 
 function Openings({ data }: { data: LiveInsights }) {
   const { t } = useI18n();
+  const mobile = useMobileShell();
   return (
     <div className="grid min-w-0 gap-4 min-[1000px]:grid-cols-[1fr_1.4fr]">
       <Card title={t("ins.openingsTitle")} className="min-w-0">
@@ -323,6 +325,36 @@ function Openings({ data }: { data: LiveInsights }) {
         </ResponsiveContainer>
       </Card>
       <Card title={t("ins.openingTableTitle")} pad={false} className="min-w-0">
+        {mobile ? (
+          <div>
+            {data.openingDetails.map((opening) => (
+              <div
+                key={`${opening.name}-${opening.color}`}
+                className="border-b border-line/70 px-4 py-3 last:border-0"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+                    {opening.name}
+                  </span>
+                  <span
+                    className={`shrink-0 text-[12.5px] font-medium tabular-nums ${opening.scorePct >= 55 ? "text-win" : opening.scorePct < 40 ? "text-loss" : "text-ink2"}`}
+                  >
+                    {opening.scorePct} %
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[11.5px] text-ink3">
+                  {t(opening.color === "white" ? "common.white" : "common.black")} ·{" "}
+                  {t("ins.gamesCount", { n: opening.games })} ·{" "}
+                  {t("ins.accuracyShort")}{" "}
+                  {opening.accuracy == null ? "—" : `${de(opening.accuracy)} %`}
+                </div>
+              </div>
+            ))}
+            {data.openingDetails.length === 0 && (
+              <div className="p-8 text-center text-[12px] text-ink3">{t("ins.tooFewData")}</div>
+            )}
+          </div>
+        ) : (
         <div className="max-w-full overflow-x-auto">
           <table className="w-full min-w-[620px] text-left">
             <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
@@ -342,6 +374,7 @@ function Openings({ data }: { data: LiveInsights }) {
           </table>
           {data.openingDetails.length === 0 && <div className="p-8 text-center text-[12px] text-ink3">{t("ins.tooFewData")}</div>}
         </div>
+        )}
       </Card>
     </div>
   );
@@ -386,6 +419,7 @@ function solveRate(entry: { attempts: number; solved: number }): number {
 
 function Puzzles({ data }: { data: PuzzleInsights }) {
   const { locale, t } = useI18n();
+  const mobile = useMobileShell();
   const [themesOpen, setThemesOpen] = useState(false);
   const rate = solveRate(data);
   const weekdayLabel = (key: number) =>
@@ -546,6 +580,30 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
         }
       >
         {themesOpen && (
+        mobile ? (
+          <div>
+            {data.themes.map((theme) => (
+              <div key={theme.theme} className="border-b border-line/70 px-4 py-2.5 last:border-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+                    {themeLabel(theme.theme, locale)}
+                  </span>
+                  <span
+                    className={`shrink-0 text-[12.5px] font-medium tabular-nums ${solveRate(theme) >= 60 ? "text-win" : solveRate(theme) < 45 ? "text-loss" : "text-ink2"}`}
+                  >
+                    {solveRate(theme)} %
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[11.5px] tabular-nums text-ink3">
+                  {t("ins.pzSolvedOfAttempts", {
+                    s: deInt(theme.solved),
+                    n: deInt(theme.attempts),
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] text-left">
             <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
@@ -570,6 +628,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
             </tbody>
           </table>
         </div>
+        )
         )}
       </Card>
     </div>
@@ -579,6 +638,7 @@ function Puzzles({ data }: { data: PuzzleInsights }) {
 export default function InsightsV2() {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  const mobile = useMobileShell();
   const [tab, setTab] = useState<InsightTab>("overview");
   const [records, setRecords] = useState<GameRecord[]>([]);
   const [errors, setErrors] = useState<PhaseErrors[]>([]);
@@ -625,15 +685,28 @@ export default function InsightsV2() {
         <p className="mt-0.5 text-[13px] text-ink3">{t("ins.subtitleDeep", { n: deInt(data.totalGames) })}</p>
       </header>
 
-      <nav className="mb-5 flex gap-1 overflow-x-auto rounded-xl border border-line bg-panel p-1" aria-label={t("ins.sections")}>
-        {TAB_KEYS.map(({ id, key, icon: Icon }) => (
+      {/* Mobil bricht die Leiste auf zwei Reihen um (3 + 2) statt quer zu
+          scrollen · versteckte Reiter werden sonst schlicht übersehen. */}
+      <nav
+        className={`mb-5 rounded-xl border border-line bg-panel p-1 ${
+          mobile ? "grid grid-cols-6 gap-1" : "flex gap-1 overflow-x-auto"
+        }`}
+        aria-label={t("ins.sections")}
+      >
+        {TAB_KEYS.map(({ id, key, icon: Icon }, index) => (
           <button
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className={`flex min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium transition-colors ${tab === id ? "bg-panel3 text-ink shadow-sm" : "text-ink3 hover:bg-panel2 hover:text-ink2"}`}
+            aria-current={tab === id ? "page" : undefined}
+            className={`flex items-center justify-center rounded-lg font-medium transition-colors ${
+              mobile
+                ? `min-w-0 flex-col gap-1 px-1 py-2 text-[11.5px] ${index < 3 ? "col-span-2" : "col-span-3"}`
+                : "min-w-fit flex-1 gap-2 px-3 py-2.5 text-[12.5px]"
+            } ${tab === id ? "bg-panel3 text-ink shadow-sm" : "text-ink3 hover:bg-panel2 hover:text-ink2"}`}
           >
-            <Icon size={14} className={tab === id ? "text-accent" : ""} /> {t(key)}
+            <Icon size={14} className={`shrink-0 ${tab === id ? "text-accent" : ""}`} />
+            <span className="max-w-full truncate">{t(key)}</span>
           </button>
         ))}
       </nav>

@@ -86,13 +86,14 @@ describe("mobile navigation", () => {
     expect(screen.queryByRole("button", { name: "Menü" })).toBeNull();
     expect(container.querySelector("aside")).toBeNull();
 
-    const bar = within(container.querySelector("header") as HTMLElement);
-    // Auf dem Start steht die Wortmarke, kein Zurück-Pfeil.
-    expect(bar.getByText("Kiebitz")).toBeTruthy();
+    const header = container.querySelector("header") as HTMLElement;
+    const bar = within(header);
+    // Die Marke steht auf jedem Tab; auf dem Start ergänzt sie der Claim.
+    expect(header.textContent).toBe("Kiebitz · Zug um Zugvogel");
     expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Partien" }));
-    expect(bar.getByText("Partien")).toBeTruthy();
+    expect(header.textContent).toBe("Kiebitz · Partien");
     // Hauptziele erreicht man über die Leiste · dort ist kein Pfeil nötig.
     expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
   });
