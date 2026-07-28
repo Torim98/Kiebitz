@@ -66,6 +66,7 @@ const de = {
   "app.updateNow": "Jetzt aktualisieren",
   "app.updateLater": "Später",
   "app.menu": "Menü",
+  "nav.main": "Hauptnavigation",
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
   "dash.goodMorning": "Guten Morgen",
@@ -795,6 +796,7 @@ const en: Record<Key, string> = {
   "app.updateNow": "Update now",
   "app.updateLater": "Later",
   "app.menu": "Menu",
+  "nav.main": "Main navigation",
 
   "dash.goodMorning": "Good morning",
   "dash.goodDay": "Good afternoon",

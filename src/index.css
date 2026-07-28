@@ -99,10 +99,25 @@ body {
   padding-bottom: max(env(safe-area-inset-bottom), 32px) !important;
 }
 
+/* Die Bottom-Navigation reicht bis unter die Systemleiste · ihr Hintergrund
+   traegt den Abstand, damit der Inhalt darueber nichts freihalten muss. Der
+   Mindestwert faengt dieselben OEMs ab wie oben. */
+.mobile-bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom), 32px);
+}
+
 /* Android/iOS im Querformat: alle Navigationsziele bleiben ohne einen
-   problematischen, verschachtelten Drawer-Scroll erreichbar. */
+   problematischen, verschachtelten Drawer-Scroll erreichbar. Die Leiste gibt
+   dort Hoehe zurueck · Icons allein reichen, der Systemabstand faellt kleiner
+   aus, weil die Navigationsleiste an der Seite sitzt. */
 @media (orientation: landscape) and (max-height: 600px) {
   .mobile-landscape-hide {
+    display: none;
+  }
+  .mobile-bottom-nav {
+    padding-bottom: max(env(safe-area-inset-bottom), 8px);
+  }
+  .mobile-bottom-nav-label {
     display: none;
   }
 }

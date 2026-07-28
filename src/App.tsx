@@ -31,6 +31,7 @@ import {
   type UpdateState,
 } from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
+import { useNavStack, type PageId } from "./lib/nav";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
@@ -43,18 +44,9 @@ import SettingsPage from "./pages/Settings";
 import Onboarding from "./components/Onboarding";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
-import { isStoreCapture } from "./lib/storeCapture";
+import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
 
-export type PageId =
-  | "dashboard"
-  | "games"
-  | "analysis"
-  | "repertoire"
-  | "endgame"
-  | "puzzles"
-  | "study"
-  | "insights"
-  | "settings";
+export type { PageId };
 
 const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
@@ -67,33 +59,42 @@ const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
   { id: "insights", labelKey: "nav.insights", icon: BarChart3 },
 ];
 
+// Die fünf Hauptziele der mobilen Bottom-Navigation · Material 3 lässt für eine
+// Leiste 3 bis 5 Einträge zu. Der Rest bleibt vorerst im Drawer, bis der
+// Training-Hub Repertoire, Endspiele und Puzzles aufnimmt.
+const BOTTOM_NAV: PageId[] = ["dashboard", "games", "study", "analysis", "insights"];
+const bottomNav = BOTTOM_NAV.map((id) => nav.find((n) => n.id === id)!);
+
+// Ziele, die später unter "Training" einziehen. Sie markieren schon jetzt den
+// passenden Tab, damit die Leiste nie ganz ohne Auswahl dasteht.
+const NAV_PARENT: Partial<Record<PageId, PageId>> = {
+  repertoire: "study",
+  endgame: "study",
+  puzzles: "study",
+};
+
 export default function App() {
-  const [page, setPage] = useState<PageId>("dashboard");
+  // Der Stapel hält die Seite samt Deep-Link-Parametern und hängt an der
+  // Session-History · siehe lib/nav.ts. Erst dadurch tut die Android-Zurück-
+  // Taste etwas anderes, als die App zu beenden.
+  const { route, navigate: goTo, push } = useNavStack();
+  const page = route.page;
   const backend = useBackendInfo();
   const t = useT();
   const storeCapture = isStoreCapture();
   const [gameCount, setGameCount] = useState<number | null>(null);
-  const [analysisGameId, setAnalysisGameId] = useState<number | null>(null);
 
-  const openAnalysis = (gameId: number) => {
-    setAnalysisGameId(gameId);
-    setPage("analysis");
-  };
+  // Partie öffnen ist eine Detailebene: Zurück führt in die Partienliste
+  // zurück, nicht aus der App heraus.
+  const openAnalysis = (gameId: number) => push("analysis", { gameId });
 
   // Deep-Link vom Dashboard: Games mit einem Vorfilter öffnen (Datum, Quelle,
   // Modus, Gegner, Eröffnung oder Ergebnis).
-  const [gamesFilter, setGamesFilter] = useState<GamesFilter | null>(null);
-  const openGames = (filter?: GamesFilter) => {
-    setGamesFilter(filter ?? null);
-    setPage("games");
-  };
+  const openGames = (filter?: GamesFilter) => goTo("games", { filter: filter ?? null });
 
-  // Deep-Link vom Coach: Puzzles direkt mit Motiv-Filter öffnen.
-  const [puzzleTheme, setPuzzleTheme] = useState<string>("");
-  const openPuzzles = (theme?: string) => {
-    setPuzzleTheme(theme ?? "");
-    setPage("puzzles");
-  };
+  // Deep-Link vom Coach: Puzzles direkt mit Motiv-Filter öffnen · ebenfalls
+  // eine Detailebene, damit Zurück wieder im Training landet.
+  const openPuzzles = (theme?: string) => push("puzzles", { theme: theme ?? "" });
 
   useEffect(() => {
     if (backend.mode === "desktop") {
@@ -112,7 +113,10 @@ export default function App() {
 
   // Auto-Sync (Mobile-Client) nach den Einstellungen scharfschalten. Läuft nur,
   // wenn wir mobil sind, es aktiviert ist und ein Hub konfiguriert wurde.
-  const isMobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  const isMobile =
+    backend.info?.platform === "android" ||
+    backend.info?.platform === "ios" ||
+    isMobilePreview();
   const syncStatus = useSyncStatus();
   useEffect(() => {
     if (backend.mode !== "desktop") return;
@@ -169,13 +173,15 @@ export default function App() {
   // Mobile: Sidebar wird zum Slide-in-Drawer hinter einem Hamburger-Button.
   const [navOpen, setNavOpen] = useState(false);
   const navigate = (id: PageId) => {
-    if (id === "games") openGames();
-    else {
-      if (id === "analysis") setAnalysisGameId(null);
-      setPage(id);
-    }
+    goTo(id);
     setNavOpen(false);
   };
+
+  // Auf Android trägt die Bottom-Leiste die Hauptziele; der Drawer behält nur
+  // noch, was dort keinen Platz hat. Am Desktop (und in der schmalen
+  // Web-Preview) bleibt die vollständige Liste.
+  const drawerNav = isMobile ? nav.filter((n) => !BOTTOM_NAV.includes(n.id)) : nav;
+  const activeTab = NAV_PARENT[page] ?? page;
 
   // Inhalt der Sidebar · identisch für Desktop-Aside und Mobile-Drawer.
   const sidebarContent = (
@@ -191,7 +197,7 @@ export default function App() {
       </div>
 
       <nav className={`flex flex-col ${isMobile ? "gap-0 px-2" : "gap-0.5 px-3"}`}>
-        {nav.map(({ id, labelKey, icon: Icon }) => (
+        {drawerNav.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             onClick={() => navigate(id)}
@@ -318,21 +324,59 @@ export default function App() {
       )}
 
       <main
-        className={`min-w-0 flex-1 overflow-y-auto ${isMobile ? "android-safe-bottom" : ""}`}
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        // Mobil trägt die Bottom-Leiste darunter den Systemabstand; ohne sie
+        // (Desktop, Web-Preview) hält ihn der Inhalt selbst frei.
+        className="min-w-0 flex-1 overflow-y-auto"
+        style={isMobile ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {page === "dashboard" && (
           <Dashboard go={navigate} openAnalysis={openAnalysis} openGames={openGames} />
         )}
-        {page === "games" && <Games openAnalysis={openAnalysis} initialFilter={gamesFilter} />}
-        {page === "analysis" && <Analysis targetGameId={analysisGameId} />}
+        {page === "games" && (
+          <Games openAnalysis={openAnalysis} initialFilter={route.filter ?? null} />
+        )}
+        {page === "analysis" && <Analysis targetGameId={route.gameId ?? null} />}
         {page === "repertoire" && <Repertoire />}
         {page === "endgame" && <Endgame />}
-        {page === "puzzles" && <Puzzles initialTheme={puzzleTheme} />}
+        {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
         {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
         {page === "insights" && <Insights />}
         {page === "settings" && <SettingsPage />}
       </main>
+
+      {/* Bottom-Navigation (nur Android/iOS): die Hauptziele bleiben sichtbar
+          und im Daumenbereich statt hinter dem Hamburger. */}
+      {isMobile && (
+        <nav
+          aria-label={t("nav.main")}
+          className="mobile-bottom-nav flex shrink-0 items-stretch border-t border-line bg-panel"
+        >
+          {bottomNav.map(({ id, labelKey, icon: Icon }) => {
+            const active = activeTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => navigate(id)}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-1.5 transition-colors ${
+                  active ? "text-accent" : "text-ink3"
+                }`}
+              >
+                <span
+                  className={`flex h-6 w-12 items-center justify-center rounded-full transition-colors ${
+                    active ? "bg-accent-soft" : ""
+                  }`}
+                >
+                  <Icon size={19} />
+                </span>
+                <span className="mobile-bottom-nav-label max-w-full truncate px-0.5 text-[10.5px]">
+                  {t(labelKey)}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {onboarding && (
         <Onboarding
