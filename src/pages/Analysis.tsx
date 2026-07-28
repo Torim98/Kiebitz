@@ -642,7 +642,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-4 flex items-end justify-between">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
+          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
         </div>
         {live && (

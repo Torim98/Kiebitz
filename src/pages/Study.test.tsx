@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import Study from "./Study";
 
@@ -56,10 +56,10 @@ function mockBackend(study = liveStudy(), themes: unknown[] = []) {
   });
 }
 
-function renderStudy(go = vi.fn(), openPuzzles = vi.fn()) {
+function renderStudy(go = vi.fn(), openPuzzles = vi.fn(), mobile = false) {
   render(
     <LocaleProvider>
-      <Study go={go} openPuzzles={openPuzzles} />
+      <Study go={go} openPuzzles={openPuzzles} mobile={mobile} />
     </LocaleProvider>
   );
   return { go, openPuzzles };
@@ -118,6 +118,30 @@ describe("Study page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Erledigt")).toHaveLength(3);
     });
+  });
+
+  it("acts as the training hub on mobile, but leaves the desktop page alone", async () => {
+    mockBackend();
+    const { go, openPuzzles } = renderStudy(vi.fn(), vi.fn(), true);
+    // Der Wert steht mobil zweimal: als Kachel im Hub und im Tagesplan.
+    await screen.findAllByText("3 / 10");
+
+    const hub = within(screen.getByRole("navigation", { name: "Trainingsbereiche" }));
+    expect(hub.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Repertoire7 fällig",
+      "Puzzles3 / 10",
+      "EndspieleTheorie gegen die Engine",
+    ]);
+
+    fireEvent.click(hub.getByRole("button", { name: /^Endspiele/ }));
+    expect(go).toHaveBeenCalledWith("endgame");
+    fireEvent.click(hub.getByRole("button", { name: /^Puzzles/ }));
+    expect(openPuzzles).toHaveBeenCalledWith();
+
+    cleanup();
+    renderStudy();
+    await screen.findByText("3 / 10");
+    expect(screen.queryByRole("navigation", { name: "Trainingsbereiche" })).toBeNull();
   });
 
   it("schedules an editable unit from the week calendar", async () => {

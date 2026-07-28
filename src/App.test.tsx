@@ -29,13 +29,26 @@ vi.mock("./pages/Analysis", () => ({ default: () => <div>Analysis</div> }));
 vi.mock("./pages/Repertoire", () => ({ default: () => <div>Repertoire</div> }));
 vi.mock("./pages/Endgame", () => ({ default: () => <div>Endgame</div> }));
 vi.mock("./pages/Puzzles", () => ({ default: () => <div>Puzzles</div> }));
-vi.mock("./pages/Study", () => ({ default: () => <div>Study</div> }));
+// Der Training-Hub reicht seine Navigations-Props durch; der Mock macht sie
+// klickbar, damit die Detailebene auf App-Ebene prüfbar bleibt.
+vi.mock("./pages/Study", () => ({
+  default: ({ go, openPuzzles }: { go: (p: string) => void; openPuzzles: () => void }) => (
+    <div>
+      <div>Study</div>
+      <button onClick={() => go("endgame")}>Zu den Endspielen</button>
+      <button onClick={() => openPuzzles()}>Zu den Puzzles</button>
+    </div>
+  ),
+}));
 vi.mock("./pages/InsightsV2", () => ({ default: () => <div>Insights</div> }));
 vi.mock("./pages/Settings", () => ({ default: () => <div>Settings</div> }));
+
+const realMatchMedia = window.matchMedia;
 
 beforeEach(() => {
   // Ab Werk startet die App auf Englisch; hier werden deutsche Labels geprüft.
   localStorage.setItem("kiebitz.locale", "de");
+  window.matchMedia = realMatchMedia;
 });
 
 afterEach(async () => {
@@ -46,12 +59,6 @@ afterEach(async () => {
   if (behind > 0) window.history.go(-behind);
   await new Promise((resolve) => setTimeout(resolve, 0));
 });
-
-/** Der geöffnete Drawer · die versteckte Desktop-Sidebar rendert dieselben Einträge. */
-function drawer(container: HTMLElement) {
-  fireEvent.click(screen.getByRole("button", { name: "Menü" }));
-  return within(container.querySelector("aside.android-safe-bottom") as HTMLElement);
-}
 
 /** Die mobile Bottom-Leiste. */
 function bottomBar() {
@@ -73,19 +80,34 @@ function pageTitle() {
 }
 
 describe("mobile navigation", () => {
-  it("uses the drawer on Android even at landscape-width breakpoints", async () => {
+  it("replaces the drawer with an app bar carrying title, back and settings", () => {
     const { container } = render(<LocaleProvider><App /></LocaleProvider>);
-    const permanentSidebar = container.querySelector("aside");
-    expect(permanentSidebar?.className).toContain("hidden");
-    expect(permanentSidebar?.className).not.toContain("md:flex");
+    // Weder Hamburger noch Sidebar · die Leiste trägt die Ziele.
+    expect(screen.queryByRole("button", { name: "Menü" })).toBeNull();
+    expect(container.querySelector("aside")).toBeNull();
 
-    const menu = drawer(container);
-    // Der Drawer trägt mobil nur noch, was nicht in die Bottom-Leiste passt.
-    expect(menu.getByRole("button", { name: "Repertoire" })).toBeTruthy();
-    expect(menu.queryByRole("button", { name: "Partien" })).toBeNull();
-    expect(menu.getByRole("button", { name: "Einstellungen" })).toBeTruthy();
-    expect(container.querySelector(".mobile-landscape-hide")).toBeTruthy();
-    await waitFor(() => expect(screen.getAllByText(/12 Partien/).length).toBeGreaterThan(0));
+    const bar = within(container.querySelector("header") as HTMLElement);
+    // Auf dem Start steht die Wortmarke, kein Zurück-Pfeil.
+    expect(bar.getByText("Kiebitz")).toBeTruthy();
+    expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
+
+    fireEvent.click(bottomBar().getByRole("button", { name: "Partien" }));
+    expect(bar.getByText("Partien")).toBeTruthy();
+    // Hauptziele erreicht man über die Leiste · dort ist kein Pfeil nötig.
+    expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
+  });
+
+  it("opens the settings from the app bar and offers a way back", async () => {
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+    const bar = within(container.querySelector("header") as HTMLElement);
+
+    fireEvent.click(bar.getByRole("button", { name: "Einstellungen" }));
+    expect(pageTitle()).toBe("Settings");
+    // Einstellungen sind kein Tab · von dort führt der Pfeil zurück.
+    expect(activeTab()).toBeUndefined();
+
+    fireEvent.click(bar.getByRole("button", { name: "Zurück" }));
+    await waitFor(() => expect(pageTitle()).toBe("Dashboard"));
   });
 
   it("shows the five main destinations in the bottom bar and marks the active one", () => {
@@ -101,12 +123,53 @@ describe("mobile navigation", () => {
     expect(activeTab()).toBe("Insights");
   });
 
-  it("marks Training while a page that will move under it is open", () => {
+  it("opens a training area as a detail level under Training", async () => {
     const { container } = render(<LocaleProvider><App /></LocaleProvider>);
-    fireEvent.click(drawer(container).getByRole("button", { name: "Endspiele" }));
+    const bar = within(container.querySelector("header") as HTMLElement);
+
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zu den Endspielen" }));
 
     expect(pageTitle()).toBe("Endgame");
+    // Der Tab bleibt markiert, der Pfeil führt eine Ebene zurück ins Training.
     expect(activeTab()).toBe("Training");
+    expect(window.history.state).toEqual({ kd: 3 });
+
+    fireEvent.click(bar.getByRole("button", { name: "Zurück" }));
+    await waitFor(() => expect(pageTitle()).toBe("Study"));
+  });
+
+  it("keeps the puzzle theme deep link under Training as well", async () => {
+    render(<LocaleProvider><App /></LocaleProvider>);
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zu den Puzzles" }));
+
+    expect(pageTitle()).toBe("Puzzles");
+    expect(activeTab()).toBe("Training");
+
+    window.history.back();
+    await waitFor(() => expect(pageTitle()).toBe("Study"));
+  });
+});
+
+describe("landscape phone", () => {
+  it("moves the navigation to a rail so the scarce axis stays free", () => {
+    // Im Querformat ist Höhe knapp und Breite reichlich · die Leiste wandert
+    // an die linke Kante.
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query.includes("landscape"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+    const bar = screen.getByRole("navigation", { name: "Hauptnavigation" });
+    expect(bar.className).toContain("mobile-nav-rail");
+    expect(bar.className).not.toContain("mobile-bottom-nav");
+    // Die Rail steht neben dem Inhalt, nicht darunter.
+    expect(container.firstElementChild?.className).toContain("flex-row");
   });
 });
 

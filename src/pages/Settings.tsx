@@ -65,7 +65,7 @@ import {
 } from "../lib/sync";
 import { legalDocument, legalDocuments, type LegalDoc } from "../lib/legal";
 import { openExternal } from "../lib/ext";
-import { configureAutoSync } from "../lib/syncManager";
+import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
@@ -172,6 +172,7 @@ export default function SettingsPage() {
   const [syncErr, setSyncErr] = useState<string | null>(null);
   const [pair, setPair] = useState<PairInfo | null>(null);
   const [scanning, setScanning] = useState(false);
+  const syncStatus = useSyncStatus();
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
   const playStore = backend.info?.distribution === "play-store";
@@ -582,7 +583,7 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-[860px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">{t("set.title")}</h1>
+          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("set.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("set.subtitle")}</p>
         </div>
         {desktop && draft && (
@@ -1202,6 +1203,33 @@ export default function SettingsPage() {
                     {t("set.syncFailed", { e: syncErr })}
                   </div>
                 )}
+                {/* Der laufende Zustand des Auto-Sync · früher hing er in der
+                    mobilen Navigation, die es nicht mehr gibt. */}
+                <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-[12px] text-ink2">
+                  <RefreshCw
+                    size={13}
+                    className={
+                      syncStatus.phase === "syncing"
+                        ? "animate-spin text-accent"
+                        : syncStatus.phase === "error"
+                          ? "text-ink3"
+                          : "text-accent"
+                    }
+                  />
+                  {!syncStatus.active
+                    ? t("set.syncAutoOff")
+                    : syncStatus.phase === "syncing"
+                      ? t("app.syncing")
+                      : syncStatus.phase === "error"
+                        ? t("app.syncOffline")
+                        : syncStatus.lastSync > 0
+                          ? t("app.syncedAt", {
+                              t: new Date(syncStatus.lastSync * 1000).toLocaleTimeString(
+                                dateLocale()
+                              ),
+                            })
+                          : t("app.synced")}
+                </div>
                 <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.syncMobileNote")}</p>
               </>
             )

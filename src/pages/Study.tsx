@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock,
   Cpu,
+  Crown,
   Flame,
   Lightbulb,
   Puzzle as PuzzleIcon,
@@ -42,9 +43,13 @@ interface RecCard {
 export default function Study({
   go,
   openPuzzles,
+  mobile = false,
 }: {
   go: (p: PageId) => void;
   openPuzzles: (theme?: string) => void;
+  /** Mobil ist diese Seite auch der Einstieg zu Repertoire, Puzzles und
+   *  Endspielen · am Desktop stehen die in der Sidebar. */
+  mobile?: boolean;
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
@@ -206,11 +211,43 @@ export default function Study({
   }, [data, t, go, openPuzzles]);
   const allDone = tasks.length > 0 && tasks.every((task) => task.done);
 
+  // ── Trainingsbereiche (mobil) ──────────────────────────────────────────────
+  // Repertoire, Puzzles und Endspiele haben mobil keinen eigenen Tab · sie
+  // hängen hier als Detailebene darunter.
+  const areas = useMemo(
+    () => [
+      {
+        id: "repertoire" as const,
+        icon: BookOpen,
+        label: t("nav.repertoire"),
+        status: data ? t("st.due", { n: deInt(data.due_now) }) : "",
+        onClick: () => go("repertoire"),
+      },
+      {
+        id: "puzzles" as const,
+        icon: PuzzleIcon,
+        label: t("nav.puzzles"),
+        status: data
+          ? `${deInt(data.today_puzzle_attempts)} / ${deInt(data.puzzle_goal)}`
+          : "",
+        onClick: () => openPuzzles(),
+      },
+      {
+        id: "endgame" as const,
+        icon: Crown,
+        label: t("nav.endgame"),
+        status: t("st.areaEndgame"),
+        onClick: () => go("endgame"),
+      },
+    ],
+    [data, t, go, openPuzzles]
+  );
+
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">{t("st.title")}</h1>
+          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("st.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("st.subtitle")}</p>
         </div>
         {data && data.streak_days > 0 && (
@@ -225,6 +262,24 @@ export default function Study({
         <div className="mb-4 rounded-lg border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3">
           {t("st.webNote")}
         </div>
+      )}
+
+      {mobile && (
+        <nav aria-label={t("st.areas")} className="mb-4 grid grid-cols-3 gap-2">
+          {areas.map((area) => (
+            <button
+              key={area.id}
+              onClick={area.onClick}
+              className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-panel px-2 py-3 text-center transition-colors hover:bg-panel2"
+            >
+              <area.icon size={19} className="text-accent" />
+              <span className="max-w-full truncate text-[12.5px] font-medium text-ink">
+                {area.label}
+              </span>
+              <span className="text-[11px] leading-tight text-ink3">{area.status}</span>
+            </button>
+          ))}
+        </nav>
       )}
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">

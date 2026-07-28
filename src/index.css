@@ -93,31 +93,24 @@ body {
   touch-action: none !important;
 }
 
-/* Android WebViews melden den Drei-Tasten-/Gestenbereich je nach OEM als
-   safe-area 0. Der Mindestabstand haelt Drawer-Aktionen und Seiteninhalt frei. */
-.android-safe-bottom {
-  padding-bottom: max(env(safe-area-inset-bottom), 32px) !important;
-}
-
 /* Die Bottom-Navigation reicht bis unter die Systemleiste · ihr Hintergrund
-   traegt den Abstand, damit der Inhalt darueber nichts freihalten muss. Der
-   Mindestwert faengt dieselben OEMs ab wie oben. */
+   traegt den Abstand, damit der Inhalt darueber nichts freihalten muss.
+   Android WebViews melden den Drei-Tasten-/Gestenbereich je nach OEM als
+   safe-area 0, deshalb der Mindestwert. */
 .mobile-bottom-nav {
   padding-bottom: max(env(safe-area-inset-bottom), 32px);
 }
 
-/* Android/iOS im Querformat: alle Navigationsziele bleiben ohne einen
-   problematischen, verschachtelten Drawer-Scroll erreichbar. Die Leiste gibt
-   dort Hoehe zurueck · Icons allein reichen, der Systemabstand faellt kleiner
-   aus, weil die Navigationsleiste an der Seite sitzt. */
-@media (orientation: landscape) and (max-height: 600px) {
-  .mobile-landscape-hide {
-    display: none;
-  }
-  .mobile-bottom-nav {
-    padding-bottom: max(env(safe-area-inset-bottom), 8px);
-  }
-  .mobile-bottom-nav-label {
-    display: none;
-  }
+/* Im Querformat steht dieselbe Navigation als Rail an der linken Kante · dort
+   liegt je nach Geraetedrehung die Systemleiste. */
+.mobile-nav-rail {
+  padding-left: env(safe-area-inset-left);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Mobil traegt die App-Bar den Seitentitel · die Seite wiederholt ihn nicht.
+   Das Dashboard behaelt seine Begruessung, sie ist kein Titel. */
+[data-shell="mobile"] .page-title {
+  display: none;
 }

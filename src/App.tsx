@@ -32,6 +32,7 @@ import {
 } from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
 import { useNavStack, type PageId } from "./lib/nav";
+import { MobileAppBar, MobileNav, useLandscapePhone } from "./components/MobileShell";
 import Dashboard from "./pages/Dashboard";
 import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
@@ -77,7 +78,7 @@ export default function App() {
   // Der Stapel hält die Seite samt Deep-Link-Parametern und hängt an der
   // Session-History · siehe lib/nav.ts. Erst dadurch tut die Android-Zurück-
   // Taste etwas anderes, als die App zu beenden.
-  const { route, navigate: goTo, push } = useNavStack();
+  const { route, depth, navigate: goTo, push, back } = useNavStack();
   const page = route.page;
   const backend = useBackendInfo();
   const t = useT();
@@ -117,6 +118,18 @@ export default function App() {
     backend.info?.platform === "android" ||
     backend.info?.platform === "ios" ||
     isMobilePreview();
+  // Querformat auf Telefonhöhe: die Navigation tritt an die linke Kante.
+  const rail = useLandscapePhone();
+
+  // Markiert die mobile Shell fürs Stylesheet · dort unterdrückt die Regel für
+  // .page-title die von der App-Bar bereits gezeigten Überschriften.
+  useEffect(() => {
+    if (!isMobile) return;
+    document.documentElement.dataset.shell = "mobile";
+    return () => {
+      delete document.documentElement.dataset.shell;
+    };
+  }, [isMobile]);
   const syncStatus = useSyncStatus();
   useEffect(() => {
     if (backend.mode !== "desktop") return;
@@ -172,22 +185,32 @@ export default function App() {
 
   // Mobile: Sidebar wird zum Slide-in-Drawer hinter einem Hamburger-Button.
   const [navOpen, setNavOpen] = useState(false);
+  // Ein Ziel, dessen Elternseite gerade offen ist, wird als Detailebene
+  // geöffnet · Zurück führt dann dorthin zurück statt auf den Start.
   const navigate = (id: PageId) => {
-    goTo(id);
+    if (NAV_PARENT[id] === page) push(id);
+    else goTo(id);
     setNavOpen(false);
   };
 
-  // Auf Android trägt die Bottom-Leiste die Hauptziele; der Drawer behält nur
-  // noch, was dort keinen Platz hat. Am Desktop (und in der schmalen
-  // Web-Preview) bleibt die vollständige Liste.
-  const drawerNav = isMobile ? nav.filter((n) => !BOTTOM_NAV.includes(n.id)) : nav;
   const activeTab = NAV_PARENT[page] ?? page;
 
-  // Inhalt der Sidebar · identisch für Desktop-Aside und Mobile-Drawer.
+  // Auf der App-Bar steht der Seitenname; der Start zeigt stattdessen die
+  // Wortmarke, weil "Dashboard" schon in der Leiste darunter steht.
+  const pageLabel = [...nav, { id: "settings" as PageId, labelKey: "nav.settings" as Key }].find(
+    (n) => n.id === page
+  );
+  const barTitle = page === "dashboard" ? null : pageLabel ? t(pageLabel.labelKey) : null;
+
+  // Der Zurück-Pfeil erscheint nur auf Ebenen, die kein Hauptziel sind ·
+  // zwischen den Tabs navigiert die Leiste, nicht der Pfeil.
+  const showBack = depth > 2 || !BOTTOM_NAV.includes(page);
+
+  // Inhalt der Desktop-Sidebar · auch für den Drawer im schmalen Fenster.
   const sidebarContent = (
     <>
-      <div className={`flex items-center gap-2.5 ${isMobile ? "px-4 py-3" : "px-5 pb-5 pt-6"}`}>
-        <span className={`flex items-center justify-center rounded-xl bg-accent-soft text-accent ${isMobile ? "h-8 w-8" : "h-9 w-9"}`}>
+      <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
           <Bird size={20} />
         </span>
         <div>
@@ -196,12 +219,12 @@ export default function App() {
         </div>
       </div>
 
-      <nav className={`flex flex-col ${isMobile ? "gap-0 px-2" : "gap-0.5 px-3"}`}>
-        {drawerNav.map(({ id, labelKey, icon: Icon }) => (
+      <nav className="flex flex-col gap-0.5 px-3">
+        {nav.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             onClick={() => navigate(id)}
-            className={`flex items-center gap-3 rounded-lg px-3 text-left text-[13.5px] transition-colors ${isMobile ? "py-1.5" : "py-2"} ${
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
               page === id
                 ? "bg-panel3 font-medium text-ink"
                 : "text-ink2 hover:bg-panel2 hover:text-ink"
@@ -213,9 +236,9 @@ export default function App() {
         ))}
       </nav>
 
-      <div className={`mt-auto px-3 ${isMobile ? "pb-2" : "pb-5"}`}>
+      <div className="mt-auto px-3 pb-5">
         {!storeCapture && (
-        <div className={`mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5 ${isMobile ? "mobile-landscape-hide" : ""}`}>
+        <div className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-2.5">
           <div className="flex items-center gap-2 text-[12px] text-ink2">
             {syncStatus.active ? (
               <>
@@ -271,7 +294,7 @@ export default function App() {
         )}
         <button
           onClick={() => navigate("settings")}
-          className={`flex w-full items-center gap-3 rounded-lg px-3 text-[13.5px] transition-colors ${isMobile ? "py-1.5" : "py-2"} ${
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
             page === "settings"
               ? "bg-panel3 font-medium text-ink"
               : "text-ink2 hover:bg-panel2 hover:text-ink"
@@ -284,100 +307,28 @@ export default function App() {
     </>
   );
 
-  return (
-    <div className={`flex h-full flex-col ${isMobile ? "" : "md:flex-row"}`}>
-      <aside className={`${isMobile ? "hidden" : "hidden md:flex"} w-[228px] shrink-0 flex-col border-r border-line bg-panel`}>
-        {sidebarContent}
-      </aside>
-
-      {/* Mobile-Topbar (unter md) */}
-      <header
-        className={`${isMobile ? "flex" : "flex md:hidden"} shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2`}
-        style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
-      >
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <Bird size={17} />
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
-        </div>
-        <button
-          onClick={() => setNavOpen(true)}
-          aria-label={t("app.menu")}
-          className="rounded-lg p-2 text-ink2 transition-colors hover:bg-panel2 hover:text-ink"
-        >
-          <Menu size={20} />
-        </button>
-      </header>
-
-      {/* Mobile-Drawer */}
-      {navOpen && (
-        <div className={`fixed inset-0 z-50 ${isMobile ? "" : "md:hidden"}`}>
-          <div className="absolute inset-0 bg-black/60" onClick={() => setNavOpen(false)} />
-          <aside
-            className={`absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl ${isMobile ? "android-safe-bottom" : ""}`}
-            style={{ paddingTop: "env(safe-area-inset-top)" }}
-          >
-            {sidebarContent}
-          </aside>
-        </div>
+  const mainContent = (
+    <>
+      {page === "dashboard" && (
+        <Dashboard go={navigate} openAnalysis={openAnalysis} openGames={openGames} />
       )}
-
-      <main
-        // Mobil trägt die Bottom-Leiste darunter den Systemabstand; ohne sie
-        // (Desktop, Web-Preview) hält ihn der Inhalt selbst frei.
-        className="min-w-0 flex-1 overflow-y-auto"
-        style={isMobile ? undefined : { paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        {page === "dashboard" && (
-          <Dashboard go={navigate} openAnalysis={openAnalysis} openGames={openGames} />
-        )}
-        {page === "games" && (
-          <Games openAnalysis={openAnalysis} initialFilter={route.filter ?? null} />
-        )}
-        {page === "analysis" && <Analysis targetGameId={route.gameId ?? null} />}
-        {page === "repertoire" && <Repertoire />}
-        {page === "endgame" && <Endgame />}
-        {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
-        {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
-        {page === "insights" && <Insights />}
-        {page === "settings" && <SettingsPage />}
-      </main>
-
-      {/* Bottom-Navigation (nur Android/iOS): die Hauptziele bleiben sichtbar
-          und im Daumenbereich statt hinter dem Hamburger. */}
-      {isMobile && (
-        <nav
-          aria-label={t("nav.main")}
-          className="mobile-bottom-nav flex shrink-0 items-stretch border-t border-line bg-panel"
-        >
-          {bottomNav.map(({ id, labelKey, icon: Icon }) => {
-            const active = activeTab === id;
-            return (
-              <button
-                key={id}
-                onClick={() => navigate(id)}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 pt-1.5 transition-colors ${
-                  active ? "text-accent" : "text-ink3"
-                }`}
-              >
-                <span
-                  className={`flex h-6 w-12 items-center justify-center rounded-full transition-colors ${
-                    active ? "bg-accent-soft" : ""
-                  }`}
-                >
-                  <Icon size={19} />
-                </span>
-                <span className="mobile-bottom-nav-label max-w-full truncate px-0.5 text-[10.5px]">
-                  {t(labelKey)}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
+      {page === "games" && (
+        <Games openAnalysis={openAnalysis} initialFilter={route.filter ?? null} />
       )}
+      {page === "analysis" && <Analysis targetGameId={route.gameId ?? null} />}
+      {page === "repertoire" && <Repertoire />}
+      {page === "endgame" && <Endgame />}
+      {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
+      {page === "study" && (
+        <Study go={navigate} openPuzzles={openPuzzles} mobile={isMobile} />
+      )}
+      {page === "insights" && <Insights />}
+      {page === "settings" && <SettingsPage />}
+    </>
+  );
 
+  const overlays = (
+    <>
       {onboarding && (
         <Onboarding
           settings={onboarding}
@@ -388,7 +339,6 @@ export default function App() {
           }}
         />
       )}
-
       {update ? (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">
           <Loader2 size={15} className="animate-spin text-accent" />
@@ -429,6 +379,86 @@ export default function App() {
           </div>
         )
       )}
+    </>
+  );
+
+  // ── Mobile Shell ───────────────────────────────────────────────────────────
+  // App-Bar oben (Titel, Zurück, Einstellungen), Navigation unten bzw. im
+  // Querformat als Rail links. Kein Drawer mehr · alle Ziele hängen entweder
+  // in der Leiste oder unter dem Training.
+  if (isMobile) {
+    return (
+      <div className={`flex h-full ${rail ? "flex-row" : "flex-col"}`}>
+        {rail && (
+          <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail />
+        )}
+        {/* min-h-0: sonst wächst die Spalte mit dem Inhalt, statt <main>
+            scrollen zu lassen · Flex-Kinder schrumpfen ohne das nicht. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <MobileAppBar
+            title={barTitle}
+            showBack={showBack}
+            onBack={back}
+            onSettings={() => navigate("settings")}
+            settingsActive={page === "settings"}
+          />
+          <main className="min-w-0 flex-1 overflow-y-auto">{mainContent}</main>
+        </div>
+        {!rail && (
+          <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={false} />
+        )}
+        {overlays}
+      </div>
+    );
+  }
+
+  // ── Desktop-Shell ──────────────────────────────────────────────────────────
+  return (
+    <div className="flex h-full flex-col md:flex-row">
+      <aside className="hidden w-[228px] shrink-0 flex-col border-r border-line bg-panel md:flex">
+        {sidebarContent}
+      </aside>
+
+      {/* Topbar im schmalen Fenster (unter md) */}
+      <header
+        className="flex shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2 md:hidden"
+        style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+            <Bird size={17} />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+        </div>
+        <button
+          onClick={() => setNavOpen(true)}
+          aria-label={t("app.menu")}
+          className="rounded-lg p-2 text-ink2 transition-colors hover:bg-panel2 hover:text-ink"
+        >
+          <Menu size={20} />
+        </button>
+      </header>
+
+      {navOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setNavOpen(false)} />
+          <aside
+            className="absolute inset-y-0 left-0 flex w-[248px] flex-col overflow-y-auto border-r border-line bg-panel shadow-2xl"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      <main
+        className="min-w-0 flex-1 overflow-y-auto"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {mainContent}
+      </main>
+
+      {overlays}
     </div>
   );
 }

@@ -66,6 +66,8 @@ const de = {
   "app.updateNow": "Jetzt aktualisieren",
   "app.updateLater": "Später",
   "app.menu": "Menü",
+  "app.back": "Zurück",
+  "set.syncAutoOff": "Automatischer Abgleich ist aus",
   "nav.main": "Hauptnavigation",
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -550,6 +552,8 @@ const de = {
   "st.taskPuzzles": "Puzzle-Tagesziel",
   "st.taskAnalysis": "Analyse-Backlog",
   "st.due": "{n} fällig",
+  "st.areas": "Trainingsbereiche",
+  "st.areaEndgame": "Theorie gegen die Engine",
   "st.gamesPending": "{n} Partien offen",
   "st.doneLabel": "Erledigt",
   "st.allDone": "Tagesplan komplett · starke Arbeit!",
@@ -796,6 +800,8 @@ const en: Record<Key, string> = {
   "app.updateNow": "Update now",
   "app.updateLater": "Later",
   "app.menu": "Menu",
+  "app.back": "Back",
+  "set.syncAutoOff": "Automatic sync is off",
   "nav.main": "Main navigation",
 
   "dash.goodMorning": "Good morning",
@@ -1271,6 +1277,8 @@ const en: Record<Key, string> = {
   "st.taskPuzzles": "Daily puzzle goal",
   "st.taskAnalysis": "Analysis backlog",
   "st.due": "{n} due",
+  "st.areas": "Training areas",
+  "st.areaEndgame": "Theory against the engine",
   "st.gamesPending": "{n} games pending",
   "st.doneLabel": "Done",
   "st.allDone": "Today's plan complete · great work!",

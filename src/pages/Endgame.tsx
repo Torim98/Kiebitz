@@ -218,7 +218,7 @@ export default function Endgame() {
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
-          <h1 className="text-[21px] font-semibold tracking-tight">{t("eg.title")}</h1>
+          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("eg.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("eg.subtitle")}</p>
         </div>
         {desktop && (
