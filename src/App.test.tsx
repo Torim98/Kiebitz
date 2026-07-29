@@ -112,7 +112,7 @@ describe("mobile navigation", () => {
   });
 
   it("shows the five main destinations in the bottom bar and marks the active one", () => {
-    render(<LocaleProvider><App /></LocaleProvider>);
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
     const labels = bottomBar()
       .getAllByRole("button")
       .map((b) => b.textContent);
@@ -122,6 +122,12 @@ describe("mobile navigation", () => {
     fireEvent.click(bottomBar().getByRole("button", { name: "Insights" }));
     expect(pageTitle()).toBe("Insights");
     expect(activeTab()).toBe("Insights");
+
+    const main = container.querySelector("main") as HTMLElement;
+    main.scrollTop = 640;
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    expect(pageTitle()).toBe("Study");
+    expect(main.scrollTop).toBe(0);
   });
 
   it("opens a training area as a detail level under Training", async () => {

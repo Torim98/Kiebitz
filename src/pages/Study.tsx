@@ -295,23 +295,51 @@ export default function Study({
           {recs.length > 0 ? (
             <div className="flex flex-col gap-2.5">
               {recs.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel2 px-3.5 py-3"
-                >
-                  <div className="flex min-w-0 items-start gap-3">
-                    <r.icon size={17} className="mt-0.5 shrink-0 text-accent" />
-                    <div className="min-w-0">
-                      <div className="text-[13.5px] font-medium text-ink">{r.title}</div>
-                      <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink3">{r.body}</div>
+                mobile ? (
+                  <div
+                    key={r.id}
+                    data-coach-rec={r.id}
+                    className="rounded-xl border border-line bg-panel2 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                        <r.icon size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-semibold leading-snug text-ink">
+                          {r.title}
+                        </div>
+                        <div className="mt-1.5 text-[12.5px] leading-relaxed text-ink3">
+                          {r.body}
+                        </div>
+                      </div>
                     </div>
+                    {r.action && (
+                      <Button onClick={r.action.onClick} className="mt-3 w-full justify-center">
+                        {r.action.label}
+                      </Button>
+                    )}
                   </div>
-                  {r.action && (
-                    <Button onClick={r.action.onClick} className="shrink-0">
-                      {r.action.label}
-                    </Button>
-                  )}
-                </div>
+                ) : (
+                  <div
+                    key={r.id}
+                    data-coach-rec={r.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-line bg-panel2 px-3.5 py-3"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <r.icon size={17} className="mt-0.5 shrink-0 text-accent" />
+                      <div className="min-w-0">
+                        <div className="text-[13.5px] font-medium text-ink">{r.title}</div>
+                        <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink3">{r.body}</div>
+                      </div>
+                    </div>
+                    {r.action && (
+                      <Button onClick={r.action.onClick} className="shrink-0">
+                        {r.action.label}
+                      </Button>
+                    )}
+                  </div>
+                )
               ))}
             </div>
           ) : (

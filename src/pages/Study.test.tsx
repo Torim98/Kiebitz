@@ -147,6 +147,30 @@ describe("Study page", () => {
     expect(screen.queryByRole("navigation", { name: "Trainingsbereiche" })).toBeNull();
   });
 
+  it("stacks coaching actions below the text only in the mobile shell", async () => {
+    mockBackend(liveStudy(), [{ theme: "fork", attempts: 10, solved: 3 }]);
+    renderStudy(vi.fn(), vi.fn(), true);
+
+    const mobileTitle = await screen.findByText("Schwaches Puzzle-Motiv: Gabel");
+    const mobileCard = mobileTitle.closest("[data-coach-rec]") as HTMLElement;
+    expect(mobileCard.className).toContain("p-4");
+    expect(mobileCard.className).not.toContain("justify-between");
+    expect(
+      within(mobileCard).getByRole("button", { name: "Puzzles trainieren" }).className
+    ).toContain("w-full");
+
+    cleanup();
+    mockBackend(liveStudy(), [{ theme: "fork", attempts: 10, solved: 3 }]);
+    renderStudy();
+
+    const desktopTitle = await screen.findByText("Schwaches Puzzle-Motiv: Gabel");
+    const desktopCard = desktopTitle.closest("[data-coach-rec]") as HTMLElement;
+    expect(desktopCard.className).toContain("justify-between");
+    expect(
+      within(desktopCard).getByRole("button", { name: "Puzzles trainieren" }).className
+    ).not.toContain("w-full");
+  });
+
   it("schedules an editable unit from the week calendar", async () => {
     mockBackend();
     renderStudy();

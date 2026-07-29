@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -125,6 +125,18 @@ export default function App() {
     isMobilePreview();
   // Querformat auf Telefonhöhe: die Navigation tritt an die linke Kante.
   const rail = useLandscapePhone();
+  const mobileMainRef = useRef<HTMLElement>(null);
+
+  // Die mobile Shell behält denselben Scroll-Container über alle Seiten
+  // hinweg. Ohne Reset übernimmt der nächste Tab die Position des vorherigen
+  // und beginnt dadurch irgendwo mitten im Inhalt.
+  useLayoutEffect(() => {
+    if (!isMobile) return;
+    const main = mobileMainRef.current;
+    if (!main) return;
+    main.scrollTop = 0;
+    main.scrollLeft = 0;
+  }, [isMobile, page]);
 
   // Markiert die mobile Shell fürs Stylesheet · dort unterdrückt die Regel für
   // .page-title die von der App-Bar bereits gezeigten Überschriften.
@@ -413,7 +425,9 @@ export default function App() {
             onSettings={() => navigate("settings")}
             settingsActive={page === "settings"}
           />
-          <main className="min-w-0 flex-1 overflow-y-auto">{mainContent}</main>
+          <main ref={mobileMainRef} className="min-w-0 flex-1 overflow-y-auto">
+            {mainContent}
+          </main>
         </div>
         {!rail && (
           <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={false} />
