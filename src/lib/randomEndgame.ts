@@ -6,7 +6,7 @@
  * dadurch auch bei zufälliger Aufstellung eindeutig. Damit nichts sofort
  * hängt, hält der verteidigende König Abstand zu den gegnerischen Figuren.
  */
-import { Chess } from "chess.js";
+import { Chess, type Square } from "chess.js";
 import type { EndgameDrill } from "../data/endgames";
 
 interface Template {
@@ -79,8 +79,8 @@ const TEMPLATES: Template[] = [
   },
   {
     id: "rnd-kr-kb",
-    strong: ["b"],
-    weak: ["r"],
+    strong: ["r"],
+    weak: ["b"],
     goal: "draw",
     name: { de: "Zufall: Läufer hält gegen Turm", en: "Random: bishop holds vs. rook" },
     hint: {
@@ -90,8 +90,8 @@ const TEMPLATES: Template[] = [
   },
   {
     id: "rnd-kr-kn",
-    strong: ["n"],
-    weak: ["r"],
+    strong: ["r"],
+    weak: ["n"],
     goal: "draw",
     name: { de: "Zufall: Springer hält gegen Turm", en: "Random: knight holds vs. rook" },
     hint: {
@@ -196,9 +196,27 @@ export function randomDrill(random: () => number = Math.random): EndgameDrill {
     const fen = buildFen(pieces, playerIsWhite ? "w" : "b");
     try {
       const chess = new Chess(fen);
+      // chess.isCheck() betrachtet nur die Seite am Zug. Für eine gültige
+      // Trainingsstellung darf aber auch der andere König nicht bereits
+      // angegriffen sein – sonst könnte die ziehende Seite ihn "schlagen".
+      const strongKingAttacked = chess.isAttacked(
+        square(strongKing) as Square,
+        weakColor
+      );
+      const weakKingAttacked = chess.isAttacked(
+        square(weakKing) as Square,
+        strongColor
+      );
       // Weder sofort entschieden noch bereits Schach · die Aufgabe soll erst
       // durch Technik entschieden werden.
-      if (chess.isGameOver() || chess.isCheck() || chess.moves().length === 0) continue;
+      if (
+        chess.isGameOver() ||
+        strongKingAttacked ||
+        weakKingAttacked ||
+        chess.moves().length === 0
+      ) {
+        continue;
+      }
       return {
         id: template.id,
         category: "random",

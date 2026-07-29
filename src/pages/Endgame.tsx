@@ -241,7 +241,7 @@ export default function Endgame() {
         {/* Brett + Statuszeile · auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
         <div className="max-w-[420px]">
-          <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
               <Crown size={15} className="shrink-0 text-accent" />
               <span className="font-medium">{drill.name[locale]}</span>
@@ -253,7 +253,10 @@ export default function Endgame() {
                 {drill.goal === "win" ? t("eg.goalWin") : t("eg.goalDraw")}
               </span>
             </div>
-            <span className="shrink-0 text-[12.5px] text-ink3">
+            <span
+              data-testid="endgame-status"
+              className="min-h-10 text-right text-[12.5px] leading-5 text-ink3"
+            >
               {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
             </span>
           </div>
