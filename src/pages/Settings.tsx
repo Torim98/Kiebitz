@@ -31,6 +31,7 @@ import {
   formatBytes,
   getSettings,
   moveDatabase,
+  refreshSettings,
   restoreDatabase,
   setSettings,
   testEngine,
@@ -340,7 +341,7 @@ export default function SettingsPage() {
         text: action === "move" ? t("set.dbMoved", { path: next.path }) : t("set.dbSwitched", { path: next.path }),
       });
       // Einstellungen neu laden (db_path hat sich geändert).
-      const s = await getSettings();
+      const s = await refreshSettings();
       setSaved(s);
       setDraft((d) => (d ? { ...d, db_path: s.db_path } : s));
       puzzleStats().then(setPz).catch(() => {});
@@ -526,7 +527,7 @@ export default function SettingsPage() {
     setError(null);
     try {
       await factoryReset();
-      const fresh = await getSettings();
+      const fresh = await refreshSettings();
       setSaved(fresh);
       setDraft(fresh);
       setLocale(fresh.locale);
@@ -578,6 +579,29 @@ export default function SettingsPage() {
       setPzMsg(t("set.puzzleImportFailed", { e: String(e) }));
     });
   };
+
+  // "pending" ist kein Web-Modus. Ebenso sind fehlende Settings in einer
+  // erkannten Tauri-App kein Desktop-only-Fallback, sondern ein Ladezustand.
+  if (backend.mode === "pending" || (desktop && !draft)) {
+    return (
+      <div className="mx-auto max-w-[860px] px-4 py-6 sm:px-6">
+        <header className="mb-5">
+          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("set.title")}</h1>
+          <p className="mt-0.5 text-[13px] text-ink3">{t("set.subtitle")}</p>
+        </header>
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-5 text-[13px] text-ink2">
+          {error ? (
+            <span className="text-loss">{error}</span>
+          ) : (
+            <>
+              <Loader2 size={17} className="animate-spin text-accent" />
+              {t("set.loading")}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[860px] px-4 py-6 sm:px-6">
@@ -631,7 +655,9 @@ export default function SettingsPage() {
               {t("set.langEn")}
             </Chip>
           </div>
-          <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.langNote")}</p>
+          <p className="mt-3 text-[12px] leading-relaxed text-ink3">
+            {t(desktop ? "set.langNoteApp" : "set.langNote")}
+          </p>
         </Card>
 
         {/* Konten & Import */}

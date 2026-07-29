@@ -7,7 +7,7 @@
  * (Web-Preview); Zahlformatierung folgt über setFormatLocale.
  */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getSettings } from "./settings";
 import { setFormatLocale } from "./util";
 
 export type Locale = "de" | "en";
@@ -586,12 +586,14 @@ const de = {
   // ── Einstellungen ──────────────────────────────────────────────────────────
   "set.title": "Einstellungen",
   "set.subtitle": "Sprache, Konten, Engine, Datenbank und Integrationen.",
+  "set.loading": "Einstellungen werden geladen …",
   "set.webNote": "Web-Preview: Nur die Sprache lässt sich hier umstellen · alle übrigen Einstellungen gehören zur Desktop-App.",
   "set.saved": "Einstellungen gespeichert.",
   "set.dirtyHint": "Ungespeicherte Änderungen",
   "set.language": "Sprache",
   "set.langDe": "Deutsch",
   "set.langEn": "English",
+  "set.langNoteApp": "Die Oberflächensprache wird sofort angewendet und auf diesem Gerät gespeichert.",
   "set.langNote": "Die Demo-Inhalte (Beispielpartien, Kommentare) bleiben deutsch; Fehlermeldungen des Backends ebenfalls.",
   "set.accounts": "Konten & Import",
   "set.displayName": "Anzeigename (leer = Benutzername)",
@@ -1311,12 +1313,14 @@ const en: Record<Key, string> = {
 
   "set.title": "Settings",
   "set.subtitle": "Language, accounts, engine, database, and integrations.",
+  "set.loading": "Loading settings …",
   "set.webNote": "Web preview: only the language can be changed here · everything else belongs to the desktop app.",
   "set.saved": "Settings saved.",
   "set.dirtyHint": "Unsaved changes",
   "set.language": "Language",
   "set.langDe": "Deutsch",
   "set.langEn": "English",
+  "set.langNoteApp": "The interface language is applied immediately and saved on this device.",
   "set.langNote": "Demo content (sample games, comments) stays German; backend error messages too.",
   "set.accounts": "Accounts & import",
   "set.displayName": "Display name (empty = username)",
@@ -1520,7 +1524,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   // Desktop: die in den Einstellungen gespeicherte Sprache gewinnt.
   useEffect(() => {
-    invoke<{ locale: string }>("get_settings")
+    getSettings()
       .then((s) => setLocaleState(s.locale === "en" ? "en" : "de"))
       .catch(() => {});
   }, []);

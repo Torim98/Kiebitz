@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   runAutoImport: vi.fn(),
 }));
 
-vi.mock("../lib/settings", () => ({ setSettings: mocks.setSettings }));
+vi.mock("../lib/settings", () => ({
+  getSettings: () => Promise.resolve({ locale: "en" }),
+  setSettings: mocks.setSettings,
+}));
 vi.mock("../lib/autoImport", () => ({ runAutoImport: mocks.runAutoImport }));
 
 const fresh = { locale: "en", cc_user: "", li_user: "", display_name: "", onboarded: false } as Settings;

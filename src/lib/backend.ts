@@ -24,19 +24,40 @@ export interface EngineInfo {
   path: string;
 }
 
-/** Erkennt, ob die App in der Tauri-Shell (Desktop) oder im Browser läuft. */
-export function useBackendInfo(): { mode: "desktop" | "web" | "pending"; info?: BackendInfo } {
-  const [state, setState] = useState<{ mode: "desktop" | "web" | "pending"; info?: BackendInfo }>({
-    mode: "pending",
-  });
+export type BackendState = { mode: "desktop" | "web" | "pending"; info?: BackendInfo };
+
+// Die Erkennung gilt für die gesamte App. Ein Modul-Snapshot verhindert, dass
+// jede neu geöffnete Seite erneut bei "pending" beginnt und app_info aufruft.
+let backendState: BackendState = { mode: "pending" };
+let backendRequest: Promise<void> | null = null;
+const backendListeners = new Set<(state: BackendState) => void>();
+
+function detectBackend() {
+  if (backendRequest) return;
+  backendRequest = invoke<BackendInfo>("app_info")
+    .then((info) => {
+      backendState = { mode: "desktop", info };
+    })
+    .catch(() => {
+      backendState = { mode: "web" };
+    })
+    .then(() => {
+      backendListeners.forEach((listener) => listener(backendState));
+    });
+}
+
+/** Erkennt, ob die App in der Tauri-Shell (Desktop/Mobile) oder im Browser läuft. */
+export function useBackendInfo(): BackendState {
+  const [state, setState] = useState<BackendState>(() => backendState);
 
   useEffect(() => {
-    let cancelled = false;
-    invoke<BackendInfo>("app_info")
-      .then((info) => !cancelled && setState({ mode: "desktop", info }))
-      .catch(() => !cancelled && setState({ mode: "web" }));
+    backendListeners.add(setState);
+    // Zwischen Render und Effect kann ein anderer Consumer fertig geworden
+    // sein. Den aktuellen Snapshot deshalb unmittelbar übernehmen.
+    setState(backendState);
+    detectBackend();
     return () => {
-      cancelled = true;
+      backendListeners.delete(setState);
     };
   }, []);
 

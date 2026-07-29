@@ -72,12 +72,54 @@ export interface ChessDbResult {
   cached: boolean;
 }
 
+let settingsCache: Settings | null = null;
+let settingsRequest: Promise<Settings> | null = null;
+let settingsGeneration = 0;
+
+function invalidateSettingsCache() {
+  settingsGeneration += 1;
+  settingsCache = null;
+  settingsRequest = null;
+}
+
+function loadSettings(): Promise<Settings> {
+  if (settingsCache) return Promise.resolve(settingsCache);
+  if (settingsRequest) return settingsRequest;
+  const generation = settingsGeneration;
+  const request = invoke<Settings>("get_settings")
+    .then((settings) => {
+      if (generation === settingsGeneration) settingsCache = settings;
+      return settings;
+    });
+  const trackedRequest = request.finally(() => {
+    if (settingsRequest === trackedRequest) settingsRequest = null;
+  });
+  settingsRequest = trackedRequest;
+  return settingsRequest;
+}
+
 export function getSettings(): Promise<Settings> {
-  return invoke<Settings>("get_settings");
+  return loadSettings();
+}
+
+/** Erzwingt ein Nachladen, wenn das Backend Einstellungen indirekt geändert hat. */
+export function refreshSettings(): Promise<Settings> {
+  invalidateSettingsCache();
+  return loadSettings();
 }
 
 export function setSettings(newSettings: Settings): Promise<Settings> {
-  return invoke<Settings>("set_settings", { newSettings });
+  invalidateSettingsCache();
+  const generation = settingsGeneration;
+  const request = invoke<Settings>("set_settings", { newSettings }).then((settings) => {
+    if (generation === settingsGeneration) settingsCache = settings;
+    return settings;
+  });
+  const trackedRequest = request.finally(() => {
+    if (settingsRequest === trackedRequest) settingsRequest = null;
+  });
+  settingsRequest = trackedRequest;
+  return trackedRequest;
 }
 
 export function testEngine(path?: string): Promise<EngineTest> {
@@ -89,11 +131,17 @@ export function dbInfo(): Promise<DbInfo> {
 }
 
 export function moveDatabase(target: string): Promise<DbInfo> {
-  return invoke<DbInfo>("move_database", { target });
+  return invoke<DbInfo>("move_database", { target }).then((info) => {
+    invalidateSettingsCache();
+    return info;
+  });
 }
 
 export function useDatabase(path: string): Promise<DbInfo> {
-  return invoke<DbInfo>("use_database", { path });
+  return invoke<DbInfo>("use_database", { path }).then((info) => {
+    invalidateSettingsCache();
+    return info;
+  });
 }
 
 export function backupDatabase(target: string): Promise<string> {
@@ -110,7 +158,9 @@ export function chessdbQuery(fen: string): Promise<ChessDbResult> {
 
 /** Leert die Datenbank und setzt alle Einstellungen zurück. */
 export function factoryReset(): Promise<void> {
-  return invoke("factory_reset");
+  return invoke("factory_reset").then(() => {
+    invalidateSettingsCache();
+  });
 }
 
 /** Bytes menschenlesbar (1 Dezimalstelle ab MB). */
