@@ -31,6 +31,11 @@ type NativeNotificationOptions = {
   title: string;
   body: string;
   schedule?: ReturnType<typeof Schedule.interval>;
+  /**
+   * Android's batch command persists this verbatim for pending alarms and
+   * reboot restoration. The regular `notify` command does not need it.
+   */
+  sourceJson?: string;
 };
 
 type PendingNotification = {
@@ -140,7 +145,17 @@ function nativeNotification(options: NativeNotificationOptions): Promise<void> {
  * stellt ihn nach einem Geräte-Neustart wieder her.
  */
 async function nativeScheduledNotification(options: NativeNotificationOptions): Promise<void> {
-  await invoke<number[]>("plugin:notification|batch", { notifications: [options] });
+  // The Android plugin does not populate `sourceJson` while deserializing the
+  // batch argument. Without it, it stores the literal string "null"; the next
+  // get_pending call then fails inside the plugin and reboot restoration has
+  // no notification to deserialize.
+  const persistedOptions = {
+    ...options,
+    sourceJson: JSON.stringify(options),
+  };
+  await invoke<number[]>("plugin:notification|batch", {
+    notifications: [persistedOptions],
+  });
   const pending = await invoke<PendingNotification[]>(
     "plugin:notification|get_pending"
   );

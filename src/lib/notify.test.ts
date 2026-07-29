@@ -189,8 +189,26 @@ describe("native notification bridge", () => {
                 allowWhileIdle: false,
               },
             }),
+            sourceJson: expect.any(String),
           }),
         ],
+      })
+    );
+    const batchCall = invokeMock.mock.calls.find(
+      ([command]) => command === "plugin:notification|batch"
+    );
+    const scheduled = batchCall?.[1]?.notifications?.[0];
+    expect(JSON.parse(scheduled.sourceJson)).toEqual(
+      expect.objectContaining({
+        id: 4711,
+        title: expect.any(String),
+        body: expect.any(String),
+        schedule: {
+          interval: {
+            interval: { hour: 7, minute: 35 },
+            allowWhileIdle: false,
+          },
+        },
       })
     );
     expect(invokeMock).toHaveBeenCalledWith("plugin:notification|get_pending");

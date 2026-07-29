@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { de, deInt, evalLabel, winProb, fenAfter, setFormatLocale } from "./util";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  de,
+  deInt,
+  errorMessage,
+  evalLabel,
+  fenAfter,
+  setFormatLocale,
+  winProb,
+} from "./util";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -60,5 +68,19 @@ describe("fenAfter", () => {
   it("stops at the last legal move on invalid input instead of throwing", () => {
     const fen = fenAfter(["e4", "totally-illegal"]);
     expect(fen.split(" ")[0]).toBe("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR");
+  });
+});
+
+describe("errorMessage", () => {
+  it("uses the message from native Tauri rejection objects", () => {
+    expect(errorMessage({ code: "PLUGIN_ERROR", message: "Alarm rejected" })).toBe(
+      "Alarm rejected"
+    );
+  });
+
+  it("keeps structured details instead of rendering object Object", () => {
+    expect(errorMessage({ code: "PLUGIN_ERROR", data: { id: 4711 } })).toBe(
+      '{"code":"PLUGIN_ERROR","data":{"id":4711}}'
+    );
   });
 });

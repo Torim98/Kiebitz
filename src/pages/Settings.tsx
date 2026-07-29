@@ -70,7 +70,7 @@ import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { Button, Card, Chip } from "../components/ui";
-import { dateLocale, deInt } from "../lib/util";
+import { dateLocale, deInt, errorMessage } from "../lib/util";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -290,7 +290,7 @@ export default function SettingsPage() {
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     }
   };
 
@@ -562,8 +562,9 @@ export default function SettingsPage() {
       await sendTestReminder();
       setNotifyMsg(t("set.notifySent"));
     } catch (e) {
+      const message = errorMessage(e);
       setNotifyMsg(
-        String(e).includes("permission-denied") ? t("set.notifyDenied") : String(e)
+        message.includes("permission-denied") ? t("set.notifyDenied") : message
       );
     } finally {
       setNotifyBusy(false);
