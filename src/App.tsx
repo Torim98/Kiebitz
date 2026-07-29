@@ -135,6 +135,13 @@ export default function App() {
       delete document.documentElement.dataset.shell;
     };
   }, [isMobile]);
+  useEffect(() => {
+    if (!storeCapture) return;
+    document.documentElement.dataset.storeCapture = "true";
+    return () => {
+      delete document.documentElement.dataset.storeCapture;
+    };
+  }, [storeCapture]);
   const syncStatus = useSyncStatus();
   useEffect(() => {
     if (backend.mode !== "desktop") return;

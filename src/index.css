@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
+/* Browser automation focuses the control used to open a capture view. Keep
+   that implementation detail out of reproducible store screenshots. */
+html[data-store-capture="true"] :focus {
+  outline: none !important;
+}
+
 @theme {
   --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 

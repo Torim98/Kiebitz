@@ -389,14 +389,7 @@ fn next_puzzle_at(
     let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
     let cooldown = now - SOLVED_COOLDOWN_DAYS * 86_400;
     // Kürzlich gelöste Aufgaben überspringen; ältere dürfen zurückkommen.
-    let filter = "FROM puzzles INDEXED BY idx_puzzles_rating
-             WHERE rating BETWEEN ?1 AND ?2
-               AND (?3 IS NULL OR source = ?3)
-               AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
-               AND NOT EXISTS (
-                 SELECT 1 FROM puzzle_attempts AS pa
-                 WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
-               )";
+    let filter = puzzle_selection_filter(source_filter.as_deref());
     let columns = "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies";
     // Ein zufälliges Zielrating und je ein Indexsprung nach oben und unten:
     // das ist auch bei Millionen Aufgaben konstant schnell, während COUNT(*)
@@ -432,6 +425,33 @@ fn next_puzzle_at(
         }
     }
     Ok(None)
+}
+
+/// Eigene Aufgaben sind gegenüber dem Lichess-Dump sehr selten. Der
+/// Rating-Index müsste daher bei einem leeren oder kleinen Own-Game-Bestand
+/// Millionen fremde Aufgaben prüfen. Über den Source-Index bleibt die Suche
+/// proportional zur Zahl der eigenen Aufgaben. Für alle anderen Quellen ist
+/// der Rating-Index weiterhin der schnellste Einstieg.
+fn puzzle_selection_filter(source: Option<&str>) -> &'static str {
+    if source == Some("own") {
+        "FROM puzzles INDEXED BY idx_puzzles_source
+         WHERE source = ?3
+           AND rating BETWEEN ?1 AND ?2
+           AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
+           AND NOT EXISTS (
+             SELECT 1 FROM puzzle_attempts AS pa
+             WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
+           )"
+    } else {
+        "FROM puzzles INDEXED BY idx_puzzles_rating
+         WHERE rating BETWEEN ?1 AND ?2
+           AND (?3 IS NULL OR source = ?3)
+           AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
+           AND NOT EXISTS (
+             SELECT 1 FROM puzzle_attempts AS pa
+             WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
+           )"
+    }
 }
 
 fn map_puzzle(r: &rusqlite::Row) -> rusqlite::Result<PuzzleOut> {
@@ -1249,5 +1269,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn own_game_selection_uses_source_index() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let sql = format!(
+            "EXPLAIN QUERY PLAN SELECT id {} ORDER BY rating ASC LIMIT 1",
+            puzzle_selection_filter(Some("own"))
+        );
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let details: Vec<String> = stmt
+            .query_map(
+                params![1400, 1600, "own", Option::<String>::None, 0],
+                |row| row.get(3),
+            )
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("idx_puzzles_source")),
+            "unexpected query plan: {details:?}"
+        );
+        assert!(
+            details
+                .iter()
+                .all(|detail| !detail.contains("idx_puzzles_rating")),
+            "own-game query fell back to the large rating index: {details:?}"
+        );
     }
 }
