@@ -1,35 +1,114 @@
 /**
- * Brett-Klänge: Zug, Schlag, Schach, Rochade, Umwandlung, Fehlzug.
+ * Kurze, trockene Brettklänge ohne mitgelieferte Samples.
  *
- * Die Klänge werden per Web Audio synthetisiert statt als Dateien
- * mitgeliefert. Zwei Gründe: die Sound-Sets von lichess stehen unter eigenen
- * Lizenzen, die Kiebitz nicht weitergeben darf, und ein Klick aus Rauschen +
- * Körper kostet keine Bytes im Bundle. Charakter und Länge sind dem
- * "standard"-Set von lichess nachempfunden · ein kurzes, trockenes Holzklopfen,
- * beim Schlag lauter und mit tieferem Körper.
- *
- * Der Kontext entsteht erst beim ersten Klang, also immer aus einer
- * Nutzeraktion heraus · Browser und WebViews starten ihn sonst nicht.
+ * Jeder Klang wird beim ersten Gebrauch als kleiner PCM-Puffer gerendert:
+ * ein breitbandiger Kontaktimpuls regt mehrere unharmonische, rasch
+ * abklingende Resonanzen an. Das wirkt eher wie Holz auf Holz als wie ein
+ * gestimmter Synthesizer. Wie beim Lichess-Standardset bleiben nur drei
+ * Ereignisse bewusst einfach und wiedererkennbar: Zug, Schlag und Fehler.
  */
 
 export type BoardSoundKind =
   | "move"
   | "capture"
-  | "check"
-  | "castle"
-  | "promote"
   | "error";
 
-/** Fällt in Umgebungen ohne Web Audio (jsdom, alte WebViews) auf null zurück. */
 type AudioContextCtor = new () => AudioContext;
+
+interface Mode {
+  frequency: number;
+  gain: number;
+  decayMs: number;
+}
+
+interface Strike {
+  /** Start innerhalb des Gesamtklangs. */
+  atMs: number;
+  gain: number;
+  /** Durchlassbereich des kurzen Kontaktgeräuschs. */
+  noiseLowHz: number;
+  noiseHighHz: number;
+  noiseGain: number;
+  noiseDecayMs: number;
+  modes: Mode[];
+}
+
+interface SoundDesign {
+  durationMs: number;
+  /** Zielspitze vor dem gemeinsamen Lautstärkeregler. */
+  peak: number;
+  strikes: Strike[];
+}
+
+/**
+ * Keine Tonhöhenfahrten und keine langen Wellenformen: Unterschiede entstehen
+ * ausschließlich durch Härte, Gewicht und Resonanz desselben Materials.
+ */
+const DESIGNS: Record<BoardSoundKind, SoundDesign> = {
+  move: {
+    durationMs: 170,
+    peak: 0.36,
+    strikes: [
+      {
+        atMs: 0,
+        gain: 1,
+        noiseLowHz: 740,
+        noiseHighHz: 4800,
+        noiseGain: 0.84,
+        noiseDecayMs: 5.2,
+        modes: [
+          { frequency: 255, gain: 0.18, decayMs: 46 },
+          { frequency: 720, gain: 0.13, decayMs: 33 },
+          { frequency: 1540, gain: 0.05, decayMs: 18 },
+        ],
+      },
+    ],
+  },
+  capture: {
+    durationMs: 220,
+    peak: 0.48,
+    strikes: [
+      {
+        atMs: 0,
+        gain: 1,
+        noiseLowHz: 480,
+        noiseHighHz: 5900,
+        noiseGain: 0.96,
+        noiseDecayMs: 6.8,
+        modes: [
+          { frequency: 185, gain: 0.26, decayMs: 58 },
+          { frequency: 520, gain: 0.18, decayMs: 42 },
+          { frequency: 1180, gain: 0.08, decayMs: 25 },
+        ],
+      },
+    ],
+  },
+  error: {
+    durationMs: 150,
+    peak: 0.3,
+    strikes: [
+      {
+        atMs: 0,
+        gain: 1,
+        noiseLowHz: 180,
+        noiseHighHz: 1700,
+        noiseGain: 0.52,
+        noiseDecayMs: 7.5,
+        modes: [
+          { frequency: 125, gain: 0.22, decayMs: 54 },
+          { frequency: 280, gain: 0.12, decayMs: 36 },
+        ],
+      },
+    ],
+  },
+};
 
 let context: AudioContext | null = null;
 let master: GainNode | null = null;
-let noise: AudioBuffer | null = null;
 let enabled = true;
 let volume = 0.7;
-/** Ein einmal fehlgeschlagener Kontext wird nicht bei jedem Zug neu versucht. */
 let unavailable = false;
+const buffers = new Map<string, AudioBuffer>();
 
 export function setBoardSoundEnabled(on: boolean): void {
   enabled = on;
@@ -39,10 +118,17 @@ export function boardSoundEnabled(): boolean {
   return enabled;
 }
 
-/** 0 … 1; die Klänge bleiben absichtlich deutlich unter Vollaussteuerung. */
+/** 0 … 1; selbst bei 100 % bleibt ausreichend Headroom für schnelle Folgen. */
 export function setBoardSoundVolume(value: number): void {
   volume = Math.max(0, Math.min(1, value));
-  if (master && context) master.gain.setValueAtTime(volume * 0.5, context.currentTime);
+  if (master && context) {
+    master.gain.setValueAtTime(masterGain(volume), context.currentTime);
+  }
+}
+
+function masterGain(value: number): number {
+  // Der leicht gekrümmte Verlauf gibt dem unteren Teil des Reglers mehr Raum.
+  return Math.pow(value, 1.2) * 0.62;
 }
 
 function audioCtor(): AudioContextCtor | null {
@@ -52,22 +138,6 @@ function audioCtor(): AudioContextCtor | null {
     webkitAudioContext?: AudioContextCtor;
   };
   return w.AudioContext ?? w.webkitAudioContext ?? null;
-}
-
-/** Rauschbasis für den Anschlag · einmal erzeugt, danach nur noch abgespielt. */
-function noiseBuffer(ctx: AudioContext): AudioBuffer {
-  if (noise) return noise;
-  const length = Math.floor(ctx.sampleRate * 0.25);
-  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  // Deterministischer Pseudo-Zufall: derselbe Anschlag bei jedem Start.
-  let seed = 0x2f6e2b1;
-  for (let i = 0; i < length; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    data[i] = (seed / 0x3fffffff) - 1;
-  }
-  noise = buffer;
-  return buffer;
 }
 
 function ensureContext(): AudioContext | null {
@@ -81,7 +151,7 @@ function ensureContext(): AudioContext | null {
   try {
     const ctx = new Ctor();
     const gain = ctx.createGain();
-    gain.gain.value = volume * 0.5;
+    gain.gain.value = masterGain(volume);
     gain.connect(ctx.destination);
     context = ctx;
     master = gain;
@@ -92,179 +162,126 @@ function ensureContext(): AudioContext | null {
   }
 }
 
-interface Layer {
-  /** Bandpass-Mitte des Anschlags in Hz. */
-  noiseHz: number;
-  noiseQ: number;
-  noiseGain: number;
-  noiseDecay: number;
-  /** Körper: Startfrequenz und Ziel, über die Dauer heruntergezogen. */
-  bodyFrom: number;
-  bodyTo: number;
-  bodyGain: number;
-  bodyDecay: number;
-  type: OscillatorType;
+/** Kleiner deterministischer Generator für reproduzierbare Klangvarianten. */
+function randomGenerator(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function filterCoefficient(cutoff: number, sampleRate: number): number {
+  return 1 - Math.exp((-2 * Math.PI * cutoff) / sampleRate);
 }
 
 /**
- * Die sechs Klänge als Parametersatz. Die Werte sind nach Gehör an das
- * lichess-Standardset angenähert: Zug kurz und mittig, Schlag lauter mit
- * tieferem Körper, Schach heller, Fehlzug als abfallender Zweiklang.
+ * Rendert exakt den Puffer, der später abgespielt wird. Der Export hält die
+ * Synthese ohne AudioContext testbar.
  */
-const LAYERS: Record<BoardSoundKind, Layer[]> = {
-  move: [
-    {
-      noiseHz: 1250,
-      noiseQ: 1.1,
-      noiseGain: 0.5,
-      noiseDecay: 0.055,
-      bodyFrom: 220,
-      bodyTo: 130,
-      bodyGain: 0.32,
-      bodyDecay: 0.075,
-      type: "triangle",
-    },
-  ],
-  capture: [
-    {
-      noiseHz: 1900,
-      noiseQ: 0.75,
-      noiseGain: 0.85,
-      noiseDecay: 0.075,
-      bodyFrom: 300,
-      bodyTo: 90,
-      bodyGain: 0.5,
-      bodyDecay: 0.13,
-      type: "triangle",
-    },
-    {
-      noiseHz: 520,
-      noiseQ: 1.4,
-      noiseGain: 0.45,
-      noiseDecay: 0.11,
-      bodyFrom: 150,
-      bodyTo: 70,
-      bodyGain: 0.3,
-      bodyDecay: 0.16,
-      type: "sine",
-    },
-  ],
-  check: [
-    {
-      noiseHz: 2600,
-      noiseQ: 1.6,
-      noiseGain: 0.6,
-      noiseDecay: 0.05,
-      bodyFrom: 880,
-      bodyTo: 660,
-      bodyGain: 0.26,
-      bodyDecay: 0.16,
-      type: "sine",
-    },
-  ],
-  castle: [
-    {
-      noiseHz: 1100,
-      noiseQ: 1.1,
-      noiseGain: 0.45,
-      noiseDecay: 0.05,
-      bodyFrom: 200,
-      bodyTo: 120,
-      bodyGain: 0.3,
-      bodyDecay: 0.07,
-      type: "triangle",
-    },
-    {
-      noiseHz: 1100,
-      noiseQ: 1.1,
-      noiseGain: 0.4,
-      noiseDecay: 0.05,
-      bodyFrom: 190,
-      bodyTo: 115,
-      bodyGain: 0.26,
-      bodyDecay: 0.07,
-      type: "triangle",
-    },
-  ],
-  promote: [
-    {
-      noiseHz: 1500,
-      noiseQ: 1.2,
-      noiseGain: 0.4,
-      noiseDecay: 0.05,
-      bodyFrom: 520,
-      bodyTo: 1040,
-      bodyGain: 0.3,
-      bodyDecay: 0.2,
-      type: "sine",
-    },
-  ],
-  error: [
-    {
-      noiseHz: 400,
-      noiseQ: 1.2,
-      noiseGain: 0.3,
-      noiseDecay: 0.06,
-      bodyFrom: 220,
-      bodyTo: 110,
-      bodyGain: 0.4,
-      bodyDecay: 0.22,
-      type: "sawtooth",
-    },
-  ],
-};
-
-/** Zweite Rochaden-/Schlagschicht startet minimal später (Doppelschlag). */
-const LAYER_DELAY = 0.045;
-
-function playLayer(ctx: AudioContext, target: GainNode, layer: Layer, at: number): void {
-  const noiseSource = ctx.createBufferSource();
-  noiseSource.buffer = noiseBuffer(ctx);
-  const band = ctx.createBiquadFilter();
-  band.type = "bandpass";
-  band.frequency.value = layer.noiseHz;
-  band.Q.value = layer.noiseQ;
-  const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(layer.noiseGain, at);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, at + layer.noiseDecay);
-  noiseSource.connect(band).connect(noiseGain).connect(target);
-  noiseSource.start(at);
-  noiseSource.stop(at + layer.noiseDecay + 0.02);
-
-  const osc = ctx.createOscillator();
-  osc.type = layer.type;
-  osc.frequency.setValueAtTime(layer.bodyFrom, at);
-  osc.frequency.exponentialRampToValueAtTime(
-    Math.max(20, layer.bodyTo),
-    at + layer.bodyDecay
+export function renderBoardSound(kind: BoardSoundKind, sampleRate: number): Float32Array {
+  const design = DESIGNS[kind];
+  const safeRate = Math.max(8000, Math.round(sampleRate));
+  const output = new Float32Array(Math.ceil((design.durationMs / 1000) * safeRate));
+  const kindSeed = Array.from(kind).reduce(
+    (seed, character) => Math.imul(seed ^ character.charCodeAt(0), 16777619),
+    0x4b494542
   );
-  const bodyGain = ctx.createGain();
-  bodyGain.gain.setValueAtTime(layer.bodyGain, at);
-  bodyGain.gain.exponentialRampToValueAtTime(0.0001, at + layer.bodyDecay);
-  osc.connect(bodyGain).connect(target);
-  osc.start(at);
-  osc.stop(at + layer.bodyDecay + 0.02);
+  const random = randomGenerator(kindSeed);
+
+  for (const strike of design.strikes) {
+    const start = Math.round((strike.atMs / 1000) * safeRate);
+    const lowAlpha = filterCoefficient(strike.noiseLowHz, safeRate);
+    const highAlpha = filterCoefficient(strike.noiseHighHz, safeRate);
+    let lowState = 0;
+    let highState = 0;
+    const phases = strike.modes.map(() => random() * Math.PI * 2);
+    const detunes = strike.modes.map(() => 0.994 + random() * 0.012);
+
+    for (let index = start; index < output.length; index++) {
+      const seconds = (index - start) / safeRate;
+      const ms = seconds * 1000;
+      const white = random() * 2 - 1;
+      lowState += lowAlpha * (white - lowState);
+      highState += highAlpha * (white - highState);
+      const contact =
+        (highState - lowState) *
+        strike.noiseGain *
+        Math.exp(-ms / strike.noiseDecayMs);
+
+      // Ein sehr kurzer Anstieg verhindert einen digitalen Sample-Klick,
+      // ohne den eigentlichen Anschlag weichzuspülen.
+      const attack = Math.min(1, ms / 0.45);
+      let resonance = 0;
+      for (let modeIndex = 0; modeIndex < strike.modes.length; modeIndex++) {
+        const mode = strike.modes[modeIndex];
+        resonance +=
+          Math.sin(
+            2 * Math.PI * mode.frequency * detunes[modeIndex] * seconds +
+              phases[modeIndex]
+          ) *
+          mode.gain *
+          attack *
+          Math.exp(-ms / mode.decayMs);
+      }
+      output[index] += (contact + resonance) * strike.gain;
+    }
+  }
+
+  // DC entfernen und die Summe sanft verdichten. Das hält Doppelschläge
+  // kontrolliert, ohne den Kontaktimpuls hart abzuschneiden.
+  let previousInput = 0;
+  let previousOutput = 0;
+  let peak = 0;
+  for (let index = 0; index < output.length; index++) {
+    const input = Math.tanh(output[index] * 1.08);
+    const highPassed = input - previousInput + 0.995 * previousOutput;
+    previousInput = input;
+    previousOutput = highPassed;
+    output[index] = highPassed;
+    peak = Math.max(peak, Math.abs(highPassed));
+  }
+
+  const scale = peak > 0 ? design.peak / peak : 0;
+  const fadeSamples = Math.min(output.length, Math.round(safeRate * 0.006));
+  for (let index = 0; index < output.length; index++) {
+    const remaining = output.length - 1 - index;
+    const fade = remaining < fadeSamples ? remaining / fadeSamples : 1;
+    output[index] *= scale * fade;
+  }
+  return output;
+}
+
+function soundBuffer(ctx: AudioContext, kind: BoardSoundKind): AudioBuffer {
+  const key = `${ctx.sampleRate}:${kind}`;
+  const cached = buffers.get(key);
+  if (cached) return cached;
+  const samples = renderBoardSound(kind, ctx.sampleRate);
+  const buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+  buffer.getChannelData(0).set(samples);
+  buffers.set(key, buffer);
+  return buffer;
 }
 
 /**
- * Spielt einen Brett-Klang. Fehlt Web Audio oder ist der Ton abgeschaltet,
- * passiert nichts · Aufrufer müssen das nicht prüfen.
- *
- * `delaySeconds` staffelt mehrere Klänge desselben Zuges (Schlag + Schach),
- * damit sie nacheinander und nicht als ein Geräusch zu hören sind.
+ * Spielt einen Brettklang. Fehlt Web Audio oder ist der Ton abgeschaltet,
+ * passiert nichts; Aufrufer müssen das nicht prüfen.
  */
 export function playBoardSound(kind: BoardSoundKind, delaySeconds = 0): void {
   if (!enabled) return;
   const ctx = ensureContext();
   if (!ctx || !master) return;
-  // Nach einem Tab-Wechsel steht der Kontext oft suspendiert da.
   if (ctx.state === "suspended") void ctx.resume().catch(() => {});
-  const now = ctx.currentTime + 0.005 + Math.max(0, delaySeconds);
-  LAYERS[kind].forEach((layer, index) => {
-    try {
-      playLayer(ctx, master!, layer, now + index * LAYER_DELAY);
-    } catch {
-      /* Ein einzelner fehlgeschlagener Knoten darf den Zug nicht stören. */
-    }
-  });
+  const at = ctx.currentTime + 0.005 + Math.max(0, delaySeconds);
+  try {
+    const source = ctx.createBufferSource();
+    source.buffer = soundBuffer(ctx, kind);
+    source.connect(master);
+    source.start(at);
+  } catch {
+    /* Ein fehlgeschlagener Klang darf keinen Zug unterbrechen. */
+  }
 }

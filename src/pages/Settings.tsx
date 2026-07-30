@@ -74,7 +74,7 @@ import { openExternal } from "../lib/ext";
 import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
-import { setBoardSoundEnabled, setBoardSoundVolume, playBoardSound } from "../lib/sound";
+import { setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
 
@@ -842,10 +842,7 @@ export default function SettingsPage({
                   checked={draft.sound_enabled}
                   onChange={(e) => {
                     patch({ sound_enabled: e.target.checked });
-                    // Sofort hörbar, nicht erst nach dem Speichern · beim
-                    // Einschalten kommt der Zugklang als Bestätigung.
                     setBoardSoundEnabled(e.target.checked);
-                    if (e.target.checked) playBoardSound("move");
                   }}
                   className="mt-0.5 h-4 w-4 accent-[#22c08a]"
                 />
@@ -856,8 +853,8 @@ export default function SettingsPage({
                   </span>
                 </span>
               </label>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <label className="flex min-w-[200px] flex-1 items-center gap-3">
+              <div className="mt-4">
+                <label className="flex items-center gap-3">
                   <span className="shrink-0 text-[12px] text-ink3">{t("set.soundVolume")}</span>
                   <input
                     type="range"
@@ -877,17 +874,6 @@ export default function SettingsPage({
                     {draft.sound_volume} %
                   </span>
                 </label>
-                <Button
-                  disabled={!draft.sound_enabled}
-                  onClick={() => {
-                    setBoardSoundEnabled(true);
-                    setBoardSoundVolume(draft.sound_volume / 100);
-                    playBoardSound("capture");
-                    playBoardSound("check", 0.24);
-                  }}
-                >
-                  <Volume2 size={14} /> {t("set.soundTest")}
-                </Button>
               </div>
             </>
           ) : (

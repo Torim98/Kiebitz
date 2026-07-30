@@ -165,6 +165,14 @@ describe("Settings loading", () => {
     // Kein Aufklappen nötig: der Inhalt steht direkt da.
     expect(screen.getByText("set.langNoteApp")).toBeTruthy();
     expect(screen.getByText("set.soundToggle")).toBeTruthy();
+    expect(screen.queryByText("set.soundTest")).toBeNull();
+    const soundToggle = screen
+      .getByText("set.soundToggle")
+      .closest("label")!
+      .querySelector("input") as HTMLInputElement;
+    expect(soundToggle.checked).toBe(true);
+    fireEvent.click(soundToggle);
+    expect(soundToggle.checked).toBe(false);
     expect(screen.getByText("set.engineNote")).toBeTruthy();
     // Die Zwischenüberschrift der Expertenbereiche gibt es nur mobil.
     expect(screen.queryByText("set.advanced")).toBeNull();

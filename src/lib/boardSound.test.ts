@@ -38,10 +38,10 @@ describe("soundsForTransition", () => {
     expect(soundsForTransition(before, after(["e4", "d5", "exd5"]))).toEqual(["capture"]);
   });
 
-  it("recognizes castling by the king's two-file jump", () => {
+  it("uses the regular move sound for castling", () => {
     const before = after(["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"]);
     expect(soundsForTransition(before, after(["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O"]))).toEqual([
-      "castle",
+      "move",
     ]);
   });
 
@@ -50,17 +50,23 @@ describe("soundsForTransition", () => {
     expect(soundsForTransition(after(line), after([...line, "exd6"]))).toEqual(["capture"]);
   });
 
-  it("adds the check sound on top of the physical sound", () => {
+  it("does not add a separate check effect", () => {
     const line = ["e4", "f5", "Qh5"];
-    expect(soundsForTransition(after(["e4", "f5"]), after(line))).toEqual(["move", "check"]);
+    expect(soundsForTransition(after(["e4", "f5"]), after(line))).toEqual(["move"]);
   });
 
-  it("plays the promotion sound, capture or not", () => {
+  it("uses the regular move sound for a quiet promotion", () => {
     // Bauer auf a7, Umwandlung auf a8 ohne Schlag · der schwarze König steht
     // auf h5, also außerhalb der Linien der neuen Dame.
     const before = "8/P7/8/7k/8/8/8/K7 w - - 0 1";
     const promoted = "Q7/8/8/7k/8/8/8/K7 b - - 0 1";
-    expect(soundsForTransition(before, promoted)).toEqual(["promote"]);
+    expect(soundsForTransition(before, promoted)).toEqual(["move"]);
+  });
+
+  it("uses the capture sound for a capturing promotion", () => {
+    const before = "r6k/1P6/8/8/8/8/8/K7 w - - 0 1";
+    const promoted = "Q6k/8/8/8/8/8/8/K7 b - - 0 1";
+    expect(soundsForTransition(before, promoted)).toEqual(["capture"]);
   });
 
   it("stays silent when the position changes wholesale", () => {

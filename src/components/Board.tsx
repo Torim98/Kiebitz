@@ -99,9 +99,7 @@ export default function Board({
     const previous = soundFenRef.current;
     soundFenRef.current = fen;
     if (silent) return;
-    soundsForTransition(previous, fen).forEach((kind, index) =>
-      playBoardSound(kind, index * 0.06)
-    );
+    soundsForTransition(previous, fen).forEach((kind) => playBoardSound(kind));
   }, [fen, silent]);
 
   /**
