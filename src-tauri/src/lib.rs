@@ -270,8 +270,13 @@ async fn analyze_live(
 }
 
 #[tauri::command]
-fn stop_live(state: tauri::State<live::LiveEngine>) {
-    state.stop();
+async fn stop_live(app: tauri::AppHandle) {
+    // A process pipe or engine-state mutex must never stall Tauri's command
+    // dispatcher, especially while Android is busy scheduling Stockfish.
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        app.state::<live::LiveEngine>().stop();
+    })
+    .await;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

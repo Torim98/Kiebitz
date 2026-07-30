@@ -61,6 +61,12 @@ describe("LiveEngine", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(mocks.analyzeLive).toHaveBeenCalled();
     expect(mocks.infoListener).not.toBeNull();
 
@@ -80,7 +86,7 @@ describe("LiveEngine", () => {
     expect(onEval).not.toHaveBeenCalled();
 
     act(() => {
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(150);
     });
     expect(onEval).toHaveBeenCalledTimes(1);
     expect(onEval).toHaveBeenLastCalledWith(20, null);
@@ -91,5 +97,45 @@ describe("LiveEngine", () => {
       await Promise.resolve();
     });
     expect(mocks.stopLive).toHaveBeenCalled();
+  });
+
+  it("analyzes only the latest position in a quick move sequence", async () => {
+    const firstFen = "8/8/8/8/8/8/4K3/7k w - - 0 1";
+    const secondFen = "8/8/8/8/8/4K3/8/7k b - - 1 1";
+    const thirdFen = "8/8/8/8/8/4K3/7k/8 w - - 2 2";
+    const view = render(
+      <LocaleProvider>
+        <LiveEngine fen={firstFen} demoLines={[]} />
+      </LocaleProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    view.rerender(
+      <LocaleProvider>
+        <LiveEngine fen={secondFen} demoLines={[]} />
+      </LocaleProvider>
+    );
+    view.rerender(
+      <LocaleProvider>
+        <LiveEngine fen={thirdFen} demoLines={[]} />
+      </LocaleProvider>
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
+    expect(mocks.analyzeLive).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mocks.analyzeLive).toHaveBeenCalledTimes(1);
+    expect(mocks.analyzeLive).toHaveBeenCalledWith(thirdFen);
   });
 });

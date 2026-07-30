@@ -18,6 +18,43 @@ pub(crate) fn configure_child_process(command: &mut Command) {
     let _ = command;
 }
 
+/// Stockfish is deliberately a background workload. Giving its process a
+/// lower scheduler priority keeps the WebView and input handling responsive
+/// even when the configured engine threads saturate the device.
+pub(crate) fn lower_child_process_priority(child: &Child) {
+    #[cfg(windows)]
+    {
+        use std::ffi::c_void;
+        use std::os::windows::io::AsRawHandle;
+
+        const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn SetPriorityClass(process: *mut c_void, priority_class: u32) -> i32;
+        }
+
+        // A failed priority adjustment is not fatal: the engine remains usable
+        // with the platform default priority.
+        let _ = unsafe { SetPriorityClass(child.as_raw_handle(), BELOW_NORMAL_PRIORITY_CLASS) };
+    }
+
+    #[cfg(unix)]
+    {
+        const PRIO_PROCESS: i32 = 0;
+        #[link(name = "c")]
+        extern "C" {
+            fn setpriority(which: i32, who: u32, priority: i32) -> i32;
+        }
+
+        // Positive niceness gives the UI precedence without throttling the
+        // engine while the device is otherwise idle.
+        let _ = unsafe { setpriority(PRIO_PROCESS, child.id(), 10) };
+    }
+
+    #[cfg(not(any(windows, unix)))]
+    let _ = child;
+}
+
 #[derive(Serialize)]
 pub struct AnalysisResult {
     pub bestmove: String,
@@ -46,6 +83,7 @@ impl UciEngine {
         let mut child = command
             .spawn()
             .map_err(|e| format!("Engine konnte nicht gestartet werden ({path}): {e}"))?;
+        lower_child_process_priority(&child);
 
         let stdout = child.stdout.take().ok_or("stdout nicht verfügbar")?;
         let mut engine = Self {

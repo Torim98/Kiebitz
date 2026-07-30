@@ -11,7 +11,9 @@ type EngineState =
   | { mode: "desktop"; info: EngineInfo };
 
 /** Engine-Werte müssen nicht häufiger als die Oberfläche sichtbar neu zeichnen. */
-const ENGINE_UI_INTERVAL_MS = 100;
+const ENGINE_UI_INTERVAL_MS = 150;
+/** Bei Zugfolgen erst die Stellung analysieren, auf der der Nutzer kurz bleibt. */
+const ENGINE_START_DELAY_MS = 120;
 
 /** Wandelt die UCI-Hauptvariante (z. B. "e2e4") in lesbares SAN um. */
 function pvToSan(fen: string, pv: string[]): string {
@@ -153,13 +155,22 @@ export default function LiveEngine({
       return;
     }
     let stale = false;
-    analyzeLive(fen)
-      .then((generation) => {
-        if (!stale) genRef.current = generation;
-      })
-      .catch(() => {});
+    // Die laufende Suche sofort stoppen, den Neustart aber kurz entprellen.
+    // Dadurch bleibt schnelles Ziehen flüssig und erzeugt keine Engine-Queue.
+    const stopped = stopLive().catch(() => {});
+    const startTimer = setTimeout(() => {
+      stopped.then(() => {
+        if (stale) return;
+        analyzeLive(fen)
+          .then((generation) => {
+            if (!stale) genRef.current = generation;
+          })
+          .catch(() => {});
+      });
+    }, ENGINE_START_DELAY_MS);
     return () => {
       stale = true;
+      clearTimeout(startTimer);
     };
   }, [available, fen, running]);
 

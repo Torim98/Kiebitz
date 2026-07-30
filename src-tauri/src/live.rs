@@ -16,8 +16,23 @@ pub struct LiveEngine {
 }
 
 struct LiveProc {
-    stdin: ChildStdin,
-    _child: Child,
+    stdin: Arc<Mutex<ChildStdin>>,
+    search: Arc<Mutex<SearchState>>,
+    child: Child,
+}
+
+#[derive(Clone)]
+struct PendingSearch {
+    generation: u64,
+    fen: String,
+    depth: u32,
+}
+
+#[derive(Default)]
+struct SearchState {
+    active_generation: Option<u64>,
+    pending: Option<PendingSearch>,
+    stopping: bool,
 }
 
 /// Eine gestreamte Analyse-Zeile (eine MultiPV-Linie bei einer Tiefe).
@@ -63,15 +78,17 @@ impl LiveEngine {
             *guard = Some(self.spawn(app, engine_path)?);
         }
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let request = PendingSearch {
+            generation,
+            fen: fen.to_string(),
+            depth,
+        };
         let proc = guard.as_mut().unwrap();
-        let cmd = format!("stop\nposition fen {fen}\ngo depth {depth}\n");
-        if proc.stdin.write_all(cmd.as_bytes()).is_err() {
+        if queue_search(proc, request.clone()).is_err() {
             // Engine-Prozess ist gestorben · einmal neu starten.
             *guard = Some(self.spawn(app, engine_path)?);
             let proc = guard.as_mut().unwrap();
-            proc.stdin
-                .write_all(cmd.as_bytes())
-                .map_err(|e| format!("Engine nicht erreichbar: {e}"))?;
+            queue_search(proc, request).map_err(|e| format!("Engine nicht erreichbar: {e}"))?;
         }
         Ok(generation)
     }
@@ -79,7 +96,14 @@ impl LiveEngine {
     pub fn stop(&self) {
         if let Ok(mut guard) = self.inner.lock() {
             if let Some(proc) = guard.as_mut() {
-                let _ = proc.stdin.write_all(b"stop\n");
+                if let (Ok(mut search), Ok(mut stdin)) = (proc.search.lock(), proc.stdin.lock()) {
+                    search.pending = None;
+                    if search.active_generation.is_some() && !search.stopping {
+                        if stdin.write_all(b"stop\n").is_ok() {
+                            search.stopping = true;
+                        }
+                    }
+                }
             }
         }
     }
@@ -89,7 +113,12 @@ impl LiveEngine {
     pub fn shutdown(&self) {
         if let Ok(mut guard) = self.inner.lock() {
             if let Some(proc) = guard.as_mut() {
-                let _ = proc.stdin.write_all(b"quit\n");
+                if let Ok(mut search) = proc.search.lock() {
+                    search.pending = None;
+                }
+                if let Ok(mut stdin) = proc.stdin.lock() {
+                    let _ = stdin.write_all(b"quit\n");
+                }
             }
             *guard = None;
         }
@@ -105,9 +134,10 @@ impl LiveEngine {
         let mut child = command
             .spawn()
             .map_err(|e| format!("Engine konnte nicht gestartet werden ({path}): {e}"))?;
+        crate::engine::lower_child_process_priority(&child);
 
         let stdout = child.stdout.take().ok_or("stdout nicht verfügbar")?;
-        let mut stdin = child.stdin.take().ok_or("stdin nicht verfügbar")?;
+        let mut child_stdin = child.stdin.take().ok_or("stdin nicht verfügbar")?;
 
         let (threads, hash_mb, multipv) = {
             let s = app.state::<crate::settings::SettingsState>();
@@ -123,14 +153,17 @@ impl LiveEngine {
             )
         };
         write!(
-            stdin,
+            child_stdin,
             "uci\nsetoption name MultiPV value {multipv}\nsetoption name Threads value {threads}\nsetoption name Hash value {hash_mb}\nisready\n"
         )
         .map_err(|e| format!("Engine-Handshake fehlgeschlagen: {e}"))?;
 
         // Reader-Thread: parst info-Zeilen und streamt sie als Events.
         let app = app.clone();
-        let generation = Arc::clone(&self.generation);
+        let stdin = Arc::new(Mutex::new(child_stdin));
+        let reader_stdin = Arc::clone(&stdin);
+        let search = Arc::new(Mutex::new(SearchState::default()));
+        let reader_search = Arc::clone(&search);
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
@@ -141,25 +174,86 @@ impl LiveEngine {
                     Ok(_) => {}
                 }
                 let trimmed = line.trim();
-                let gen_now = generation.load(Ordering::SeqCst);
-                if let Some(info) = parse_info(trimmed, gen_now) {
-                    let _ = app.emit("engine://info", info);
+                if trimmed.starts_with("info ") {
+                    let generation = reader_search
+                        .lock()
+                        .ok()
+                        .and_then(|state| state.active_generation);
+                    if let Some(info) =
+                        generation.and_then(|generation| parse_info(trimmed, generation))
+                    {
+                        let _ = app.emit("engine://info", info);
+                    }
                 } else if let Some(rest) = trimmed.strip_prefix("bestmove ") {
-                    let _ = app.emit(
-                        "engine://done",
-                        LiveDone {
-                            generation: gen_now,
-                            bestmove: rest.split_whitespace().next().unwrap_or("").to_string(),
-                        },
-                    );
+                    let finished_generation = if let Ok(mut state) = reader_search.lock() {
+                        let finished = state.active_generation.take();
+                        state.stopping = false;
+                        if let Some(next) = state.pending.take() {
+                            if let Ok(mut stdin) = reader_stdin.lock() {
+                                if write_search(&mut stdin, &next).is_ok() {
+                                    state.active_generation = Some(next.generation);
+                                }
+                            }
+                        }
+                        finished
+                    } else {
+                        None
+                    };
+                    if let Some(generation) = finished_generation {
+                        let _ = app.emit(
+                            "engine://done",
+                            LiveDone {
+                                generation,
+                                bestmove: rest.split_whitespace().next().unwrap_or("").to_string(),
+                            },
+                        );
+                    }
                 }
             }
         });
 
         Ok(LiveProc {
             stdin,
-            _child: child,
+            search,
+            child,
         })
+    }
+}
+
+/// Start immediately when idle. While Stockfish is still calculating, only
+/// retain the newest request and wait for the mandatory `bestmove` response to
+/// `stop` before sending the next `position`/`go` pair.
+fn queue_search(proc: &mut LiveProc, request: PendingSearch) -> Result<(), std::io::Error> {
+    let mut search = proc.search.lock().unwrap_or_else(|e| e.into_inner());
+    let mut stdin = proc.stdin.lock().unwrap_or_else(|e| e.into_inner());
+    if search.active_generation.is_none() {
+        write_search(&mut stdin, &request)?;
+        search.active_generation = Some(request.generation);
+    } else {
+        search.pending = Some(request);
+        if !search.stopping {
+            stdin.write_all(b"stop\n")?;
+            search.stopping = true;
+        }
+    }
+    Ok(())
+}
+
+fn write_search(stdin: &mut ChildStdin, request: &PendingSearch) -> Result<(), std::io::Error> {
+    write!(
+        stdin,
+        "position fen {}\ngo depth {}\n",
+        request.fen, request.depth
+    )
+}
+
+impl Drop for LiveProc {
+    fn drop(&mut self) {
+        if let Ok(mut stdin) = self.stdin.lock() {
+            let _ = stdin.write_all(b"quit\n");
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
