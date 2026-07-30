@@ -92,11 +92,11 @@ body {
   );
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-size: 120% 120%;
-  mask-size: 120% 120%;
+  -webkit-mask-size: 124% 124%;
+  mask-size: 124% 124%;
   -webkit-mask-position: 18% 14%;
   mask-position: 18% 14%;
-  animation: chess-drift 96s ease-in-out infinite;
+  animation: chess-drift 90s ease-in-out infinite;
 }
 
 /* Ein voller Umlauf dauert über eine Minute · die Bewegung soll auffallen,
