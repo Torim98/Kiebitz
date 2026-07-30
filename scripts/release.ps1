@@ -13,6 +13,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$versionFilesChanged = $false
+$releaseCommitCreated = $false
 
 function Invoke-Checked {
   param([string]$Command, [string[]]$Arguments)
@@ -46,6 +48,10 @@ try {
   Invoke-Checked npm @("run", "build")
   Invoke-Checked npm @("run", "test:run")
   Invoke-Checked cargo @("test", "--manifest-path", "src-tauri/Cargo.toml")
+
+  # Ab hier werden Versionsdateien verändert. Schlägt Build oder Prüfung fehl,
+  # stellt der catch-Block den zuvor garantierten sauberen Zustand wieder her.
+  $versionFilesChanged = $true
 
   # npm hält package.json und package-lock.json konsistent, ohne selbst zu taggen.
   Invoke-Checked npm @("version", $Version, "--no-git-tag-version", "--ignore-scripts")
@@ -89,11 +95,24 @@ try {
 
   Invoke-Checked git @("add", "package.json", "package-lock.json", "src-tauri/tauri.conf.json")
   Invoke-Checked git @("commit", "-m", "Release v$Version")
+  $releaseCommitCreated = $true
   Invoke-Checked git @("tag", "-a", "v$Version", "-m", "Kiebitz v$Version")
-  Invoke-Checked git @("push", "origin", "main", "v$Version")
+  # Branch und Tag kommen gemeinsam auf GitHub oder gar nicht.
+  Invoke-Checked git @("push", "--atomic", "origin", "main", "v$Version")
 
   Write-Host "Release v$Version gestartet: https://github.com/Torim98/Kiebitz/actions" -ForegroundColor Green
   Write-Host "Play-AAB für die Google Play Console: $playAab" -ForegroundColor Green
+}
+catch {
+  $releaseError = $_
+  if ($versionFilesChanged -and -not $releaseCommitCreated) {
+    Write-Warning "Release fehlgeschlagen; Versionsdateien werden auf HEAD zurückgesetzt."
+    & git restore --source=HEAD -- package.json package-lock.json src-tauri/tauri.conf.json
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "Automatischer Rollback fehlgeschlagen. Bitte die drei Versionsdateien prüfen."
+    }
+  }
+  throw $releaseError
 }
 finally {
   Pop-Location

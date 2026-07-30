@@ -1107,6 +1107,7 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
 }
 
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
+#[cfg(any(desktop, test))]
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
     apply_game_tombstones(conn, &req.game_tombstones)?;
     apply_games(conn, &req.games)?;
@@ -1317,6 +1318,7 @@ fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
 
 /// Beantwortet Discovery-Broadcasts vom Handy mit "KIEBITZ_HERE <port>".
 /// Der eigentliche Sync auf diesem Port erfolgt ausschließlich per HTTPS.
+#[cfg(desktop)]
 fn start_discovery_responder() {
     std::thread::spawn(|| {
         let sock = match std::net::UdpSocket::bind(("0.0.0.0", DISCOVERY_PORT)) {
@@ -1509,6 +1511,7 @@ pub struct PairInfo {
 }
 
 /// Baut die Pairing-URI aus Adresse, Code und TLS-Fingerprint.
+#[cfg(any(desktop, test))]
 pub fn pair_uri(addr: &str, code: &str, fingerprint: &str) -> String {
     format!("kiebitz://sync?host={addr}&code={code}&fingerprint={fingerprint}")
 }

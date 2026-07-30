@@ -12,9 +12,11 @@
 //! groß und soll nicht beim Öffnen der Einstellungen über die IPC-Brücke gehen,
 //! sondern erst, wenn sie wirklich gelesen wird.
 
+#[cfg(not(target_os = "android"))]
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+#[cfg(not(target_os = "android"))]
 use tauri::Manager;
 
 /// Ein anzeigbares Dokument: stabile `id` für die Abfrage, `title` als
@@ -67,6 +69,7 @@ fn embedded_document(id: &str) -> Option<&'static str> {
 /// `resolve_engine` in `lib.rs`, damit `tauri dev` ohne Bundle funktioniert.
 ///
 /// Ohne `AppHandle`, damit die Pfadlogik testbar bleibt.
+#[cfg(not(target_os = "android"))]
 fn locate(resource_dir: Option<&Path>, relative: &str) -> Option<PathBuf> {
     if let Some(dir) = resource_dir {
         let path = dir.join(relative);
@@ -78,6 +81,7 @@ fn locate(resource_dir: Option<&Path>, relative: &str) -> Option<PathBuf> {
     dev.is_file().then_some(dev)
 }
 
+#[cfg(not(target_os = "android"))]
 fn resolve(app: &tauri::AppHandle, relative: &str) -> Option<PathBuf> {
     locate(app.path().resource_dir().ok().as_deref(), relative)
 }

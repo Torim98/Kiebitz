@@ -6,10 +6,11 @@ import App from "./App";
 vi.mock("./lib/backend", () => ({
   useBackendInfo: () => ({ mode: "desktop", info: { platform: "android", version: "0.5.2" } }),
 }));
-vi.mock("./lib/db", () => ({ dbStats: () => Promise.resolve({ total: 12 }) }));
+vi.mock("./lib/db", () => ({ dbStats: () => new Promise(() => {}) }));
 vi.mock("./lib/settings", () => ({
-  // `onboarded` verhindert, dass die Ersteinrichtung die Navigation überdeckt.
-  getSettings: () => Promise.resolve({ sync_auto: false, sync_host: "", onboarded: true }),
+  // Diese Navigationstests brauchen keine asynchron geladenen Einstellungen.
+  // Eine offene Promise verhindert fachfremde State-Updates nach dem Assert.
+  getSettings: () => new Promise(() => {}),
 }));
 vi.mock("./lib/sync", () => ({ syncInfo: () => Promise.resolve({ last_sync: 0 }) }));
 vi.mock("./lib/notify", () => ({ startReminders: vi.fn(), stopReminders: vi.fn() }));

@@ -108,10 +108,61 @@ try {
     [IO.Compression.ZipFile]::ExtractToDirectory($aab, $tempDirectory)
 
     Write-Host "Checking that the external APK updater is absent ..."
-    $rg = Get-Command rg.exe -ErrorAction Stop
-    $externalUpdaterMatches = & $rg.Source -a -l -F `
-        "github.com/Torim98/Kiebitz/releases/latest/download/latest.json" $tempDirectory 2>$null
-    if ($LASTEXITCODE -eq 0 -and $externalUpdaterMatches) {
+    # Der Release-Check muss auf einem normalen Windows-System ohne Codex-,
+    # Git- oder Entwickler-Tools laufen. Ein kleines .NET-Hilfsstück scannt
+    # Text- und Binärdateien streaming-basiert und ersetzt die frühere
+    # Abhängigkeit von `rg.exe`.
+    if (-not ("Kiebitz.Release.BinaryTextSearch" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+
+namespace Kiebitz.Release
+{
+    public static class BinaryTextSearch
+    {
+        public static bool Contains(string path, byte[] needle)
+        {
+            if (needle == null || needle.Length == 0) return true;
+            var prefix = new int[needle.Length];
+            for (int i = 1, matched = 0; i < needle.Length; i++)
+            {
+                while (matched > 0 && needle[i] != needle[matched])
+                    matched = prefix[matched - 1];
+                if (needle[i] == needle[matched]) matched++;
+                prefix[i] = matched;
+            }
+
+            using (var stream = File.OpenRead(path))
+            {
+                var buffer = new byte[65536];
+                int matched = 0;
+                int count;
+                while ((count = stream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        while (matched > 0 && buffer[i] != needle[matched])
+                            matched = prefix[matched - 1];
+                        if (buffer[i] == needle[matched]) matched++;
+                        if (matched == needle.Length) return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+}
+"@
+    }
+    $updaterUrl = "github.com/Torim98/Kiebitz/releases/latest/download/latest.json"
+    $updaterBytes = [Text.Encoding]::UTF8.GetBytes($updaterUrl)
+    $externalUpdaterMatches = Get-ChildItem -LiteralPath $tempDirectory -Recurse -File |
+        Where-Object {
+            [Kiebitz.Release.BinaryTextSearch]::Contains($_.FullName, $updaterBytes)
+        } |
+        Select-Object -ExpandProperty FullName
+    if ($externalUpdaterMatches) {
         throw "The Play build still contains the external GitHub APK updater: $externalUpdaterMatches"
     }
 

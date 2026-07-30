@@ -10,12 +10,16 @@
 //! Windows verwirft Toasts ohne registrierte AppUserModelID kommentarlos ·
 //! deshalb legt `register_windows_app_id` den passenden Registry-Eintrag an.
 
+#[cfg(any(desktop, test))]
 use crate::settings::Settings;
+#[cfg(any(desktop, test))]
 use rusqlite::Connection;
 use serde::Serialize;
+#[cfg(any(desktop, test))]
 use std::path::PathBuf;
 
 /// Offene Aufgaben des Tages.
+#[cfg(any(desktop, test))]
 #[derive(Serialize, Default, Debug, PartialEq)]
 pub struct DueSummary {
     /// Geplante, noch offene Lerneinheiten von heute.
@@ -38,6 +42,7 @@ fn now_ts() -> i64 {
 }
 
 /// Zählt zusammen, was heute noch aussteht.
+#[cfg(any(desktop, test))]
 pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueSummary, String> {
     let day_start = now - now.rem_euclid(86_400);
     let day_end = day_start + 86_400;
@@ -82,6 +87,7 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
 
 /// Kurztexte der Erinnerung. Bewusst dupliziert statt aus dem Frontend geladen:
 /// der Headless-Lauf hat kein WebView.
+#[cfg(any(desktop, test))]
 fn phrase(locale: &str, key: &str, n: i64) -> String {
     let english = locale == "en";
     match (key, english) {
@@ -99,6 +105,7 @@ fn phrase(locale: &str, key: &str, n: i64) -> String {
     }
 }
 
+#[cfg(any(desktop, test))]
 pub fn title(locale: &str) -> String {
     if locale == "en" {
         "Kiebitz · training".into()
@@ -108,6 +115,7 @@ pub fn title(locale: &str) -> String {
 }
 
 /// Erinnerungstext aus den aktivierten Kategorien; None = nichts zu tun.
+#[cfg(any(desktop, test))]
 pub fn reminder_body(settings: &Settings, due: &DueSummary) -> Option<String> {
     let locale = settings.locale.as_str();
     let mut parts: Vec<String> = Vec::new();
@@ -195,7 +203,7 @@ pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
         .map_err(|e| format!("Windows lehnt die Benachrichtigung ab: {e}"))
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), any(desktop, test)))]
 pub fn show(_app_id: &str, _title: &str, _body: &str) -> Result<(), String> {
     Err("Auf dieser Plattform verschickt das Frontend die Benachrichtigung.".into())
 }
@@ -347,6 +355,7 @@ pub fn save_reminder_snapshot(
     .map_err(|e| e.to_string())
 }
 
+#[cfg(any(desktop, test))]
 fn read_snapshot(dir: &std::path::Path) -> Option<Snapshot> {
     let text = std::fs::read_to_string(dir.join("reminder.json")).ok()?;
     let snapshot: Snapshot = serde_json::from_str(&text).ok()?;
@@ -359,6 +368,7 @@ fn read_snapshot(dir: &std::path::Path) -> Option<Snapshot> {
 
 /// Konfig-/Datenverzeichnis ohne Tauri-Handle: Tauri legt beides unter
 /// `%APPDATA%\<identifier>` bzw. `$XDG_CONFIG_HOME/<identifier>` ab.
+#[cfg(any(desktop, test))]
 fn app_dir(identifier: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA").map(PathBuf::from);
@@ -371,6 +381,7 @@ fn app_dir(identifier: &str) -> Option<PathBuf> {
 
 /// Wurde die App nur zum Erinnern gestartet? Dann Benachrichtigung zeigen und
 /// `true` zurückgeben, damit `run()` ohne Fenster endet.
+#[cfg(any(desktop, test))]
 pub fn run_headless(identifier: &str) -> bool {
     if !std::env::args().any(|arg| arg == "--reminder") {
         return false;
