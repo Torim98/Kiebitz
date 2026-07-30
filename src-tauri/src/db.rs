@@ -35,6 +35,14 @@ pub struct GameRecord {
     #[serde(default)]
     pub accuracy_endgame: Option<f64>,
     pub moves: String,
+    /// Restzeit nach jedem Halbzug in Hundertstelsekunden, leerzeichengetrennt ·
+    /// aus den %clk-Kommentaren der PGN bzw. der lichess-Uhrenliste. Leer, wenn
+    /// die Partie keine Zeitdaten mitgebracht hat.
+    #[serde(default)]
+    pub clocks: String,
+    /// PGN-TimeControl der Partie ("600+5"), leer wenn unbekannt.
+    #[serde(default)]
+    pub time_control: String,
     pub note: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -263,6 +271,10 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         // Migration v10: Zeitpunkt der Auto-Analyse · der Wochenkalender zählt
         // ein vollständiges Partie-Review als Lerneinheit an genau diesem Tag.
         "ALTER TABLE games ADD COLUMN analyzed_ts INTEGER NOT NULL DEFAULT 0",
+        // Migration v12: Uhrendaten · das Analyse-Brett zeigt die Restzeit
+        // beider Seiten, sobald eine Partie sie mitbringt.
+        "ALTER TABLE games ADD COLUMN clocks TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE games ADD COLUMN time_control TEXT NOT NULL DEFAULT ''",
     ] {
         let _ = conn.execute(sql, []);
     }
@@ -328,9 +340,19 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE study_events ADD COLUMN sync_key TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE study_events ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE study_events ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+        // Migration v12: wiederkehrende Einheiten. Eine Serie ist keine Regel,
+        // sondern eine Reihe echter Termine mit gemeinsamem `series_key` ·
+        // dadurch bleiben Abhaken, Verschieben, Löschen und der Gerätesync
+        // genau die Operationen, die es für einzelne Einheiten schon gibt.
+        "ALTER TABLE study_events ADD COLUMN repeat_rule TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE study_events ADD COLUMN series_key TEXT NOT NULL DEFAULT ''",
     ] {
         let _ = conn.execute(sql, []);
     }
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_study_events_series ON study_events(series_key)",
+        [],
+    );
     conn.execute_batch(
         "UPDATE study_templates
            SET sync_key = CASE
@@ -456,8 +478,9 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
                     my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
-                    note, note_ts, tags, tags_ts, analysis_excluded, updated_ts)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)
+                    note, note_ts, tags, tags_ts, analysis_excluded, updated_ts,
+                    clocks, time_control)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
@@ -475,7 +498,11 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     moves_count = excluded.moves_count,
                     time_class = excluded.time_class,
                     analysis_excluded = excluded.analysis_excluded,
-                    updated_ts = excluded.updated_ts",
+                    updated_ts = excluded.updated_ts,
+                    -- Ein Re-Import ohne Uhrendaten darf vorhandene nicht löschen.
+                    clocks = CASE WHEN excluded.clocks != '' THEN excluded.clocks ELSE games.clocks END,
+                    time_control = CASE WHEN excluded.time_control != ''
+                        THEN excluded.time_control ELSE games.time_control END",
             )
             .map_err(|e| e.to_string())?;
 
@@ -518,7 +545,9 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     serde_json::to_string(&g.tags).map_err(|e| e.to_string())?,
                     if g.tags.is_empty() { 0 } else { changed_at },
                     g.analysis_excluded as i64,
-                    changed_at
+                    changed_at,
+                    g.clocks,
+                    g.time_control
                 ])
                 .map_err(|e| e.to_string())?;
             if !existed {
@@ -540,7 +569,7 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, my_name, opponent,
                     opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
-                    note, tags, analyzed, analysis_excluded
+                    note, tags, analyzed, analysis_excluded, clocks, time_control
              FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -572,6 +601,8 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
                 analyzed: r.get::<_, i64>(23)? != 0,
                 analysis_excluded: r.get::<_, i64>(24)? != 0,
+                clocks: r.get(25)?,
+                time_control: r.get(26)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -681,6 +712,8 @@ mod tests {
             accuracy_middlegame: None,
             accuracy_endgame: None,
             moves: "e4 c6 Qf3 e5".into(),
+            clocks: "59500 59300 58800 58100".into(),
+            time_control: "600+0".into(),
             note: String::new(),
             tags: Vec::new(),
             analyzed: false,

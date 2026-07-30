@@ -49,6 +49,90 @@ body {
   font-size: 14px;
 }
 
+/* Der Hintergrund liegt als eigene, fixierte Ebene mit negativem z-index im
+   #root · deshalb braucht #root einen eigenen Stapelkontext, sonst rutscht die
+   Ebene hinter den Body und ist nie zu sehen. */
+#root {
+  isolation: isolate;
+}
+
+/* ── Schachbrett-Hintergrund ─────────────────────────────────────────────────
+   Dasselbe angedeutete Brett wie auf der Website (.band-grid), aber nicht
+   statisch nach links ausgeblendet, sondern von einem sehr langsam wandernden
+   Licht freigelegt · so wie der BoardBackdrop in Sekundant, dort in Flutter
+   gezeichnet, hier als Maske.
+
+   Sichtbar wird das Muster nur innerhalb dieses Lichts, und dort nur um
+   wenige Prozent heller als der Grund. Alles andere bleibt Schwarz. */
+.chess-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: repeating-conic-gradient(
+    rgba(242, 241, 236, 0.032) 0% 25%,
+    transparent 0% 50%
+  );
+  background-size: 72px 72px;
+  /* Die Maske ist deutlich größer als das Fenster, damit der Rand des Lichts
+     beim Wandern nicht als Kante durchs Bild läuft. */
+  -webkit-mask-image: radial-gradient(
+    closest-side,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.55) 42%,
+    rgba(0, 0, 0, 0) 78%
+  );
+  mask-image: radial-gradient(
+    closest-side,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.55) 42%,
+    rgba(0, 0, 0, 0) 78%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 165% 165%;
+  mask-size: 165% 165%;
+  -webkit-mask-position: 18% 14%;
+  mask-position: 18% 14%;
+  animation: chess-drift 96s ease-in-out infinite;
+}
+
+/* Ein voller Umlauf dauert über eine Minute · die Bewegung soll auffallen,
+   wenn man sie sucht, und sonst nicht. */
+@keyframes chess-drift {
+  0% {
+    -webkit-mask-position: 18% 14%;
+    mask-position: 18% 14%;
+  }
+  25% {
+    -webkit-mask-position: 76% 32%;
+    mask-position: 76% 32%;
+  }
+  50% {
+    -webkit-mask-position: 58% 84%;
+    mask-position: 58% 84%;
+  }
+  75% {
+    -webkit-mask-position: 6% 62%;
+    mask-position: 6% 62%;
+  }
+  100% {
+    -webkit-mask-position: 18% 14%;
+    mask-position: 18% 14%;
+  }
+}
+
+/* Reduzierte Bewegung und reproduzierbare Store-Screenshots lassen das Licht
+   stehen; das Muster selbst bleibt sichtbar. */
+@media (prefers-reduced-motion: reduce) {
+  .chess-backdrop {
+    animation: none;
+  }
+}
+html[data-store-capture="true"] .chess-backdrop {
+  animation: none;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: #3a3a37 transparent;

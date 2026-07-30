@@ -25,6 +25,10 @@ export interface GameRecord {
   accuracy_middlegame?: number | null;
   accuracy_endgame?: number | null;
   moves: string; // SAN-Züge, leerzeichengetrennt
+  /** Restzeit nach jedem Halbzug in Hundertstelsekunden, leerzeichengetrennt. */
+  clocks?: string;
+  /** PGN-TimeControl der Partie ("600+5"); leer, wenn unbekannt. */
+  time_control?: string;
   note: string;
   tags?: string[];
   analyzed: boolean;

@@ -2,6 +2,7 @@ mod analysis;
 mod chess;
 mod chessdb;
 mod db;
+mod diag;
 mod endgame;
 mod engine;
 mod legal;
@@ -275,6 +276,9 @@ fn stop_live(state: tauri::State<live::LiveEngine>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Logbuch und Panic-Hook zuerst · alles, was danach schiefgeht, ist damit
+    // im Diagnosebericht sichtbar, auch wenn kein Fenster mehr aufgeht.
+    diag::install();
     // Von der Aufgabenplanung gestartet: erinnern und beenden, ohne Fenster.
     #[cfg(desktop)]
     if reminder::run_headless("de.torim.kiebitz") {
@@ -310,6 +314,16 @@ pub fn run() {
 
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
+            diag::set_log_file(data_dir.join("kiebitz.log"));
+            diag::record(
+                "info",
+                "app",
+                &format!(
+                    "Start · Kiebitz {} auf {}",
+                    app.package_info().version,
+                    std::env::consts::OS
+                ),
+            );
 
             let loaded = settings::load(app.handle());
             // Konfigurierter DB-Pfad, mit Fallback auf den Standardort, falls
@@ -430,6 +444,7 @@ pub fn run() {
             study::save_study_template,
             study::delete_study_template,
             study::schedule_study_unit,
+            study::repeat_study_unit,
             study::move_study_unit,
             study::complete_study_unit,
             study::delete_study_unit,
@@ -441,7 +456,13 @@ pub fn run() {
             updater::check_update,
             updater::install_update,
             legal::legal_documents,
-            legal::legal_document
+            legal::legal_document,
+            diag::log_event,
+            diag::diag_logs,
+            diag::diag_clear,
+            diag::diag_log_path,
+            diag::diag_report,
+            diag::diag_save_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

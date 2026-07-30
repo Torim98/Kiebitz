@@ -21,6 +21,7 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { endgameMove, endgameRecord, endgameStats, type DrillStat } from "../lib/endgame";
 import Board from "../components/Board";
+import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { Button, Card } from "../components/ui";
@@ -237,10 +238,10 @@ export default function Endgame() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
         {/* Brett + Statuszeile · auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
-        <div className="max-w-[420px]">
+        <div className="max-w-[528px]">
           <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
               <Crown size={15} className="shrink-0 text-accent" />
@@ -264,7 +265,7 @@ export default function Endgame() {
           <Board
             boardId="endgame"
             fen={fen}
-            width={420}
+            width={BOARD_WIDTH}
             draggable={status === "playing"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}

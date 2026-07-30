@@ -51,6 +51,39 @@ Current priorities (added 2026-07-21):
   filters for all, own-game, and Lichess puzzles.
 - [x] **Rebrand the sidebar subtitle.** Replaced "Chess cockpit" with
   "Zug um Zugvogel" / "Moves take flight" (2026-07-22).
+- [x] **Board sounds** (2026-07-30). Move, capture, castling, promotion and check
+  sounds on every board, synthesized in `lib/sound.ts` via Web Audio — no audio
+  files, no licensing question, nothing to download. `lib/boardSound.ts` derives
+  the sound from the difference between two positions, so the player's move, the
+  engine's reply, a puzzle's setup move and stepping through a move list all
+  sound alike. Toggle plus volume in Settings → Board & sound.
+- [x] **One board size** (2026-07-30). Every playable board now uses the analysis
+  board's 528 px (`lib/boardLayout.ts`); the pages' grid columns and the game
+  preview column grew with it.
+- [x] **Clocks in the analysis board** (2026-07-30). Games import their per-move
+  clock readings (`%clk` from chess.com PGN, `clocks=true` from the Lichess API,
+  `%clk`/`%emt` from PGN files) into `games.clocks`; the board shows both sides'
+  remaining time at the position on screen, the side to move highlighted, plus
+  what the move cost. PGN export writes the readings back.
+- [x] **Recurring study units** (2026-07-30). A planned unit can repeat daily,
+  weekly or every two weeks up to a chosen end date. A series is a row of real
+  events sharing a `series_key`, so completing, moving, deleting and syncing stay
+  the operations that already existed; "delete series from here" ends it without
+  touching the past.
+- [x] **Feedback, crash reports and the log** (2026-07-30). `diag.rs` keeps a
+  local ring-buffer log plus a rotating file and catches Rust panics and
+  unhandled UI errors. The new Feedback page mirrors the website's form
+  (feedback / crash / feature) and can attach a diagnostics report the user can
+  read in full beforehand — Kiebitz still sends nothing on its own. Shaking an
+  Android device opens it straight away.
+- [x] **Mobile settings, decluttered** (2026-07-30). On the phone the eleven
+  settings cards became collapsed rows with a one-line summary, ordered by how
+  often they are needed, with the expert areas behind an "Advanced" heading. The
+  desktop layout is unchanged.
+- [x] **Chess-pattern backdrop** (2026-07-30). The suggested chessboard from the
+  website, lit by a light drifting across it over 96 seconds like Sekundant's
+  board backdrop — a few percent above black, and still black everywhere the
+  light is not. Frozen for reduced-motion and for store screenshots.
 
 ---
 

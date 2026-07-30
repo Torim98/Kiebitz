@@ -68,7 +68,34 @@ pub struct StudyEvent {
     pub position: i64,
     pub completed: bool,
     pub completed_ts: i64,
+    /// "" (Einzeltermin), "daily", "weekly" oder "biweekly".
+    pub repeat_rule: String,
+    /// Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin).
+    pub series_key: String,
     pub template: StudyTemplate,
+}
+
+/// Wiederholungsraster einer Serie · Abstand in Tagen.
+fn repeat_step(rule: &str) -> Option<i64> {
+    match rule {
+        "daily" => Some(1),
+        "weekly" => Some(7),
+        "biweekly" => Some(14),
+        _ => None,
+    }
+}
+
+/// Eine Serie darf den Kalender nicht fluten: zwei Jahre Wochentermine bzw.
+/// gut drei Monate Tagestermine sind die Obergrenze.
+const MAX_OCCURRENCES: usize = 104;
+
+/// Standard-Horizont einer Serie in Tagen, wenn kein Enddatum gewählt wurde.
+fn default_horizon(rule: &str) -> i64 {
+    if rule == "daily" {
+        30
+    } else {
+        84
+    }
 }
 
 /// Tageskennzahlen des Wochenkalenders: erledigte Lerneinheiten (Vergangenheit
@@ -282,6 +309,7 @@ fn calendar_from_conn(
         let mut stmt = conn
             .prepare(
                 "SELECT e.id, e.template_id, e.day, e.position, e.completed, e.completed_ts,
+                        e.repeat_rule, e.series_key,
                         t.id, t.title, t.duration_min, t.tool, t.description
                  FROM study_events e JOIN study_templates t ON t.id = e.template_id
                  WHERE e.day >= ?1 AND e.day <= ?2
@@ -298,12 +326,14 @@ fn calendar_from_conn(
                     position: r.get(3)?,
                     completed: r.get::<_, i64>(4)? != 0,
                     completed_ts: r.get(5)?,
+                    repeat_rule: r.get(6)?,
+                    series_key: r.get(7)?,
                     template: StudyTemplate {
-                        id: r.get(6)?,
-                        title: r.get(7)?,
-                        duration_min: r.get(8)?,
-                        tool: r.get(9)?,
-                        description: r.get(10)?,
+                        id: r.get(8)?,
+                        title: r.get(9)?,
+                        duration_min: r.get(10)?,
+                        tool: r.get(11)?,
+                        description: r.get(12)?,
                     },
                 })
             })
@@ -395,28 +425,139 @@ pub fn delete_study_template(db: State<db::Db>, template_id: i64) -> Result<(), 
     Ok(())
 }
 
+/// Termine einer Serie ab `first_day`: der erste Tag plus jeder weitere im
+/// Raster, bis `until` erreicht ist. Ohne Raster bleibt es bei einem Termin.
+fn series_days(first_day: &str, rule: &str, until: Option<&str>) -> Result<Vec<String>, String> {
+    let Some(start) = day_start_ts(first_day) else {
+        return Err("Ungültiges Datum".into());
+    };
+    let Some(step) = repeat_step(rule) else {
+        return Ok(vec![first_day.to_string()]);
+    };
+    let end = match until {
+        Some(value) if !value.is_empty() => {
+            day_start_ts(value).ok_or_else(|| "Ungültiges Enddatum".to_string())?
+        }
+        _ => start + default_horizon(rule) * 86_400,
+    };
+    if end < start {
+        return Err("Das Enddatum liegt vor dem Starttermin".into());
+    }
+    let mut days = Vec::new();
+    let mut cursor = start;
+    while cursor <= end && days.len() < MAX_OCCURRENCES {
+        days.push(iso_day(cursor));
+        cursor += step * 86_400;
+    }
+    Ok(days)
+}
+
+/// Legt für jeden Tag einen Termin an; alle teilen `series_key` und Raster.
+fn insert_units(
+    conn: &Connection,
+    template_id: i64,
+    days: &[String],
+    rule: &str,
+    series_key: &str,
+) -> Result<usize, String> {
+    let now = now_ts();
+    for day in days {
+        let position: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM study_events WHERE day = ?1",
+                params![day],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO study_events
+             (sync_key, template_id, day, position, created_ts, updated_ts,
+              repeat_rule, series_key)
+             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?4, ?5, ?6)",
+            params![template_id, day, position, now, rule, series_key],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(days.len())
+}
+
 #[tauri::command]
-pub fn schedule_study_unit(db: State<db::Db>, template_id: i64, day: String) -> Result<(), String> {
+pub fn schedule_study_unit(
+    db: State<db::Db>,
+    template_id: i64,
+    day: String,
+    repeat_rule: Option<String>,
+    until: Option<String>,
+) -> Result<usize, String> {
     if !valid_day(&day) {
         return Err("Ungültiges Datum".into());
     }
+    let rule = repeat_rule.unwrap_or_default();
+    if !rule.is_empty() && repeat_step(&rule).is_none() {
+        return Err("Unbekanntes Wiederholungsraster".into());
+    }
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     read_template(&conn, template_id)?;
-    let position: i64 = conn
+    let days = series_days(&day, &rule, until.as_deref())?;
+    let series_key = if rule.is_empty() {
+        String::new()
+    } else {
+        new_series_key(&conn)?
+    };
+    insert_units(&conn, template_id, &days, &rule, &series_key)
+}
+
+/// Zufälliger Serienschlüssel · dieselbe Quelle wie die sync_keys.
+fn new_series_key(conn: &Connection) -> Result<String, String> {
+    conn.query_row("SELECT lower(hex(randomblob(16)))", [], |r| r.get(0))
+        .map_err(|e| e.to_string())
+}
+
+/// Macht aus einem geplanten Einzeltermin eine Serie: der Termin selbst bleibt
+/// stehen und bekommt das Raster, die weiteren Termine kommen dazu. Gehört er
+/// schon zu einer Serie, wird deren Zukunft ab diesem Tag neu gesetzt · so
+/// bleibt Abgehaktes in der Vergangenheit unberührt.
+#[tauri::command]
+pub fn repeat_study_unit(
+    db: State<db::Db>,
+    event_id: i64,
+    repeat_rule: String,
+    until: Option<String>,
+) -> Result<usize, String> {
+    if repeat_step(&repeat_rule).is_none() {
+        return Err("Unbekanntes Wiederholungsraster".into());
+    }
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let (template_id, day, series_key): (i64, String, String) = conn
         .query_row(
-            "SELECT COALESCE(MAX(position), -1) + 1 FROM study_events WHERE day = ?1",
-            params![day],
-            |r| r.get(0),
+            "SELECT template_id, day, series_key FROM study_events
+             WHERE id = ?1 AND deleted = 0",
+            params![event_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|_| "Geplante Einheit nicht gefunden".to_string())?;
+    let now = now_ts();
+    let series_key = if series_key.is_empty() {
+        new_series_key(&conn)?
+    } else {
+        // Bestehende Serie: alles ab diesem Tag weicht der neuen Reihe.
+        conn.execute(
+            "UPDATE study_events SET deleted = 1, updated_ts = ?3
+             WHERE series_key = ?1 AND day > ?2 AND deleted = 0",
+            params![series_key, day, now],
         )
         .map_err(|e| e.to_string())?;
+        series_key
+    };
+    let days = series_days(&day, &repeat_rule, until.as_deref())?;
     conn.execute(
-        "INSERT INTO study_events
-         (sync_key, template_id, day, position, created_ts, updated_ts)
-         VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?4)",
-        params![template_id, day, position, now_ts()],
+        "UPDATE study_events SET repeat_rule = ?1, series_key = ?2, updated_ts = ?3
+         WHERE id = ?4",
+        params![repeat_rule, series_key, now, event_id],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
+    // Der erste Tag der Reihe ist der Termin selbst · er wird nicht doppelt angelegt.
+    insert_units(&conn, template_id, &days[1..], &repeat_rule, &series_key)
 }
 
 #[tauri::command]
@@ -465,15 +606,40 @@ pub fn complete_study_unit(
     Ok(())
 }
 
+/// Löscht eine geplante Einheit. `scope = "series"` löscht stattdessen diesen
+/// und alle folgenden Termine derselben Serie · vergangene Termine bleiben, weil
+/// dort schon abgehakt sein kann, was passiert ist.
 #[tauri::command]
-pub fn delete_study_unit(db: State<db::Db>, event_id: i64) -> Result<(), String> {
+pub fn delete_study_unit(
+    db: State<db::Db>,
+    event_id: i64,
+    scope: Option<String>,
+) -> Result<usize, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let now = now_ts();
+    if scope.as_deref() == Some("series") {
+        let series: Option<(String, String)> = conn
+            .query_row(
+                "SELECT series_key, day FROM study_events WHERE id = ?1",
+                params![event_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        if let Some((key, day)) = series.filter(|(key, _)| !key.is_empty()) {
+            return conn
+                .execute(
+                    "UPDATE study_events SET deleted = 1, updated_ts = ?3
+                     WHERE series_key = ?1 AND day >= ?2 AND deleted = 0",
+                    params![key, day, now],
+                )
+                .map_err(|e| e.to_string());
+        }
+    }
     conn.execute(
         "UPDATE study_events SET deleted = 1, updated_ts = ?2 WHERE id = ?1",
-        params![event_id, now_ts()],
+        params![event_id, now],
     )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -768,6 +934,82 @@ mod tests {
         assert_eq!(calendar.days.len(), 7);
         assert_eq!(calendar.days[0].day, "2026-07-20");
         assert_eq!(calendar.days[6].day, "2026-07-26");
+    }
+
+    #[test]
+    fn series_days_follow_the_chosen_grid_and_stay_bounded() {
+        assert_eq!(
+            series_days("2026-07-27", "weekly", Some("2026-08-17")).unwrap(),
+            vec![
+                "2026-07-27".to_string(),
+                "2026-08-03".into(),
+                "2026-08-10".into(),
+                "2026-08-17".into()
+            ]
+        );
+        assert_eq!(
+            series_days("2026-07-27", "biweekly", Some("2026-08-24")).unwrap(),
+            vec![
+                "2026-07-27".to_string(),
+                "2026-08-10".into(),
+                "2026-08-24".into()
+            ]
+        );
+        // Ohne Raster bleibt es ein Einzeltermin, egal welches Enddatum.
+        assert_eq!(
+            series_days("2026-07-27", "", Some("2027-07-27")).unwrap(),
+            vec!["2026-07-27".to_string()]
+        );
+        // Der Standardhorizont greift ohne Enddatum, die Obergrenze bei einem
+        // absurd weit entfernten.
+        assert_eq!(series_days("2026-07-27", "weekly", None).unwrap().len(), 13);
+        assert_eq!(
+            series_days("2026-07-27", "daily", Some("2030-01-01"))
+                .unwrap()
+                .len(),
+            MAX_OCCURRENCES
+        );
+        assert!(series_days("2026-07-27", "weekly", Some("2026-07-20")).is_err());
+        assert!(series_days("27.07.2026", "weekly", None).is_err());
+    }
+
+    #[test]
+    fn a_planned_unit_becomes_a_series_and_can_be_ended_again() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let template_id: i64 = conn
+            .query_row("SELECT id FROM study_templates ORDER BY id LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+
+        let key = new_series_key(&conn).unwrap();
+        let days = series_days("2026-07-27", "weekly", Some("2026-08-17")).unwrap();
+        assert_eq!(
+            insert_units(&conn, template_id, &days, "weekly", &key).unwrap(),
+            4
+        );
+
+        let calendar = calendar_from_conn(&conn, "2026-07-27", "2026-08-17", NOW).unwrap();
+        assert_eq!(calendar.events.len(), 4);
+        assert!(calendar
+            .events
+            .iter()
+            .all(|event| event.repeat_rule == "weekly" && event.series_key == key));
+
+        // Serie ab dem zweiten Termin beenden: davor bleibt sie stehen.
+        let second = calendar.events[1].id;
+        let now = now_ts();
+        let removed = conn
+            .execute(
+                "UPDATE study_events SET deleted = 1, updated_ts = ?3
+                 WHERE series_key = ?1 AND day >= ?2 AND deleted = 0",
+                params![key, calendar.events[1].day, now],
+            )
+            .unwrap();
+        assert_eq!(removed, 3, "der zweite Termin und alle danach");
+        assert!(second > 0);
+        let left = calendar_from_conn(&conn, "2026-07-27", "2026-08-17", NOW).unwrap();
+        assert_eq!(left.events.len(), 1);
+        assert_eq!(left.events[0].day, "2026-07-27");
     }
 
     #[test]

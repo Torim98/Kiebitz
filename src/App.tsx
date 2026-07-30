@@ -22,6 +22,9 @@ import { getSettings, type Settings } from "./lib/settings";
 import { syncInfo } from "./lib/sync";
 import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
 import { startReminders, stopReminders } from "./lib/notify";
+import { setBoardSoundEnabled, setBoardSoundVolume } from "./lib/sound";
+import { installCrashReporter, logEvent } from "./lib/diag";
+import { onDeviceShake } from "./lib/shake";
 import { startAutoImport, stopAutoImport } from "./lib/autoImport";
 import {
   installUpdate,
@@ -47,6 +50,7 @@ import Puzzles from "./pages/Puzzles";
 import Study from "./pages/Study";
 import Insights from "./pages/InsightsV2";
 import SettingsPage from "./pages/Settings";
+import Support from "./pages/Support";
 import Onboarding from "./components/Onboarding";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
@@ -102,11 +106,35 @@ export default function App() {
   // eine Detailebene, damit Zurück wieder im Training landet.
   const openPuzzles = (theme?: string) => push("puzzles", { theme: theme ?? "" });
 
+  // Rückmeldung ist immer eine Detailebene · Zurück führt dorthin zurück, wo
+  // der Nutzer gerade war, egal ob er über die Einstellungen kam oder geschüttelt hat.
+  const openSupport = (reportType: "feedback" | "crash" | "feature" = "feedback") =>
+    push("support", { reportType });
+
   useEffect(() => {
     if (backend.mode === "desktop") {
       dbStats().then((s) => setGameCount(s.total)).catch(() => {});
     }
   }, [backend.mode, page]);
+
+  // Brettklänge nach den gespeicherten Einstellungen scharfschalten. Ohne
+  // Backend (Web-Preview) bleiben die Voreinstellungen aus lib/sound stehen.
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    getSettings()
+      .then((s) => {
+        setBoardSoundEnabled(s.sound_enabled);
+        setBoardSoundVolume(s.sound_volume / 100);
+      })
+      .catch(() => {});
+  }, [backend.mode]);
+
+  // Unbehandelte Fehler der Oberfläche landen im lokalen Logbuch · sie sind
+  // die Datenbasis für einen Absturzbericht, den niemand abtippen muss.
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    return installCrashReporter();
+  }, [backend.mode]);
 
   // Ersteinrichtung: nur beim allerersten Start, danach nie wieder.
   const [onboarding, setOnboarding] = useState<Settings | null>(null);
@@ -137,6 +165,21 @@ export default function App() {
     main.scrollTop = 0;
     main.scrollLeft = 0;
   }, [isMobile, page]);
+
+  // Kräftiges Schütteln öffnet auf dem Handy die Rückmeldung · vorgewählt als
+  // Absturzbericht, weil man das Gerät selten aus Begeisterung schüttelt.
+  // Der Ref hält die aktuelle Seite, damit die Geste nicht bei jedem
+  // Seitenwechsel neu angemeldet werden muss.
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  useEffect(() => {
+    if (!isMobile) return;
+    return onDeviceShake(() => {
+      if (pageRef.current === "support") return;
+      logEvent("info", "ui", "Feedback über Schüttelgeste geöffnet");
+      push("support", { reportType: "crash" });
+    });
+  }, [isMobile, push]);
 
   // Markiert die mobile Shell fürs Stylesheet · dort unterdrückt die Regel für
   // .page-title die von der App-Bar bereits gezeigten Überschriften.
@@ -221,9 +264,11 @@ export default function App() {
 
   // Auf der App-Bar steht der Seitenname; der Start zeigt stattdessen die
   // Wortmarke, weil "Dashboard" schon in der Leiste darunter steht.
-  const pageLabel = [...nav, { id: "settings" as PageId, labelKey: "nav.settings" as Key }].find(
-    (n) => n.id === page
-  );
+  const pageLabel = [
+    ...nav,
+    { id: "settings" as PageId, labelKey: "nav.settings" as Key },
+    { id: "support" as PageId, labelKey: "nav.support" as Key },
+  ].find((n) => n.id === page);
   const barTitle = page === "dashboard" ? null : pageLabel ? t(pageLabel.labelKey) : null;
 
   // Der Zurück-Pfeil erscheint nur auf Ebenen, die kein Hauptziel sind ·
@@ -345,7 +390,8 @@ export default function App() {
       {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
       {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
       {page === "insights" && <Insights />}
-      {page === "settings" && <SettingsPage />}
+      {page === "settings" && <SettingsPage openSupport={openSupport} />}
+      {page === "support" && <Support initialType={route.reportType ?? "feedback"} />}
     </>
   );
 

@@ -4,12 +4,14 @@ import {
   Check,
   ArchiveRestore,
   Bell,
+  ChevronDown,
   Cpu,
   Database,
   Download,
   HardDriveDownload,
   Globe,
   FolderOpen,
+  LifeBuoy,
   Loader2,
   ExternalLink,
   Puzzle as PuzzleIcon,
@@ -20,9 +22,12 @@ import {
   Smartphone,
   Trash2,
   UserRound,
+  Volume2,
+  type LucideIcon,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useBackendInfo } from "../lib/backend";
+import { useMobileShell } from "../components/MobileShell";
 import { useI18n, type Locale } from "../lib/i18n";
 import {
   dbInfo,
@@ -69,6 +74,7 @@ import { openExternal } from "../lib/ext";
 import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
+import { setBoardSoundEnabled, setBoardSoundVolume, playBoardSound } from "../lib/sound";
 import { Button, Card, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
 
@@ -140,7 +146,91 @@ function NumberField({
   );
 }
 
-export default function SettingsPage() {
+/**
+ * Ein Einstellungsbereich.
+ *
+ * Auf dem Desktop ist das genau die Karte, die hier immer stand: alle Bereiche
+ * offen untereinander, weil ein Fenster den Platz hat und Scrollen mit dem Rad
+ * nichts kostet.
+ *
+ * Auf dem Handy sind elf offene Karten eine Wand aus Text. Dort wird derselbe
+ * Bereich eine zugeklappte Zeile mit Symbol, Titel und einer Zeile darüber, was
+ * drin steckt · aufgeklappt wird, was man gerade sucht. Die Reihenfolge kommt
+ * über `order` aus dem Flex-Container, damit das Handy die häufig gebrauchten
+ * Bereiche oben hat, ohne die Desktop-Reihenfolge anzurühren.
+ */
+function SettingsSection({
+  mobile,
+  order,
+  icon: Icon,
+  title,
+  summary,
+  tone = "accent",
+  children,
+}: {
+  mobile: boolean;
+  /** Position in der mobilen Liste (Flexbox-order). */
+  order: number;
+  icon: LucideIcon;
+  title: string;
+  /** Eine Zeile, die im zugeklappten Zustand sagt, was der Bereich enthält. */
+  summary: string;
+  tone?: "accent" | "loss";
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const color = tone === "loss" ? "text-loss" : "text-accent";
+
+  if (!mobile) {
+    return (
+      <Card
+        title={
+          <span className="flex items-center gap-2">
+            <Icon size={14} className={color} /> {title}
+          </span>
+        }
+      >
+        {children}
+      </Card>
+    );
+  }
+
+  return (
+    <section
+      className="overflow-hidden rounded-xl border border-line bg-panel"
+      style={{ order }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
+      >
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel2 ${color}`}
+        >
+          <Icon size={16} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13.5px] font-medium text-ink">{title}</span>
+          <span className="block truncate text-[11.5px] text-ink3">{summary}</span>
+        </span>
+        <ChevronDown
+          size={17}
+          className={`shrink-0 text-ink3 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div className="border-t border-line p-4">{children}</div>}
+    </section>
+  );
+}
+
+export default function SettingsPage({
+  openSupport,
+}: {
+  /** Öffnet die Rückmeldung · auf beiden Plattformen derselbe Weg. */
+  openSupport?: (type?: "feedback" | "crash" | "feature") => void;
+}) {
   const backend = useBackendInfo();
   const { locale, setLocale, t } = useI18n();
   const desktop = backend.mode === "desktop";
@@ -176,6 +266,9 @@ export default function SettingsPage() {
   const syncStatus = useSyncStatus();
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  // Für das Layout zählt die Shell, nicht die Plattform · so lässt sich die
+  // Android-Oberfläche in der Browser-Vorschau (?mobile-preview) ansehen.
+  const compact = useMobileShell();
   const playStore = backend.info?.distribution === "play-store";
   const examplePath = useMemo(() => examplePaths(backend.info?.platform), [backend.info?.platform]);
 
@@ -278,6 +371,11 @@ export default function SettingsPage() {
       setSaved(applied);
       setDraft(applied);
       setLocale(applied.locale);
+      // Die Klänge hängen an einem Modul, nicht an React · nach dem Speichern
+      // müssen sie dem gespeicherten Stand entsprechen, auch wenn zwischendurch
+      // am Schieber gedreht und dann abgebrochen wurde.
+      setBoardSoundEnabled(applied.sound_enabled);
+      setBoardSoundVolume(applied.sound_volume / 100);
       // Auto-Sync an die gespeicherten Werte anpassen (Mobile-Client).
       configureAutoSync({
         isMobile: mobile,
@@ -641,12 +739,12 @@ export default function SettingsPage() {
 
       <div className="flex flex-col gap-4">
         {/* Sprache */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Globe size={14} className="text-accent" /> {t("set.language")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={1}
+          icon={Globe}
+          title={t("set.language")}
+          summary={t("set.languageSummary")}
         >
           <div className="flex gap-2">
             <Chip active={locale === "de"} onClick={() => switchLocale("de")}>
@@ -659,15 +757,15 @@ export default function SettingsPage() {
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">
             {t(desktop ? "set.langNoteApp" : "set.langNote")}
           </p>
-        </Card>
+        </SettingsSection>
 
         {/* Konten & Import */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <UserRound size={14} className="text-accent" /> {t("set.accounts")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={2}
+          icon={UserRound}
+          title={t("set.accounts")}
+          summary={t("set.accountsSummary")}
         >
           {desktop && draft ? (
             <div className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-3">
@@ -726,15 +824,117 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
+
+        {/* Brett & Ton · Zug- und Schlagklänge auf allen Brettern. */}
+        <SettingsSection
+          mobile={compact}
+          order={3}
+          icon={Volume2}
+          title={t("set.sound")}
+          summary={t("set.soundSummary")}
+        >
+          {desktop && draft ? (
+            <>
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={draft.sound_enabled}
+                  onChange={(e) => {
+                    patch({ sound_enabled: e.target.checked });
+                    // Sofort hörbar, nicht erst nach dem Speichern · beim
+                    // Einschalten kommt der Zugklang als Bestätigung.
+                    setBoardSoundEnabled(e.target.checked);
+                    if (e.target.checked) playBoardSound("move");
+                  }}
+                  className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                />
+                <span>
+                  <span className="block text-[13px] text-ink">{t("set.soundToggle")}</span>
+                  <span className="block text-[12px] leading-relaxed text-ink3">
+                    {t("set.soundNote")}
+                  </span>
+                </span>
+              </label>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <label className="flex min-w-[200px] flex-1 items-center gap-3">
+                  <span className="shrink-0 text-[12px] text-ink3">{t("set.soundVolume")}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={draft.sound_volume}
+                    disabled={!draft.sound_enabled}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      patch({ sound_volume: value });
+                      setBoardSoundVolume(value / 100);
+                    }}
+                    className="min-w-0 flex-1 accent-[#22c08a] disabled:opacity-40"
+                  />
+                  <span className="w-10 shrink-0 text-right text-[12px] tabular-nums text-ink2">
+                    {draft.sound_volume} %
+                  </span>
+                </label>
+                <Button
+                  disabled={!draft.sound_enabled}
+                  onClick={() => {
+                    setBoardSoundEnabled(true);
+                    setBoardSoundVolume(draft.sound_volume / 100);
+                    playBoardSound("capture");
+                    playBoardSound("check", 0.24);
+                  }}
+                >
+                  <Volume2 size={14} /> {t("set.soundTest")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
+          )}
+        </SettingsSection>
+
+        {/* Rückmeldung · eigene Seite, hier nur der Einstieg. */}
+        <SettingsSection
+          mobile={compact}
+          order={7}
+          icon={LifeBuoy}
+          title={t("set.support")}
+          summary={t("set.supportSummary")}
+        >
+          <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.supportNote")}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button primary onClick={() => openSupport?.("feedback")}>
+              <LifeBuoy size={14} /> {t("set.supportOpen")}
+            </Button>
+            <Button onClick={() => openSupport?.("crash")}>
+              <AlertTriangle size={14} /> {t("set.supportCrash")}
+            </Button>
+          </div>
+          {mobile && (
+            <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.supportShake")}</p>
+          )}
+        </SettingsSection>
+
+        {/* Ab hier kommt, was man selten anfasst · auf dem Handy trennt eine
+            Zwischenüberschrift die Expertenbereiche vom Alltag. */}
+        {compact && (
+          <div
+            className="px-1 pt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-ink3"
+            style={{ order: 8 }}
+          >
+            {t("set.advanced")}
+          </div>
+        )}
 
         {/* Engine */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Cpu size={14} className="text-accent" /> {t("set.engine")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={9}
+          icon={Cpu}
+          title={t("set.engine")}
+          summary={t("set.engineSummary")}
         >
           {desktop && draft ? (
             <>
@@ -817,15 +1017,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Datenbank */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Database size={14} className="text-accent" /> {t("set.database")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={10}
+          icon={Database}
+          title={t("set.database")}
+          summary={t("set.databaseSummary")}
         >
           {desktop ? (
             <>
@@ -915,15 +1115,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* ChessDB */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Globe size={14} className="text-accent" /> {t("set.chessdb")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={11}
+          icon={Globe}
+          title={t("set.chessdb")}
+          summary={t("set.chessdbSummary")}
         >
           {desktop && draft ? (
             <>
@@ -941,15 +1141,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Puzzle-Datenbank */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <PuzzleIcon size={14} className="text-accent" /> {t("set.puzzleDb")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={12}
+          icon={PuzzleIcon}
+          title={t("set.puzzleDb")}
+          summary={t("set.puzzleDbSummary")}
         >
           {desktop ? (
             <>
@@ -1002,15 +1202,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Erinnerungen */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Bell size={14} className="text-accent" /> {t("set.notify")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={4}
+          icon={Bell}
+          title={t("set.notify")}
+          summary={t("set.notifySummary")}
         >
           {desktop && draft ? (
             <>
@@ -1067,15 +1267,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Geräte-Sync */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Smartphone size={14} className="text-accent" /> {t("set.sync")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={5}
+          icon={Smartphone}
+          title={t("set.sync")}
+          summary={t("set.syncSummary")}
         >
           {desktop && draft ? (
             !mobile ? (
@@ -1263,15 +1463,15 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Updates */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <RefreshCw size={14} className="text-accent" /> {t("set.updates")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={6}
+          icon={RefreshCw}
+          title={t("set.updates")}
+          summary={t("set.updatesSummary")}
         >
           {desktop && draft ? (
             playStore ? (
@@ -1355,17 +1555,17 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
 
         {/* Über Kiebitz · Lizenz der App und die mitgelieferten Rechtstexte.
             Die Bibliothekslizenzen verlangen, dass ihr Text das Binary
             begleitet; hier ist die Stelle, an der er erreichbar ist. */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Scale size={14} className="text-accent" /> {t("set.about")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={13}
+          icon={Scale}
+          title={t("set.about")}
+          summary={t("set.aboutSummary")}
         >
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink2">
             <span className="font-medium text-ink">
@@ -1419,15 +1619,16 @@ export default function SettingsPage() {
               <p className="mt-2 text-[12.5px] text-ink3">{t("set.legalMissing")}</p>
             )}
           </div>
-        </Card>
+        </SettingsSection>
 
         {/* Zurücksetzen · bewusst ganz unten und in Warnfarbe. */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <AlertTriangle size={14} className="text-loss" /> {t("set.reset")}
-            </span>
-          }
+        <SettingsSection
+          mobile={compact}
+          order={14}
+          icon={AlertTriangle}
+          title={t("set.reset")}
+          summary={t("set.resetSummary")}
+          tone="loss"
         >
           {desktop ? (
             <>
@@ -1445,7 +1646,7 @@ export default function SettingsPage() {
           ) : (
             <p className="text-[12.5px] text-ink3">{t("set.desktopOnly")}</p>
           )}
-        </Card>
+        </SettingsSection>
       </div>
 
       {legalShown && (

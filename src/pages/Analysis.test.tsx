@@ -203,6 +203,47 @@ describe("Analysis page", () => {
     await waitFor(() => expect(mocks.setGameNote).toHaveBeenCalledWith(7, "Zu passiv gespielt."));
   });
 
+  describe("clocks", () => {
+    /** Restzeiten nach je vier Halbzügen · 10 Minuten ohne Zuschlag. */
+    const timedGame = {
+      ...excludedGame,
+      id: 21,
+      clocks: "59500 59300 58800 58100",
+      time_control: "600",
+    };
+
+    it("shows both clocks and the time control once a game brings them", async () => {
+      mocks.listGames.mockResolvedValue([timedGame]);
+      render(<LocaleProvider><Analysis targetGameId={21} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("21"));
+
+      // Am Ende der Partie: Weiß 588,00 s, Schwarz 581,00 s.
+      expect(await screen.findByText("9:48")).toBeTruthy();
+      expect(screen.getByText("9:41")).toBeTruthy();
+      // Die Bedenkzeit-Vorgabe steht in der Kopfzeile hinter der Zeitklasse.
+      expect(screen.getByText(/Rapid 10 ·/)).toBeTruthy();
+    });
+
+    it("follows the move list backwards", async () => {
+      mocks.listGames.mockResolvedValue([timedGame]);
+      render(<LocaleProvider><Analysis targetGameId={21} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("21"));
+      await screen.findByText("9:48");
+
+      // Zurück auf Halbzug 2: Weiß 595,00 s, Schwarz 593,00 s.
+      fireEvent.click(await screen.findByRole("button", { name: "e5" }));
+      expect(await screen.findByText("9:55")).toBeTruthy();
+      expect(screen.getByText("9:53")).toBeTruthy();
+    });
+
+    it("shows nothing at all when a game has no clock data", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+      expect(screen.queryByText(/^\d+:\d\d$/)).toBeNull();
+    });
+  });
+
   describe("link to the original game", () => {
     const originLink = () => screen.queryByRole("link", { name: /Original/ });
 

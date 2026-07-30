@@ -84,6 +84,12 @@ pub struct SyncGame {
     #[serde(default)]
     pub accuracy_endgame: Option<f64>,
     pub moves: String,
+    /// Restzeit nach jedem Halbzug (Hundertstelsekunden). Ältere Gegenstellen
+    /// kennen das Feld nicht · dort bleibt die Partie ohne Uhren.
+    #[serde(default)]
+    pub clocks: String,
+    #[serde(default)]
+    pub time_control: String,
     pub note: String,
     pub note_ts: i64,
     #[serde(default)]
@@ -182,6 +188,12 @@ pub struct SyncStudyEvent {
     pub created_ts: i64,
     pub updated_ts: i64,
     pub deleted: bool,
+    /// Wiederholungsraster der Serie ("" = Einzeltermin). Ältere Gegenstellen
+    /// kennen das Feld nicht · dort bleiben Serien einzelne Termine.
+    #[serde(default)]
+    pub repeat_rule: String,
+    #[serde(default)]
+    pub series_key: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -230,7 +242,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
                     moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
-                    analyzed_ts
+                    analyzed_ts, clocks, time_control
              FROM games WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -267,6 +279,8 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     analysis_excluded: r.get::<_, i64>(26)? != 0,
                     updated_ts: r.get(27)?,
                     analyzed_ts: r.get(28)?,
+                    clocks: r.get(29)?,
+                    time_control: r.get(30)?,
                     evals: Vec::new(),
                 },
             ))
@@ -572,7 +586,8 @@ fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEv
     let mut stmt = conn
         .prepare(
             "SELECT e.sync_key, t.sync_key, e.day, e.position, e.completed,
-                    e.completed_ts, e.created_ts, e.updated_ts, e.deleted
+                    e.completed_ts, e.created_ts, e.updated_ts, e.deleted,
+                    e.repeat_rule, e.series_key
              FROM study_events e
              JOIN study_templates t ON t.id = e.template_id
              WHERE e.updated_ts >= ?1",
@@ -590,6 +605,8 @@ fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEv
                 created_ts: r.get(6)?,
                 updated_ts: r.get(7)?,
                 deleted: r.get::<_, i64>(8)? != 0,
+                repeat_rule: r.get(9)?,
+                series_key: r.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -668,8 +685,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         color, my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
                         moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
-                        analyzed_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)",
+                        analyzed_ts, clocks, time_control)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.my_name, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
@@ -677,7 +694,7 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.accuracy_endgame, g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
                         g.analyzed as i64, g.analysis_excluded as i64, incoming_updated,
-                        g.analyzed_ts
+                        g.analyzed_ts, g.clocks, g.time_control
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -697,6 +714,10 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         analysis_excluded = CASE WHEN ?7 >= updated_ts THEN ?8 ELSE analysis_excluded END,
                         time_class = CASE WHEN ?7 >= updated_ts THEN ?9 ELSE time_class END,
                         my_name = CASE WHEN ?7 >= updated_ts AND ?10 != '' THEN ?10 ELSE my_name END,
+                        -- Uhrendaten sind unveränderliche Partiedaten: wer sie
+                        -- hat, behält sie; wer keine hat, übernimmt sie.
+                        clocks = CASE WHEN clocks = '' THEN ?12 ELSE clocks END,
+                        time_control = CASE WHEN time_control = '' THEN ?13 ELSE time_control END,
                         updated_ts = MAX(updated_ts, ?7)
                      WHERE id = ?1",
                     params![
@@ -710,7 +731,9 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.analysis_excluded as i64,
                         g.time_class,
                         g.my_name,
-                        g.analyzed_ts
+                        g.analyzed_ts,
+                        g.clocks,
+                        g.time_control
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -1033,8 +1056,9 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                     .execute(
                         "UPDATE study_events
                          SET template_id=?1, day=?2, position=?3, completed=?4,
-                             completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8
-                         WHERE id=?9",
+                             completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8,
+                             repeat_rule=?9, series_key=?10
+                         WHERE id=?11",
                         params![
                             template_id,
                             event.day,
@@ -1044,6 +1068,8 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                             event.created_ts,
                             event.updated_ts,
                             event.deleted as i64,
+                            event.repeat_rule,
+                            event.series_key,
                             id
                         ],
                     )
@@ -1055,8 +1081,9 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                     .execute(
                         "INSERT INTO study_events
                          (sync_key, template_id, day, position, completed,
-                          completed_ts, created_ts, updated_ts, deleted)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                          completed_ts, created_ts, updated_ts, deleted,
+                          repeat_rule, series_key)
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
                         params![
                             event.sync_key,
                             template_id,
@@ -1066,7 +1093,9 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                             event.completed_ts,
                             event.created_ts,
                             event.updated_ts,
-                            event.deleted as i64
+                            event.deleted as i64,
+                            event.repeat_rule,
+                            event.series_key
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -1689,6 +1718,8 @@ mod tests {
             tags_ts: 0,
             analyzed: false,
             analyzed_ts: 0,
+            clocks: String::new(),
+            time_control: String::new(),
             analysis_excluded: false,
             updated_ts: 100,
             evals: Vec::new(),
@@ -1914,6 +1945,8 @@ mod tests {
             created_ts: 110,
             updated_ts: 110,
             deleted: false,
+            repeat_rule: "weekly".into(),
+            series_key: "series-calculation".into(),
         };
 
         assert_eq!(

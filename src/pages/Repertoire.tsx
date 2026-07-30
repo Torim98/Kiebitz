@@ -31,6 +31,7 @@ import {
   type RepStats,
 } from "../lib/repertoire";
 import Board from "../components/Board";
+import { BOARD_WIDTH } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "../components/ui";
 import { de, fenAfter } from "../lib/util";
@@ -152,7 +153,7 @@ function LiveRepertoire() {
   const moveText = baseSans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
 
   return (
-    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
@@ -188,7 +189,7 @@ function LiveRepertoire() {
           }}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_380px_1fr]">
+        <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
           <Card title={t("rep.variants")} pad={false}>
             <div className="p-2">
               {(["white", "black"] as const).map((side) => (
@@ -240,7 +241,7 @@ function LiveRepertoire() {
           ) : (
             <>
               <div>
-                <Board boardId="repertoire" fen={fen} width={380} orientation={selected?.side ?? "white"} />
+                <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} orientation={selected?.side ?? "white"} />
                 <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
                   {moveText || t("rep.startPos")}
                 </div>
@@ -456,12 +457,12 @@ function AddLine({
 
   return (
     <div className="min-[1240px]:col-span-2">
-      <div className="grid grid-cols-1 gap-4 min-[1000px]:grid-cols-[380px_1fr]">
+      <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
         <div>
           <Board
             boardId="rep-add"
             fen={fen}
-            width={380}
+            width={BOARD_WIDTH}
             draggable
             onPieceDrop={tryMove}
             onSquareClick={addSelection.onSquareClick}
@@ -628,7 +629,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
     ? `${Math.ceil(previousPly / 2)}${previousPly % 2 === 1 ? "." : "…"}${previousSan}`
     : t("rep.startPos");
   return (
-    <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
+    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
       <div>
         <div className="mb-3 flex items-center justify-between text-[13px]">
           <span className="font-medium">
@@ -641,7 +642,7 @@ function Trainer({ onExit }: { onExit: () => void }) {
         <Board
           boardId="rep-train"
           fen={fen}
-          width={420}
+          width={BOARD_WIDTH}
           draggable={state !== "correct" && atPrompt}
           onPieceDrop={tryMove}
           onSquareClick={trainSelection.onSquareClick}
@@ -817,7 +818,7 @@ function DemoRepertoire() {
     .join(" ");
 
   return (
-    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("rep.title")}</h1>
@@ -835,7 +836,7 @@ function DemoRepertoire() {
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 min-[1240px]:grid-cols-[300px_380px_1fr]">
+      <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
         <Card title={t("rep.variants")} pad={false}>
           <div className="p-2">
             {demoRepertoire.map((side) => (
@@ -859,7 +860,7 @@ function DemoRepertoire() {
         </Card>
 
         <div>
-          <Board boardId="repertoire" fen={fen} width={380} />
+          <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} />
           <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
             {moveText}
           </div>

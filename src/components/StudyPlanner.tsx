@@ -9,20 +9,26 @@ import {
   GripVertical,
   Pencil,
   Plus,
+  Repeat,
   Trash2,
 } from "lucide-react";
 import { Button, Card } from "./ui";
 import { useMobileShell } from "./MobileShell";
-import { useI18n } from "../lib/i18n";
+import { useI18n, type Key } from "../lib/i18n";
 import {
   completeStudyUnit,
   deleteStudyTemplate,
   deleteStudyUnit,
   getStudyCalendar,
   moveStudyUnit,
+  repeatStudyUnit,
   saveStudyTemplate,
   scheduleStudyUnit,
+  REPEAT_RULES,
+  REPEAT_STEP_DAYS,
+  type RepeatRule,
   type StudyCalendar,
+  type StudyEvent,
   type StudyTemplate,
   type StudyTemplateInput,
 } from "../lib/study";
@@ -44,6 +50,109 @@ function isoDay(date: Date): string {
 function mondayOf(date: Date): Date {
   const day = date.getUTCDay() || 7;
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - day + 1));
+}
+
+const REPEAT_LABEL: Record<Exclude<RepeatRule, "">, Key> = {
+  daily: "st.repeatDaily",
+  weekly: "st.repeatWeekly",
+  biweekly: "st.repeatBiweekly",
+};
+
+/** Vorschlag fürs Enddatum: zwölf Termine im gewählten Raster. */
+function defaultUntil(day: string, rule: Exclude<RepeatRule, "">): string {
+  const start = Date.parse(`${day}T00:00:00Z`);
+  if (Number.isNaN(start)) return day;
+  return isoDay(new Date(start + 11 * REPEAT_STEP_DAYS[rule] * DAY_MS));
+}
+
+/**
+ * Serie einstellen: Raster plus Enddatum. Eine Serie ist im Kalender eine Reihe
+ * echter Termine · deshalb steht hier auch das Ende, statt eine Regel offen zu
+ * lassen, die irgendwann Termine erfindet, die niemand geplant hat.
+ */
+function RepeatForm({
+  day,
+  current,
+  busy,
+  onApply,
+  onCancel,
+  onDeleteSeries,
+}: {
+  day: string;
+  current: RepeatRule;
+  busy: boolean;
+  onApply: (rule: Exclude<RepeatRule, "">, until: string) => void;
+  onCancel: () => void;
+  /** Nur bei einem Termin, der schon zu einer Serie gehört. */
+  onDeleteSeries?: () => void;
+}) {
+  const t = useI18n().t;
+  const [rule, setRule] = useState<Exclude<RepeatRule, "">>(
+    current === "" ? "weekly" : current
+  );
+  const [until, setUntil] = useState(() => defaultUntil(day, current === "" ? "weekly" : current));
+
+  return (
+    <div className="mt-2 rounded-lg border border-accent-dim bg-panel2 p-2">
+      <div className="text-[10.5px] uppercase tracking-wide text-ink3">{t("st.repeatTitle")}</div>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {REPEAT_RULES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => {
+              setRule(value);
+              setUntil(defaultUntil(day, value));
+            }}
+            className={`rounded-md border px-1.5 py-0.5 text-[10.5px] transition-colors ${
+              rule === value
+                ? "border-accent-dim bg-accent-soft text-accent"
+                : "border-line text-ink3 hover:text-ink"
+            }`}
+          >
+            {t(REPEAT_LABEL[value])}
+          </button>
+        ))}
+      </div>
+      <label className="mt-2 block text-[10.5px] text-ink3">
+        {t("st.repeatUntil")}
+        <input
+          type="date"
+          value={until}
+          min={day}
+          onChange={(event) => setUntil(event.target.value)}
+          className="mt-1 w-full rounded-md border border-line bg-panel px-1.5 py-1 text-[11px] text-ink focus:border-accent-dim focus:outline-none"
+        />
+      </label>
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-1">
+        {onDeleteSeries && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDeleteSeries}
+            className="mr-auto rounded-md px-1.5 py-1 text-[10.5px] text-ink3 hover:text-loss disabled:opacity-45"
+          >
+            {t("st.repeatEnd")}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md px-1.5 py-1 text-[10.5px] text-ink3 hover:text-ink"
+        >
+          {t("common.cancel")}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !until}
+          onClick={() => onApply(rule, until)}
+          className="rounded-md bg-accent px-2 py-1 text-[10.5px] font-medium text-[#06251a] disabled:opacity-45"
+        >
+          {t("common.save")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Was gerade am Zeiger hängt: eine Vorlage oder eine bereits geplante Einheit. */
@@ -80,6 +189,10 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [drag, setDrag] = useState<DragState | null>(null);
+  /** Termin, für den gerade das Wiederholungsraster eingestellt wird. */
+  const [repeating, setRepeating] = useState<number | null>(null);
+  /** Raster für die nächste Planung aus der Vorlagen-Bibliothek. */
+  const [planRepeat, setPlanRepeat] = useState<RepeatRule>("");
 
   const days = useMemo(
     () => [...Array(7)].map((_, index) => new Date(weekStart.getTime() + index * DAY_MS)),
@@ -97,8 +210,8 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
     return {
       templates,
       events: [
-        { id: 1, template_id: 3, day: isoDay(days[2]), position: 0, completed: true, completed_ts: 1, template: templates[2] },
-        { id: 2, template_id: 4, day: isoDay(days[5]), position: 0, completed: false, completed_ts: 0, template: templates[3] },
+        { id: 1, template_id: 3, day: isoDay(days[2]), position: 0, completed: true, completed_ts: 1, repeat_rule: "weekly", series_key: "preview-tactics", template: templates[2] },
+        { id: 2, template_id: 4, day: isoDay(days[5]), position: 0, completed: false, completed_ts: 0, repeat_rule: "", series_key: "", template: templates[3] },
       ],
       days: days.map((date, index) => {
         const day = isoDay(date);
@@ -148,6 +261,13 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
       setBusy(false);
     }
   };
+
+  /**
+   * Der Papierkorb löscht immer genau diesen Termin · eine ganze Serie geht nur
+   * über das Wiederholungs-Menü verloren, damit ein Fehlklick nicht Wochen an
+   * geplanten Einheiten mitnimmt.
+   */
+  const removeUnit = (event: StudyEvent) => mutate(() => deleteStudyUnit(event.id));
 
   const dropOnDay = (day: string, payload: DragPayload) => {
     if (!desktop) return;
@@ -336,7 +456,17 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                               <div className={`text-[11.5px] font-medium leading-tight ${event.completed ? "text-ink3 line-through" : "text-ink"}`}>
                                 {event.template.title}
                               </div>
-                              <div className="mt-1 text-[10px] text-ink3">{event.template.duration_min} min</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
+                                <span>{event.template.duration_min} min</span>
+                                {event.repeat_rule && (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
+                                    title={t("st.repeatSeries")}
+                                  >
+                                    <Repeat size={9} /> {t(REPEAT_LABEL[event.repeat_rule])}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="mt-2 flex justify-end gap-1">
@@ -349,12 +479,53 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                             ><Check size={12} /></button>
                             <button
                               type="button"
-                              onClick={() => void mutate(() => deleteStudyUnit(event.id))}
+                              onClick={() =>
+                                setRepeating((current) => (current === event.id ? null : event.id))
+                              }
+                              disabled={!desktop}
+                              aria-expanded={repeating === event.id}
+                              className={`rounded-md p-1 ${
+                                repeating === event.id || event.repeat_rule
+                                  ? "bg-accent-soft text-accent"
+                                  : "text-ink3 hover:bg-panel2 hover:text-accent"
+                              }`}
+                              aria-label={t("st.repeatSet")}
+                              title={t("st.repeatSet")}
+                            ><Repeat size={12} /></button>
+                            <button
+                              type="button"
+                              onClick={() => void removeUnit(event)}
                               disabled={!desktop}
                               className="rounded-md p-1 text-ink3 hover:bg-panel2 hover:text-loss"
                               aria-label={t("common.delete")}
                             ><Trash2 size={12} /></button>
                           </div>
+                          {repeating === event.id && (
+                            <RepeatForm
+                              day={event.day}
+                              current={event.repeat_rule}
+                              busy={busy}
+                              onCancel={() => setRepeating(null)}
+                              onApply={async (rule, until) => {
+                                if (await mutate(() => repeatStudyUnit(event.id, rule, until))) {
+                                  setRepeating(null);
+                                }
+                              }}
+                              onDeleteSeries={
+                                event.series_key
+                                  ? async () => {
+                                      if (
+                                        await mutate(() =>
+                                          deleteStudyUnit(event.id, "series")
+                                        )
+                                      ) {
+                                        setRepeating(null);
+                                      }
+                                    }
+                                  : undefined
+                              }
+                            />
+                          )}
                         </div>
                       ))}
                       {events.length === 0 && (
@@ -398,6 +569,24 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                   onChange={(event) => setPlanningDay(event.target.value)}
                   className="ml-1 rounded-lg border border-line bg-panel px-2 py-1.5 text-[12px] text-ink focus:border-accent-dim focus:outline-none"
                 />
+              </label>
+              {/* Raster für die Schaltfläche "Planen" · leer bleibt ein
+                  Einzeltermin, sonst entsteht direkt eine Serie. */}
+              <label className="text-[11px] text-ink3">
+                <span className="hidden min-[700px]:inline">{t("st.repeatTitle")} </span>
+                <select
+                  value={planRepeat}
+                  onChange={(event) => setPlanRepeat(event.target.value as RepeatRule)}
+                  aria-label={t("st.repeatTitle")}
+                  className="ml-1 rounded-lg border border-line bg-panel px-2 py-1.5 text-[12px] text-ink focus:border-accent-dim focus:outline-none"
+                >
+                  <option value="">{t("st.repeatOnce")}</option>
+                  {REPEAT_RULES.map((value) => (
+                    <option key={value} value={value}>
+                      {t(REPEAT_LABEL[value])}
+                    </option>
+                  ))}
+                </select>
               </label>
               <button
                 type="button"
@@ -453,10 +642,19 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                     ><Trash2 size={13} /></button>
                     <Button
                       disabled={busy || !desktop || !planningDay}
-                      onClick={() => void mutate(() => scheduleStudyUnit(template.id, planningDay))}
+                      onClick={() =>
+                        void mutate(() =>
+                          scheduleStudyUnit(
+                            template.id,
+                            planningDay,
+                            planRepeat,
+                            planRepeat ? defaultUntil(planningDay, planRepeat) : undefined
+                          )
+                        )
+                      }
                       className="ml-1 !px-2.5 !py-1.5 !text-[11.5px]"
                     >
-                      <Plus size={12} /> {t("st.plan")}
+                      {planRepeat ? <Repeat size={12} /> : <Plus size={12} />} {t("st.plan")}
                     </Button>
                   </div>
                 </div>

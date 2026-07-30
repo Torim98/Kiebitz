@@ -36,10 +36,18 @@ import {
   type PositionSearch,
 } from "../lib/analysis";
 import Board from "../components/Board";
+import { BOARD_WIDTH } from "../lib/boardLayout";
 import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ExtLink, ResultBadge, Tag } from "../components/ui";
 import { de, evalLabel, fenAfter, winProb } from "../lib/util";
 import { selectionStyles } from "../lib/boardMoves";
+import {
+  clocksAtPly,
+  formatClock,
+  parseClocks,
+  parseTimeControl,
+  timeControlLabel,
+} from "../lib/clocks";
 import { tcLabel } from "../lib/gameUi";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
@@ -113,6 +121,50 @@ function judgmentLabel(t: TFunc, judgment: string): string {
     blunder: "an.blunder",
   };
   return t(labels[judgment] ?? "an.good");
+}
+
+/**
+ * Restzeit einer Seite an der gezeigten Stellung.
+ *
+ * Die Uhr ist keine laufende Uhr, sondern der Stand der Partie an genau diesem
+ * Halbzug · beim Blättern läuft sie mit der Zugliste vor und zurück. Die Seite
+ * am Zug ist hervorgehoben, darunter steht bei Bedarf, was ihr letzter Zug
+ * gekostet hat.
+ */
+function ClockBadge({
+  centiseconds,
+  active,
+  spent,
+  locale,
+}: {
+  centiseconds: number | null;
+  active: boolean;
+  /** Verbrauchte Zeit des letzten Zuges dieser Seite (null = unbekannt). */
+  spent: number | null;
+  locale: "de" | "en";
+}) {
+  if (centiseconds == null) return null;
+  const low = centiseconds < 3000;
+  return (
+    <span className="flex items-baseline gap-1.5">
+      {spent != null && (
+        <span className="text-[11px] tabular-nums text-ink3">
+          +{formatClock(spent, locale)}
+        </span>
+      )}
+      <span
+        className={`rounded-md border px-2 py-0.5 text-[13px] font-semibold tabular-nums ${
+          active
+            ? low
+              ? "border-loss/50 bg-[#2a1414] text-loss"
+              : "border-accent-dim bg-accent-soft text-accent"
+            : "border-line bg-panel2 text-ink3"
+        }`}
+      >
+        {formatClock(centiseconds, locale)}
+      </span>
+    </span>
+  );
 }
 
 /** Zahl fürs Chart / die Eval-Bar: Matt zählt wie ±10 Bauern. */
@@ -550,6 +602,28 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   }, [sans]);
   const currentPly = variation?.basePly ?? ply;
 
+  // ── Uhren ────────────────────────────────────────────────────────────────
+  // Nur echte Partien bringen Zeitdaten mit; fehlen sie, entfällt die Anzeige
+  // komplett statt Nullen zu zeigen.
+  const clockValues = useMemo(
+    () => (live ? parseClocks(game.clocks ?? "") : []),
+    [live, game]
+  );
+  const timeControl = useMemo(
+    () => (live ? parseTimeControl(game.time_control ?? "") : null),
+    [live, game]
+  );
+  const clockPly = variation?.basePly ?? ply;
+  const clockView = useMemo(
+    () => clocksAtPly(clockValues, clockPly, timeControl),
+    [clockValues, clockPly, timeControl]
+  );
+  const hasClocks = clockValues.length > 0;
+  // Wer an der gezeigten Stellung am Zug ist · Weiß nach geraden Halbzügen.
+  const whiteToMove = clockPly % 2 === 0;
+  const spentBy = (white: boolean) =>
+    hasClocks && clockView.spent != null && whiteToMove !== white ? clockView.spent : null;
+
   const summary = useMemo(() => {
     const counts: Record<MoveJudgment, number> = {
       book: 0,
@@ -630,8 +704,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       : `https://lichess.org/@/${encodeURIComponent(handle)}/all`;
   }, [live, game, playerProfile.cc, playerProfile.li]);
 
+  // Die Bedenkzeit-Vorgabe steht neben der Zeitklasse, sobald sie bekannt ist ·
+  // "Blitz · 3+2" sagt mehr als "Blitz".
+  const tcSuffix = live ? timeControlLabel(game.time_control ?? "") : null;
   const headerSub = live
-    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)}${tcSuffix ? ` ${tcSuffix}` : ""} · ${game.opening || game.eco || "—"} · ${game.played_at}`
     : scratch
       ? t("an.freeBoardHint")
       : storeCapture
@@ -761,8 +838,16 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(400px,528px)_minmax(320px,1fr)] min-[1660px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
         {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
         <div className="min-w-0 min-[1660px]:w-[560px]">
-          <div className="mb-2 pl-8 text-[12.5px]">
-            <span className="font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</span>
+          <div className="mb-2 flex min-h-[26px] items-center justify-between gap-3 pl-8 text-[12.5px]">
+            <span className="min-w-0 truncate font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</span>
+            {hasClocks && (
+              <ClockBadge
+                centiseconds={orientation === "white" ? clockView.black : clockView.white}
+                active={orientation === "white" ? !whiteToMove : whiteToMove}
+                spent={spentBy(orientation !== "white")}
+                locale={locale}
+              />
+            )}
           </div>
           <div className="flex gap-3">
             <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
@@ -773,7 +858,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               <Board
                 boardId="analysis"
                 fen={fen}
-                width={528}
+                width={BOARD_WIDTH}
                 orientation={orientation}
                 draggable={scratch || live}
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
@@ -791,8 +876,16 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               />
             </div>
           </div>
-          <div className="mt-2 pl-8 text-[12.5px]">
-            <span className="font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</span>
+          <div className="mt-2 flex min-h-[26px] items-center justify-between gap-3 pl-8 text-[12.5px]">
+            <span className="min-w-0 truncate font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</span>
+            {hasClocks && (
+              <ClockBadge
+                centiseconds={orientation === "white" ? clockView.white : clockView.black}
+                active={orientation === "white" ? whiteToMove : !whiteToMove}
+                spent={spentBy(orientation === "white")}
+                locale={locale}
+              />
+            )}
           </div>
           {variation && (
             <div className="ml-8 mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">

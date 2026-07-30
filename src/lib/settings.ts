@@ -20,6 +20,10 @@ export interface Settings {
   display_name: string;
   import_months: number;
   puzzle_goal: number;
+  /** Zug- und Schlagklänge auf allen Brettern. */
+  sound_enabled: boolean;
+  /** Lautstärke der Brettklänge in Prozent (0 … 100). */
+  sound_volume: number;
   auto_update: boolean;
   /** Sync-Server (Desktop-Hub) beim Start mitstarten. */
   sync_enabled: boolean;

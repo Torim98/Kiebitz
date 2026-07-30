@@ -1,5 +1,12 @@
 import { Chess } from "chess.js";
 import type { GameRecord } from "./db";
+import {
+  clockStamp,
+  clocksFromPgn,
+  parseClocks,
+  parseTimeControl,
+  serializeClocks,
+} from "./clocks";
 
 function splitGames(text: string): string[] {
   const normalized = text.replace(/\r\n?/g, "\n").trim();
@@ -128,6 +135,10 @@ export function importPgn(
       accuracy_middlegame: null,
       accuracy_endgame: null,
       moves: moves.join(" "),
+      clocks: serializeClocks(
+        clocksFromPgn(block, parseTimeControl(h.TimeControl ?? "")).slice(0, moves.length)
+      ),
+      time_control: h.TimeControl ?? "",
       note: h.KiebitzNote || "",
       tags: tags(h.KiebitzTags),
       analyzed: false,
@@ -165,6 +176,7 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
     if (game.opp_elo > 0) values[game.color === "white" ? "BlackElo" : "WhiteElo"] = String(game.opp_elo);
     if (game.eco) values.ECO = game.eco;
     if (game.opening) values.Opening = game.opening;
+    if (game.time_control) values.TimeControl = game.time_control;
     if (game.tags?.length) values.KiebitzTags = game.tags.join(", ");
     if (game.note) values.KiebitzNote = game.note;
     if (game.analysis_excluded) values.KiebitzAnalysisExcluded = "true";
@@ -173,7 +185,17 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
     if (game.accuracy_middlegame != null) values.KiebitzAccuracyMiddlegame = game.accuracy_middlegame.toFixed(1);
     if (game.accuracy_endgame != null) values.KiebitzAccuracyEndgame = game.accuracy_endgame.toFixed(1);
     for (const [key, value] of Object.entries(values)) chess.setHeader(key, value);
-    for (const san of game.moves.split(/\s+/).filter(Boolean)) chess.move(san);
+    // Uhren gehen als %clk-Kommentare mit, so wie sie hereingekommen sind ·
+    // ein Export/Import-Rundlauf verliert die Zeitdaten damit nicht.
+    const clocks = parseClocks(game.clocks ?? "");
+    game.moves
+      .split(/\s+/)
+      .filter(Boolean)
+      .forEach((san, index) => {
+        chess.move(san);
+        const remaining = clocks[index];
+        if (remaining != null) chess.setComment(`[%clk ${clockStamp(remaining)}]`);
+      });
     return chess.pgn({ maxWidth: 100, newline: "\n" });
   }).join("\n\n");
 }

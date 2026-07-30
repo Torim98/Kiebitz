@@ -1,6 +1,8 @@
 import { Chessboard } from "react-chessboard";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { moveTargetStyles, selectionStyles } from "../lib/boardMoves";
+import { soundsForTransition } from "../lib/boardSound";
+import { playBoardSound } from "../lib/sound";
 
 const boardTheme = {
   customDarkSquareStyle: { backgroundColor: "#6f8155" },
@@ -34,6 +36,7 @@ export default function Board({
   badges = [],
   muted = false,
   mouseDrag = false,
+  silent = false,
 }: {
   fen: string;
   /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
@@ -53,6 +56,8 @@ export default function Board({
   muted?: boolean;
   /** Gemeinsamer WebView-Drag fuer Maus, Stift und Touch statt react-dnd. */
   mouseDrag?: boolean;
+  /** Reine Vorschaubretter bleiben stumm, auch wenn Ton aktiviert ist. */
+  silent?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
@@ -82,6 +87,22 @@ export default function Board({
   // A new position always ends the old drag, including moves completed by an
   // automated opponent response.
   useEffect(() => setDragSource(null), [fen]);
+
+  /**
+   * Zug- und Schlagklänge hängen an der Stellung, nicht am Eingabeweg: so
+   * klingen der eigene Zug, die Engine-Antwort, der Setup-Zug einer Aufgabe
+   * und das Blättern in der Zugliste gleichermaßen · und jedes Brett der App
+   * bekommt den Ton, ohne ihn selbst anzumelden.
+   */
+  const soundFenRef = useRef(fen);
+  useEffect(() => {
+    const previous = soundFenRef.current;
+    soundFenRef.current = fen;
+    if (silent) return;
+    soundsForTransition(previous, fen).forEach((kind, index) =>
+      playBoardSound(kind, index * 0.06)
+    );
+  }, [fen, silent]);
 
   /**
    * Windows WebView2 and Android WebView do not consistently deliver the

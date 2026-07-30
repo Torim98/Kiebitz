@@ -22,7 +22,8 @@ export type PageId =
   | "puzzles"
   | "study"
   | "insights"
-  | "settings";
+  | "settings"
+  | "support";
 
 /** Ein Navigationsziel samt seiner Deep-Link-Parameter. */
 export interface Route {
@@ -33,6 +34,8 @@ export interface Route {
   filter?: GamesFilter | null;
   /** Puzzles: Motiv-Filter aus dem Coach. */
   theme?: string;
+  /** Rückmeldung: vorgewählte Meldungsart (z. B. Absturz nach Schütteln). */
+  reportType?: "feedback" | "crash" | "feature";
 }
 
 export type RouteParams = Omit<Route, "page">;

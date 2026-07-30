@@ -1,7 +1,8 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendState } from "../lib/backend";
 import type { Settings } from "../lib/settings";
+import { ShellProvider } from "../components/MobileShell";
 import SettingsPage from "./Settings";
 
 const mocks = vi.hoisted(() => ({
@@ -46,7 +47,7 @@ vi.mock("../lib/sync", () => ({
   syncDiscover: vi.fn(),
   syncInfo: vi.fn(() => new Promise(() => {})),
   syncNow: vi.fn(),
-  syncPair: vi.fn(),
+  syncPair: vi.fn(() => new Promise(() => {})),
   syncServerStart: vi.fn(),
 }));
 vi.mock("../lib/legal", () => ({
@@ -82,6 +83,8 @@ const androidSettings = {
   display_name: "",
   import_months: 3,
   puzzle_goal: 10,
+  sound_enabled: true,
+  sound_volume: 70,
   auto_update: true,
   sync_enabled: false,
   sync_code: "",
@@ -111,7 +114,14 @@ describe("Settings loading", () => {
         resolveSettings = resolve;
       })
     );
-    const view = render(<SettingsPage />);
+    // Die Android-Shell entscheidet über das kompakte Layout. Jeder Aufruf
+    // baut ein neues Element · React überspringt sonst das erneute Rendern.
+    const mobileShell = () => (
+      <ShellProvider mobile>
+        <SettingsPage />
+      </ShellProvider>
+    );
+    const view = render(mobileShell());
 
     expect(screen.getByText("set.loading")).toBeTruthy();
     expect(screen.queryByText("set.desktopOnly")).toBeNull();
@@ -121,7 +131,7 @@ describe("Settings loading", () => {
       mode: "desktop",
       info: { version: "0.6.0", backend: "tauri", platform: "android" },
     };
-    view.rerender(<SettingsPage />);
+    view.rerender(mobileShell());
 
     expect(screen.getByText("set.loading")).toBeTruthy();
     expect(screen.queryByText("set.desktopOnly")).toBeNull();
@@ -130,7 +140,33 @@ describe("Settings loading", () => {
 
     expect(screen.queryByText("set.loading")).toBeNull();
     expect(screen.queryByText("set.desktopOnly")).toBeNull();
+    // Mobil sind die Bereiche zugeklappt · sichtbar ist die Zeile, nicht ihr Inhalt.
+    expect(screen.getByText("set.language")).toBeTruthy();
+    expect(screen.queryByText("set.langNoteApp")).toBeNull();
+    expect(screen.queryByText("set.langNote")).toBeNull();
+
+    // Aufgeklappt steht dort der App-Hinweis · nicht der Web-Hinweis.
+    fireEvent.click(screen.getByRole("button", { name: /set\.language/ }));
     expect(screen.getByText("set.langNoteApp")).toBeTruthy();
     expect(screen.queryByText("set.langNote")).toBeNull();
+  });
+
+  it("keeps every settings section open on the desktop", async () => {
+    mocks.getSettings.mockResolvedValue({ ...androidSettings, locale: "de" });
+    mocks.backend = {
+      mode: "desktop",
+      info: { version: "0.6.0", backend: "tauri", platform: "windows" },
+    };
+
+    await act(async () => {
+      render(<SettingsPage />);
+    });
+
+    // Kein Aufklappen nötig: der Inhalt steht direkt da.
+    expect(screen.getByText("set.langNoteApp")).toBeTruthy();
+    expect(screen.getByText("set.soundToggle")).toBeTruthy();
+    expect(screen.getByText("set.engineNote")).toBeTruthy();
+    // Die Zwischenüberschrift der Expertenbereiche gibt es nur mobil.
+    expect(screen.queryByText("set.advanced")).toBeNull();
   });
 });

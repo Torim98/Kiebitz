@@ -1,5 +1,10 @@
 import { Chess } from "chess.js";
 import type { GameRecord } from "./db";
+import {
+  clocksFromPgn,
+  parseTimeControl,
+  serializeClocks,
+} from "./clocks";
 
 /** Liest einen PGN-Header-Wert, z. B. header(pgn, "ECO") → "B20". */
 function pgnHeader(pgn: string, key: string): string {
@@ -90,6 +95,8 @@ export async function importChessCom(
       const opp = iAmWhite ? g.black : g.white;
       const pgn = g.pgn ?? "";
       const sans = sansFromPgn(pgn);
+      const timeControl = pgnHeader(pgn, "TimeControl");
+      const clocks = clocksFromPgn(pgn, parseTimeControl(timeControl));
       const date = pgnHeader(pgn, "Date").split(".").join("-") ||
         new Date(g.end_time * 1000).toISOString().slice(0, 10);
 
@@ -112,6 +119,8 @@ export async function importChessCom(
         moves_count: Math.ceil(sans.length / 2),
         accuracy: (iAmWhite ? g.accuracies?.white : g.accuracies?.black) ?? null,
         moves: sans.join(" "),
+        clocks: serializeClocks(clocks.slice(0, sans.length)),
+        time_control: timeControl,
         note: "",
         analyzed: false,
       });
@@ -126,6 +135,10 @@ interface LiGame {
   winner?: "white" | "black";
   createdAt: number;
   moves?: string;
+  /** Restzeit nach jedem Halbzug in Hundertstelsekunden (clocks=true). */
+  clocks?: number[];
+  /** Bedenkzeit-Vorgabe; fehlt bei Correspondence-Partien. */
+  clock?: { initial: number; increment: number };
   opening?: { eco: string; name: string };
   players: {
     white: { user?: { name: string }; rating?: number };
@@ -137,8 +150,10 @@ interface LiGame {
 export async function importLichess(user: string, max?: number): Promise<GameRecord[]> {
   if (!user.trim()) return [];
   const maxParam = max != null ? `max=${max}&` : "";
+  // clocks=true liefert die Restzeiten je Halbzug · ohne den Parameter
+  // schickt Lichess die Partie ohne Uhren, und das Analyse-Brett hätte keine.
   const res = await fetch(
-    `https://lichess.org/api/games/user/${user}?${maxParam}opening=true`,
+    `https://lichess.org/api/games/user/${user}?${maxParam}opening=true&clocks=true`,
     { headers: { Accept: "application/x-ndjson" } }
   );
   if (!res.ok) throw new Error(`lichess: ${res.status}`);
@@ -174,6 +189,8 @@ export async function importLichess(user: string, max?: number): Promise<GameRec
       moves_count: Math.ceil(plies / 2),
       accuracy: null,
       moves: g.moves ?? "",
+      clocks: serializeClocks((g.clocks ?? []).slice(0, plies)),
+      time_control: g.clock ? `${g.clock.initial}+${g.clock.increment}` : "",
       note: "",
       analyzed: false,
     });

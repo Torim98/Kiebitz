@@ -31,6 +31,7 @@ import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
 import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
+import { BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
 import { de, deInt, fenAfter } from "../lib/util";
@@ -316,7 +317,7 @@ export default function Games({
   }, [backend.mode]);
 
   return (
-    <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div>
           <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("games.title")}</h1>
@@ -483,7 +484,7 @@ export default function Games({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px] min-[1500px]:grid-cols-[minmax(0,1fr)_560px]">
         <div className="flex min-w-0 flex-col gap-3">
         <Card pad={false}>
           {mobile ? (
@@ -714,7 +715,13 @@ export default function Games({
           <div className="flex flex-col gap-4">
             <Card pad={false}>
               <div className="flex justify-center p-4 pb-3">
-                <Board boardId="games-preview" fen={fenAfter(selected.sans)} width={272} orientation={selected.color} />
+                <Board
+                  boardId="games-preview"
+                  fen={fenAfter(selected.sans)}
+                  width={BOARD_WIDTH}
+                  orientation={selected.color}
+                  silent
+                />
               </div>
               <div className="border-t border-line px-4 py-3">
                 <div className="flex items-center justify-between">

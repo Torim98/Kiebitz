@@ -86,8 +86,29 @@ describe("Week calendar", () => {
       expect(invokeMock).toHaveBeenCalledWith("schedule_study_unit", {
         templateId: TEMPLATE.id,
         day: monday,
+        repeatRule: null,
+        until: null,
       })
     );
+  });
+
+  it("plans a weekly series when the library repeat is set", async () => {
+    render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+    await openLibrary();
+
+    fireEvent.change(await screen.findByLabelText("Wiederholung"), {
+      target: { value: "weekly" },
+    });
+    fireEvent.click((await screen.findAllByRole("button", { name: "Planen" }))[0]);
+
+    await waitFor(() => {
+      const call = invokeMock.mock.calls.find(([command]) => command === "schedule_study_unit");
+      expect(call?.[1]).toMatchObject({ templateId: TEMPLATE.id, repeatRule: "weekly" });
+      // Zwölf Wochentermine · das Enddatum liegt elf Wochen nach dem Start.
+      expect(call?.[1].until).toBe(
+        isoDay(new Date(Date.parse(`${call?.[1].day}T00:00:00Z`) + 11 * 7 * 86_400_000))
+      );
+    });
   });
 
   it("ignores a click that never moved", async () => {

@@ -51,6 +51,18 @@ export interface StudyTemplate {
   description: string;
 }
 
+/** Wiederholungsraster einer Serie; "" ist ein Einzeltermin. */
+export type RepeatRule = "" | "daily" | "weekly" | "biweekly";
+
+export const REPEAT_RULES: Exclude<RepeatRule, "">[] = ["daily", "weekly", "biweekly"];
+
+/** Abstand zweier Termine in Tagen · Basis für den Enddatum-Vorschlag. */
+export const REPEAT_STEP_DAYS: Record<Exclude<RepeatRule, "">, number> = {
+  daily: 1,
+  weekly: 7,
+  biweekly: 14,
+};
+
 export interface StudyEvent {
   id: number;
   template_id: number;
@@ -58,6 +70,10 @@ export interface StudyEvent {
   position: number;
   completed: boolean;
   completed_ts: number;
+  /** "" bei einem Einzeltermin, sonst das Raster der Serie. */
+  repeat_rule: RepeatRule;
+  /** Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin). */
+  series_key: string;
   template: StudyTemplate;
 }
 
@@ -97,8 +113,42 @@ export function deleteStudyTemplate(templateId: number): Promise<void> {
   return invoke<void>("delete_study_template", { templateId }).then(() => emitDataChange());
 }
 
-export function scheduleStudyUnit(templateId: number, day: string): Promise<void> {
-  return invoke<void>("schedule_study_unit", { templateId, day }).then(() => emitDataChange());
+/**
+ * Plant eine Einheit auf einen Tag. Mit `repeatRule` entsteht daraus eine Serie
+ * echter Termine bis `until` (Standard: 12 Wochen bzw. 30 Tage täglich) ·
+ * abhaken, verschieben und löschen bleiben damit Operationen auf einem Termin.
+ */
+export function scheduleStudyUnit(
+  templateId: number,
+  day: string,
+  repeatRule: RepeatRule = "",
+  until?: string
+): Promise<number> {
+  return invoke<number>("schedule_study_unit", {
+    templateId,
+    day,
+    repeatRule: repeatRule || null,
+    until: until || null,
+  }).then((created) => {
+    emitDataChange();
+    return created;
+  });
+}
+
+/** Macht aus einem geplanten Termin eine Serie bzw. ändert deren Raster. */
+export function repeatStudyUnit(
+  eventId: number,
+  repeatRule: Exclude<RepeatRule, "">,
+  until?: string
+): Promise<number> {
+  return invoke<number>("repeat_study_unit", {
+    eventId,
+    repeatRule,
+    until: until || null,
+  }).then((created) => {
+    emitDataChange();
+    return created;
+  });
 }
 
 export function moveStudyUnit(eventId: number, day: string, position: number): Promise<void> {
@@ -109,6 +159,17 @@ export function completeStudyUnit(eventId: number, completed: boolean): Promise<
   return invoke<void>("complete_study_unit", { eventId, completed }).then(() => emitDataChange());
 }
 
-export function deleteStudyUnit(eventId: number): Promise<void> {
-  return invoke<void>("delete_study_unit", { eventId }).then(() => emitDataChange());
+/**
+ * Löscht einen Termin · mit `scope: "series"` diesen und alle folgenden Termine
+ * derselben Serie. Vergangene Termine bleiben stehen, dort steht schon, was
+ * tatsächlich passiert ist.
+ */
+export function deleteStudyUnit(
+  eventId: number,
+  scope: "one" | "series" = "one"
+): Promise<number> {
+  return invoke<number>("delete_study_unit", { eventId, scope }).then((deleted) => {
+    emitDataChange();
+    return deleted;
+  });
 }

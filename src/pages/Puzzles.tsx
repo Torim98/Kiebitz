@@ -29,7 +29,9 @@ import {
   type PuzzleOut,
   type PuzzleStats,
 } from "../lib/puzzles";
+import { getSettings } from "../lib/settings";
 import Board from "../components/Board";
+import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
@@ -47,15 +49,66 @@ const FILTER_THEMES = ["mateIn1", "mateIn2", "fork", "pin", "skewer", "backRankM
 
 function LivePuzzles({ initialTheme = "" }: { initialTheme?: string }) {
   const [stats, setStats] = useState<PuzzleStats | null>(null);
+  // Das Tagesziel steht in den Einstellungen, nicht in den Puzzle-Statistiken ·
+  // dasselbe Ziel, das Dashboard und Lernplan anzeigen.
+  const [goal, setGoal] = useState(0);
   const reloadStats = () => puzzleStats().then(setStats).catch(() => {});
 
   useEffect(() => {
     reloadStats();
+    getSettings().then((s) => setGoal(s.puzzle_goal)).catch(() => {});
   }, []);
 
   if (!stats) return <PuzzleLoading />;
   if (stats.db_total === 0) return <ImportView stats={stats} onImported={reloadStats} />;
-  return <TrainerView stats={stats} reloadStats={reloadStats} initialTheme={initialTheme} />;
+  return (
+    <TrainerView
+      stats={stats}
+      goal={goal}
+      reloadStats={reloadStats}
+      initialTheme={initialTheme}
+    />
+  );
+}
+
+/**
+ * Tagesfortschritt als Chip in der Kopfzeile: Versuche gegen das Tagesziel · so
+ * wie im Dashboard und im Lernplan · dazu die Zahl der heute gelösten Aufgaben,
+ * weil das die Zahl ist, die den Trainingstag beschreibt.
+ */
+function DailyGoal({
+  attempts,
+  solved,
+  goal,
+}: {
+  attempts: number;
+  solved: number;
+  goal: number;
+}) {
+  const t = useT();
+  const reached = goal > 0 && attempts >= goal;
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
+      <Target size={15} className={reached ? "text-accent" : "text-gold"} />
+      <span className="text-ink3">{t("pz.todayGoal")}</span>
+      <span className="font-medium tabular-nums">
+        {deInt(attempts)}
+        {goal > 0 && <span className="font-normal text-ink3"> / {deInt(goal)}</span>}
+      </span>
+      {goal > 0 && (
+        <span className="h-1.5 w-16 overflow-hidden rounded-full bg-panel3">
+          <span
+            className="block h-full rounded-full"
+            style={{
+              width: `${Math.min(100, (attempts / goal) * 100)}%`,
+              background: reached ? "var(--color-accent)" : "var(--color-gold)",
+            }}
+          />
+        </span>
+      )}
+      <span className="text-ink3">· {t("pz.todaySolved", { n: deInt(solved) })}</span>
+    </div>
+  );
 }
 
 function PuzzleLoading() {
@@ -166,10 +219,13 @@ type Status = "loading" | "playing" | "solved" | "empty";
 
 function TrainerView({
   stats,
+  goal,
   reloadStats,
   initialTheme = "",
 }: {
   stats: PuzzleStats;
+  /** Tagesziel aus den Einstellungen; 0 = noch nicht geladen. */
+  goal: number;
   reloadStats: () => void;
   initialTheme?: string;
 }) {
@@ -350,16 +406,19 @@ function TrainerView({
             })}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
-          <Flame size={15} className="text-gold" />
-          <span className="font-medium">
-            {stats.streak_days} {t(stats.streak_days === 1 ? "common.days.one" : "common.days.many")}
-          </span>
-          <span className="text-ink3">{t("pz.streakToday", { n: stats.today_solved })}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <DailyGoal attempts={stats.today_attempts} solved={stats.today_solved} goal={goal} />
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
+            <Flame size={15} className="text-gold" />
+            <span className="font-medium">
+              {stats.streak_days} {t(stats.streak_days === 1 ? "common.days.one" : "common.days.many")}
+            </span>
+            <span className="text-ink3">{t("pz.streakToday", { n: stats.today_solved })}</span>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
@@ -386,7 +445,7 @@ function TrainerView({
           <Board
             boardId="puzzle"
             fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
-            width={420}
+            width={BOARD_WIDTH}
             draggable={status === "playing"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
@@ -449,7 +508,7 @@ function TrainerView({
           )}
         </div>
 
-        <div className="flex max-w-[420px] flex-col gap-4">
+        <div className="flex max-w-[528px] flex-col gap-4">
           <Card title={t("pz.rating")}>
             <div className="flex items-end justify-between">
               <div>
@@ -687,14 +746,21 @@ function DemoPuzzles() {
               : t("pz.demoSubtitle")}
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
-          <Flame size={15} className="text-gold" />
-          <span className="font-medium">{demoStats.streak} {t("common.days.many")}</span>
-          <span className="text-ink3">{t("pz.streakToday", { n: demoStats.todaySolved })}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <DailyGoal
+            attempts={demoStats.todaySolved}
+            solved={demoStats.todaySolved}
+            goal={demoStats.todayGoal}
+          />
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
+            <Flame size={15} className="text-gold" />
+            <span className="font-medium">{demoStats.streak} {t("common.days.many")}</span>
+            <span className="text-ink3">{t("pz.streakToday", { n: demoStats.todaySolved })}</span>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1000px]:grid-cols-[420px_1fr]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
@@ -710,7 +776,7 @@ function DemoPuzzles() {
           <Board
             boardId="puzzle"
             fen={fen}
-            width={420}
+            width={BOARD_WIDTH}
             draggable={status !== "solved"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
@@ -744,7 +810,7 @@ function DemoPuzzles() {
           </div>
         </div>
 
-        <div className="flex max-w-[420px] flex-col gap-4">
+        <div className="flex max-w-[528px] flex-col gap-4">
           <Card title={t("pz.rating")}>
             <div className="flex items-end justify-between">
               <div>
