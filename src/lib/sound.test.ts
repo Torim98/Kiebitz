@@ -1,37 +1,65 @@
-import { describe, expect, it } from "vitest";
-import { renderBoardSound, type BoardSoundKind } from "./sound";
+import { expect, it, vi } from "vitest";
+import {
+  boardSoundEnabled,
+  playBoardSound,
+  setBoardSoundEnabled,
+  setBoardSoundVolume,
+  type BoardSoundKind,
+} from "./sound";
 
 const KINDS: BoardSoundKind[] = [
   "move",
   "capture",
+  "castle",
+  "check",
+  "checkmate",
   "error",
 ];
 
-describe("renderBoardSound", () => {
-  it.each(KINDS)("renders a finite, controlled %s waveform", (kind) => {
-    const samples = renderBoardSound(kind, 48_000);
-    const peak = samples.reduce(
-      (highest, sample) => Math.max(highest, Math.abs(sample)),
-      0
-    );
+it("preloads and plays every recorded board sound while respecting settings", () => {
+  const instances: FakeAudio[] = [];
 
-    expect(samples.length).toBeGreaterThan(3_000);
-    expect(samples.every(Number.isFinite)).toBe(true);
-    expect(peak).toBeGreaterThan(0.25);
-    expect(peak).toBeLessThan(0.561);
-    expect(Math.abs(samples[samples.length - 1])).toBeLessThan(0.0001);
-  });
+  class FakeAudio {
+    src: string;
+    preload = "";
+    volume = 1;
+    currentTime = 4;
+    paused = true;
+    ended = false;
+    load = vi.fn();
+    pause = vi.fn(() => {
+      this.paused = true;
+    });
+    play = vi.fn(() => {
+      this.paused = false;
+      return Promise.resolve();
+    });
 
-  it("renders the same recognizable move sound every time", () => {
-    const first = renderBoardSound("move", 48_000);
-    const repeated = renderBoardSound("move", 48_000);
+    constructor(src: string) {
+      this.src = src;
+      instances.push(this);
+    }
+  }
 
-    expect(first).toEqual(repeated);
-  });
+  vi.stubGlobal("Audio", FakeAudio);
+  setBoardSoundVolume(0.5);
+  setBoardSoundEnabled(true);
 
-  it("keeps capture longer and error shorter than a normal move", () => {
-    const move = renderBoardSound("move", 48_000);
-    expect(renderBoardSound("capture", 48_000).length).toBeGreaterThan(move.length);
-    expect(renderBoardSound("error", 48_000).length).toBeLessThan(move.length);
-  });
+  expect(boardSoundEnabled()).toBe(true);
+  expect(instances).toHaveLength(KINDS.length);
+  expect(instances.every((audio) => audio.preload === "auto")).toBe(true);
+  expect(instances.every((audio) => audio.load.mock.calls.length === 1)).toBe(true);
+
+  for (const kind of KINDS) playBoardSound(kind);
+  expect(instances.every((audio) => audio.play.mock.calls.length === 1)).toBe(true);
+  expect(instances.every((audio) => audio.currentTime === 0)).toBe(true);
+  expect(instances.every((audio) => audio.volume > 0 && audio.volume < 0.5)).toBe(true);
+
+  setBoardSoundEnabled(false);
+  const played = instances.reduce((sum, audio) => sum + audio.play.mock.calls.length, 0);
+  playBoardSound("move");
+  expect(boardSoundEnabled()).toBe(false);
+  expect(instances.reduce((sum, audio) => sum + audio.play.mock.calls.length, 0)).toBe(played);
+
+  vi.unstubAllGlobals();
 });

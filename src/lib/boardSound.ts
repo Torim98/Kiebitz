@@ -9,6 +9,7 @@
  * Brett nehmen. Alles darüber ist ein Stellungswechsel · neue Aufgabe, anderes
  * Brett, Reset · und bleibt stumm.
  */
+import { Chess } from "chess.js";
 import type { BoardSoundKind } from "./sound";
 
 /** FEN-Stellungsteil als 64 Felder, a8 zuerst; null bei ungültiger Eingabe. */
@@ -42,10 +43,33 @@ function sideToMove(fen: string): "w" | "b" | null {
   return field === "w" || field === "b" ? field : null;
 }
 
+/** Halbzugindex der Stellung; damit klingt Rückwärtsblättern nicht nach Schach. */
+function plyIndex(fen: string): number | null {
+  const fields = fen.trim().split(/\s+/);
+  const side = fields[1];
+  const fullmove = Number(fields[5]);
+  if ((side !== "w" && side !== "b") || !Number.isInteger(fullmove) || fullmove < 1) {
+    return null;
+  }
+  return (fullmove - 1) * 2 + (side === "b" ? 1 : 0);
+}
+
+function checkSound(fen: string): BoardSoundKind | null {
+  try {
+    const position = new Chess(fen);
+    if (position.isCheckmate()) return "checkmate";
+    if (position.isCheck()) return "check";
+  } catch {
+    /* Die strukturelle FEN-Prüfung unten entscheidet über ungültige Eingaben. */
+  }
+  return null;
+}
+
 /**
  * Klang für den Übergang von `previous` nach `next`.
- * Wie im Lichess-Standardset gibt es auf dem Brett nur Zug und Schlag:
- * Schach, Rochade und Umwandlung fügen keinen eigenen Effekt hinzu.
+ * Schach und Matt haben beim Vorwärtsspielen Vorrang vor dem Zugtyp. Beim
+ * Rückwärtsblättern bleibt dagegen der physische Zug-, Schlag- oder
+ * Rochadeklang erhalten, statt den Zustand erneut anzukündigen.
  * Leeres Ergebnis heißt: kein einzelner Zug, also kein Ton.
  */
 export function soundsForTransition(previous: string, next: string): BoardSoundKind[] {
@@ -64,7 +88,7 @@ export function soundsForTransition(previous: string, next: string): BoardSoundK
 
   const pieces = (squares: string[]) => squares.filter(Boolean).length;
   const removed = pieces(before) - pieces(after);
-  if (removed < 0 || removed > 1) return [];
+  if (Math.abs(removed) > 1) return [];
 
   // Ein echter Zug wechselt die Seite am Zug. Ohne dieses Feld (reine
   // Stellungsangabe) wird nicht geprüft.
@@ -72,5 +96,14 @@ export function soundsForTransition(previous: string, next: string): BoardSoundK
   const to = sideToMove(next);
   if (from && to && from === to) return [];
 
-  return [removed === 1 ? "capture" : "move"];
+  const previousPly = plyIndex(previous);
+  const nextPly = plyIndex(next);
+  if (previousPly !== null && nextPly !== null && nextPly > previousPly) {
+    const check = checkSound(next);
+    if (check) return [check];
+  }
+
+  if (Math.abs(removed) === 1) return ["capture"];
+  if (changed.length === 4) return ["castle"];
+  return ["move"];
 }

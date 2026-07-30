@@ -325,7 +325,7 @@ fn switch_to(app: &tauri::AppHandle, path: PathBuf) -> Result<DbInfo, String> {
     save(app, &settings)?;
     *settings_state.0.lock().map_err(|e| e.to_string())? = settings;
     drop(settings_state);
-    db_info(app.clone(), app.state())
+    collect_db_info(app)
 }
 
 /// Verschiebt die Datenbank: konsistente Kopie per VACUUM INTO, dann Umschalten.
@@ -462,7 +462,7 @@ pub fn restore_database(app: tauri::AppHandle, source: String) -> Result<DbInfo,
         restore_from(&source_path, &mut destination)?;
         db::init(&destination)?;
     }
-    db_info(app.clone(), app.state())
+    collect_db_info(&app)
 }
 
 /// Setzt die App auf Werkseinstellungen zurück: Datenbankinhalt leeren,
@@ -516,14 +516,26 @@ pub fn factory_reset(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Zustand der Datenbank für die Einstellungen.
+///
+/// Die beiden Zählabfragen laufen über Tabellen, die nach einem Puzzle-Import
+/// Millionen Zeilen haben · deshalb nicht im Hauptthread, sonst steht auf
+/// Android die Oberfläche, bis SQLite fertig gezählt hat.
 #[tauri::command]
-pub fn db_info(app: tauri::AppHandle, db: tauri::State<db::Db>) -> Result<DbInfo, String> {
+pub async fn db_info(app: tauri::AppHandle) -> Result<DbInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || collect_db_info(&app))
+        .await
+        .map_err(|e| format!("Datenbankinfo fehlgeschlagen: {e}"))?
+}
+
+fn collect_db_info(app: &tauri::AppHandle) -> Result<DbInfo, String> {
     let path = app
         .state::<analysis::DbPath>()
         .0
         .lock()
         .map_err(|e| e.to_string())?
         .clone();
+    let db = app.state::<db::Db>();
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let games: i64 = conn
         .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))

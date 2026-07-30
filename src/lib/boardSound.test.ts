@@ -38,10 +38,10 @@ describe("soundsForTransition", () => {
     expect(soundsForTransition(before, after(["e4", "d5", "exd5"]))).toEqual(["capture"]);
   });
 
-  it("uses the regular move sound for castling", () => {
+  it("uses the castle variation for castling", () => {
     const before = after(["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5"]);
     expect(soundsForTransition(before, after(["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O"]))).toEqual([
-      "move",
+      "castle",
     ]);
   });
 
@@ -50,9 +50,14 @@ describe("soundsForTransition", () => {
     expect(soundsForTransition(after(line), after([...line, "exd6"]))).toEqual(["capture"]);
   });
 
-  it("does not add a separate check effect", () => {
+  it("uses the check sound when the move checks the king", () => {
     const line = ["e4", "f5", "Qh5"];
-    expect(soundsForTransition(after(["e4", "f5"]), after(line))).toEqual(["move"]);
+    expect(soundsForTransition(after(["e4", "f5"]), after(line))).toEqual(["check"]);
+  });
+
+  it("uses the checkmate sound for mate", () => {
+    const line = ["f3", "e5", "g4"];
+    expect(soundsForTransition(after(line), after([...line, "Qh4#"]))).toEqual(["checkmate"]);
   });
 
   it("uses the regular move sound for a quiet promotion", () => {
@@ -64,8 +69,8 @@ describe("soundsForTransition", () => {
   });
 
   it("uses the capture sound for a capturing promotion", () => {
-    const before = "r6k/1P6/8/8/8/8/8/K7 w - - 0 1";
-    const promoted = "Q6k/8/8/8/8/8/8/K7 b - - 0 1";
+    const before = "r7/1P6/8/7k/8/8/8/K7 w - - 0 1";
+    const promoted = "Q7/8/8/7k/8/8/8/K7 b - - 0 1";
     expect(soundsForTransition(before, promoted)).toEqual(["capture"]);
   });
 
@@ -89,5 +94,10 @@ describe("soundsForTransition", () => {
   it("plays a move sound when stepping backwards through a game", () => {
     // Blättern ist ein Zug rückwärts · lichess klingt dabei genauso.
     expect(soundsForTransition(after(["e4", "e5"]), after(["e4"]))).toEqual(["move"]);
+  });
+
+  it("does not announce check again when stepping backwards", () => {
+    const checked = after(["e4", "f5", "Qh5"]);
+    expect(soundsForTransition(checked, after(["e4", "f5"]))).toEqual(["move"]);
   });
 });

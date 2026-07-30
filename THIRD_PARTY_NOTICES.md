@@ -33,6 +33,13 @@ The offline tactics trainer imports the public Lichess puzzle dump, released
 under the CC0 1.0 public domain dedication. The database is downloaded per
 device and is not redistributed by Kiebitz.
 
+## Wooden chess-piece recordings (CC0 1.0)
+
+The short board sounds are edited excerpts from **"chess pieces.wav"** by
+Freesound user **simone_ds**, dedicated to the public domain under CC0 1.0:
+
+<https://freesound.org/people/simone_ds/sounds/366065/>
+
 ## Libraries
 
 MIT, BSD and ISC require the license text and copyright notice to travel with

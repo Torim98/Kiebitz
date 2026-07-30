@@ -1,7 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendState } from "../lib/backend";
-import type { Settings } from "../lib/settings";
+import { dbInfo, type Settings } from "../lib/settings";
+import { puzzleStats } from "../lib/puzzles";
+import { syncInfo } from "../lib/sync";
+import { legalDocuments } from "../lib/legal";
 import { ShellProvider } from "../components/MobileShell";
 import SettingsPage from "./Settings";
 
@@ -101,9 +104,12 @@ const androidSettings = {
   onboarded: true,
 } satisfies Settings;
 
+const sectionLoads = [dbInfo, puzzleStats, syncInfo, legalDocuments].map((fn) => vi.mocked(fn));
+
 beforeEach(() => {
   mocks.backend = { mode: "pending" };
   mocks.getSettings.mockReset();
+  sectionLoads.forEach((fn) => fn.mockClear());
 });
 
 describe("Settings loading", () => {
@@ -151,6 +157,32 @@ describe("Settings loading", () => {
     expect(screen.queryByText("set.langNote")).toBeNull();
   });
 
+  // Auf dem Handy stehen alle Bereiche zugeklappt · dann darf die Seite beim
+  // Öffnen auch keine Zählabfragen über Millionen Zeilen anstoßen.
+  it("loads section data on Android only once a section is opened", async () => {
+    mocks.getSettings.mockResolvedValue(androidSettings);
+    mocks.backend = {
+      mode: "desktop",
+      info: { version: "0.6.1", backend: "tauri", platform: "android" },
+    };
+
+    await act(async () => {
+      render(
+        <ShellProvider mobile>
+          <SettingsPage />
+        </ShellProvider>
+      );
+    });
+
+    sectionLoads.forEach((fn) => expect(fn).not.toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: /set\.database/ }));
+    expect(vi.mocked(dbInfo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(puzzleStats)).not.toHaveBeenCalled();
+    expect(vi.mocked(syncInfo)).not.toHaveBeenCalled();
+    expect(vi.mocked(legalDocuments)).not.toHaveBeenCalled();
+  });
+
   it("keeps every settings section open on the desktop", async () => {
     mocks.getSettings.mockResolvedValue({ ...androidSettings, locale: "de" });
     mocks.backend = {
@@ -174,7 +206,27 @@ describe("Settings loading", () => {
     fireEvent.click(soundToggle);
     expect(soundToggle.checked).toBe(false);
     expect(screen.getByText("set.engineNote")).toBeTruthy();
-    // Die Zwischenüberschrift der Expertenbereiche gibt es nur mobil.
-    expect(screen.queryByText("set.advanced")).toBeNull();
+    // Dieselbe Gliederung wie auf dem Handy: die Expertenbereiche stehen hinter
+    // einer Zwischenüberschrift · auf dem Desktop zusätzlich in der Sprungleiste.
+    expect(screen.getAllByText("set.advanced").length).toBe(2);
+    // Alltag zuerst, Erweitertes danach · und der Ton steht vor der Engine.
+    const order = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((heading) => heading.textContent);
+    expect(order).toEqual([
+      "set.language",
+      "set.accounts",
+      "set.sound",
+      "set.notify",
+      "set.sync",
+      "set.updates",
+      "set.support",
+      "set.engine",
+      "set.database",
+      "set.chessdb",
+      "set.puzzleDb",
+      "set.about",
+      "set.reset",
+    ]);
   });
 });

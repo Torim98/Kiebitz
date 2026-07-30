@@ -1456,11 +1456,19 @@ pub struct SyncInfo {
     pub last_sync: i64,
 }
 
+/// Dateizugriff (Code, Zertifikat) und eine Datenbanksperre · beides gehört
+/// nicht in den Hauptthread, sonst wartet auf Android die Oberfläche mit.
 #[tauri::command]
-pub fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
-    let code = ensure_code(&app)?;
+pub async fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || collect_sync_info(&app))
+        .await
+        .map_err(|e| format!("Sync-Status fehlgeschlagen: {e}"))?
+}
+
+fn collect_sync_info(app: &tauri::AppHandle) -> Result<SyncInfo, String> {
+    let code = ensure_code(app)?;
     #[cfg(desktop)]
-    let fingerprint = tls_material(&app)?.fingerprint;
+    let fingerprint = tls_material(app)?.fingerprint;
     #[cfg(not(desktop))]
     let fingerprint = String::new();
     let (host, running) = {
@@ -1488,7 +1496,7 @@ pub fn sync_info(app: tauri::AppHandle) -> Result<SyncInfo, String> {
 #[tauri::command]
 pub fn sync_server_start(app: tauri::AppHandle) -> Result<SyncInfo, String> {
     start_server(&app)?;
-    sync_info(app)
+    collect_sync_info(&app)
 }
 
 /// Pairing per QR-Code: Adresse, Code und Zertifikats-Fingerprint in eine
