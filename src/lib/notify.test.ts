@@ -52,6 +52,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     notify_endgame: true,
     notify_analysis: true,
     onboarded: true,
+    news_seen: "",
     ...overrides,
   };
 }

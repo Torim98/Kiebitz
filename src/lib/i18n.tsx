@@ -671,6 +671,23 @@ const de = {
   "onb.start": "Loslegen",
   "onb.skip": "Später einrichten",
   "onb.back": "Zurück",
+  "news.eyebrow": "Neu bei Kiebitz",
+  "news.later": "Später",
+  "news.dismiss": "Nicht mehr anzeigen",
+  "news.linkWebsite": "Website öffnen",
+  "news.linkPlayStore": "Im Play Store bewerten",
+  "news.betaTitle": "Danke, dass du früh dabei bist",
+  "news.betaIntro":
+    "Danke für die frühe Nutzung und die Unterstützung von Kiebitz. Kiebitz ist gerade massiv auf Feedback, Anregungen und Ideen angewiesen · alles, was dir auffällt, hilft.",
+  "news.betaFeedback":
+    "Neu ist die Rückmelde-Funktion: auf der Website, in den Einstellungen der Desktop- und der Android-App · und auf Android bringt dich ein kräftiges Schütteln direkt dorthin.",
+  "news.betaClosedBeta":
+    "Die Android-App steckt in der geschlossenen Testphase, um in den Google Play Store zu kommen. Weiterempfehlungen sind dabei sehr willkommen; das Verfahren erklärt die Website Schritt für Schritt.",
+  "news.betaTestDays":
+    "In den nächsten 14 Testtagen darf die Android-App gern intensiv genutzt werden. Eine Bewertung und ein Review im Play Store erhöhen die Chance auf die Veröffentlichung spürbar.",
+  "news.betaFuture":
+    "Kiebitz wird weiterhin sehr umfangreich optimiert und erweitert und bleibt zunächst kostenlos. Eine Monetarisierung halte ich mir offen, geplant ist sie aber nicht und steht auch nicht am Horizont.",
+  "news.betaThanks": "Danke, danke, danke.",
   "set.autoImportToggle": "Neue Partien automatisch importieren",
   "set.autoImportNote": "Kiebitz holt beim Start und danach stündlich die neuesten Partien der hinterlegten Konten. Ohne Konto passiert nichts.",
   "set.reset": "Zurücksetzen",
@@ -1474,6 +1491,23 @@ const en: Record<Key, string> = {
   "onb.start": "Get started",
   "onb.skip": "Set up later",
   "onb.back": "Back",
+  "news.eyebrow": "New in Kiebitz",
+  "news.later": "Later",
+  "news.dismiss": "Don't show again",
+  "news.linkWebsite": "Open the website",
+  "news.linkPlayStore": "Rate on the Play Store",
+  "news.betaTitle": "Thank you for being here early",
+  "news.betaIntro":
+    "Thank you for using and supporting Kiebitz this early. Right now Kiebitz depends heavily on feedback, suggestions and ideas · anything you notice helps.",
+  "news.betaFeedback":
+    "The feedback function is new: on the website, in the settings of both the desktop and the Android app · and on Android a firm shake takes you straight there.",
+  "news.betaClosedBeta":
+    "The Android app is in its closed testing phase on the way into the Google Play Store. Recommending it is very welcome; the website explains the procedure step by step.",
+  "news.betaTestDays":
+    "Over the next 14 testing days the Android app deserves heavy use. A rating and a review on the Play Store noticeably improve the chances of a release.",
+  "news.betaFuture":
+    "Kiebitz keeps being optimised and extended a great deal, and stays free for now. I am keeping monetisation open, but it is neither planned nor on the horizon.",
+  "news.betaThanks": "Thank you, thank you, thank you.",
   "set.autoImportToggle": "Import new games automatically",
   "set.autoImportNote": "Kiebitz fetches the latest games of your linked accounts at startup and hourly afterwards. Without an account nothing happens.",
   "set.reset": "Reset",
