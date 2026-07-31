@@ -760,6 +760,7 @@ export default function SettingsPage({
         t("set.syncDone", {
           g: deInt(s.games_pulled),
           r: deInt(s.rep_merged),
+          o: deInt(s.own_puzzles_pulled),
           p: deInt(s.puzzle_attempts_pulled),
           e: deInt(s.endgame_attempts_pulled),
           s: deInt(s.study_merged),

@@ -17,8 +17,10 @@
 //!   (puzzle_id|drill_id, ts) erkannt.
 //! - Study: Vorlagen und Kalendereinträge per stabiler Sync-ID; der neuere
 //!   `updated_ts`-Stand gewinnt, einschließlich Abschluss und Löschung.
-//! - Nicht gesynct: Puzzle-DB, positions-Index (wird lokal neu aufgebaut),
-//!   Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
+//! - Eigene Puzzles: vollständiger Desktop-Snapshot; die lokale Game-ID wird
+//!   über den stabilen Partie-Schlüssel (source, source_id) neu zugeordnet.
+//! - Nicht gesynct: Lichess-Puzzle-DB, positions-Index (wird lokal neu
+//!   aufgebaut), Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
 //!
 //! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
 //! `sync_last_ts`) und beide Seiten filtern mit einem Sicherheitsfenster
@@ -27,7 +29,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -157,6 +159,26 @@ pub struct SyncPuzzleAttempt {
     pub puzzle_rating: i64,
 }
 
+/// Ein von der Desktop-Analyse erzeugtes Puzzle. `source_game_id` ist bewusst
+/// nicht Teil des Payloads: SQLite-IDs sind gerätelokal, deshalb reist der
+/// natürliche Schlüssel der Partie mit.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncOwnPuzzle {
+    pub id: String,
+    pub fen: String,
+    pub moves: String,
+    pub rating: i64,
+    pub rd: i64,
+    pub popularity: i64,
+    pub nb_plays: i64,
+    pub themes: String,
+    pub opening_tags: String,
+    pub game_source: String,
+    pub game_source_id: String,
+    pub source_ply: Option<i64>,
+    pub setup_plies: i64,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SyncEndgameAttempt {
     pub drill_id: String,
@@ -225,6 +247,10 @@ pub struct SyncResponse {
     #[serde(default)]
     pub rep_tombstones: Vec<SyncTombstone>,
     pub puzzle_attempts: Vec<SyncPuzzleAttempt>,
+    /// `None` bedeutet eine ältere Gegenstelle, die eigene Puzzles noch nicht
+    /// mitsendet. `Some([])` ist dagegen ein autoritativer leerer Snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own_puzzles: Option<Vec<SyncOwnPuzzle>>,
     pub endgame_attempts: Vec<SyncEndgameAttempt>,
     #[serde(default)]
     pub study_templates: Vec<SyncStudyTemplate>,
@@ -522,6 +548,45 @@ fn collect_puzzle_attempts(
                 rating_after: r.get(4)?,
                 themes: r.get(5)?,
                 puzzle_rating: r.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+/// Eigene Puzzles sind im Vergleich zum Lichess-Dump klein und abgeleitete
+/// Desktop-Daten. Ein vollständiger Snapshot macht auch Entfernungen nach einer
+/// Re-Analyse ohne Puzzle-Tombstones eindeutig.
+fn collect_own_puzzles(conn: &Connection) -> Result<Vec<SyncOwnPuzzle>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id, p.fen, p.moves, p.rating, p.rd, p.popularity, p.nb_plays,
+                    p.themes, p.opening_tags, g.source, g.source_id,
+                    p.source_ply, p.setup_plies
+             FROM puzzles p
+             JOIN games g ON g.id = p.source_game_id
+             WHERE p.source = 'own'
+             ORDER BY p.id",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(SyncOwnPuzzle {
+                id: r.get(0)?,
+                fen: r.get(1)?,
+                moves: r.get(2)?,
+                rating: r.get(3)?,
+                rd: r.get(4)?,
+                popularity: r.get(5)?,
+                nb_plays: r.get(6)?,
+                themes: r.get(7)?,
+                opening_tags: r.get(8)?,
+                game_source: r.get(9)?,
+                game_source_id: r.get(10)?,
+                source_ply: r.get(11)?,
+                setup_plies: r.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -915,6 +980,89 @@ fn apply_puzzle_attempts(
     Ok(n)
 }
 
+/// Spiegelt den autoritativen Desktop-Snapshot. Puzzles werden über den
+/// natürlichen Partie-Schlüssel an die gerätelokale Game-ID gehängt.
+fn apply_own_puzzles(conn: &mut Connection, puzzles: &[SyncOwnPuzzle]) -> Result<usize, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut retained = HashSet::new();
+    let mut changed = 0usize;
+
+    for puzzle in puzzles {
+        let game_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM games WHERE source = ?1 AND source_id = ?2",
+                params![puzzle.game_source, puzzle.game_source_id],
+                |row| row.get(0),
+            )
+            .ok();
+        let Some(game_id) = game_id else {
+            continue;
+        };
+
+        retained.insert(puzzle.id.clone());
+        changed += tx
+            .execute(
+                "INSERT INTO puzzles
+                 (id, fen, moves, rating, rd, popularity, nb_plays, themes,
+                  opening_tags, source, source_game_id, source_ply, setup_plies)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'own',?10,?11,?12)
+                 ON CONFLICT(id) DO UPDATE SET
+                    fen = excluded.fen,
+                    moves = excluded.moves,
+                    rating = excluded.rating,
+                    rd = excluded.rd,
+                    popularity = excluded.popularity,
+                    nb_plays = excluded.nb_plays,
+                    themes = excluded.themes,
+                    opening_tags = excluded.opening_tags,
+                    source = 'own',
+                    source_game_id = excluded.source_game_id,
+                    source_ply = excluded.source_ply,
+                    setup_plies = excluded.setup_plies",
+                params![
+                    puzzle.id,
+                    puzzle.fen,
+                    puzzle.moves,
+                    puzzle.rating,
+                    puzzle.rd,
+                    puzzle.popularity,
+                    puzzle.nb_plays,
+                    puzzle.themes,
+                    puzzle.opening_tags,
+                    game_id,
+                    puzzle.source_ply,
+                    puzzle.setup_plies
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
+    let local_ids: Vec<String> = {
+        let mut stmt = tx
+            .prepare("SELECT id FROM puzzles WHERE source = 'own'")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+    for id in local_ids {
+        if !retained.contains(&id) {
+            changed += tx
+                .execute(
+                    "DELETE FROM puzzles WHERE source = 'own' AND id = ?1",
+                    params![id],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(changed)
+}
+
 /// Spielt die Elo-Kette über alle Versuche deterministisch neu ab · nach einem
 /// Merge haben damit beide Geräte identische Ratings. Sortiert wird geräte-
 /// unabhängig nach (ts, puzzle_id); Versuche ohne bekanntes Puzzle-Rating
@@ -1127,6 +1275,7 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         rep_nodes: collect_rep(conn)?,
         rep_tombstones: collect_tombstones(conn)?,
         puzzle_attempts: collect_puzzle_attempts(conn, req.since)?,
+        own_puzzles: Some(collect_own_puzzles(conn)?),
         endgame_attempts: collect_endgame_attempts(conn, req.since)?,
         study_templates: collect_study_templates(conn, req.since)?,
         study_events: collect_study_events(conn, req.since)?,
@@ -1604,6 +1753,7 @@ pub async fn sync_discover() -> Result<Option<String>, String> {
 pub struct SyncSummary {
     pub games_pulled: usize,
     pub rep_merged: usize,
+    pub own_puzzles_pulled: usize,
     pub puzzle_attempts_pulled: usize,
     pub endgame_attempts_pulled: usize,
     pub study_merged: usize,
@@ -1671,6 +1821,10 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let games_pulled = apply_games(&mut conn, &resp.games)?;
         apply_tombstones(&mut conn, &resp.rep_tombstones)?;
         let rep_merged = apply_rep(&mut conn, &resp.rep_nodes)?;
+        let own_puzzles_pulled = match &resp.own_puzzles {
+            Some(puzzles) => apply_own_puzzles(&mut conn, puzzles)?,
+            None => 0,
+        };
         let pz = apply_puzzle_attempts(&conn, &resp.puzzle_attempts)?;
         if pz > 0 {
             replay_puzzle_ratings(&mut conn)?;
@@ -1682,6 +1836,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         Ok(SyncSummary {
             games_pulled,
             rep_merged,
+            own_puzzles_pulled,
             puzzle_attempts_pulled: pz,
             endgame_attempts_pulled: eg,
             study_merged: study_templates + study_events,
@@ -1846,6 +2001,66 @@ mod tests {
             .query_row("SELECT eval_cp FROM move_evals", [], |r| r.get(0))
             .unwrap();
         assert_eq!(cp, 30);
+    }
+
+    #[test]
+    fn own_puzzle_snapshot_remaps_game_ids_and_propagates_removals() {
+        let mut desktop = mem_db();
+        apply_games(&mut desktop, &[sample_game("puzzle-game")]).unwrap();
+        let desktop_game_id: i64 = desktop
+            .query_row(
+                "SELECT id FROM games WHERE source_id = 'puzzle-game'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        desktop
+            .execute(
+                "INSERT INTO puzzles
+                 (id, fen, moves, rating, themes, opening_tags, source,
+                  source_game_id, source_ply, setup_plies)
+                 VALUES ('own:desktop:17', 'test-fen', 'e2e4', 1540,
+                         'ownGame opening mistake oneMove', '', 'own', ?1, 17, 0)",
+                params![desktop_game_id],
+            )
+            .unwrap();
+
+        let snapshot = collect_own_puzzles(&desktop).unwrap();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].game_source_id, "puzzle-game");
+
+        let mut mobile = mem_db();
+        apply_games(&mut mobile, &[sample_game("filler")]).unwrap();
+        apply_games(&mut mobile, &[sample_game("puzzle-game")]).unwrap();
+        let mobile_game_id: i64 = mobile
+            .query_row(
+                "SELECT id FROM games WHERE source_id = 'puzzle-game'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(desktop_game_id, mobile_game_id);
+
+        assert_eq!(apply_own_puzzles(&mut mobile, &snapshot).unwrap(), 1);
+        let received: (i64, String, i64) = mobile
+            .query_row(
+                "SELECT source_game_id, moves, setup_plies
+                 FROM puzzles WHERE id = 'own:desktop:17'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(received, (mobile_game_id, "e2e4".into(), 0));
+
+        assert_eq!(apply_own_puzzles(&mut mobile, &[]).unwrap(), 1);
+        let remaining: i64 = mobile
+            .query_row(
+                "SELECT COUNT(*) FROM puzzles WHERE source = 'own'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 
     #[test]

@@ -121,7 +121,8 @@ Architecture decided and built:
   conflict-free by design — duplicate-safe game upserts, append-only
   attempt/review logs unioned then Elo/FSRS recomputed deterministically, notes
   last-write-wins, repertoire united by SAN path with tombstones; analyses flow
-  desktop→phone; the puzzle DB is imported per-device, not synced.
+  desktop→phone together with their derived own-game puzzles; the large
+  Lichess puzzle DB is imported per-device, not synced.
 
 Done: Android scaffold + engine packaging/resolution (2026-07-17); responsive/
 touch pass, verified at 375 px (2026-07-17); sync v1 + v1.1 with UDP discovery,

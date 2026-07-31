@@ -33,6 +33,7 @@ export interface SyncInfo {
 export interface SyncSummary {
   games_pulled: number;
   rep_merged: number;
+  own_puzzles_pulled: number;
   puzzle_attempts_pulled: number;
   endgame_attempts_pulled: number;
   study_merged: number;
