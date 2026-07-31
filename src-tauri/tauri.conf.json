@@ -19,7 +19,10 @@
         "minHeight": 660,
         "center": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "theme": "Dark",
+        "backgroundColor": "#0e0e0d",
+        "visible": false
       }
     ],
     "security": {

@@ -15,6 +15,8 @@ mod repertoire;
 mod settings;
 mod study;
 mod sync;
+#[cfg(windows)]
+mod titlebar;
 mod updater;
 
 use serde::Serialize;
@@ -293,12 +295,27 @@ pub fn run() {
     }
     tauri::Builder::default()
         .setup(|app| {
+            // Das Fenster startet unsichtbar (tauri.conf.json) · erst einfärben,
+            // dann zeigen, sonst blitzt beim Start die blaue Systemtitelleiste
+            // auf. Beides passiert vor allem Fehlbaren hier unten: geht die
+            // Datenbank nicht auf, ist immer noch ein Fenster da, das die
+            // Meldung zeigen kann.
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(windows)]
+                titlebar::apply(&window);
+                let _ = window.show();
+            }
             if cfg!(debug_assertions) {
-                app.handle().plugin(
+                // `diag::install()` hat den globalen Logger in der Regel schon
+                // belegt · dann lehnt das Plugin ab. Das ist kein Grund, den
+                // Start abzubrechen, geloggt wird ohnehin über diag.
+                if let Err(e) = app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
                         .build(),
-                )?;
+                ) {
+                    log::warn!("Log-Plugin nicht registriert: {e}");
+                }
             }
             app.handle().plugin(tauri_plugin_opener::init())?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
