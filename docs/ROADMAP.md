@@ -35,6 +35,39 @@ Current priorities (added 2026-07-21):
 
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
+- [x] **Insights, second pass** (2026-07-31). A new Rust module `insights.rs`
+  computes everything in one walk over games, clocks and `move_evals` and serves
+  it through a single `deep_insights` command. What it adds:
+  **time management** (error rate per pace bucket measured as a share of the
+  remaining clock, time spent on moves that became errors vs. the rest, time
+  trouble, clock edge against the opponent, thinking time burned on moves that
+  are already in the repertoire, increment discipline, pace drift across a
+  session); **repertoire vs. reality** (who leaves the book first and what it
+  costs, shaky lines from the FSRS state, the existing `rep_gaps` map);
+  **game content** (conversion of winning positions, save rate, the ply after
+  which the evaluation never swings back, unpunished opponent errors, error
+  anatomy by piece and by whether the missed best move was forcing, endgame
+  types from the material signature); **a benchmark against the player's own
+  opponent field** — possible because auto-analysis judges the opponents' moves
+  too, so "is 71 % good?" gets a real answer without any external service;
+  **sessions** (performance by game index, requeue time after a loss as an
+  objective tilt measure, warm-up effect including days with prior puzzle
+  training, share of the rating loss coming from the worst sessions);
+  **progress** (skill vs. rating, per-motif learning curves, effect of
+  repertoire training on games in trained lines); and **time formats**
+  (per-format score, performance rating, accuracy, blunder rate, time trouble
+  and hours invested).
+  Ratings across formats and platforms live in separate pools, so
+  `lib/formatScale.ts` converts them onto one scale from published anchor
+  points, marks extrapolated and estimated values, and the UI states that skill
+  metrics are the only pool-free comparison.
+  Against overload: `lib/findings.ts` turns every metric into one ranked list of
+  findings with sample-size guards; the overview leads with the top few, each
+  tab pins its own, and the Study coach consumes the same list instead of its
+  own weaker heuristics. `lib/dna.ts` condenses it into a six-axis profile with
+  the opponent field overlaid. Six tabs (overview, strength, time, openings,
+  patterns, training), everything below the fold in collapsible sections that
+  keep their headline visible, all collapsed by default on the phone.
 - [x] **Deepen Insights** (2026-07-22). Insights now has four focused sub-pages:
   overview/diagnosis, playing strength, color-split opening files, and behavioral
   patterns. Added score-rate and 20-game form comparisons, analysis coverage and

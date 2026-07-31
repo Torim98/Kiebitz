@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import Study from "./Study";
+import { demoDeepInsights } from "./insights/demo";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
@@ -29,7 +30,7 @@ function liveStudy(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockBackend(study = liveStudy(), themes: unknown[] = []) {
+function mockBackend(study = liveStudy(), themes: unknown[] = [], deep: unknown = null) {
   invokeMock.mockImplementation((command: string) => {
     switch (command) {
       case "app_info":
@@ -51,6 +52,10 @@ function mockBackend(study = liveStudy(), themes: unknown[] = []) {
         });
       case "schedule_study_unit":
         return Promise.resolve();
+      case "deep_insights":
+        // Ohne Tiefenanalyse fällt der Coach auf `coach.ts` zurück · beide
+        // Wege werden geprüft.
+        return deep ? Promise.resolve(deep) : Promise.reject(new Error("keine Tiefenanalyse"));
       default:
         return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
     }
@@ -109,6 +114,18 @@ describe("Study page", () => {
     expect(await screen.findByText("Schwaches Puzzle-Motiv: Gabel")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Puzzles trainieren" }));
     expect(openPuzzles).toHaveBeenCalledWith("fork");
+  });
+
+  it("prefers the deep-analysis findings over the plain coach heuristics", async () => {
+    mockBackend(liveStudy(), [], demoDeepInsights());
+    const go = vi.fn();
+    renderStudy(go);
+
+    // Ein Befund aus der Tiefenanalyse, den `coach.ts` gar nicht kennt.
+    expect(await screen.findByText("Zeitnot kostet dich Partien")).toBeTruthy();
+    // Der Rest der Liste bleibt über die Insights erreichbar.
+    fireEvent.click(screen.getByRole("button", { name: /Befunde in den Insights/ }));
+    expect(go).toHaveBeenCalledWith("insights");
   });
 
   it("marks a fully completed backend plan as done", async () => {

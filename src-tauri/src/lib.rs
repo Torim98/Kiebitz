@@ -4,6 +4,7 @@ mod chessdb;
 mod db;
 mod diag;
 mod endgame;
+mod insights;
 mod engine;
 mod legal;
 mod live;
@@ -416,6 +417,7 @@ pub fn run() {
             analysis::game_analysis,
             analysis::error_stats,
             analysis::search_position,
+            insights::deep_insights,
             repertoire::rep_list,
             repertoire::rep_add_line,
             repertoire::rep_delete,

@@ -98,7 +98,7 @@ pub struct RepNodeOut {
     pub my_move: bool,
 }
 
-fn is_my_move(side: &str, depth: i64) -> bool {
+pub(crate) fn is_my_move(side: &str, depth: i64) -> bool {
     if side == "white" {
         depth % 2 == 1
     } else {
@@ -113,7 +113,7 @@ fn now_ts() -> i64 {
         .unwrap_or(0)
 }
 
-fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
+pub(crate) fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, parent_id, side, san, name, depth, reps, lapses, due_ts, stability,
@@ -621,9 +621,9 @@ pub struct RepGap {
 }
 
 /// (side, parent_id) → [(san, id)]
-type BookChildren = HashMap<(String, i64), Vec<(String, i64)>>;
+pub(crate) type BookChildren = HashMap<(String, i64), Vec<(String, i64)>>;
 
-fn book_children(nodes: &[RepNodeOut]) -> BookChildren {
+pub(crate) fn book_children(nodes: &[RepNodeOut]) -> BookChildren {
     let mut children: BookChildren = HashMap::new();
     for n in nodes {
         children
@@ -635,18 +635,18 @@ fn book_children(nodes: &[RepNodeOut]) -> BookChildren {
 }
 
 /// Wo eine Partie das Buch verlässt.
-struct Departure {
-    node_id: i64,
-    path: Vec<String>,
-    san: String,
-    ply: i64,
+pub(crate) struct Departure {
+    pub(crate) node_id: i64,
+    pub(crate) path: Vec<String>,
+    pub(crate) san: String,
+    pub(crate) ply: i64,
     /// Kannte das Buch an dieser Stelle überhaupt eine Fortsetzung?
-    book_has_moves: bool,
+    pub(crate) book_has_moves: bool,
 }
 
 /// Spielt eine Partie am Buch entlang und meldet die erste Abweichung.
 /// `None` heißt: bis `plies` blieb alles im Buch.
-fn walk_book(
+pub(crate) fn walk_book(
     children: &BookChildren,
     color: &str,
     moves: &str,

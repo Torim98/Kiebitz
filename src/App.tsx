@@ -389,7 +389,9 @@ export default function App() {
       {page === "endgame" && <Endgame />}
       {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
       {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
-      {page === "insights" && <Insights />}
+      {page === "insights" && (
+        <Insights go={navigate} openPuzzles={openPuzzles} openAnalysis={openAnalysis} />
+      )}
       {page === "settings" && <SettingsPage openSupport={openSupport} />}
       {page === "support" && <Support initialType={route.reportType ?? "feedback"} />}
     </>

@@ -17,6 +17,15 @@ import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { puzzleStats, themeLabel, type ThemeStat } from "../lib/puzzles";
 import { studyData, type StudyData } from "../lib/study";
 import { buildCoach } from "../lib/coach";
+import { buildInsights } from "../lib/stats";
+import { deepInsights, type DeepInsights } from "../lib/insights";
+import {
+  buildFindings,
+  localizeFindingParams,
+  topFindings,
+  type Finding,
+  type FindingTab,
+} from "../lib/findings";
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
 import { useMobileShell } from "../components/MobileShell";
@@ -60,6 +69,7 @@ export default function Study({
   const [records, setRecords] = useState<GameRecord[]>([]);
   const [themes, setThemes] = useState<ThemeStat[]>([]);
   const [phaseErrors, setPhaseErrors] = useState<PhaseErrors[]>([]);
+  const [deep, setDeep] = useState<DeepInsights | null>(null);
 
   useEffect(() => {
     if (!desktop) return;
@@ -68,6 +78,9 @@ export default function Study({
       listGames().then(setRecords).catch(() => {});
       puzzleStats().then((s) => setThemes(s.themes)).catch(() => {});
       errorStats().then(setPhaseErrors).catch(() => {});
+      // Dieselbe Tiefenanalyse wie in den Insights · der Coach soll nicht mit
+      // einer zweiten, schwächeren Datengrundlage arbeiten.
+      deepInsights().then(setDeep).catch(() => setDeep(null));
     };
     refresh();
     return onDataChange(refresh);
@@ -103,6 +116,47 @@ export default function Study({
     () => buildCoach(records, themes, phaseErrors),
     [records, themes, phaseErrors]
   );
+
+  // Die Befund-Engine der Insights ist die stärkere Quelle: sie prüft
+  // Stichprobengrößen und deckt Zeit, Sitzungen und den Feldvergleich ab. Was
+  // sie nicht kann — schwache Eröffnungen und Puzzle-Motive — liefert weiter
+  // `coach.ts`. Ohne Tiefenanalyse bleibt der alte Coach vollständig stehen.
+  const insights = useMemo(() => buildInsights(records, locale), [records, locale]);
+  const findings = useMemo(
+    () => (deep ? buildFindings(deep, insights) : []),
+    [deep, insights]
+  );
+
+  const FINDING_ICON: Record<FindingTab, typeof BookOpen> = {
+    strength: TrendingDown,
+    time: Clock,
+    openings: BookOpen,
+    patterns: Flame,
+    training: PuzzleIcon,
+  };
+
+  const findingToRec = (finding: Finding): RecCard => {
+    const params = localizeFindingParams(finding.params, t, locale);
+    const action = finding.action;
+    return {
+      id: `finding-${finding.id}`,
+      icon: FINDING_ICON[finding.tab],
+      title: t(finding.titleKey, params),
+      body: t(finding.bodyKey, params),
+      action: !action
+        ? null
+        : {
+            label: t(`fnd.action.${action.kind}` as Key),
+            onClick: () => {
+              if (action.kind === "puzzles") openPuzzles(action.theme);
+              else if (action.kind === "repertoire") go("repertoire");
+              else if (action.kind === "endgame") go("endgame");
+              else if (action.kind === "analysis") go("analysis");
+              else go("games");
+            },
+          },
+    };
+  };
 
   const recs: RecCard[] = useMemo(() => {
     if (!desktop) {
@@ -143,6 +197,12 @@ export default function Study({
         action: { label: t("st.toPuzzles"), onClick: () => openPuzzles(m.theme) },
       });
     }
+    // Mit Tiefenanalyse übernehmen die Befunde Phase und Tilt · sie sagen
+    // dasselbe genauer und mit Stichprobenprüfung.
+    if (findings.length > 0) {
+      out.push(...topFindings(findings, 4).map(findingToRec));
+      return out;
+    }
     if (coach.phase) {
       const p = coach.phase;
       const action =
@@ -174,7 +234,8 @@ export default function Study({
       });
     }
     return out;
-  }, [desktop, coach, locale, t, go, openPuzzles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desktop, coach, findings, locale, t, go, openPuzzles]);
 
   // ── Tagesplan ──────────────────────────────────────────────────────────────
   const tasks = useMemo(() => {
@@ -344,6 +405,15 @@ export default function Study({
             </div>
           ) : (
             <p className="py-2 text-[13px] leading-relaxed text-ink3">{t("st.coachEmpty")}</p>
+          )}
+          {findings.length > recs.length && (
+            <button
+              type="button"
+              onClick={() => go("insights")}
+              className="mt-3 w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-line2 hover:text-ink"
+            >
+              {t("st.allFindings", { n: findings.length })}
+            </button>
           )}
         </Card>
 

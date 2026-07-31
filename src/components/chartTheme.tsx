@@ -13,6 +13,8 @@ export const chart = {
   mistake: "#e08a3c",
   blunder: "#e66767",
   accent: "#22c08a",
+  gold: "#d2aa46",
+  violet: "#8b7ad6",
 };
 
 /**

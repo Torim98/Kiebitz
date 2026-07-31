@@ -141,6 +141,34 @@ pub fn walk_sans(moves: &str) -> Vec<WalkedMove> {
     out
 }
 
+/// Eigenschaften eines Zuges, die für die Fehler-Anatomie zählen: War der Zug
+/// forcierend? Wer einen übersehenen Schlag oder ein Schach nicht sieht, hat ein
+/// anderes Problem als wer einen ruhigen Zug nicht findet.
+pub struct MoveTraits {
+    pub capture: bool,
+    pub check: bool,
+}
+
+impl MoveTraits {
+    pub fn forcing(&self) -> bool {
+        self.capture || self.check
+    }
+}
+
+/// Eigenschaften eines UCI-Zuges in einer Stellung · `None`, wenn FEN oder Zug
+/// nicht lesbar sind (die Engine-Empfehlung kann aus einer älteren Analyse
+/// stammen und zur Stellung nicht mehr passen).
+pub fn uci_traits(fen: &str, uci: &str) -> Option<MoveTraits> {
+    let pos = Position::from_fen(fen).ok()?;
+    let mv = owlchess::Move::from_uci_legal(uci, &pos).ok()?;
+    let capture = mv.kind() == MoveKind::Enpassant || pos.get(mv.dst()).is_occupied();
+    let after = pos.make_move(mv).ok()?;
+    Some(MoveTraits {
+        capture,
+        check: after.is_check(),
+    })
+}
+
 /// Kanonische SAN-Schreibweise eines Zuges in einer Stellung, inklusive
 /// Schach-/Mattzeichen. Das Repertoire speichert diese Form, damit dieselbe
 /// Linie unabhängig von der Eingabeschreibweise denselben Knoten trifft.
@@ -257,6 +285,42 @@ pub(crate) mod tests {
             "exf6 ist legal, also gehört f6 in den Schlüssel: {}",
             with_ep[3].key_after
         );
+    }
+
+    /// Die Fehler-Anatomie hängt daran: War der übersehene beste Zug ein
+    /// Schlag oder ein Schach, ist das ein Rechenfehler · sonst eher
+    /// Stellungsverständnis.
+    #[test]
+    fn uci_traits_recognize_captures_and_checks() {
+        // Italienisch nach 1.e4 e5 2.Nf3 Nc6 3.Bc4: Nxe5 schlägt, gibt kein Schach.
+        let fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4";
+        let capture = uci_traits(fen, "f3e5").unwrap();
+        assert!(capture.capture, "Nxe5 schlägt einen Bauern");
+        assert!(!capture.check);
+        assert!(capture.forcing());
+
+        // Bxf7+ schlägt und gibt Schach.
+        let both = uci_traits(fen, "c4f7").unwrap();
+        assert!(both.capture && both.check);
+
+        // d3 ist ein ruhiger Zug.
+        let quiet = uci_traits(fen, "d2d3").unwrap();
+        assert!(!quiet.capture && !quiet.check);
+        assert!(!quiet.forcing());
+
+        // Schach ohne Schlag: Qh4# nach 1.f4 e5 2.g4 (Narrenmatt).
+        let fools_mate = "rnbqkbnr/pppp1ppp/8/4p3/5PP1/8/PPPPP2P/RNBQKBNR b KQkq g3 0 2";
+        let check = uci_traits(fools_mate, "d8h4").unwrap();
+        assert!(!check.capture && check.check);
+
+        // En passant zählt als Schlag, obwohl das Zielfeld leer ist.
+        let ep = "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3";
+        assert!(uci_traits(ep, "e5f6").unwrap().capture);
+
+        // Unlesbare oder zur Stellung unpassende Eingaben liefern None.
+        assert!(uci_traits(fen, "e2e4").is_none(), "in dieser Stellung illegal");
+        assert!(uci_traits(fen, "quatsch").is_none());
+        assert!(uci_traits("keine fen", "e2e4").is_none());
     }
 
     #[test]
