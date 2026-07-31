@@ -5,6 +5,14 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# tauri-plugin-notification 2.3.3 deserializes DateMatch through Jackson.
+# The plugin declares a consumer-rules.pro file but does not ship it, so R8
+# otherwise removes the no-argument constructor from release builds. Debug
+# builds are unaffected because minification is disabled there.
+-keep class app.tauri.notification.DateMatch {
+    *;
+}
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
