@@ -9,6 +9,7 @@ mod legal;
 mod live;
 mod puzzles;
 mod reminder;
+mod rep_pgn;
 mod repertoire;
 mod settings;
 mod study;
@@ -422,6 +423,13 @@ pub fn run() {
             repertoire::rep_review,
             repertoire::rep_stats,
             repertoire::rep_node_games,
+            repertoire::rep_set_note,
+            repertoire::rep_lookup,
+            repertoire::rep_gaps,
+            repertoire::rep_import_pgn,
+            repertoire::rep_export_pgn,
+            repertoire::rep_import_pgn_file,
+            repertoire::rep_export_pgn_file,
             puzzles::import_puzzles,
             puzzles::next_puzzle,
             puzzles::record_attempt,

@@ -36,6 +36,8 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     display_name: "",
     import_months: 3,
     puzzle_goal: 20,
+    rep_due_limit: 20,
+    rep_new_limit: 5,
     sound_enabled: true,
     sound_volume: 70,
     auto_update: true,

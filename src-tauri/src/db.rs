@@ -346,6 +346,10 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         // genau die Operationen, die es für einzelne Einheiten schon gibt.
         "ALTER TABLE study_events ADD COLUMN repeat_rule TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE study_events ADD COLUMN series_key TEXT NOT NULL DEFAULT ''",
+        // Migration v13: Notiz je Repertoire-Stellung. Ein Repertoire ohne
+        // Begründung ist nach ein paar Monaten nur noch eine Zugliste · der
+        // Plan hinter der Variante gehört an die Stellung, nicht ins Gedächtnis.
+        "ALTER TABLE rep_nodes ADD COLUMN note TEXT NOT NULL DEFAULT ''",
     ] {
         let _ = conn.execute(sql, []);
     }

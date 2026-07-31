@@ -1,43 +1,56 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
 import {
   Check,
   ChevronDown,
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
   ChevronRight,
   CornerUpLeft,
+  Download,
+  FileUp,
   GraduationCap,
+  Lightbulb,
+  ListTree,
+  Loader2,
   Plus,
+  Shuffle,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { repertoire as demoRepertoire, repertoireStats, type RepNode as DemoNode } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, useT, type TFunc } from "../lib/i18n";
 import {
   repAddLine,
   repDelete,
-  repDue,
+  repExportPgnFile,
+  repGaps,
+  repImportPgn,
+  repImportPgnFile,
   repList,
+  repLookup,
   repNodeGames,
-  repReview,
+  repSetNote,
   repStats,
-  type DueItem,
   type NodeGameStats,
+  type RepGap,
   type RepNode,
   type RepStats,
 } from "../lib/repertoire";
+import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import Board from "../components/Board";
+import LiveEngine from "../components/LiveEngine";
+import RepertoireTrainer from "../components/RepertoireTrainer";
+import { useMobileShell } from "../components/MobileShell";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
-import { Button, Card } from "../components/ui";
-import { de, fenAfter } from "../lib/util";
+import { Button, Card, Chip } from "../components/ui";
+import { de, errorMessage, fenAfter } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
 
-const EMPTY_SANS: string[] = [];
+/** Prüftiefen der Abdeckung · so weit reicht bei den meisten ein Repertoire. */
+const COVERAGE_PLIES = [6, 8, 12, 16];
 
 export default function Repertoire() {
   const backend = useBackendInfo();
@@ -61,24 +74,90 @@ function dueLabel(t: TFunc, n: RepNode, now: number): string {
   return t(days === 1 ? "rep.inDays.one" : "rep.inDays.many", { n: days });
 }
 
+/** Zugliste als "1.e4 e5 2.Nf3" · dieselbe Form überall auf der Seite. */
+function moveText(sans: string[]): string {
+  return sans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
+}
+
+/** Auf dem Handy klappt ein Bereich zu, auf dem Desktop steht er offen. */
+function Panel({
+  compact,
+  icon,
+  title,
+  children,
+  defaultOpen = false,
+  pad = true,
+}: {
+  compact: boolean;
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  pad?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (!compact) {
+    return (
+      <Card title={<span className="flex items-center gap-2">{icon} {title}</span>} pad={pad}>
+        {children}
+      </Card>
+    );
+  }
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-panel">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left"
+      >
+        <span className="text-accent">{icon}</span>
+        <span className="flex-1 text-[13.5px] font-medium text-ink">{title}</span>
+        <ChevronDown
+          size={17}
+          className={`shrink-0 text-ink3 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div className={`border-t border-line ${pad ? "p-4" : ""}`}>{children}</div>}
+    </section>
+  );
+}
+
 function LiveRepertoire() {
   const t = useT();
+  const compact = useMobileShell();
   const [nodes, setNodes] = useState<RepNode[]>([]);
   const [stats, setStats] = useState<RepStats | null>(null);
+  const [gaps, setGaps] = useState<RepGap[] | null>(null);
+  const [plies, setPlies] = useState(8);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [nodeStats, setNodeStats] = useState<NodeGameStats | null>(null);
   const [mode, setMode] = useState<"browse" | "add" | "train">("browse");
   const [notice, setNotice] = useState<string | null>(null);
+  const [limits, setLimits] = useState<{ due: number; fresh: number }>({ due: 20, fresh: 5 });
   const now = Math.floor(Date.now() / 1000);
 
   const reload = useCallback(() => {
     repList().then(setNodes).catch(() => {});
-    repStats().then(setStats).catch(() => {});
-  }, []);
+    repGaps().then(setGaps).catch(() => setGaps([]));
+    repStats(plies).then(setStats).catch(() => {});
+  }, [plies]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    repList().then(setNodes).catch(() => {});
+    repGaps().then(setGaps).catch(() => setGaps([]));
+  }, []);
+
+  // Die Prüftiefe ändert nur die Abdeckung · Baum und Lücken bleiben stehen.
+  useEffect(() => {
+    repStats(plies).then(setStats).catch(() => {});
+  }, [plies]);
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setLimits({ due: s.rep_due_limit, fresh: s.rep_new_limit }))
+      .catch(() => {});
+  }, []);
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const children = useMemo(() => {
@@ -89,6 +168,24 @@ function LiveRepertoire() {
     }
     return map;
   }, [nodes]);
+
+  /**
+   * Stellungen, die im Baum mehrfach vorkommen. Das Repertoire ist ein Baum,
+   * Schach nicht: dieselbe Stellung über eine andere Zugfolge wird ein zweiter
+   * Knoten mit eigenem Lernstand · sichtbar zu machen ist das Mindeste.
+   */
+  const transpositions = useMemo(() => {
+    const map = new Map<string, RepNode[]>();
+    for (const n of nodes) {
+      const key = `${n.side}:${n.fen_key}`;
+      map.set(key, [...(map.get(key) ?? []), n]);
+    }
+    return map;
+  }, [nodes]);
+  const twinsOf = useCallback(
+    (n: RepNode) => (transpositions.get(`${n.side}:${n.fen_key}`) ?? []).filter((o) => o.id !== n.id),
+    [transpositions]
+  );
 
   /** Anzahl fälliger eigener Züge im Teilbaum (inkl. Knoten selbst). */
   const dueCount = useCallback(
@@ -139,18 +236,194 @@ function LiveRepertoire() {
       for (const line of flat) await repAddLine(line.side, line.name, line.sans);
       reload();
     } catch (e) {
-      setNotice(String(e));
+      setNotice(errorMessage(e));
     }
   };
 
   const remove = async (id: number) => {
-    await repDelete(id).catch((e) => setNotice(String(e)));
+    await repDelete(id).catch((e) => setNotice(errorMessage(e)));
     if (selectedId === id) setSelectedId(null);
     reload();
   };
 
+  /** Einen Zug aus einer Lücke ins Buch übernehmen. */
+  const adoptGap = async (gap: RepGap) => {
+    try {
+      await repAddLine(gap.side, "", [...gap.path_sans, gap.san]);
+      reload();
+      setNotice(t("rep.gapAdded", { san: gap.san }));
+    } catch (e) {
+      setNotice(errorMessage(e));
+    }
+  };
+
   const dueTotal = stats?.due_now ?? 0;
-  const moveText = baseSans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
+
+  const treePanel = (
+    <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
+      <div className="p-2">
+        {(["white", "black"] as const).map((side) => (
+          <div key={side} className="mb-2">
+            <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
+              {side === "white" ? t("common.asWhite") : t("common.asBlack")}
+            </div>
+            {(children.get(`${side}:0`) ?? []).map((n) => (
+              <TreeNode
+                key={n.id}
+                node={n}
+                depth={0}
+                selected={selectedId}
+                onSelect={setSelectedId}
+                children_={children}
+                dueCount={dueCount}
+                twins={twinsOf}
+              />
+            ))}
+          </div>
+        ))}
+        {nodes.length === 0 && (
+          <button
+            onClick={seedStarter}
+            className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-accent-dim px-3 py-2 text-[12.5px] text-accent transition-colors hover:bg-accent-soft"
+          >
+            <Sparkles size={14} /> {t("rep.seedStarter")}
+          </button>
+        )}
+        <button
+          onClick={() => setMode("add")}
+          className="mt-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+        >
+          <Plus size={14} />{" "}
+          {selected ? t("rep.addLineFrom", { label: moveLabel(selected) }) : t("rep.addLine")}
+        </button>
+      </div>
+    </Panel>
+  );
+
+  const boardPane = (
+    <div>
+      <Board
+        boardId="repertoire"
+        fen={fen}
+        width={BOARD_WIDTH}
+        orientation={selected?.side ?? "white"}
+      />
+      <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
+        {moveText(baseSans) || t("rep.startPos")}
+      </div>
+    </div>
+  );
+
+  const detailsPane = (
+    <div className="flex flex-col gap-4">
+      {selected ? (
+        <>
+          <Card
+            title={moveLabel(selected)}
+            action={
+              <button
+                onClick={() => remove(selected.id)}
+                className="text-ink3 transition-colors hover:text-loss"
+                title={t("rep.deleteVariant")}
+              >
+                <Trash2 size={15} />
+              </button>
+            }
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-panel2 px-3 py-2.5">
+                <div className="text-[11.5px] text-ink3">{t("rep.reps")}</div>
+                <div className="mt-1 text-[20px] font-semibold">
+                  {selected.reps}
+                  {selected.lapses > 0 && (
+                    <span className="ml-1.5 text-[12px] font-normal text-loss">
+                      {t("rep.lapses", { n: selected.lapses })}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg bg-panel2 px-3 py-2.5">
+                <div className="text-[11.5px] text-ink3">{t("rep.nextReview")}</div>
+                <div className="mt-1 text-[20px] font-semibold">
+                  {selected.my_move ? dueLabel(t, selected, now) : "—"}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 text-[12.5px] leading-relaxed text-ink3">
+              {selected.my_move
+                ? t("rep.stability", { n: de(Math.max(selected.stability, 0)) })
+                : t("rep.opponentMove")}
+            </div>
+            <NoteEditor
+              key={selected.id}
+              node={selected}
+              onSaved={reload}
+              onError={(e) => setNotice(e)}
+            />
+            {twinsOf(selected).length > 0 && (
+              <div className="mt-3 flex gap-2 rounded-lg border border-gold/40 bg-[#2a2414] px-3 py-2 text-[12px] leading-relaxed text-gold">
+                <Shuffle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {t("rep.transposition", {
+                    lines: twinsOf(selected)
+                      .map((n) => moveText(pathSans(n.id)))
+                      .join(" · "),
+                  })}
+                </span>
+              </div>
+            )}
+          </Card>
+
+          <Card title={t("rep.gamesCard")}>
+            {nodeStats && nodeStats.games > 0 ? (
+              <ul className="flex flex-col gap-2.5 text-[13px] leading-relaxed">
+                <li className="flex gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-win" />
+                  <span className="text-ink2">
+                    {t("rep.reachedIn", {
+                      games: `${nodeStats.games} ${t(nodeStats.games === 1 ? "common.games.one" : "common.games.many")}`,
+                      p: de(nodeStats.score_pct),
+                    })}
+                  </span>
+                </li>
+                {nodeStats.book_sans.length > 0 && (
+                  <li className="flex gap-2">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
+                    <span className="text-ink2">
+                      {t("rep.bookContinuation", {
+                        sans: nodeStats.book_sans.join(" / "),
+                        n: nodeStats.followed_book,
+                      })}
+                    </span>
+                  </li>
+                )}
+                {nodeStats.deviations.length > 0 && (
+                  <li className="flex gap-2">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-loss" />
+                    <span className="text-ink2">
+                      {t("rep.deviations", {
+                        list: nodeStats.deviations.map((d) => `${d.san} (${d.count}×)`).join(", "),
+                      })}
+                    </span>
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <div className="text-[12.5px] leading-relaxed text-ink3">{t("rep.posNotInGames")}</div>
+            )}
+          </Card>
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[12.5px] leading-relaxed text-ink3">
+          {t("rep.selectHint")}
+        </div>
+      )}
+
+      <CoverageCard stats={stats} plies={plies} onPlies={setPlies} />
+      <GapsCard gaps={gaps} onAdopt={adoptGap} />
+      <BookCard onDone={reload} onNotice={setNotice} />
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
@@ -168,7 +441,11 @@ function LiveRepertoire() {
           </p>
         </div>
         {mode !== "train" && (
-          <Button primary onClick={() => setMode("train")} className={dueTotal === 0 ? "opacity-60" : ""}>
+          <Button
+            primary
+            onClick={() => setMode("train")}
+            className={dueTotal === 0 ? "opacity-60" : ""}
+          >
             <GraduationCap size={16} />
             {t("rep.startTraining", { n: dueTotal })}
           </Button>
@@ -176,168 +453,315 @@ function LiveRepertoire() {
       </header>
 
       {notice && (
-        <div className="mb-4 rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5 text-[12.5px] text-loss">
-          {notice}
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-line2 bg-panel2 px-4 py-2.5 text-[12.5px] text-ink2">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="shrink-0 text-ink3 hover:text-ink">
+            <X size={14} />
+          </button>
         </div>
       )}
 
       {mode === "train" ? (
-        <Trainer
+        <RepertoireTrainer
+          nodes={nodes}
+          dueLimit={limits.due}
+          newLimit={limits.fresh}
           onExit={() => {
             setMode("browse");
             reload();
           }}
         />
+      ) : mode === "add" ? (
+        <AddLine
+          baseSans={baseSans}
+          baseSide={selected?.side ?? null}
+          onDone={(err) => {
+            setMode("browse");
+            if (err) setNotice(err);
+            reload();
+          }}
+        />
+      ) : compact ? (
+        // Auf dem Handy zuerst das Brett · der Variantenbaum ist eine lange
+        // Liste und schöbe sonst alles Wesentliche unter die Falz.
+        <div className="flex flex-col gap-4">
+          {boardPane}
+          {detailsPane}
+          {treePanel}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
-          <Card title={t("rep.variants")} pad={false}>
-            <div className="p-2">
-              {(["white", "black"] as const).map((side) => (
-                <div key={side} className="mb-2">
-                  <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-                    {side === "white" ? t("common.asWhite") : t("common.asBlack")}
-                  </div>
-                  {(children.get(`${side}:0`) ?? []).map((n) => (
-                    <TreeNode
-                      key={n.id}
-                      node={n}
-                      depth={0}
-                      selected={selectedId}
-                      onSelect={setSelectedId}
-                      children_={children}
-                      dueCount={dueCount}
-                    />
-                  ))}
-                </div>
-              ))}
-              {nodes.length === 0 && (
-                <button
-                  onClick={seedStarter}
-                  className="mb-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-accent-dim px-3 py-2 text-[12.5px] text-accent transition-colors hover:bg-accent-soft"
-                >
-                  <Sparkles size={14} /> {t("rep.seedStarter")}
-                </button>
-              )}
-              <button
-                onClick={() => setMode("add")}
-                className="mt-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
-              >
-                <Plus size={14} />{" "}
-                {selected ? t("rep.addLineFrom", { label: moveLabel(selected) }) : t("rep.addLine")}
-              </button>
-            </div>
-          </Card>
-
-          {mode === "add" ? (
-            <AddLine
-              baseSans={baseSans}
-              baseSide={selected?.side ?? null}
-              onDone={(err) => {
-                setMode("browse");
-                if (err) setNotice(err);
-                reload();
-              }}
-            />
-          ) : (
-            <>
-              <div>
-                <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} orientation={selected?.side ?? "white"} />
-                <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-                  {moveText || t("rep.startPos")}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                {selected ? (
-                  <>
-                    <Card
-                      title={moveLabel(selected)}
-                      action={
-                        <button onClick={() => remove(selected.id)} className="text-ink3 transition-colors hover:text-loss" title={t("rep.deleteVariant")}>
-                          <Trash2 size={15} />
-                        </button>
-                      }
-                    >
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                          <div className="text-[11.5px] text-ink3">{t("rep.reps")}</div>
-                          <div className="mt-1 text-[20px] font-semibold">
-                            {selected.reps}
-                            {selected.lapses > 0 && (
-                              <span className="ml-1.5 text-[12px] font-normal text-loss">{t("rep.lapses", { n: selected.lapses })}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                          <div className="text-[11.5px] text-ink3">{t("rep.nextReview")}</div>
-                          <div className="mt-1 text-[20px] font-semibold">
-                            {selected.my_move ? dueLabel(t, selected, now) : "—"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-3 text-[12.5px] leading-relaxed text-ink3">
-                        {selected.my_move
-                          ? t("rep.stability", { n: de(Math.max(selected.stability, 0)) })
-                          : t("rep.opponentMove")}
-                      </div>
-                    </Card>
-
-                    <Card title={t("rep.gamesCard")}>
-                      {nodeStats && nodeStats.games > 0 ? (
-                        <ul className="flex flex-col gap-2.5 text-[13px] leading-relaxed">
-                          <li className="flex gap-2">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-win" />
-                            <span className="text-ink2">
-                              {t("rep.reachedIn", {
-                                games: `${nodeStats.games} ${t(nodeStats.games === 1 ? "common.games.one" : "common.games.many")}`,
-                                p: de(nodeStats.score_pct),
-                              })}
-                            </span>
-                          </li>
-                          {nodeStats.book_sans.length > 0 && (
-                            <li className="flex gap-2">
-                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
-                              <span className="text-ink2">
-                                {t("rep.bookContinuation", {
-                                  sans: nodeStats.book_sans.join(" / "),
-                                  n: nodeStats.followed_book,
-                                })}
-                              </span>
-                            </li>
-                          )}
-                          {nodeStats.deviations.length > 0 && (
-                            <li className="flex gap-2">
-                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-loss" />
-                              <span className="text-ink2">
-                                {t("rep.deviations", {
-                                  list: nodeStats.deviations.map((d) => `${d.san} (${d.count}×)`).join(", "),
-                                })}
-                              </span>
-                            </li>
-                          )}
-                        </ul>
-                      ) : (
-                        <div className="text-[12.5px] leading-relaxed text-ink3">
-                          {t("rep.posNotInGames")}
-                        </div>
-                      )}
-                    </Card>
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[12.5px] leading-relaxed text-ink3">
-                    {t("rep.selectHint")}
-                  </div>
-                )}
-
-                <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-                  {t("rep.trainHint")}
-                </div>
-              </div>
-            </>
-          )}
+          {treePanel}
+          {boardPane}
+          {detailsPane}
         </div>
       )}
     </div>
+  );
+}
+
+/** Freitext zur Stellung · Plan, Idee, Falle. */
+function NoteEditor({
+  node,
+  onSaved,
+  onError,
+}: {
+  node: RepNode;
+  onSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const t = useT();
+  const [text, setText] = useState(node.note);
+  const [busy, setBusy] = useState(false);
+  const dirty = text.trim() !== node.note.trim();
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await repSetNote(node.id, text);
+      onSaved();
+    } catch (e) {
+      onError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <label className="text-[11.5px] text-ink3">{t("rep.note")}</label>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder={t("rep.notePlaceholder")}
+        className="mt-1.5 w-full resize-y rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+      />
+      {dirty && (
+        <div className="mt-2 flex justify-end gap-2">
+          <Button onClick={() => setText(node.note)} disabled={busy}>
+            {t("common.cancel")}
+          </Button>
+          <Button primary onClick={save} disabled={busy}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {t("common.save")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Abdeckung: wie oft die letzten Partien im Buch blieben · je Farbe getrennt. */
+function CoverageCard({
+  stats,
+  plies,
+  onPlies,
+}: {
+  stats: RepStats | null;
+  plies: number;
+  onPlies: (value: number) => void;
+}) {
+  const t = useT();
+  return (
+    <Card title={t("rep.coverage")}>
+      <div className="flex flex-wrap gap-1.5">
+        {COVERAGE_PLIES.map((value) => (
+          <Chip key={value} active={plies === value} onClick={() => onPlies(value)}>
+            {t("rep.coveragePlies", { n: value })}
+          </Chip>
+        ))}
+      </div>
+      {stats ? (
+        <>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-[24px] font-semibold">{de(stats.coverage_pct)} %</span>
+            <span className="text-[12px] text-ink3">
+              {t("rep.coverageOf", { g: stats.games_checked })}
+            </span>
+          </div>
+          {stats.by_side.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2">
+              {stats.by_side.map((side) => (
+                <div key={side.side} className="flex items-center gap-3 text-[12.5px]">
+                  <span className="w-20 shrink-0 text-ink3">
+                    {side.side === "white" ? t("common.asWhite") : t("common.asBlack")}
+                  </span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel3">
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${side.pct}%` }}
+                    />
+                  </div>
+                  <span className="w-24 shrink-0 text-right tabular-nums text-ink2">
+                    {de(side.pct)} % · {side.games}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="mt-3 text-[12.5px] text-ink3">{t("common.loading")}</div>
+      )}
+      <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("rep.coverageNote")}</p>
+    </Card>
+  );
+}
+
+/** Lücken aus den eigenen Partien · der kürzeste Weg zu neuen Varianten. */
+function GapsCard({ gaps, onAdopt }: { gaps: RepGap[] | null; onAdopt: (gap: RepGap) => void }) {
+  const t = useT();
+  return (
+    <Card title={t("rep.gaps")}>
+      {gaps == null ? (
+        <div className="text-[12.5px] text-ink3">{t("common.loading")}</div>
+      ) : gaps.length === 0 ? (
+        <div className="text-[12.5px] leading-relaxed text-ink3">{t("rep.gapsNone")}</div>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {gaps.map((gap) => (
+            <li
+              key={`${gap.node_id}-${gap.side}-${gap.san}`}
+              className="rounded-lg border border-line bg-panel2 px-3 py-2.5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[12.5px] text-ink">
+                    {gap.mine
+                      ? t("rep.gapMine", { san: gap.san, n: gap.count })
+                      : t("rep.gapTheirs", { san: gap.san, n: gap.count })}
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-[11.5px] text-ink3">
+                    {moveText(gap.path_sans) || t("rep.startPos")}
+                  </div>
+                  <div className="mt-0.5 text-[11.5px] text-ink3">
+                    {t("rep.gapBook", { sans: gap.book_sans.join(" / ") })} · {de(gap.score_pct)} %
+                  </div>
+                </div>
+                <Button onClick={() => onAdopt(gap)} title={t("rep.gapAdopt")}>
+                  <Plus size={14} />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("rep.gapsNote")}</p>
+    </Card>
+  );
+}
+
+/** Buch als PGN einlesen und ausgeben · mit Varianten in Klammern. */
+function BookCard({
+  onDone,
+  onNotice,
+}: {
+  onDone: () => void;
+  onNotice: (message: string) => void;
+}) {
+  const t = useT();
+  const [side, setSide] = useState<"white" | "black">("white");
+  const [name, setName] = useState("");
+  const [pasted, setPasted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+
+  const report = (result: { lines: number; added: number; skipped: number }) => {
+    onNotice(t("rep.pgnImported", { lines: result.lines, n: result.added }));
+    onDone();
+  };
+
+  const importFile = async () => {
+    const chosen = await openDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "PGN", extensions: ["pgn"] }],
+    });
+    if (typeof chosen !== "string") return;
+    setBusy(true);
+    try {
+      report(await repImportPgnFile(side, name.trim(), chosen));
+    } catch (e) {
+      onNotice(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importText = async () => {
+    if (!pasted.trim()) return;
+    setBusy(true);
+    try {
+      report(await repImportPgn(side, name.trim(), pasted));
+      setPasted("");
+    } catch (e) {
+      onNotice(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportFile = async () => {
+    const chosen = await saveDialog({
+      defaultPath: `kiebitz-repertoire-${side}.pgn`,
+      filters: [{ name: "PGN", extensions: ["pgn"] }],
+    });
+    if (!chosen) return;
+    setBusy(true);
+    try {
+      const path = await repExportPgnFile(side, chosen);
+      onNotice(t("rep.pgnExported", { path }));
+    } catch (e) {
+      onNotice(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title={t("rep.book")}>
+      <div className="flex flex-wrap gap-1.5">
+        {(["white", "black"] as const).map((s) => (
+          <Chip key={s} active={side === s} onClick={() => setSide(s)}>
+            {s === "white" ? t("common.asWhite") : t("common.asBlack")}
+          </Chip>
+        ))}
+      </div>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={t("rep.namePlaceholder")}
+        className="mt-3 w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+      />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button onClick={() => !busy && importFile()}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}{" "}
+          {t("rep.pgnImport")}
+        </Button>
+        <Button onClick={() => !busy && exportFile()}>
+          <Download size={14} /> {t("rep.pgnExport")}
+        </Button>
+        <Button onClick={() => setShowPaste((v) => !v)}>{t("rep.pgnPaste")}</Button>
+      </div>
+      {showPaste && (
+        <div className="mt-3">
+          <textarea
+            value={pasted}
+            onChange={(e) => setPasted(e.target.value)}
+            rows={4}
+            placeholder="1. e4 e5 (1... c5 2. Nf3) 2. Nf3 Nc6"
+            className="w-full resize-y rounded-lg border border-line bg-panel2 px-3 py-2 font-mono text-[12px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+          />
+          <div className="mt-2 flex justify-end">
+            <Button primary onClick={() => !busy && importText()} disabled={!pasted.trim()}>
+              <Check size={14} /> {t("common.import")}
+            </Button>
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("rep.pgnNote")}</p>
+    </Card>
   );
 }
 
@@ -348,6 +772,7 @@ function TreeNode({
   onSelect,
   children_,
   dueCount,
+  twins,
 }: {
   node: RepNode;
   depth: number;
@@ -355,10 +780,12 @@ function TreeNode({
   onSelect: (id: number) => void;
   children_: Map<string, RepNode[]>;
   dueCount: (n: RepNode) => number;
+  twins: (n: RepNode) => RepNode[];
 }) {
   const [open, setOpen] = useState(depth < 2);
   const kids = children_.get(`${node.side}:${node.id}`) ?? [];
   const due = dueCount(node);
+  const hasTwins = twins(node).length > 0;
 
   return (
     <div>
@@ -383,6 +810,8 @@ function TreeNode({
           <span className="w-[14px]" />
         )}
         <span className="flex-1 truncate text-[13px]">{moveLabel(node)}</span>
+        {node.note.trim() !== "" && <Lightbulb size={12} className="shrink-0 text-ink3" />}
+        {hasTwins && <Shuffle size={12} className="shrink-0 text-gold" />}
         {due > 0 && (
           <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
             {due}
@@ -399,6 +828,7 @@ function TreeNode({
             onSelect={onSelect}
             children_={children_}
             dueCount={dueCount}
+            twins={twins}
           />
         ))}
     </div>
@@ -420,15 +850,55 @@ function AddLine({
   const [draft, setDraft] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [side, setSide] = useState<"white" | "black">(baseSide ?? "white");
+  const [book, setBook] = useState<ChessDbResult | null>(null);
+  const [twins, setTwins] = useState<RepNode[]>([]);
   const chessRef = useRef<Chess>(new Chess());
+
+  const sans = useMemo(() => [...baseSans, ...draft], [baseSans, draft]);
 
   useEffect(() => {
     const c = new Chess();
-    for (const s of [...baseSans, ...draft]) c.move(s);
+    for (const s of sans) c.move(s);
     chessRef.current = c;
-  }, [baseSans, draft]);
+  }, [sans]);
 
-  const fen = fenAfter([...baseSans, ...draft]);
+  const fen = useMemo(() => fenAfter(sans), [sans]);
+
+  // Steht diese Stellung schon woanders im Buch? Entprellt, weil beim
+  // schnellen Durchklicken sonst jede Zwischenstellung nachfragt.
+  useEffect(() => {
+    let stale = false;
+    const timer = setTimeout(() => {
+      repLookup(side, sans)
+        .then((found) => {
+          if (!stale) setTwins(found);
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [side, sans]);
+
+  // ChessDB als Orientierung beim Bauen · ohne sie legt man Varianten an,
+  // ohne zu wissen, was überhaupt gespielt wird.
+  useEffect(() => {
+    let stale = false;
+    const timer = setTimeout(() => {
+      chessdbQuery(fen)
+        .then((r) => {
+          if (!stale) setBook(r);
+        })
+        .catch(() => {
+          if (!stale) setBook(null);
+        });
+    }, 400);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [fen]);
 
   const tryMove = (from: string, to: string): boolean => {
     try {
@@ -441,284 +911,122 @@ function AddLine({
   };
   const addSelection = useBoardSelection(fen, tryMove);
 
+  /** Zug aus dem Eröffnungsbuch übernehmen. */
+  const playSan = (san: string) => {
+    try {
+      const move = chessRef.current.move(san);
+      setDraft((d) => [...d, move.san]);
+    } catch {
+      /* Zug passt nicht zur Stellung · dann eben nicht. */
+    }
+  };
+
   const save = async () => {
     if (draft.length === 0) return;
     try {
-      await repAddLine(side, name, [...baseSans, ...draft]);
+      await repAddLine(side, name, sans);
       onDone();
     } catch (e) {
-      onDone(String(e));
+      onDone(errorMessage(e));
     }
   };
-
-  const moveText = [...baseSans, ...draft]
-    .map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m))
-    .join(" ");
 
   return (
-    <div className="min-[1240px]:col-span-2">
-      <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
-        <div>
-          <Board
-            boardId="rep-add"
-            fen={fen}
-            width={BOARD_WIDTH}
-            draggable
-            onPieceDrop={tryMove}
-            onSquareClick={addSelection.onSquareClick}
-            squareStyles={addSelection.squareStyles}
-            orientation={side}
-            mouseDrag
-          />
-          <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-            {moveText || t("rep.playOnBoard")}
-          </div>
-        </div>
-        <div className="flex max-w-[420px] flex-col gap-3">
-          <Card title={t("rep.newVariant")}>
-            {baseSide == null && (
-              <div className="mb-3 flex gap-2">
-                {(["white", "black"] as const).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setSide(s)}
-                    className={`rounded-full border px-3 py-1 text-[12.5px] transition-colors ${
-                      side === s
-                        ? "border-accent-dim bg-accent-soft text-accent"
-                        : "border-line bg-panel2 text-ink2 hover:border-line2"
-                    }`}
-                  >
-                    {s === "white" ? t("common.asWhite") : t("common.asBlack")}
-                  </button>
-                ))}
-              </div>
-            )}
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("rep.namePlaceholder")}
-              className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-            />
-            <div className="mt-3 flex gap-2">
-              <Button onClick={() => setDraft((d) => d.slice(0, -1))} className={draft.length === 0 ? "opacity-50" : ""}>
-                <CornerUpLeft size={14} /> {t("rep.undoMove")}
-              </Button>
-              <Button primary onClick={save} className={draft.length === 0 ? "opacity-50" : "flex-1"}>
-                <Check size={14} />{" "}
-                {t(draft.length === 1 ? "rep.saveMoves.one" : "rep.saveMoves.many", { n: draft.length })}
-              </Button>
-              <Button onClick={() => onDone()}>
-                <X size={14} />
-              </Button>
-            </div>
-          </Card>
-          <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            {t("rep.playBothSides", { side: side === "white" ? t("common.white") : t("common.black") })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── FSRS-Training ────────────────────────────────────────────────────────────
-
-function Trainer({ onExit }: { onExit: () => void }) {
-  const t = useT();
-  const [items, setItems] = useState<DueItem[] | null>(null);
-  const [idx, setIdx] = useState(0);
-  const [state, setState] = useState<"ask" | "correct" | "wrong">("ask");
-  const [shake, setShake] = useState(false);
-  const [doneCount, setDoneCount] = useState({ ok: 0, fail: 0 });
-  const [viewPly, setViewPly] = useState(0);
-  const failedRef = useRef(false);
-  const chessRef = useRef<Chess>(new Chess());
-
-  useEffect(() => {
-    repDue().then(setItems).catch(() => setItems([]));
-  }, []);
-
-  const item = items?.[idx] ?? null;
-  const promptSans = item?.prompt_sans ?? EMPTY_SANS;
-  const promptFen = useMemo(() => fenAfter(promptSans), [promptSans]);
-  const fen = useMemo(() => fenAfter(promptSans.slice(0, viewPly)), [promptSans, viewPly]);
-  const atPrompt = viewPly === promptSans.length;
-
-  useEffect(() => {
-    chessRef.current = new Chess(promptFen);
-    setViewPly(item?.prompt_sans.length ?? 0);
-    failedRef.current = false;
-    setState("ask");
-  }, [promptFen, idx, item?.prompt_sans.length]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        setViewPly((value) => Math.max(0, value - 1));
-      }
-      if (event.key === "ArrowRight") {
-        event.preventDefault();
-        setViewPly((value) => Math.min(promptSans.length, value + 1));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [promptSans.length]);
-
-  const next = () => {
-    setIdx((i) => i + 1);
-  };
-
-  const tryMove = (from: string, to: string): boolean => {
-    if (!item || state === "correct" || !atPrompt) return false;
-    let san: string;
-    try {
-      const move = chessRef.current.move({ from, to, promotion: "q" });
-      san = move.san;
-      chessRef.current.undo();
-    } catch {
-      return false;
-    }
-    if (san.replace(/[+#]/g, "") === item.expected_san.replace(/[+#]/g, "")) {
-      chessRef.current.move(san);
-      setState("correct");
-      if (!failedRef.current) {
-        repReview(item.node_id, 3).catch(() => {});
-        setDoneCount((c) => ({ ...c, ok: c.ok + 1 }));
-      }
-      setTimeout(next, 900);
-      return true;
-    }
-    if (!failedRef.current) {
-      failedRef.current = true;
-      repReview(item.node_id, 1).catch(() => {});
-      setDoneCount((c) => ({ ...c, fail: c.fail + 1 }));
-    }
-    setState("wrong");
-    setShake(true);
-    setTimeout(() => setShake(false), 600);
-    return false;
-  };
-  const trainSelection = useBoardSelection(fen, tryMove, state !== "correct" && atPrompt);
-
-  if (items == null) return null;
-  if (!item) {
-    return (
-      <div className="mx-auto max-w-[480px] rounded-xl border border-line bg-panel px-6 py-10 text-center">
-        <GraduationCap size={28} className="mx-auto text-accent" />
-        <div className="mt-3 text-[17px] font-semibold">
-          {doneCount.ok + doneCount.fail > 0 ? t("rep.trainingDone") : t("rep.nothingDue")}
-        </div>
-        <div className="mt-1.5 text-[13px] text-ink3">
-          {doneCount.ok + doneCount.fail > 0
-            ? t("rep.sessionResult", { ok: doneCount.ok, fail: doneCount.fail })
-            : t("rep.allLearned")}
-        </div>
-        <Button primary onClick={onExit} className="mt-5">
-          {t("rep.backToRep")}
-        </Button>
-      </div>
-    );
-  }
-
-  const moveNo = Math.floor(item.prompt_sans.length / 2) + 1;
-  const previousPly = item.prompt_sans.length;
-  const previousSan = item.prompt_sans[item.prompt_sans.length - 1];
-  const previousMove = previousSan
-    ? `${Math.ceil(previousPly / 2)}${previousPly % 2 === 1 ? "." : "…"}${previousSan}`
-    : t("rep.startPos");
-  return (
-    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
       <div>
-        <div className="mb-3 flex items-center justify-between text-[13px]">
-          <span className="font-medium">
-            {item.line || t("rep.fallbackLine")} · {item.side === "white" ? t("common.white") : t("common.black")}
-          </span>
-          <span className="text-ink3">
-            {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
-          </span>
-        </div>
         <Board
-          boardId="rep-train"
+          boardId="rep-add"
           fen={fen}
           width={BOARD_WIDTH}
-          draggable={state !== "correct" && atPrompt}
+          draggable
           onPieceDrop={tryMove}
-          onSquareClick={trainSelection.onSquareClick}
-          squareStyles={trainSelection.squareStyles}
-          orientation={item.side}
-          shake={shake}
+          onSquareClick={addSelection.onSquareClick}
+          squareStyles={addSelection.squareStyles}
+          orientation={side}
           mouseDrag
         />
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
-          <span className="text-[12.5px] text-ink2">
-            {t("rep.lastMove", { move: previousMove })}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button onClick={() => setViewPly(0)} className="px-2" title={t("rep.firstPosition")}>
-              <ChevronFirst size={14} />
-            </Button>
-            <Button onClick={() => setViewPly((value) => Math.max(0, value - 1))} className="px-2" title={t("rep.previousPosition")}>
-              <ChevronLeft size={14} />
-            </Button>
-            <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
-              {viewPly} / {item.prompt_sans.length}
-            </span>
-            <Button onClick={() => setViewPly((value) => Math.min(item.prompt_sans.length, value + 1))} className="px-2" title={t("rep.nextPosition")}>
-              <ChevronRight size={14} />
-            </Button>
-            <Button onClick={() => setViewPly(item.prompt_sans.length)} className="px-2" title={t("rep.promptPosition")}>
-              <ChevronLast size={14} />
-            </Button>
-          </div>
-        </div>
-        <div className="mt-3 flex h-[52px] items-center">
-          {state === "correct" ? (
-            <div className="flex w-full items-center gap-2 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[13.5px] font-medium text-accent">
-              <Check size={17} /> {t("rep.correct", { san: item.expected_san })}
-            </div>
-          ) : state === "wrong" ? (
-            <div className="flex w-full items-center justify-between rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
-              <span className="text-[13.5px] text-loss">
-                {t("rep.bookMoveIs", { san: item.expected_san })}
-              </span>
-              <Button
-                onClick={() => {
-                  chessRef.current.move(item.expected_san);
-                  setState("correct");
-                  setTimeout(next, 900);
-                }}
-              >
-                {t("rep.showAndNext")}
-              </Button>
-            </div>
-          ) : (
-            <span className="text-[13px] text-ink3">
-              {t("rep.whatToPlay", {
-                n: moveNo,
-                side: item.side === "white" ? t("common.white") : t("common.black"),
-              })}
-            </span>
-          )}
+        <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
+          {moveText(sans) || t("rep.playOnBoard")}
         </div>
       </div>
-
-      <div className="flex max-w-[420px] flex-col gap-4">
-        <Card title={t("rep.session")}>
-          <div className="flex items-center justify-between text-[13px]">
-            <span className="text-win">{t("rep.nCorrect", { n: doneCount.ok })}</span>
-            <span className="text-loss">{t("rep.nWrong", { n: doneCount.fail })}</span>
-            <span className="text-ink3">{t("rep.nLeft", { n: items.length - idx })}</span>
-          </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-panel3">
-            <div
-              className="h-full rounded-full bg-accent transition-all"
-              style={{ width: `${(idx / items.length) * 100}%` }}
-            />
+      <div className="flex max-w-[420px] flex-col gap-3">
+        <Card title={t("rep.newVariant")}>
+          {baseSide == null && (
+            <div className="mb-3 flex gap-2">
+              {(["white", "black"] as const).map((s) => (
+                <Chip key={s} active={side === s} onClick={() => setSide(s)}>
+                  {s === "white" ? t("common.asWhite") : t("common.asBlack")}
+                </Chip>
+              ))}
+            </div>
+          )}
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("rep.namePlaceholder")}
+            className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+          />
+          {twins.length > 0 && (
+            <div className="mt-3 flex gap-2 rounded-lg border border-gold/40 bg-[#2a2414] px-3 py-2 text-[12px] leading-relaxed text-gold">
+              <Shuffle size={14} className="mt-0.5 shrink-0" />
+              <span>{t("rep.transpositionAdd", { n: twins.length })}</span>
+            </div>
+          )}
+          <div className="mt-3 flex gap-2">
+            <Button
+              onClick={() => setDraft((d) => d.slice(0, -1))}
+              className={draft.length === 0 ? "opacity-50" : ""}
+            >
+              <CornerUpLeft size={14} /> {t("rep.undoMove")}
+            </Button>
+            <Button primary onClick={save} className={draft.length === 0 ? "opacity-50" : "flex-1"}>
+              <Check size={14} />{" "}
+              {t(draft.length === 1 ? "rep.saveMoves.one" : "rep.saveMoves.many", {
+                n: draft.length,
+              })}
+            </Button>
+            <Button onClick={() => onDone()}>
+              <X size={14} />
+            </Button>
           </div>
         </Card>
-        <Button onClick={onExit}>{t("rep.endTraining")}</Button>
+
+        <Card title={t("an.book")}>
+          {book && book.status === "ok" && book.moves.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              {book.moves.slice(0, 6).map((m) => (
+                <button
+                  key={m.uci}
+                  onClick={() => playSan(m.san || m.uci)}
+                  className="flex items-center justify-between rounded-md px-2 py-1 text-[12.5px] transition-colors hover:bg-panel2"
+                >
+                  <span className="w-14 text-left font-medium">{m.san || m.uci}</span>
+                  <span className="tabular-nums text-ink2">
+                    {m.score != null
+                      ? `${m.score >= 0 ? "+" : "−"}${de(Math.abs(m.score) / 100, 2)}`
+                      : "—"}
+                  </span>
+                  <span className="w-16 text-right text-[11.5px] text-ink3">
+                    {m.winrate != null ? `${m.winrate} %` : ""}
+                  </span>
+                </button>
+              ))}
+              <div className="mt-1 border-t border-line pt-1.5 text-[11px] text-ink3">
+                {t("rep.bookClickHint")}
+              </div>
+            </div>
+          ) : (
+            <div className="text-[12px] text-ink3">{t("an.bookUnknown")}</div>
+          )}
+        </Card>
+
+        <LiveEngine fen={fen} demoLines={[]} />
+
+        <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
+          {t("rep.playBothSides", {
+            side: side === "white" ? t("common.white") : t("common.black"),
+          })}
+        </div>
       </div>
     </div>
   );
@@ -807,15 +1115,81 @@ function DemoTreeNode({
 
 function DemoRepertoire() {
   const { locale, t } = useI18n();
+  const compact = useMobileShell();
   const storeCapture = isStoreCapture();
   const englishCapture = storeCapture && locale === "en";
   const [selectedId, setSelectedId] = useState("w1a");
   const node = useMemo(() => allDemoNodes.find((n) => n.id === selectedId)!, [selectedId]);
   const fen = useMemo(() => fenAfter(node.moveSeq), [node]);
 
-  const moveText = node.moveSeq
-    .map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m))
-    .join(" ");
+  const treePanel = (
+    <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
+      <div className="p-2">
+        {demoRepertoire.map((side) => (
+          <div key={side.side} className="mb-2">
+            <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
+              {side.side === "Weiß" ? t("common.asWhite") : t("common.asBlack")}
+            </div>
+            {side.nodes.map((n) => (
+              <DemoTreeNode
+                key={n.id}
+                node={n}
+                depth={0}
+                selected={selectedId}
+                onSelect={setSelectedId}
+                englishCapture={englishCapture}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+
+  const boardPane = (
+    <div>
+      <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} />
+      <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
+        {moveText(node.moveSeq)}
+      </div>
+    </div>
+  );
+
+  const detailsPane = (
+    <div className="flex flex-col gap-4">
+      <Card title={englishCapture ? STORE_EN_NODE_LABELS[node.id] ?? node.label : node.label}>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg bg-panel2 px-3 py-2.5">
+            <div className="text-[11.5px] text-ink3">{t("rep.trainSuccess")}</div>
+            <div
+              className="mt-1 text-[20px] font-semibold"
+              style={{
+                color:
+                  node.score >= 85
+                    ? "var(--color-win)"
+                    : node.score >= 70
+                      ? "var(--color-gold)"
+                      : "var(--color-loss)",
+              }}
+            >
+              {node.score} %
+            </div>
+          </div>
+          <div className="rounded-lg bg-panel2 px-3 py-2.5">
+            <div className="text-[11.5px] text-ink3">{t("rep.dueLabel")}</div>
+            <div className="mt-1 text-[20px] font-semibold">
+              {node.due}
+              <span className="ml-1 text-[12px] font-normal text-ink3">{t("rep.positions")}</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
+        {t("rep.demoNote")}
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
@@ -836,60 +1210,19 @@ function DemoRepertoire() {
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
-        <Card title={t("rep.variants")} pad={false}>
-          <div className="p-2">
-            {demoRepertoire.map((side) => (
-              <div key={side.side} className="mb-2">
-                <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-                  {side.side === "Weiß" ? t("common.asWhite") : t("common.asBlack")}
-                </div>
-                {side.nodes.map((n) => (
-                  <DemoTreeNode
-                    key={n.id}
-                    node={n}
-                    depth={0}
-                    selected={selectedId}
-                    onSelect={setSelectedId}
-                    englishCapture={englishCapture}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <div>
-          <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} />
-          <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-            {moveText}
-          </div>
-        </div>
-
+      {compact ? (
         <div className="flex flex-col gap-4">
-          <Card title={englishCapture ? STORE_EN_NODE_LABELS[node.id] ?? node.label : node.label}>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                <div className="text-[11.5px] text-ink3">{t("rep.trainSuccess")}</div>
-                <div className="mt-1 text-[20px] font-semibold" style={{ color: node.score >= 85 ? "var(--color-win)" : node.score >= 70 ? "var(--color-gold)" : "var(--color-loss)" }}>
-                  {node.score} %
-                </div>
-              </div>
-              <div className="rounded-lg bg-panel2 px-3 py-2.5">
-                <div className="text-[11.5px] text-ink3">{t("rep.dueLabel")}</div>
-                <div className="mt-1 text-[20px] font-semibold">
-                  {node.due}
-                  <span className="ml-1 text-[12px] font-normal text-ink3">{t("rep.positions")}</span>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
-            {t("rep.demoNote")}
-          </div>
+          {boardPane}
+          {detailsPane}
+          {treePanel}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
+          {treePanel}
+          {boardPane}
+          {detailsPane}
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,10 @@ export interface Settings {
   display_name: string;
   import_months: number;
   puzzle_goal: number;
+  /** Fällige Repertoire-Züge je Trainingssitzung (0 = alle). */
+  rep_due_limit: number;
+  /** Neue Repertoire-Züge je Trainingssitzung (0 = alle). */
+  rep_new_limit: number;
   /** Zug- und Schlagklänge auf allen Brettern. */
   sound_enabled: boolean;
   /** Lautstärke der Brettklänge in Prozent (0 … 100). */

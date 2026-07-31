@@ -3,6 +3,7 @@
 
 use crate::chess;
 use crate::db;
+use crate::rep_pgn;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -83,6 +84,11 @@ pub struct RepNodeOut {
     pub side: String,
     pub san: String,
     pub name: String,
+    /// Freitext zur Stellung: Plan, Idee, Falle.
+    pub note: String,
+    /// Normalisierter Stellungsschlüssel · gleiche Schlüssel auf derselben
+    /// Seite sind Transpositionen.
+    pub fen_key: String,
     pub depth: i64,
     pub reps: i64,
     pub lapses: i64,
@@ -110,7 +116,8 @@ fn now_ts() -> i64 {
 fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, parent_id, side, san, name, depth, reps, lapses, due_ts, stability
+            "SELECT id, parent_id, side, san, name, depth, reps, lapses, due_ts, stability,
+                    note, fen_key
              FROM rep_nodes ORDER BY depth, id",
         )
         .map_err(|e| e.to_string())?;
@@ -130,6 +137,8 @@ fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
                 lapses: r.get(7)?,
                 due_ts: r.get(8)?,
                 stability: r.get(9)?,
+                note: r.get(10)?,
+                fen_key: r.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -143,6 +152,53 @@ pub fn rep_list(db: State<db::Db>) -> Result<Vec<RepNodeOut>, String> {
     load_nodes(&conn)
 }
 
+/// Notiz einer Stellung setzen (leerer Text löscht sie).
+#[tauri::command]
+pub fn rep_set_note(db: State<db::Db>, node_id: i64, note: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let changed = conn
+        .execute(
+            "UPDATE rep_nodes SET note = ?2 WHERE id = ?1",
+            params![node_id, note.trim()],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Knoten nicht gefunden".into());
+    }
+    Ok(())
+}
+
+/// Stellung nach `sans` von der Grundstellung aus · Fehler nennt den Zug.
+fn position_after(sans: &[String]) -> Result<chess::Position, String> {
+    let mut pos = chess::Position::initial();
+    for (i, san_str) in sans.iter().enumerate() {
+        let m = chess::parse_san(&pos, san_str).map_err(|e| format!("Zug {} {e}", i + 1))?;
+        pos = pos
+            .make_move(m)
+            .map_err(|_| format!("Zug {} illegal: {san_str}", i + 1))?;
+    }
+    Ok(pos)
+}
+
+/// Knoten derselben Seite, die dieselbe Stellung erreichen wie `sans`.
+///
+/// Das Repertoire ist ein Baum, Schach aber nicht: dieselbe Stellung über eine
+/// andere Zugfolge ist ein zweiter Knoten mit eigenem Lernstand. Wer das beim
+/// Anlegen sieht, kann sich für eine der beiden Fassungen entscheiden.
+#[tauri::command]
+pub fn rep_lookup(
+    db: State<db::Db>,
+    side: String,
+    sans: Vec<String>,
+) -> Result<Vec<RepNodeOut>, String> {
+    let key = chess::fen_key(&position_after(&sans)?);
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    Ok(load_nodes(&conn)?
+        .into_iter()
+        .filter(|n| n.side == side && n.fen_key == key)
+        .collect())
+}
+
 /// Fügt eine Zugfolge ab der Grundstellung ein; vorhandene Knoten werden
 /// wiederverwendet. `name` benennt den letzten Knoten der Linie.
 #[tauri::command]
@@ -152,13 +208,24 @@ pub fn rep_add_line(
     name: String,
     sans: Vec<String>,
 ) -> Result<i64, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    insert_line(&conn, &side, &name, &sans).map(|(id, _)| id)
+}
+
+/// Legt eine Linie an und meldet (Blatt-Id, Anzahl neu angelegter Knoten).
+fn insert_line(
+    conn: &Connection,
+    side: &str,
+    name: &str,
+    sans: &[String],
+) -> Result<(i64, i64), String> {
     if side != "white" && side != "black" {
         return Err("Seite muss white oder black sein".into());
     }
     if sans.is_empty() {
         return Err("Keine Züge angegeben".into());
     }
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut added = 0i64;
 
     let mut pos = chess::Position::initial();
     let mut parent_id = 0i64;
@@ -191,6 +258,7 @@ pub fn rep_add_line(
                     params![parent_id, side, clean_san, key, depth, db::now_ts()],
                 )
                 .map_err(|e| e.to_string())?;
+                added += 1;
                 conn.last_insert_rowid()
             }
         };
@@ -203,7 +271,106 @@ pub fn rep_add_line(
         )
         .map_err(|e| e.to_string())?;
     }
-    Ok(leaf_id)
+    Ok((leaf_id, added))
+}
+
+#[derive(Serialize)]
+pub struct ImportResult {
+    pub lines: i64,
+    pub added: i64,
+    pub skipped: i64,
+}
+
+/// Liest ein PGN mit Varianten in den Baum einer Seite ein.
+#[tauri::command]
+pub fn rep_import_pgn(
+    db: State<db::Db>,
+    side: String,
+    name: String,
+    pgn: String,
+) -> Result<ImportResult, String> {
+    let lines = rep_pgn::parse_lines(&pgn);
+    if lines.is_empty() {
+        return Err("Keine lesbaren Züge im PGN gefunden.".into());
+    }
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut added = 0i64;
+    let mut skipped = 0i64;
+    let mut ok = 0i64;
+    for (index, line) in lines.iter().enumerate() {
+        // Der Name gehört an die erste (längste) Linie · sonst hinge er an
+        // einer beliebigen Nebenvariante.
+        let label = if index == 0 { name.as_str() } else { "" };
+        match insert_line(&conn, &side, label, line) {
+            Ok((_, n)) => {
+                added += n;
+                ok += 1;
+            }
+            Err(_) => skipped += 1,
+        }
+    }
+    Ok(ImportResult {
+        lines: ok,
+        added,
+        skipped,
+    })
+}
+
+/// Wie `rep_import_pgn`, liest den Text aber aus einer Datei · das Frontend
+/// bekommt vom Dateidialog nur einen Pfad und kann selbst nichts lesen.
+#[tauri::command]
+pub fn rep_import_pgn_file(
+    db: State<db::Db>,
+    side: String,
+    name: String,
+    path: String,
+) -> Result<ImportResult, String> {
+    let text = std::fs::read_to_string(path.trim())
+        .map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+    rep_import_pgn(db, side, name, text)
+}
+
+/// Schreibt das PGN einer Seite in eine Datei und meldet den Pfad zurück.
+#[tauri::command]
+pub fn rep_export_pgn_file(
+    db: State<db::Db>,
+    side: String,
+    path: String,
+) -> Result<String, String> {
+    let pgn = rep_export_pgn(db, side)?;
+    let target = path.trim();
+    std::fs::write(target, pgn).map_err(|e| format!("Datei nicht schreibbar: {e}"))?;
+    Ok(target.to_string())
+}
+
+/// Schreibt den Baum einer Seite als PGN mit Klammervarianten.
+#[tauri::command]
+pub fn rep_export_pgn(db: State<db::Db>, side: String) -> Result<String, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let nodes = load_nodes(&conn)?;
+    let mut children: HashMap<i64, Vec<&RepNodeOut>> = HashMap::new();
+    for n in nodes.iter().filter(|n| n.side == side) {
+        children.entry(n.parent_id).or_default().push(n);
+    }
+    fn build(children: &HashMap<i64, Vec<&RepNodeOut>>, parent: i64) -> Vec<rep_pgn::ExportNode> {
+        children
+            .get(&parent)
+            .map(|kids| {
+                kids.iter()
+                    .map(|n| rep_pgn::ExportNode {
+                        san: n.san.clone(),
+                        note: n.note.clone(),
+                        children: build(children, n.id),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    let roots = build(&children, 0);
+    if roots.is_empty() {
+        return Err("Für diese Seite steht noch nichts im Repertoire.".into());
+    }
+    Ok(rep_pgn::export_pgn(&side, &roots))
 }
 
 /// Löscht einen Knoten samt aller Untervarianten.
@@ -306,8 +473,17 @@ fn line_name(nodes: &HashMap<i64, RepNodeOut>, id: i64) -> String {
     String::new()
 }
 
+/// Fällige Karten einer Sitzung.
+///
+/// Die Grenzen sind das Gegenstück zum Import: ein frisch eingelesenes Buch
+/// bringt hunderte neue Züge mit, und ein Stapel, den man nicht schaffen kann,
+/// wird gar nicht erst angefangen. `due_limit`/`new_limit` <= 0 heißt "alles".
 #[tauri::command]
-pub fn rep_due(db: State<db::Db>) -> Result<Vec<DueItem>, String> {
+pub fn rep_due(
+    db: State<db::Db>,
+    due_limit: Option<i64>,
+    new_limit: Option<i64>,
+) -> Result<Vec<DueItem>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let nodes = load_nodes(&conn)?;
     let by_id: HashMap<i64, RepNodeOut> = nodes.iter().map(|n| (n.id, n.clone())).collect();
@@ -321,8 +497,25 @@ pub fn rep_due(db: State<db::Db>) -> Result<Vec<DueItem>, String> {
     // Fällige zuerst (älteste zuerst), neue danach.
     due.sort_by_key(|(n, is_new)| (*is_new, n.due_ts, n.depth));
 
+    let due_cap = due_limit.filter(|v| *v > 0).map(|v| v as usize);
+    let new_cap = new_limit.filter(|v| *v > 0).map(|v| v as usize);
+    let mut taken_due = 0usize;
+    let mut taken_new = 0usize;
+
     Ok(due
         .into_iter()
+        .filter(|(_, is_new)| {
+            let (count, cap) = if *is_new {
+                (&mut taken_new, new_cap)
+            } else {
+                (&mut taken_due, due_cap)
+            };
+            if cap.is_some_and(|c| *count >= c) {
+                return false;
+            }
+            *count += 1;
+            true
+        })
         .map(|(n, is_new)| {
             let mut prompt = path_to(&by_id, n.id);
             prompt.pop(); // letzter Zug ist die gesuchte Antwort
@@ -384,17 +577,152 @@ pub fn rep_review(db: State<db::Db>, node_id: i64, grade: u8) -> Result<ReviewRe
 // ── Abgleich mit den Partien ─────────────────────────────────────────────────
 
 #[derive(Serialize)]
+pub struct SideCoverage {
+    pub side: String,
+    pub games: i64,
+    pub covered: i64,
+    pub pct: f64,
+}
+
+#[derive(Serialize)]
 pub struct RepStats {
     /// Anzahl trainierbarer Stellungen (meine Züge).
     pub my_positions: i64,
     pub due_now: i64,
-    /// Anteil der letzten 50 Partien, die bis Halbzug 8 im Buch blieben.
+    /// Anteil der geprüften Partien, die bis `plies` im Buch blieben.
     pub coverage_pct: f64,
     pub games_checked: i64,
+    /// Tiefe der Prüfung in Halbzügen · steht mit im Ergebnis, weil die
+    /// Zahl ohne sie nicht zu deuten ist.
+    pub plies: i64,
+    /// Dieselbe Rechnung getrennt nach Farbe · als Weiß und als Schwarz sind
+    /// das zwei verschiedene Repertoires mit verschiedenen Löchern.
+    pub by_side: Vec<SideCoverage>,
+}
+
+/// Ein Zug aus den eigenen Partien, den das Buch an dieser Stelle nicht kennt.
+#[derive(Serialize)]
+pub struct RepGap {
+    /// Knoten, an dem das Buch verlassen wurde (0 = Grundstellung).
+    pub node_id: i64,
+    pub side: String,
+    /// Züge bis zu dieser Stellung.
+    pub path_sans: Vec<String>,
+    pub san: String,
+    pub count: i64,
+    /// True, wenn ich selbst abgewichen bin · sonst fehlt mir eine Antwort.
+    pub mine: bool,
+    /// Ergebnis der betroffenen Partien aus meiner Sicht.
+    pub score_pct: f64,
+    /// Züge, die das Buch hier stattdessen kennt.
+    pub book_sans: Vec<String>,
+    /// Name der Linie, in der die Lücke sitzt.
+    pub line: String,
+}
+
+/// (side, parent_id) → [(san, id)]
+type BookChildren = HashMap<(String, i64), Vec<(String, i64)>>;
+
+fn book_children(nodes: &[RepNodeOut]) -> BookChildren {
+    let mut children: BookChildren = HashMap::new();
+    for n in nodes {
+        children
+            .entry((n.side.clone(), n.parent_id))
+            .or_default()
+            .push((n.san.clone(), n.id));
+    }
+    children
+}
+
+/// Wo eine Partie das Buch verlässt.
+struct Departure {
+    node_id: i64,
+    path: Vec<String>,
+    san: String,
+    ply: i64,
+    /// Kannte das Buch an dieser Stelle überhaupt eine Fortsetzung?
+    book_has_moves: bool,
+}
+
+/// Spielt eine Partie am Buch entlang und meldet die erste Abweichung.
+/// `None` heißt: bis `plies` blieb alles im Buch.
+fn walk_book(
+    children: &BookChildren,
+    color: &str,
+    moves: &str,
+    plies: usize,
+) -> Option<Departure> {
+    let mut node_id = 0i64;
+    let mut path: Vec<String> = Vec::new();
+    for (i, san) in moves.split_whitespace().take(plies).enumerate() {
+        let kids = children.get(&(color.to_string(), node_id));
+        match kids.and_then(|k| k.iter().find(|(s, _)| s == san)) {
+            Some((_, id)) => {
+                node_id = *id;
+                path.push(san.to_string());
+            }
+            None => {
+                return Some(Departure {
+                    node_id,
+                    path,
+                    san: san.to_string(),
+                    ply: (i + 1) as i64,
+                    book_has_moves: kids.map(|k| !k.is_empty()).unwrap_or(false),
+                })
+            }
+        }
+    }
+    None
+}
+
+fn recent_games(
+    conn: &Connection,
+    limit: i64,
+) -> Result<Vec<(String, String, String)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT color, moves, result FROM games
+             WHERE moves != '' AND analysis_excluded = 0
+             ORDER BY played_ts DESC LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn clamp_plies(plies: Option<i64>) -> i64 {
+    plies.unwrap_or(8).clamp(2, 40)
+}
+
+fn clamp_games(games: Option<i64>) -> i64 {
+    games.unwrap_or(50).clamp(1, 1000)
+}
+
+fn pct(part: f64, whole: f64) -> f64 {
+    if whole > 0.0 {
+        (part / whole * 1000.0).round() / 10.0
+    } else {
+        0.0
+    }
+}
+
+fn score_of(result: &str) -> f64 {
+    match result {
+        "win" => 1.0,
+        "draw" => 0.5,
+        _ => 0.0,
+    }
 }
 
 #[tauri::command]
-pub fn rep_stats(db: State<db::Db>) -> Result<RepStats, String> {
+pub fn rep_stats(
+    db: State<db::Db>,
+    plies: Option<i64>,
+    games: Option<i64>,
+) -> Result<RepStats, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let nodes = load_nodes(&conn)?;
     let now = now_ts();
@@ -404,61 +732,106 @@ pub fn rep_stats(db: State<db::Db>) -> Result<RepStats, String> {
         .filter(|n| n.my_move && (n.reps == 0 || n.due_ts <= now))
         .count() as i64;
 
-    // Kinder-Lookup: (side, parent_id) → [(san, id)]
-    let mut children: HashMap<(String, i64), Vec<(String, i64)>> = HashMap::new();
-    for n in &nodes {
-        children
-            .entry((n.side.clone(), n.parent_id))
-            .or_default()
-            .push((n.san.clone(), n.id));
-    }
-
-    let mut stmt = conn
-        .prepare("SELECT color, moves FROM games WHERE moves != '' AND analysis_excluded = 0 ORDER BY played_ts DESC LIMIT 50")
-        .map_err(|e| e.to_string())?;
-    let games: Vec<(String, String)> = stmt
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    let depth = clamp_plies(plies);
+    let children = book_children(&nodes);
+    let games = recent_games(&conn, clamp_games(games))?;
 
     let mut covered = 0i64;
-    let checked = games.len() as i64;
-    for (color, moves) in &games {
-        let mut node_id = 0i64;
-        let mut ok = true;
-        for (i, san) in moves.split_whitespace().take(8).enumerate() {
-            let ply = (i + 1) as i64;
-            let kids = children.get(&(color.clone(), node_id));
-            let hit = kids.and_then(|k| k.iter().find(|(s, _)| s == san));
-            match hit {
-                Some((_, id)) => node_id = *id,
-                None => {
-                    // Buch verlassen: nur mein eigener Abweichler zählt gegen mich,
-                    // und nur wenn das Buch hier überhaupt eine Fortsetzung kennt.
-                    let book_has_moves = kids.map(|k| !k.is_empty()).unwrap_or(false);
-                    if is_my_move(color, ply) && book_has_moves {
-                        ok = false;
-                    }
-                    break;
-                }
-            }
-        }
+    let mut per_side: HashMap<String, (i64, i64)> = HashMap::new();
+    for (color, moves, _) in &games {
+        // Buch verlassen: nur mein eigener Abweichler zählt gegen mich, und
+        // nur wenn das Buch hier überhaupt eine Fortsetzung kennt.
+        let ok = match walk_book(&children, color, moves, depth as usize) {
+            Some(d) => !(is_my_move(color, d.ply) && d.book_has_moves),
+            None => true,
+        };
+        let entry = per_side.entry(color.clone()).or_insert((0, 0));
+        entry.0 += 1;
         if ok {
+            entry.1 += 1;
             covered += 1;
         }
     }
 
+    let checked = games.len() as i64;
+    let mut by_side: Vec<SideCoverage> = ["white", "black"]
+        .iter()
+        .filter_map(|side| {
+            per_side.get(*side).map(|(total, ok)| SideCoverage {
+                side: (*side).to_string(),
+                games: *total,
+                covered: *ok,
+                pct: pct(*ok as f64, *total as f64),
+            })
+        })
+        .collect();
+    by_side.sort_by(|a, b| b.games.cmp(&a.games));
+
     Ok(RepStats {
         my_positions,
         due_now,
-        coverage_pct: if checked > 0 {
-            (covered as f64 / checked as f64 * 1000.0).round() / 10.0
-        } else {
-            0.0
-        },
+        coverage_pct: pct(covered as f64, checked as f64),
         games_checked: checked,
+        plies: depth,
+        by_side,
     })
+}
+
+/// Lücken im Buch aus den eigenen Partien: Stellungen, die das Buch kennt, in
+/// denen aber ein Zug fiel, den es nicht kennt · einmal als eigener Ausrutscher
+/// und einmal als unbeantwortete Gegnerantwort.
+#[tauri::command]
+pub fn rep_gaps(
+    db: State<db::Db>,
+    plies: Option<i64>,
+    games: Option<i64>,
+    limit: Option<i64>,
+) -> Result<Vec<RepGap>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let nodes = load_nodes(&conn)?;
+    let by_id: HashMap<i64, RepNodeOut> = nodes.iter().map(|n| (n.id, n.clone())).collect();
+    let children = book_children(&nodes);
+    let depth = clamp_plies(plies.or(Some(20)));
+    let games = recent_games(&conn, clamp_games(games))?;
+
+    // (node_id, side, san) → (Anzahl, Punkte, Pfad, mein Zug?)
+    let mut found: HashMap<(i64, String, String), (i64, f64, Vec<String>, bool)> = HashMap::new();
+    for (color, moves, result) in &games {
+        let Some(d) = walk_book(&children, color, moves, depth as usize) else {
+            continue;
+        };
+        // Ohne bekannte Fortsetzung ist das schlicht das Ende der Linie und
+        // keine Lücke · sonst stünde jede Blattstellung in der Liste.
+        if !d.book_has_moves {
+            continue;
+        }
+        let entry = found
+            .entry((d.node_id, color.clone(), d.san.clone()))
+            .or_insert((0, 0.0, d.path.clone(), is_my_move(color, d.ply)));
+        entry.0 += 1;
+        entry.1 += score_of(result);
+    }
+
+    let mut out: Vec<RepGap> = found
+        .into_iter()
+        .map(|((node_id, side, san), (count, score, path, mine))| RepGap {
+            book_sans: children
+                .get(&(side.clone(), node_id))
+                .map(|k| k.iter().map(|(s, _)| s.clone()).collect())
+                .unwrap_or_default(),
+            line: line_name(&by_id, node_id),
+            node_id,
+            side,
+            path_sans: path,
+            san,
+            count,
+            mine,
+            score_pct: pct(score, count as f64),
+        })
+        .collect();
+    out.sort_by(|a, b| b.count.cmp(&a.count).then(a.san.cmp(&b.san)));
+    out.truncate(limit.unwrap_or(12).clamp(1, 100) as usize);
+    Ok(out)
 }
 
 #[derive(Serialize)]
@@ -591,5 +964,124 @@ mod tests {
         assert!(!is_my_move("white", 2));
         assert!(is_my_move("black", 2));
         assert!(!is_my_move("black", 1));
+    }
+
+    fn memory_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn
+    }
+
+    fn line(sans: &[&str]) -> Vec<String> {
+        sans.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn insert_line_reuses_existing_nodes() {
+        let conn = memory_db();
+        let (_, first) = insert_line(&conn, "white", "Italienisch", &line(&["e4", "e5", "Nf3"])).unwrap();
+        assert_eq!(first, 3);
+        // Dieselbe Linie noch einmal legt nichts Neues an, der Ast danach schon.
+        let (_, again) = insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3", "Nc6"])).unwrap();
+        assert_eq!(again, 1);
+    }
+
+    #[test]
+    fn nodes_carry_note_and_position_key() {
+        let conn = memory_db();
+        let (leaf, _) = insert_line(&conn, "white", "", &line(&["e4", "e5"])).unwrap();
+        conn.execute(
+            "UPDATE rep_nodes SET note = 'Plan: d4' WHERE id = ?1",
+            params![leaf],
+        )
+        .unwrap();
+        let nodes = load_nodes(&conn).unwrap();
+        let node = nodes.iter().find(|n| n.id == leaf).unwrap();
+        assert_eq!(node.note, "Plan: d4");
+        assert!(!node.fen_key.is_empty());
+    }
+
+    /// Transpositionen: 1.e4 e5 2.Nf3 und 1.Nf3 e5 2.e4 sind dieselbe Stellung.
+    #[test]
+    fn same_position_through_another_move_order_shares_the_key() {
+        let conn = memory_db();
+        let (a, _) = insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3"])).unwrap();
+        let (b, _) = insert_line(&conn, "white", "", &line(&["Nf3", "e5", "e4"])).unwrap();
+        let nodes = load_nodes(&conn).unwrap();
+        let key_a = &nodes.iter().find(|n| n.id == a).unwrap().fen_key;
+        let key_b = &nodes.iter().find(|n| n.id == b).unwrap().fen_key;
+        assert_eq!(key_a, key_b);
+        assert_ne!(a, b, "zwei Knoten mit eigenem Lernstand");
+    }
+
+    fn book(lines: &[(&str, &[&str])]) -> BookChildren {
+        let conn = memory_db();
+        for (side, sans) in lines {
+            insert_line(&conn, side, "", &line(sans)).unwrap();
+        }
+        book_children(&load_nodes(&conn).unwrap())
+    }
+
+    #[test]
+    fn walk_book_reports_the_first_move_outside_the_book() {
+        let children = book(&[("white", &["e4", "e5", "Nf3", "Nc6"])]);
+        let departure = walk_book(&children, "white", "e4 e5 Nf3 d6 Bc4", 8).unwrap();
+        assert_eq!(departure.san, "d6");
+        assert_eq!(departure.ply, 4);
+        assert_eq!(departure.path, line(&["e4", "e5", "Nf3"]));
+        assert!(departure.book_has_moves, "Nc6 steht hier im Buch");
+    }
+
+    #[test]
+    fn walk_book_stays_silent_while_the_game_follows_the_book() {
+        let children = book(&[("white", &["e4", "e5", "Nf3", "Nc6"])]);
+        assert!(walk_book(&children, "white", "e4 e5 Nf3 Nc6", 8).is_none());
+    }
+
+    #[test]
+    fn walk_book_stops_at_the_requested_depth() {
+        let children = book(&[("white", &["e4", "e5"])]);
+        // Der Ausstieg läge auf Halbzug 3, geprüft werden aber nur zwei.
+        assert!(walk_book(&children, "white", "e4 e5 Nf3", 2).is_none());
+    }
+
+    #[test]
+    fn walk_book_marks_the_end_of_a_line_as_such() {
+        let children = book(&[("white", &["e4", "e5"])]);
+        let departure = walk_book(&children, "white", "e4 e5 Nf3", 8).unwrap();
+        assert!(
+            !departure.book_has_moves,
+            "hinter e5 kennt das Buch nichts · das ist keine Lücke, sondern das Ende"
+        );
+    }
+
+    #[test]
+    fn export_writes_variations_that_the_parser_reads_back() {
+        let conn = memory_db();
+        insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3"])).unwrap();
+        insert_line(&conn, "white", "", &line(&["e4", "c5", "Nf3"])).unwrap();
+        let nodes = load_nodes(&conn).unwrap();
+        let mut children: HashMap<i64, Vec<&RepNodeOut>> = HashMap::new();
+        for n in nodes.iter().filter(|n| n.side == "white") {
+            children.entry(n.parent_id).or_default().push(n);
+        }
+        fn build(children: &HashMap<i64, Vec<&RepNodeOut>>, parent: i64) -> Vec<rep_pgn::ExportNode> {
+            children
+                .get(&parent)
+                .map(|kids| {
+                    kids.iter()
+                        .map(|n| rep_pgn::ExportNode {
+                            san: n.san.clone(),
+                            note: n.note.clone(),
+                            children: build(children, n.id),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        let pgn = rep_pgn::export_pgn("white", &build(&children, 0));
+        let lines = rep_pgn::parse_lines(&pgn);
+        assert!(lines.contains(&line(&["e4", "e5", "Nf3"])));
+        assert!(lines.contains(&line(&["e4", "c5", "Nf3"])));
     }
 }

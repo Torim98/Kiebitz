@@ -42,6 +42,11 @@ pub struct Settings {
     pub import_months: u32,
     /// Puzzle-Tagesziel (Versuche pro Tag) für Dashboard und Lernplan.
     pub puzzle_goal: u32,
+    /// Höchstzahl fälliger Repertoire-Züge je Trainingssitzung (0 = alle).
+    pub rep_due_limit: u32,
+    /// Höchstzahl neuer Repertoire-Züge je Trainingssitzung (0 = alle).
+    /// Ein frisch importiertes Buch bringt sonst hunderte auf einmal mit.
+    pub rep_new_limit: u32,
     /// Zug- und Schlagklänge auf allen Brettern.
     pub sound_enabled: bool,
     /// Lautstärke der Brettklänge in Prozent.
@@ -121,6 +126,8 @@ impl Default for Settings {
             display_name: String::new(),
             import_months: 3,
             puzzle_goal: 20,
+            rep_due_limit: 20,
+            rep_new_limit: 5,
             sound_enabled: true,
             sound_volume: 70,
             auto_update: true,
@@ -155,6 +162,8 @@ fn normalize(mut s: Settings) -> Settings {
     s.engine_threads = s.engine_threads.min(128);
     s.import_months = s.import_months.clamp(1, 240);
     s.puzzle_goal = s.puzzle_goal.clamp(1, 200);
+    s.rep_due_limit = s.rep_due_limit.min(500);
+    s.rep_new_limit = s.rep_new_limit.min(500);
     s.sound_volume = s.sound_volume.min(100);
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();

@@ -953,6 +953,23 @@ export default function SettingsPage({
               max={200}
               onChange={(v) => patch({ puzzle_goal: v })}
             />
+            <NumberField
+              label={t("set.repDueLimit")}
+              value={draft.rep_due_limit}
+              min={0}
+              max={500}
+              onChange={(v) => patch({ rep_due_limit: v })}
+            />
+            <NumberField
+              label={t("set.repNewLimit")}
+              value={draft.rep_new_limit}
+              min={0}
+              max={500}
+              onChange={(v) => patch({ rep_new_limit: v })}
+            />
+            <p className="text-[12px] leading-relaxed text-ink3 min-[640px]:col-span-3">
+              {t("set.repLimitNote")}
+            </p>
             <label className="flex cursor-pointer items-start gap-3 min-[640px]:col-span-3">
               <input
                 type="checkbox"
