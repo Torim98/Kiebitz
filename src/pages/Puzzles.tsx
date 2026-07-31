@@ -30,6 +30,7 @@ import {
   type PuzzleStats,
 } from "../lib/puzzles";
 import { getSettings } from "../lib/settings";
+import { onDataChange } from "../lib/changes";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
@@ -80,6 +81,7 @@ function LivePuzzles({
   useEffect(() => {
     reloadStats();
     getSettings().then((s) => setGoal(s.puzzle_goal)).catch(() => {});
+    return onDataChange(reloadStats);
   }, []);
 
   if (!stats) return <PuzzleLoading />;
@@ -658,6 +660,11 @@ function PuzzleHistory() {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<AttemptRow[] | null>(null);
+
+  // Lokale Versuche und ein abgeschlossener Geräte-Sync laufen beide durch
+  // denselben Datenänderungs-Kanal. Den Cache verwerfen, damit eine bereits
+  // geöffnete History den gemergten Stand ohne Seitenwechsel anzeigt.
+  useEffect(() => onDataChange(() => setRows(null)), []);
 
   useEffect(() => {
     if (!open || rows) return;

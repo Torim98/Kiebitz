@@ -23,8 +23,11 @@
 //!   aufgebaut), Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
 //!
 //! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
-//! `sync_last_ts`) und beide Seiten filtern mit einem Sicherheitsfenster
-//! (SLACK) · Doppel-Übertragungen sind durch die idempotenten Merges gratis.
+//! `sync_last_ts`) und beide Seiten filtern veränderliche Datensätze mit einem
+//! Sicherheitsfenster (SLACK). Append-only Puzzle-Versuche reisen dagegen
+//! vollständig mit: ihr `ts` ist der Zeitpunkt des Trainings, kein verlässlicher
+//! Änderungs-Cursor. Doppel-Übertragungen sind durch den idempotenten Merge
+//! gratis und so werden auch ältere, bisher verpasste Versuche nachgezogen.
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -566,16 +569,16 @@ fn apply_tombstones(conn: &mut Connection, tombstones: &[SyncTombstone]) -> Resu
 
 fn collect_puzzle_attempts(
     conn: &Connection,
-    since: i64,
+    _since: i64,
 ) -> Result<Vec<SyncPuzzleAttempt>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating
-             FROM puzzle_attempts WHERE ts >= ?1",
+             FROM puzzle_attempts ORDER BY ts, id",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![since.saturating_sub(SLACK)], |r| {
+        .query_map([], |r| {
             Ok(SyncPuzzleAttempt {
                 puzzle_id: r.get(0)?,
                 ts: r.get(1)?,
@@ -2325,6 +2328,73 @@ mod tests {
         };
         assert_eq!(apply_endgame_attempts(&conn, &[e.clone()]).unwrap(), 1);
         assert_eq!(apply_endgame_attempts(&conn, &[e]).unwrap(), 0);
+    }
+
+    #[test]
+    fn puzzle_history_is_collected_even_when_it_predates_the_sync_cursor() {
+        let conn = mem_db();
+        let old_attempt = SyncPuzzleAttempt {
+            puzzle_id: "offline-puzzle".into(),
+            ts: 1_000,
+            solved: true,
+            rating_before: 1500,
+            rating_after: 1512,
+            themes: "fork".into(),
+            puzzle_rating: 1600,
+        };
+        apply_puzzle_attempts(&conn, &[old_attempt]).unwrap();
+
+        // Ein Zeitstempel-basierter Delta-Filter würde diesen bislang nie
+        // synchronisierten Offline-Versuch dauerhaft verlieren.
+        let collected = collect_puzzle_attempts(&conn, 50_000).unwrap();
+        assert_eq!(collected.len(), 1);
+        assert_eq!(collected[0].puzzle_id, "offline-puzzle");
+    }
+
+    #[test]
+    fn puzzle_history_converges_after_a_cursor_gap() {
+        let mut desktop = mem_db();
+        let mobile = mem_db();
+        let attempt = |id: &str, ts: i64| SyncPuzzleAttempt {
+            puzzle_id: id.into(),
+            ts,
+            solved: true,
+            rating_before: 1500,
+            rating_after: 1512,
+            themes: "fork".into(),
+            puzzle_rating: 1600,
+        };
+        apply_puzzle_attempts(&desktop, &[attempt("desktop-old", 1_000)]).unwrap();
+        apply_puzzle_attempts(&mobile, &[attempt("mobile-old", 2_000)]).unwrap();
+
+        let since = 50_000;
+        let request = SyncRequest {
+            code: "000000".into(),
+            since,
+            games: vec![],
+            game_tombstones: vec![],
+            rep_nodes: vec![],
+            rep_tombstones: vec![],
+            puzzle_attempts: collect_puzzle_attempts(&mobile, since).unwrap(),
+            endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
+        };
+        let response = handle_sync(&mut desktop, &request).unwrap();
+        apply_puzzle_attempts(&mobile, &response.puzzle_attempts).unwrap();
+
+        for conn in [&desktop, &mobile] {
+            let ids: Vec<String> = conn
+                .prepare("SELECT puzzle_id FROM puzzle_attempts ORDER BY puzzle_id")
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(ids, vec!["desktop-old", "mobile-old"]);
+        }
     }
 
     #[test]

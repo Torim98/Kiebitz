@@ -304,6 +304,10 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         "CREATE INDEX IF NOT EXISTS idx_puzzles_source ON puzzles(source);
          CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_puzzle
            ON puzzle_attempts(puzzle_id, solved);
+         -- Der Sync vereinigt den vollständigen Append-only-Verlauf anhand
+         -- dieses natürlichen Schlüssels; der Index hält den Merge zügig.
+         CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_sync
+           ON puzzle_attempts(puzzle_id, ts);
 
          CREATE TABLE IF NOT EXISTS study_templates (
             id           INTEGER PRIMARY KEY,
