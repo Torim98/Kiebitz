@@ -17,7 +17,7 @@ use crate::chess;
 use crate::db;
 use crate::repertoire;
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use tauri::Manager;
 
@@ -98,6 +98,8 @@ struct RawGame {
     my_elo: i64,
     opp_elo: i64,
     accuracy: Option<f64>,
+    /// Eröffnungsname aus dem PGN ("Sicilian Defense Bowdler Attack").
+    opening: String,
 }
 
 impl RawGame {
@@ -648,6 +650,53 @@ pub struct Spotlight {
     pub played_at: String,
 }
 
+// ── Block I · Eröffnungsfamilien ─────────────────────────────────────────────
+
+/// Eine Eröffnungsfamilie aus *meiner* Sicht, getrennt nach Farbe.
+///
+/// Als Weiß steht hier, was ich selbst wähle; als Schwarz, womit ich
+/// konfrontiert werde. Das ist derselbe Datensatz mit zwei Lesarten, und beide
+/// braucht die Empfehlung: das eigene Repertoire und die Systeme, gegen die es
+/// nicht hält.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct OpeningFamily {
+    pub key: String,
+    pub label: String,
+    /// Meine Farbe in diesen Partien.
+    pub color: String,
+    /// Erster Zug der Partie ("e4", "d4", …) · gröbere Gruppierung für die UI.
+    pub root: String,
+    pub games: i64,
+    pub score_pct: f64,
+    /// Ø Partiegenauigkeit (nur analysierte Partien).
+    pub accuracy: Option<f64>,
+    /// Genauigkeit meiner Züge in der Eröffnungsphase.
+    pub opening_accuracy: Option<f64>,
+    /// Ø Winrate-Verlust je eigenem Eröffnungszug, in Prozentpunkten.
+    pub avg_loss: f64,
+    pub blunders_per_100: f64,
+    /// Gewertete eigene Züge in der Eröffnungsphase.
+    pub moves: i64,
+    pub analyzed: i64,
+    /// Partien, die bis zur Prüftiefe im Repertoire blieben.
+    pub in_book: i64,
+    /// Partien, in denen ich zuerst vom Buch abwich.
+    pub my_departure: i64,
+    /// Ø Halbzug der ersten Abweichung (0 = nie gemessen).
+    pub avg_departure_ply: f64,
+    pub last_ts: i64,
+}
+
+#[derive(Serialize, Default)]
+pub struct OpeningInsights {
+    /// Nach Partienzahl absteigend, gedeckelt.
+    pub families: Vec<OpeningFamily>,
+    /// Punktausbeute über alle gewerteten Partien · Bezugsgröße dafür, ob eine
+    /// Familie über- oder unterdurchschnittlich läuft.
+    pub baseline_score: f64,
+    pub games: i64,
+}
+
 #[derive(Serialize, Default)]
 pub struct DeepInsights {
     pub coverage: Coverage,
@@ -658,6 +707,7 @@ pub struct DeepInsights {
     pub progress: ProgressInsights,
     pub repertoire: RepertoireInsights,
     pub formats: FormatInsights,
+    pub openings: OpeningInsights,
     pub spotlight: Option<Spotlight>,
 }
 
@@ -857,6 +907,7 @@ fn compute(conn: &Connection) -> Result<DeepInsights, String> {
         progress: progress_insights(conn, &views, &nodes, &children)?,
         repertoire: repertoire_insights(&views, &nodes, &children),
         formats: format_insights(&views),
+        openings: opening_insights(&views),
         spotlight: spotlight(&views),
         coverage,
     })
@@ -870,7 +921,7 @@ fn load_games(conn: &Connection) -> Result<Vec<RawGame>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, played_ts, source, time_class, color, result, moves, clocks,
-                    time_control, my_elo, opp_elo, accuracy
+                    time_control, my_elo, opp_elo, accuracy, opening
              FROM games
              WHERE analysis_excluded = 0 AND moves != ''",
         )
@@ -890,6 +941,7 @@ fn load_games(conn: &Connection) -> Result<Vec<RawGame>, String> {
                 my_elo: r.get(9)?,
                 opp_elo: r.get(10)?,
                 accuracy: r.get(11)?,
+                opening: r.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -2434,6 +2486,585 @@ fn format_insights(views: &[GameView]) -> FormatInsights {
     }
 }
 
+// ── Block I · Eröffnungsfamilien ─────────────────────────────────────────────
+
+/// Wörter, hinter denen ein Eröffnungsname aufhört, Familie zu sein.
+///
+/// PGN-Namen sind hierarchisch, aber nicht einheitlich interpunktiert:
+/// Lichess schreibt "Sicilian Defense: Alapin Variation", chess.com
+/// "Sicilian Defense Bowdler Attack". Der Schnitt hinter dem ersten dieser
+/// Wörter trifft beide Schreibweisen.
+const FAMILY_STOPWORDS: [&str; 9] = [
+    "defense",
+    "defence",
+    "opening",
+    "game",
+    "gambit",
+    "system",
+    "attack",
+    "countergambit",
+    "counter-gambit",
+];
+
+/// Familienname einer Eröffnung, aus dem PGN-Namen gekürzt.
+/// Leer, wenn kein brauchbarer Name vorliegt (dann übernimmt die Zugfolge).
+fn family_from_name(opening: &str) -> String {
+    let head = opening
+        .split([':', ','])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if head.is_empty() {
+        return String::new();
+    }
+    let words: Vec<&str> = head.split_whitespace().collect();
+    for (index, word) in words.iter().enumerate() {
+        let plain: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-')
+            .collect::<String>()
+            .to_lowercase();
+        if FAMILY_STOPWORDS.contains(&plain.as_str()) {
+            return words[..=index].join(" ");
+        }
+    }
+    // Kein Schlüsselwort ("Ruy Lopez", "Réti") · dann ist der Kopf die Familie,
+    // aber nicht mehr als vier Wörter, damit lange Varianten nicht durchrutschen.
+    words[..words.len().min(4)].join(" ")
+}
+
+/// Beschriftung aus der Zugfolge, wenn ein Name fehlt: "1.e4 c5 2.Nf3".
+fn line_label(moves: &str, plies: usize) -> String {
+    let mut out = String::new();
+    for (index, san) in moves.split_whitespace().take(plies).enumerate() {
+        if index % 2 == 0 {
+            if index > 0 {
+                out.push(' ');
+            }
+            out.push_str(&format!("{}.{}", index / 2 + 1, san));
+        } else {
+            out.push(' ');
+            out.push_str(san);
+        }
+    }
+    out
+}
+
+/// Höchstzahl ausgewiesener Familien je Farbe · darunter wird jede Zeile zu
+/// einer Einzelpartie mit Prozentzeichen.
+const MAX_FAMILIES_PER_COLOR: usize = 14;
+
+fn opening_insights(views: &[GameView]) -> OpeningInsights {
+    #[derive(Default)]
+    struct Acc {
+        label: String,
+        root: String,
+        games: i64,
+        points: f64,
+        accuracies: Vec<f64>,
+        losses: Vec<f64>,
+        blunders: i64,
+        analyzed: i64,
+        in_book: i64,
+        my_departure: i64,
+        departure_plies: Vec<f64>,
+        last_ts: i64,
+    }
+
+    let mut by_key: BTreeMap<(String, String), Acc> = BTreeMap::new();
+    let mut total_games = 0i64;
+    let mut total_points = 0.0;
+
+    for view in views {
+        let raw = view.raw;
+        let root = raw.moves.split_whitespace().next().unwrap_or("").to_string();
+        if root.is_empty() {
+            continue;
+        }
+        let named = family_from_name(&raw.opening);
+        // Ohne Namen gruppiert die Zugfolge · vier Halbzüge trennen die
+        // gängigen Systeme, ohne jede Zugumstellung zu einer eigenen Familie
+        // zu machen.
+        let (key, label) = if named.is_empty() {
+            let line = line_label(&raw.moves, 4);
+            (format!("line:{line}"), line)
+        } else {
+            (format!("name:{}", named.to_lowercase()), named)
+        };
+
+        total_games += 1;
+        total_points += raw.score();
+
+        let entry = by_key
+            .entry((raw.color.clone(), key))
+            .or_insert_with(Acc::default);
+        if entry.label.is_empty() {
+            entry.label = label;
+            entry.root = root;
+        }
+        entry.games += 1;
+        entry.points += raw.score();
+        entry.last_ts = entry.last_ts.max(raw.played_ts);
+        if let Some(accuracy) = raw.accuracy {
+            entry.accuracies.push(accuracy);
+        }
+        if !view.evals.is_empty() {
+            entry.analyzed += 1;
+        }
+        match view.book_departure {
+            None => entry.in_book += 1,
+            Some((ply, mine)) => {
+                entry.departure_plies.push(ply as f64);
+                if mine {
+                    entry.my_departure += 1;
+                }
+            }
+        }
+        // Eigene Züge der Eröffnungsphase · dort entscheidet sich, ob die
+        // Vorbereitung trägt.
+        for ev in view.evals {
+            if ev.phase != "opening" || !raw.mine(ev.ply) {
+                continue;
+            }
+            if let Some(loss) = view.loss(ev.ply) {
+                entry.losses.push(loss);
+            }
+            if ev.judgment == "blunder" {
+                entry.blunders += 1;
+            }
+        }
+    }
+
+    let mut families: Vec<OpeningFamily> = by_key
+        .into_iter()
+        .map(|((color, key), acc)| OpeningFamily {
+            key,
+            label: acc.label,
+            color,
+            root: acc.root,
+            games: acc.games,
+            score_pct: pct(acc.points, acc.games as f64),
+            accuracy: mean(&acc.accuracies).map(r1),
+            opening_accuracy: accuracy_from_losses(&acc.losses),
+            avg_loss: mean(&acc.losses).map(|v| r1(v * 100.0)).unwrap_or(0.0),
+            blunders_per_100: pct(acc.blunders as f64, acc.losses.len() as f64),
+            moves: acc.losses.len() as i64,
+            analyzed: acc.analyzed,
+            in_book: acc.in_book,
+            my_departure: acc.my_departure,
+            avg_departure_ply: mean(&acc.departure_plies).map(r1).unwrap_or(0.0),
+            last_ts: acc.last_ts,
+        })
+        .collect();
+
+    // Je Farbe die häufigsten behalten · sortiert bleibt nach Häufigkeit,
+    // die Gewichtung nach Punktverlust macht erst die Empfehlung.
+    families.sort_by(|a, b| b.games.cmp(&a.games).then(a.label.cmp(&b.label)));
+    let mut kept: Vec<OpeningFamily> = Vec::new();
+    for color in ["white", "black"] {
+        kept.extend(
+            families
+                .iter()
+                .filter(|f| f.color == color)
+                .take(MAX_FAMILIES_PER_COLOR)
+                .cloned(),
+        );
+    }
+    kept.sort_by(|a, b| b.games.cmp(&a.games).then(a.label.cmp(&b.label)));
+
+    OpeningInsights {
+        families: kept,
+        baseline_score: pct(total_points, total_games as f64),
+        games: total_games,
+    }
+}
+
+// ── Block J · Wirkungsfenster ────────────────────────────────────────────────
+//
+// Eine Kennzahl für einen beliebigen Zeitraum, mit Stichprobe und Streuung.
+// Beides zusammen ist der Punkt: ohne die Streuung lässt sich nicht sagen, ob
+// eine Veränderung mehr ist als das übliche Rauschen, und genau das entscheidet
+// im Study-Reiter zwischen „wirkt" und „noch nicht messbar".
+//
+// Gerechnet wird immer neu aus den Rohdaten · es gibt bewusst keine
+// gespeicherten Momentaufnahmen (siehe die Migration in `db.rs`).
+
+/// Einheit einer Kennzahl · steuert Formatierung und Rauschgrenze im Frontend.
+/// `pct` = Prozent, `per100` = Ereignisse je 100 Züge, `elo` = Ratingpunkte.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct MetricValue {
+    pub key: String,
+    pub value: Option<f64>,
+    /// Stichprobe: Partien, Züge oder Versuche · je nach Kennzahl.
+    pub n: i64,
+    /// Streuung der Einzelwerte, wo eine sinnvoll ist (sonst None · dann
+    /// rechnet das Frontend die Grenze aus dem Verteilungsmodell).
+    pub sd: Option<f64>,
+    pub unit: String,
+    /// Ist ein kleinerer Wert besser? Patzer ja, Genauigkeit nein.
+    pub lower_is_better: bool,
+}
+
+/// Ratingstand eines Pools im Fenster. Ratings verschiedener Formate und
+/// Plattformen sind nicht vergleichbar · deshalb reisen sie getrennt und
+/// werden erst im Frontend über `formatScale.ts` auf eine Skala gebracht.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct RatingPoint {
+    pub source: String,
+    pub time_class: String,
+    pub first: i64,
+    pub last: i64,
+    pub games: i64,
+}
+
+#[derive(Deserialize)]
+pub struct WindowSpec {
+    pub from_ts: i64,
+    pub to_ts: i64,
+}
+
+#[derive(Serialize, Default)]
+pub struct MetricWindow {
+    pub from_ts: i64,
+    pub to_ts: i64,
+    pub games: i64,
+    pub metrics: Vec<MetricValue>,
+    pub ratings: Vec<RatingPoint>,
+}
+
+fn metric(key: &str, value: Option<f64>, n: i64, sd: Option<f64>, unit: &str, lower: bool) -> MetricValue {
+    MetricValue {
+        key: key.into(),
+        value: value.map(r1),
+        n,
+        sd: sd.map(r1),
+        unit: unit.into(),
+        lower_is_better: lower,
+    }
+}
+
+fn sd_of(values: &[f64]) -> Option<f64> {
+    if values.len() < 2 {
+        return None;
+    }
+    let m = mean(values)?;
+    let var = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+    Some(var.sqrt())
+}
+
+/// Kennzahlen eines Fensters aus den vorbereiteten Partien.
+fn metrics_for_window(
+    views: &[&GameView],
+    puzzles: &[(i64, bool, i64)],
+    from_ts: i64,
+    to_ts: i64,
+) -> MetricWindow {
+    let mut points = Vec::new();
+    let mut accuracies: Vec<f64> = Vec::new();
+    // Je Phase: eigene gewertete Züge, davon Patzer, davon Fehler, plus Verluste.
+    let mut phase_moves = [0i64; 3];
+    let mut phase_blunders = [0i64; 3];
+    let mut phase_losses: [Vec<f64>; 3] = Default::default();
+    let mut errors = 0i64;
+    let (mut trouble_moves, mut safe_moves) = (0i64, 0i64);
+    let (mut book_checked, mut book_stayed) = (0i64, 0i64);
+    let mut ratings: BTreeMap<(String, String), (i64, i64, i64)> = BTreeMap::new();
+
+    for view in views {
+        let raw = view.raw;
+        points.push(raw.score());
+        if let Some(accuracy) = raw.accuracy {
+            accuracies.push(accuracy);
+        }
+        if raw.my_elo > 0 {
+            let entry = ratings
+                .entry((raw.source.clone(), raw.time_class.clone()))
+                .or_insert((raw.my_elo, raw.my_elo, 0));
+            // `views` kommt aufsteigend sortiert · erster Eintrag bleibt stehen.
+            entry.1 = raw.my_elo;
+            entry.2 += 1;
+        }
+        if !view.evals.is_empty() {
+            book_checked += 1;
+            if view.book_departure.is_none() {
+                book_stayed += 1;
+            }
+        }
+        let clocks = view.clocks.as_ref();
+        let trouble_limit = clocks.map(|c| c.initial * 0.10);
+        for ev in view.evals {
+            if !raw.mine(ev.ply) {
+                continue;
+            }
+            let index = phase_index(&ev.phase);
+            phase_moves[index] += 1;
+            if let Some(loss) = view.loss(ev.ply) {
+                phase_losses[index].push(loss);
+            }
+            match ev.judgment.as_str() {
+                "blunder" => {
+                    phase_blunders[index] += 1;
+                    errors += 1;
+                }
+                "mistake" => errors += 1,
+                _ => {}
+            }
+            if let (Some(clocks), Some(limit)) = (clocks, trouble_limit) {
+                if clocks.before(ev.ply) < limit {
+                    trouble_moves += 1;
+                } else {
+                    safe_moves += 1;
+                }
+            }
+        }
+    }
+
+    let all_moves: i64 = phase_moves.iter().sum();
+    let all_blunders: i64 = phase_blunders.iter().sum();
+    let all_losses: Vec<f64> = phase_losses.iter().flatten().copied().collect();
+
+    let mut metrics = vec![
+        metric(
+            "score_pct",
+            mean(&points).map(|v| v * 100.0),
+            points.len() as i64,
+            sd_of(&points).map(|v| v * 100.0),
+            "pct",
+            false,
+        ),
+        metric(
+            "acc_overall",
+            mean(&accuracies),
+            accuracies.len() as i64,
+            sd_of(&accuracies),
+            "pct",
+            false,
+        ),
+        metric(
+            "blunders_per100",
+            if all_moves > 0 {
+                Some(all_blunders as f64 / all_moves as f64 * 100.0)
+            } else {
+                None
+            },
+            all_moves,
+            None,
+            "per100",
+            true,
+        ),
+        metric(
+            "errors_per100",
+            if all_moves > 0 {
+                Some(errors as f64 / all_moves as f64 * 100.0)
+            } else {
+                None
+            },
+            all_moves,
+            None,
+            "per100",
+            true,
+        ),
+        metric(
+            "avg_loss",
+            mean(&all_losses).map(|v| v * 100.0),
+            all_moves,
+            sd_of(&all_losses).map(|v| v * 100.0),
+            "pct",
+            true,
+        ),
+    ];
+
+    for (index, phase) in PHASES.iter().enumerate() {
+        metrics.push(metric(
+            &format!("blunders_{phase}_per100"),
+            if phase_moves[index] > 0 {
+                Some(phase_blunders[index] as f64 / phase_moves[index] as f64 * 100.0)
+            } else {
+                None
+            },
+            phase_moves[index],
+            None,
+            "per100",
+            true,
+        ));
+        metrics.push(metric(
+            &format!("acc_{phase}"),
+            accuracy_from_losses(&phase_losses[index]),
+            phase_moves[index],
+            None,
+            "pct",
+            false,
+        ));
+    }
+
+    metrics.push(metric(
+        "trouble_pct",
+        if trouble_moves + safe_moves > 0 {
+            Some(trouble_moves as f64 / (trouble_moves + safe_moves) as f64 * 100.0)
+        } else {
+            None
+        },
+        trouble_moves + safe_moves,
+        None,
+        "pct",
+        true,
+    ));
+    metrics.push(metric(
+        "in_book_pct",
+        if book_checked > 0 {
+            Some(book_stayed as f64 / book_checked as f64 * 100.0)
+        } else {
+            None
+        },
+        book_checked,
+        None,
+        "pct",
+        false,
+    ));
+
+    // Puzzles: die schnellste Rückmeldung im ganzen Satz · sie reagiert
+    // tagesgenau, während Partiekennzahlen Wochen brauchen.
+    let window_puzzles: Vec<&(i64, bool, i64)> = puzzles
+        .iter()
+        .filter(|(ts, _, _)| *ts >= from_ts && *ts < to_ts)
+        .collect();
+    let solved = window_puzzles.iter().filter(|(_, ok, _)| *ok).count() as i64;
+    let rated: Vec<f64> = window_puzzles
+        .iter()
+        .filter(|(_, _, rating)| *rating > 0)
+        .map(|(_, _, rating)| *rating as f64)
+        .collect();
+    metrics.push(metric(
+        "puzzle_solve_pct",
+        if window_puzzles.is_empty() {
+            None
+        } else {
+            Some(solved as f64 / window_puzzles.len() as f64 * 100.0)
+        },
+        window_puzzles.len() as i64,
+        None,
+        "pct",
+        false,
+    ));
+    metrics.push(metric(
+        "puzzle_rating",
+        mean(&rated),
+        rated.len() as i64,
+        sd_of(&rated),
+        "elo",
+        false,
+    ));
+
+    MetricWindow {
+        from_ts,
+        to_ts,
+        games: views.len() as i64,
+        metrics,
+        ratings: ratings
+            .into_iter()
+            .map(|((source, time_class), (first, last, games))| RatingPoint {
+                source,
+                time_class,
+                first,
+                last,
+                games,
+            })
+            .collect(),
+    }
+}
+
+/// Kennzahlen für mehrere Zeitfenster in einem Durchlauf.
+///
+/// Der Study-Reiter fragt typischerweise zwei an — vor und seit dem
+/// Fokusstart —, die Trainingsbilanz eine Reihe von Wochen.
+#[tauri::command]
+pub async fn study_metrics(
+    app: tauri::AppHandle,
+    windows: Vec<WindowSpec>,
+) -> Result<Vec<MetricWindow>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<db::Db>();
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        metrics_from_conn(&conn, &windows)
+    })
+    .await
+    .map_err(|e| format!("Wirkungsmessung fehlgeschlagen: {e}"))?
+}
+
+/// Höchstzahl gleichzeitig angefragter Fenster · schützt vor einem Aufruf, der
+/// die Datenbank für jeden Tag eines Jahres einmal durchgeht.
+const MAX_WINDOWS: usize = 64;
+
+fn metrics_from_conn(
+    conn: &Connection,
+    windows: &[WindowSpec],
+) -> Result<Vec<MetricWindow>, String> {
+    if windows.is_empty() {
+        return Ok(Vec::new());
+    }
+    if windows.len() > MAX_WINDOWS {
+        return Err("Zu viele Zeitfenster angefragt".into());
+    }
+    let games = load_games(conn)?;
+    let evals = load_evals(conn)?;
+    let nodes = repertoire::load_nodes(conn).unwrap_or_default();
+    let children = repertoire::book_children(&nodes);
+
+    let mut asc: Vec<&RawGame> = games.iter().collect();
+    asc.sort_by_key(|g| (g.played_ts, g.id));
+
+    let empty: Vec<Ev> = Vec::new();
+    let mut views: Vec<GameView> = Vec::with_capacity(asc.len());
+    for game in &asc {
+        let rows = evals.get(&game.id).unwrap_or(&empty);
+        let wp = rows.iter().map(|ev| win_prob(ev.eval_cp, ev.mate_in)).collect();
+        let book_departure = if nodes.is_empty() {
+            None
+        } else {
+            match repertoire::walk_book(&children, &game.color, &game.moves, BOOK_PLIES) {
+                Some(d) if d.book_has_moves => Some((d.ply, game.mine(d.ply))),
+                _ => None,
+            }
+        };
+        views.push(GameView {
+            raw: game,
+            evals: rows,
+            wp,
+            clocks: clocks_of(game),
+            book_departure,
+        });
+    }
+
+    let puzzles = load_puzzle_attempts(conn)?;
+
+    Ok(windows
+        .iter()
+        .map(|window| {
+            let selected: Vec<&GameView> = views
+                .iter()
+                .filter(|v| v.raw.played_ts >= window.from_ts && v.raw.played_ts < window.to_ts)
+                .collect();
+            metrics_for_window(&selected, &puzzles, window.from_ts, window.to_ts)
+        })
+        .collect())
+}
+
+/// Puzzleversuche als (Zeitpunkt, gelöst, Aufgabenrating).
+fn load_puzzle_attempts(conn: &Connection) -> Result<Vec<(i64, bool, i64)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT ts, solved, puzzle_rating FROM puzzle_attempts ORDER BY ts")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? != 0, r.get(2)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
 // ── Lehrreichste Partie ──────────────────────────────────────────────────────
 
 /// Die Partie mit dem größten Lernwert: der größte einzelne Ausschlag der
@@ -2548,6 +3179,86 @@ mod tests {
     }
 
     #[test]
+    fn opening_families_survive_both_pgn_spellings() {
+        // Lichess trennt mit Doppelpunkt, chess.com gar nicht · beide müssen
+        // auf dieselbe Familie fallen, sonst zerfällt die Auswertung in
+        // Einzelpartien.
+        assert_eq!(
+            family_from_name("Sicilian Defense: Alapin Variation, 2...d5"),
+            "Sicilian Defense"
+        );
+        assert_eq!(
+            family_from_name("Sicilian Defense Bowdler Attack"),
+            "Sicilian Defense"
+        );
+        assert_eq!(
+            family_from_name("Queen's Gambit Declined: Exchange"),
+            "Queen's Gambit"
+        );
+        assert_eq!(family_from_name("Italian Game"), "Italian Game");
+        // Ohne Schlüsselwort bleibt der Kopf stehen.
+        assert_eq!(family_from_name("Ruy Lopez"), "Ruy Lopez");
+        assert_eq!(family_from_name(""), "");
+    }
+
+    #[test]
+    fn line_label_numbers_the_moves() {
+        assert_eq!(line_label("e4 c5 Nf3 d6 d4", 4), "1.e4 c5 2.Nf3 d6");
+        assert_eq!(line_label("d4", 4), "1.d4");
+        assert_eq!(line_label("", 4), "");
+    }
+
+    #[test]
+    fn metric_windows_report_their_sample_size() {
+        // Ohne Partien im Fenster darf keine Kennzahl einen Wert vortäuschen ·
+        // „noch nicht messbar" ist die richtige Antwort, nicht 0 %.
+        let window = metrics_for_window(&[], &[], 0, 100);
+        assert_eq!(window.games, 0);
+        for value in &window.metrics {
+            assert!(value.value.is_none(), "{} hat einen Wert", value.key);
+            assert_eq!(value.n, 0);
+        }
+        assert!(window.metrics.iter().any(|m| m.key == "blunders_per100"));
+        assert!(window
+            .metrics
+            .iter()
+            .find(|m| m.key == "blunders_per100")
+            .is_some_and(|m| m.lower_is_better));
+        assert!(window
+            .metrics
+            .iter()
+            .find(|m| m.key == "acc_overall")
+            .is_some_and(|m| !m.lower_is_better));
+    }
+
+    #[test]
+    fn puzzle_metrics_are_cut_to_the_window() {
+        let attempts = vec![(50, true, 1400), (150, false, 1500), (250, true, 1600)];
+        let window = metrics_for_window(&[], &attempts, 100, 200);
+        let solve = window
+            .metrics
+            .iter()
+            .find(|m| m.key == "puzzle_solve_pct")
+            .unwrap();
+        assert_eq!(solve.n, 1);
+        assert_eq!(solve.value, Some(0.0));
+        let rating = window
+            .metrics
+            .iter()
+            .find(|m| m.key == "puzzle_rating")
+            .unwrap();
+        assert_eq!(rating.value, Some(1500.0));
+    }
+
+    #[test]
+    fn sd_needs_at_least_two_values() {
+        assert_eq!(sd_of(&[]), None);
+        assert_eq!(sd_of(&[5.0]), None);
+        let sd = sd_of(&[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]).unwrap();
+        assert!((sd - 2.138).abs() < 0.01, "{sd}");
+    }
+
+    #[test]
     fn piece_of_san_reads_the_leading_letter() {
         assert_eq!(piece_of_san("e4"), "P");
         assert_eq!(piece_of_san("exd5"), "P");
@@ -2579,6 +3290,7 @@ mod tests {
             my_elo: 1500,
             opp_elo: 1500,
             accuracy: None,
+            opening: String::new(),
         };
         let evals = vec![
             Ev {
@@ -2704,6 +3416,94 @@ mod tests {
         // Formate: eine Partie fällt unter die Mindestgröße und taucht nicht auf.
         assert!(out.formats.formats.is_empty());
         assert_eq!(out.sessions.sessions, 1);
+
+        // Eröffnungsfamilie: aus dem PGN-Namen gekürzt, meiner Farbe zugeordnet.
+        assert_eq!(out.openings.games, 1);
+        let family = &out.openings.families[0];
+        assert_eq!(family.label, "Scandinavian Defense");
+        assert_eq!(family.color, "white");
+        assert_eq!(family.root, "e4");
+        assert_eq!(family.games, 1);
+        assert_eq!(family.score_pct, 0.0);
+        // Fünf eigene Halbzüge in der Eröffnungsphase, davon einer ein Patzer.
+        assert_eq!(family.moves, 5);
+        assert_eq!(family.blunders_per_100, 20.0);
+        assert_eq!(out.openings.baseline_score, 0.0);
+    }
+
+    #[test]
+    fn metric_windows_cut_the_same_database_by_time() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::init(&conn).unwrap();
+
+        // Zwei Partien, ein Monat auseinander · die zweite läuft sauber.
+        for (id, ts, judgment) in [(1i64, 1_700_000_000i64, "blunder"), (2, 1_702_600_000, "")] {
+            conn.execute(
+                "INSERT INTO games (id, source, source_id, played_ts, time_class, color, result,
+                                    opening, moves_count, accuracy, moves, analyzed, my_elo)
+                 VALUES (?1,'lichess',?2,?3,'blitz','white','win','Italian Game',4,70.0,
+                         'e4 e5 Nf3 Nc6', 1, 1500)",
+                rusqlite::params![id, format!("g{id}"), ts],
+            )
+            .unwrap();
+            for ply in 1..=4i64 {
+                conn.execute(
+                    "INSERT INTO move_evals (game_id, ply, san, eval_cp, judgment, phase)
+                     VALUES (?1, ?2, 'e4', 10, ?3, 'middlegame')",
+                    rusqlite::params![id, ply, if ply == 1 { judgment } else { "" }],
+                )
+                .unwrap();
+            }
+        }
+
+        let windows = metrics_from_conn(
+            &conn,
+            &[
+                WindowSpec {
+                    from_ts: 1_699_000_000,
+                    to_ts: 1_701_000_000,
+                },
+                WindowSpec {
+                    from_ts: 1_701_000_000,
+                    to_ts: 1_703_000_000,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].games, 1);
+        assert_eq!(windows[1].games, 1);
+        let blunders = |window: &MetricWindow| {
+            window
+                .metrics
+                .iter()
+                .find(|m| m.key == "blunders_middlegame_per100")
+                .unwrap()
+                .value
+        };
+        // Zwei eigene Züge je Partie, im ersten Fenster einer davon ein Patzer.
+        assert_eq!(blunders(&windows[0]), Some(50.0));
+        assert_eq!(blunders(&windows[1]), Some(0.0));
+
+        // Ratings reisen nach Pool getrennt · erst das Frontend rechnet sie um.
+        assert_eq!(windows[0].ratings.len(), 1);
+        assert_eq!(windows[0].ratings[0].time_class, "blitz");
+        assert_eq!(windows[0].ratings[0].games, 1);
+    }
+
+    #[test]
+    fn metric_windows_are_bounded() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::init(&conn).unwrap();
+        assert!(metrics_from_conn(&conn, &[]).unwrap().is_empty());
+        let too_many: Vec<WindowSpec> = (0..MAX_WINDOWS + 1)
+            .map(|index| WindowSpec {
+                from_ts: index as i64,
+                to_ts: index as i64 + 1,
+            })
+            .collect();
+        assert!(metrics_from_conn(&conn, &too_many).is_err());
     }
 
     #[test]
@@ -2725,6 +3525,7 @@ mod tests {
                 my_elo: 1500,
                 opp_elo: 1500,
                 accuracy: None,
+                opening: String::new(),
             })
             .collect();
         let empty: Vec<Ev> = Vec::new();

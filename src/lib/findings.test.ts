@@ -142,8 +142,71 @@ describe("Befund-Engine", () => {
       deep.repertoire.by_side = [];
       deep.repertoire.shaky = [];
       deep.formats.formats = [];
+      deep.openings.families = [];
+      deep.coverage.games = 0;
     });
     const bare = buildInsights([], "de");
     expect(buildFindings(empty, bare)).toEqual([]);
+  });
+
+  it("hängt an jeden trainierbaren Befund einen Hebel", () => {
+    const findings = buildFindings(demoDeepInsights(), live).filter((f) => f.tone !== "good");
+    // Ohne Hebel könnte `plan.ts` den Befund nicht in Budget übersetzen · ein
+    // Befund ohne Bereich wäre eine Aussage ohne Konsequenz.
+    for (const finding of findings) {
+      expect(finding.lever, `${finding.id} ohne Hebel`).toBeTruthy();
+      expect(finding.lever!.trainability).toBeGreaterThan(0);
+      expect(finding.lever!.trainability).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("nennt schwache Eröffnungsfamilien getrennt nach eigener Wahl und Gegnersystem", () => {
+    const ids = buildFindings(demoDeepInsights(), live).map((f) => f.id);
+    // In den Demo-Daten liegt Sizilianisch als Schwarz deutlich unter dem Schnitt.
+    expect(ids).toContain("opening-black-name:sicilian defense");
+    // Die gut laufende Italienische Partie darf nicht als Schwäche auftauchen.
+    expect(ids).not.toContain("opening-white-name:italian game");
+  });
+
+  it("bewertet Eröffnungen nach Häufigkeit mal Abstand, nicht nur nach Abstand", () => {
+    const deep = deepWith((d) => {
+      d.openings.baseline_score = 50;
+      d.openings.families = [
+        // Sehr schwach, aber selten.
+        { ...d.openings.families[0], key: "rare", label: "Rare", color: "white", games: 8, score_pct: 20 },
+        // Weniger schwach, aber häufig · das ist das teurere Problem.
+        { ...d.openings.families[0], key: "common", label: "Common", color: "white", games: 40, score_pct: 38 },
+      ];
+    });
+    const ids = buildFindings(deep, live).map((f) => f.id);
+    expect(ids).toContain("opening-white-common");
+    expect(ids).not.toContain("opening-white-rare");
+  });
+
+  it("vergleicht Formate erst nach der Poolumrechnung", () => {
+    // Rohzahlen sind fast gleich; auf der Referenzskala liegt Blitz klar vorn,
+    // weil dieselbe Zahl im Rapid-Pool weniger Spielstärke bedeutet.
+    const deep = deepWith((d) => {
+      d.formats.formats = [
+        { ...d.formats.formats[0], key: "cc/blitz", source: "chess.com", time_class: "blitz", rating: 1700, games: 40 },
+        { ...d.formats.formats[0], key: "cc/rapid", source: "chess.com", time_class: "rapid", rating: 1720, games: 160 },
+      ];
+    });
+    const pool = buildFindings(deep, live).find((f) => f.id === "format-pool");
+    expect(pool).toBeTruthy();
+    expect(pool!.params.best).toBe("blitz");
+    expect(pool!.params.busy).toBe("rapid");
+    expect(Number(pool!.params.bestValue)).toBeGreaterThan(Number(pool!.params.busyValue));
+  });
+
+  it("meldet einen dünnen Analysestand als eigenen Befund", () => {
+    const thin = deepWith((deep) => {
+      deep.coverage.games = 200;
+      deep.coverage.analyzed = 40;
+    });
+    const finding = buildFindings(thin, live).find((f) => f.id === "coverage-low");
+    expect(finding).toBeTruthy();
+    expect(finding!.lever!.area).toBe("analysis");
+    expect(finding!.params.n).toBe(160);
   });
 });

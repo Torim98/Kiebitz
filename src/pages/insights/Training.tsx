@@ -6,12 +6,13 @@
  * Trainingsphase in den Partien wiederfinden. Darunter steht die
  * Puzzle-Detailauswertung, die es vorher schon gab.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -22,10 +23,14 @@ import {
 } from "recharts";
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
-import { useI18n } from "../../lib/i18n";
+import { useI18n, type Key } from "../../lib/i18n";
 import { dateLocale, de, deInt } from "../../lib/util";
 import { themeLabel, type PuzzleInsights } from "../../lib/puzzles";
-import type { DeepInsights } from "../../lib/insights";
+import { studyMetrics, type DeepInsights, type MetricWindow } from "../../lib/insights";
+import { trainingProgram, type StudyFocus, type TrainingProgram } from "../../lib/study";
+import { lagComparison, weeklyLoad, type LagComparison, type WeekLoad } from "../../lib/balance";
+import { cycleWindows, measureEffect } from "../../lib/effect";
+import { EffectLine } from "../../components/StudyFocusCard";
 import type { Finding } from "../../lib/findings";
 import { Empty, FindingStrip, Kpi, MetricBar, Section, Stat, Versus } from "./parts";
 
@@ -33,16 +38,41 @@ function solveRate(entry: { attempts: number; solved: number }): number {
   return entry.attempts === 0 ? 0 : Math.round((entry.solved / entry.attempts) * 100);
 }
 
+/** ISO-Kalenderwoche · Beschriftung der Wochenbalken. */
+function isoWeek(date: Date): number {
+  const target = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+  // Auf den Donnerstag derselben Woche schieben · dessen Jahr bestimmt nach
+  // ISO 8601 die Wochennummer.
+  target.setUTCDate(target.getUTCDate() + 3 - ((target.getUTCDay() + 6) % 7));
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  firstThursday.setUTCDate(
+    firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7)
+  );
+  return 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
+}
+
+function dayLabel(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString(dateLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
 export default function Training({
   deep,
   puzzles,
   findings,
   onAction,
+  desktop = true,
 }: {
   deep: DeepInsights;
   puzzles: PuzzleInsights | null;
   findings: Finding[];
   onAction: (finding: Finding) => void;
+  desktop?: boolean;
 }) {
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
@@ -57,6 +87,8 @@ export default function Training({
   return (
     <div className="space-y-4">
       <FindingStrip findings={findings} onAction={onAction} />
+
+      {desktop && <Balance />}
 
       <div className="grid grid-cols-2 gap-4 min-[1050px]:grid-cols-4">
         <Kpi
@@ -251,6 +283,213 @@ export default function Training({
       )}
     </div>
   );
+
+  /**
+   * Trainingsbilanz: Last je Woche, die Leitkennzahl daneben, und die
+   * abgeschlossenen Fokus-Zyklen mit ihrem Vorher-Nachher.
+   *
+   * Lädt eigenständig nach, weil `deep_insights` diese Daten nicht mitbringt
+   * und der Reiter ohnehin erst beim Öffnen befüllt wird.
+   */
+  function Balance() {
+    const [program, setProgram] = useState<TrainingProgram | null>(null);
+    const [weeks, setWeeks] = useState<WeekLoad[]>([]);
+    const [weekMetrics, setWeekMetrics] = useState<MetricWindow[]>([]);
+    const [cycles, setCycles] = useState<{ focus: StudyFocus; windows: MetricWindow[] }[]>([]);
+
+    useEffect(() => {
+      let cancelled = false;
+      trainingProgram(180)
+        .then(async (next) => {
+          if (cancelled) return;
+          setProgram(next);
+          const load = weeklyLoad(next.days);
+          setWeeks(load);
+
+          // Ein Fenster je Woche für die Verlaufskurve, plus zwei je
+          // abgeschlossenem Zyklus. Beides in einem Aufruf · der Backend-Befehl
+          // geht die Datenbank sonst mehrfach durch.
+          const done = next.history.filter((focus) => focus.status !== "active").slice(0, 4);
+          const specs = [
+            ...load.map((week) => ({ from_ts: week.from_ts, to_ts: week.to_ts })),
+            ...done.flatMap((focus) => {
+              const { before, after } = cycleWindows(
+                focus.start_ts,
+                focus.cycle_days,
+                focus.end_ts || focus.start_ts + focus.cycle_days * 86_400
+              );
+              return [before, after];
+            }),
+          ];
+          if (specs.length === 0) return;
+          const measured = await studyMetrics(specs).catch(() => [] as MetricWindow[]);
+          if (cancelled || measured.length !== specs.length) return;
+          setWeekMetrics(measured.slice(0, load.length));
+          setCycles(
+            done.map((focus, index) => ({
+              focus,
+              windows: measured.slice(load.length + index * 2, load.length + index * 2 + 2),
+            }))
+          );
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    if (!program || weeks.length === 0) return null;
+
+    // Die Leitkennzahl der Verlaufskurve: die Patzerrate reagiert am
+    // schnellsten von allem, was über Partien messbar ist.
+    const metricKey = "blunders_per100";
+    const rows = weeks.map((week, index) => {
+      const metric = weekMetrics[index]?.metrics.find((entry) => entry.key === metricKey);
+      const date = new Date(week.from_ts * 1000);
+      return {
+        label: `${t("ins.trWeek")}${isoWeek(date)}`,
+        play: week.play,
+        tactics: week.tactics,
+        openings: week.openings,
+        endgames: week.endgames,
+        analysis: week.analysis,
+        metric: metric?.n ? metric.value : null,
+      };
+    });
+    const lag = lagComparison(weeks, weekMetrics, metricKey);
+
+    return (
+      <>
+        <Section
+          title={t("ins.trLoadTitle")}
+          summary={t("ins.trLoadSummary")}
+          disabled={weeks.length < 3}
+          defaultOpen
+        >
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={rows} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
+              <CartesianGrid stroke={chart.grid} vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={chart.tick}
+                tickLine={false}
+                axisLine={{ stroke: chart.axis }}
+                minTickGap={18}
+              />
+              <YAxis
+                yAxisId="load"
+                tick={chart.tick}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <YAxis
+                yAxisId="metric"
+                orientation="right"
+                tick={chart.tick}
+                tickLine={false}
+                axisLine={false}
+              />
+              <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+              <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
+              {(
+                [
+                  ["play", chart.accent],
+                  ["tactics", chart.violet],
+                  ["openings", chart.gold],
+                  ["endgames", chart.draw],
+                  ["analysis", chart.axis],
+                ] as const
+              ).map(([area, color], index, list) => (
+                <Bar
+                  key={area}
+                  yAxisId="load"
+                  dataKey={area}
+                  name={t(`plan.area${area[0].toUpperCase()}${area.slice(1)}` as Key)}
+                  stackId="load"
+                  fill={color}
+                  radius={index === list.length - 1 ? [4, 4, 0, 0] : undefined}
+                />
+              ))}
+              <Line
+                yAxisId="metric"
+                type="monotone"
+                dataKey="metric"
+                name={t(`metric.${metricKey}` as Key)}
+                stroke={chart.loss}
+                strokeWidth={2}
+                connectNulls
+                dot={false}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <p className="mt-3 text-[11.5px] leading-relaxed text-ink3">{t("ins.trLoadNote")}</p>
+        </Section>
+
+        <Section
+          title={t("ins.trLagTitle")}
+          summary={t("ins.trLagSummary")}
+          disabled={lag == null}
+          disabledNote={t("ins.trLagNeed")}
+        >
+          {lag && <LagPanel lag={lag} />}
+        </Section>
+
+        <Section
+          title={t("ins.trCycleTitle")}
+          summary={t("ins.trCycleSummary", { n: cycles.length })}
+          disabled={cycles.length === 0}
+          disabledNote={t("ins.trCycleNone")}
+        >
+          <div className="flex flex-col gap-2.5">
+            {cycles.map(({ focus, windows }) => (
+              <div key={focus.id} className="rounded-lg border border-line bg-panel2 px-3.5 py-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-[12.5px] font-medium text-ink">
+                    {t(`plan.area${focus.area[0].toUpperCase()}${focus.area.slice(1)}` as Key)}
+                  </span>
+                  <span className="text-[11.5px] tabular-nums text-ink3">
+                    {t("ins.trCycleRange", {
+                      from: dayLabel(focus.start_ts),
+                      to: dayLabel(focus.end_ts || focus.start_ts + focus.cycle_days * 86_400),
+                    })}
+                  </span>
+                </div>
+                <div className="mt-1.5">
+                  <EffectLine
+                    effect={measureEffect(
+                      focus.metric_key,
+                      windows[0] ?? null,
+                      windows[1] ?? null
+                    )}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </>
+    );
+  }
+
+  function LagPanel({ lag }: { lag: LagComparison }) {
+    return (
+      <>
+        <Versus
+          leftLabel={t("ins.trLagHigh")}
+          leftValue={lag.high}
+          rightLabel={t("ins.trLagLow")}
+          rightValue={lag.low}
+          lowerIsBetter={lag.lowerIsBetter}
+        />
+        <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">
+          {t("metric." + lag.metricKey as Key)} ·{" "}
+          {t("ins.trAttemptsNote", { n: deInt(lag.highWeeks + lag.lowWeeks) })}
+        </p>
+        <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("ins.trLagNote")}</p>
+      </>
+    );
+  }
 
   function PuzzleSections({
     data,

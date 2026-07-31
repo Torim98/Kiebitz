@@ -422,6 +422,80 @@ pub fn init(conn: &Connection) -> Result<(), String> {
          WHERE puzzle_rating = 0",
         [],
     );
+
+    // Migration v14: Trainingsprogramm.
+    //
+    // `rep_review_log` schließt eine Lücke, die erst bei der Wirkungsmessung
+    // auffällt: `rep_nodes.last_ts` hält nur die *letzte* Wiederholung, damit
+    // löscht sich die Vergangenheit selbst, sobald eine Karte erneut drankommt.
+    // Ein Verlauf über Wochen braucht ein append-only Log · dieselbe Bauart wie
+    // `puzzle_attempts`, das der Sync bereits konfliktfrei vereinigt.
+    //
+    // `study_focus` speichert ausschließlich die *Absicht* (worauf trainiert
+    // wird, ab wann, mit welchem Ziel). Messwerte stehen bewusst nicht darin:
+    // alle Rohdaten tragen Zeitstempel, also lässt sich jede Kennzahl für jedes
+    // Fenster neu rechnen. Gespeicherte Momentaufnahmen wären nach Nachimport,
+    // neuer Auto-Analyse oder Gerätesync falsch, berechnete bleiben richtig.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS rep_review_log (
+            id       INTEGER PRIMARY KEY,
+            node_id  INTEGER NOT NULL,
+            ts       INTEGER NOT NULL,
+            grade    INTEGER NOT NULL,
+            side     TEXT NOT NULL DEFAULT '',
+            path     TEXT NOT NULL DEFAULT ''
+         );
+         CREATE INDEX IF NOT EXISTS idx_rep_review_log_ts ON rep_review_log(ts);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_rep_review_log_key
+           ON rep_review_log(side, path, ts);
+
+         CREATE TABLE IF NOT EXISTS study_focus (
+            id           INTEGER PRIMARY KEY,
+            sync_key     TEXT NOT NULL DEFAULT '',
+            area         TEXT NOT NULL,
+            metric_key   TEXT NOT NULL,
+            label_params TEXT NOT NULL DEFAULT '{}',
+            target       REAL,
+            cycle_days   INTEGER NOT NULL DEFAULT 14,
+            start_ts     INTEGER NOT NULL,
+            end_ts       INTEGER NOT NULL DEFAULT 0,
+            status       TEXT NOT NULL DEFAULT 'active',
+            created_ts   INTEGER NOT NULL DEFAULT 0,
+            updated_ts   INTEGER NOT NULL DEFAULT 0,
+            deleted      INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE INDEX IF NOT EXISTS idx_study_focus_status ON study_focus(status, start_ts);",
+    )
+    .map_err(|e| format!("Trainingsprogramm-Schema fehlgeschlagen: {e}"))?;
+    conn.execute_batch(
+        "UPDATE study_focus
+           SET sync_key = 'focus-' || created_ts || '-' || id
+         WHERE sync_key = '';",
+    )
+    .map_err(|e| format!("Fokus-Sync-Migration fehlgeschlagen: {e}"))?;
+
+    // Einmaliger Backfill des Wiederholungslogs aus dem FSRS-Zustand. Das
+    // rekonstruiert nur die jeweils letzte Wiederholung je Knoten — mehr gibt
+    // die alte Datenlage nicht her —, verhindert aber, dass der Verlauf am Tag
+    // des Updates bei null anfängt.
+    if meta_get(conn, "rep_review_log_backfilled").is_none() {
+        // `path` ist die SAN-Kette von der Wurzel · derselbe geräteunabhängige
+        // Schlüssel, den der Sync für Repertoire-Knoten und Tombstones nutzt.
+        let _ = conn.execute(
+            "WITH RECURSIVE chain(id, path) AS (
+                 SELECT id, san FROM rep_nodes WHERE parent_id = 0
+                 UNION ALL
+                 SELECT n.id, chain.path || ' ' || n.san
+                   FROM rep_nodes n JOIN chain ON n.parent_id = chain.id
+             )
+             INSERT OR IGNORE INTO rep_review_log (node_id, ts, grade, side, path)
+             SELECT n.id, n.last_ts, 3, n.side, c.path
+             FROM rep_nodes n JOIN chain c ON c.id = n.id
+             WHERE n.reps > 0 AND n.last_ts > 0",
+            [],
+        );
+        meta_set(conn, "rep_review_log_backfilled", "1")?;
+    }
     Ok(())
 }
 

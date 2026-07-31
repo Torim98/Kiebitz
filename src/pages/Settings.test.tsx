@@ -33,6 +33,12 @@ vi.mock("../lib/settings", () => ({
   restoreDatabase: vi.fn(),
   testEngine: vi.fn(),
   useDatabase: vi.fn(),
+  // Reine Helfer · die echten Implementierungen, damit die Trainingstage
+  // im Test dasselbe tun wie in der App.
+  trainingDayList: (mask: number) =>
+    Array.from({ length: 7 }, (_, index) => (mask & (1 << index)) !== 0),
+  trainingDayMask: (days: boolean[]) =>
+    days.reduce((mask, active, index) => (active ? mask | (1 << index) : mask), 0),
 }));
 vi.mock("../lib/puzzles", () => ({
   importPuzzles: vi.fn(),
@@ -103,6 +109,10 @@ const androidSettings = {
   notify_puzzles: true,
   notify_endgame: true,
   notify_analysis: true,
+  weekly_minutes: 0,
+  training_days: 0,
+  goal_date: "",
+  focus_cycle_days: 14,
   onboarded: true,
 } satisfies Settings;
 

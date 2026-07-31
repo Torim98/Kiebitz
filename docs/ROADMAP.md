@@ -35,6 +35,45 @@ Current priorities (added 2026-07-21):
 
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
+- [x] **Study becomes a training programme** (2026-07-31). The tab no longer
+  shows the top of the findings list; it answers what to train, how much, and
+  whether it worked.
+  **Allocation.** `lib/plan.ts` starts from a rating-band prior (below 1400
+  blunders dominate, higher up openings and endgames gain weight) and lets the
+  findings shift it. Every finding carries a `lever` — which area it is worked
+  in and how well Kiebitz can actually train it, so "the field got stronger"
+  never pulls budget. The result is a planned-vs-actual bar pair: planned from
+  the need, actual from the last 28 days of recorded load. The gap is the
+  message, and it also decides which findings become focuses (at most three,
+  one per area) so a saturated area is not prescribed a fourth time.
+  **Prescriptions.** Each focus is *quantified* and clickable: the puzzle band
+  comes from the solve rate per difficulty bucket (below 50 % the material is
+  too hard, above 80 % too easy), the daily dose from the budget, the motif from
+  the weakest measured theme — and the trainer opens with band and motif already
+  set. Endgame findings resolve their material signature to a drill category via
+  `ENDGAME_TYPE_CATEGORY`; five new drills cover minor pieces, opposite bishops
+  and rook+minor so a named weakness always has an exercise behind it.
+  **Effect.** `lib/effect.ts` compares a metric before and after a focus cycle
+  (7/14/28 days, chosen in Settings) against a noise floor computed from the
+  actual spread — binomial for shares, Poisson for event rates, SD/√n where the
+  spread is known. Four verdicts, no more; "not measurable yet" states how much
+  material is still missing instead of pretending. Only the *intent* is stored
+  (`study_focus`): every measurement is recomputed from raw data, so it survives
+  re-imports, new analyses and syncs. Rating is included but deliberately as
+  context, converted per pool through `formatScale.ts` — 1100 blitz is not 1100
+  rapid, and the same conversion drives the format recommendation and the
+  rating-band prior.
+  **New data.** `insights.rs` gained opening families (block I: PGN names cut to
+  their family, split by colour, so "what I play" and "what I face" are separate
+  questions) and metric windows (block J: any metric for any time range, with
+  sample size and spread). `rep_review_log` is a new append-only table because
+  `rep_nodes.last_ts` only holds the newest review — the past erased itself.
+  Both new tables sync.
+  **Calendar.** A week plan can be generated from the recommendations: reviews
+  land on the days with the most FSRS due cards, tactics spread across the week,
+  and nothing is written until the proposal is accepted. Insights → Training
+  gained the training balance (load per week against the leading metric, plus a
+  lagged high-vs-low-training comparison, labelled as a correlation).
 - [x] **Insights, second pass** (2026-07-31). A new Rust module `insights.rs`
   computes everything in one walk over games, clocks and `move_evals` and serves
   it through a single `deep_insights` command. What it adds:

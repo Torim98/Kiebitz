@@ -226,6 +226,7 @@ export default function InsightsV2({
               puzzles={puzzleData}
               findings={findingsFor(findings, "training")}
               onAction={onAction}
+              desktop={desktop}
             />
           )}
         </>

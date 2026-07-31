@@ -205,6 +205,47 @@ export default function Openings({
         <p className="mt-3 text-[11.5px] leading-relaxed text-ink3">{t("ins.opShakyNote")}</p>
       </Section>
 
+      {/* Familien statt PGN-Namen: „Sizilianisch" ist eine Trainingseinheit,
+          „Sicilian Defense: Alapin, 2...d5" nicht. Getrennt nach Farbe, weil
+          das die beiden verschiedenen Fragen sind. */}
+      {(["white", "black"] as const).map((color) => {
+        const families = deep.openings.families.filter((family) => family.color === color);
+        if (families.length === 0) return null;
+        return (
+          <Section
+            key={color}
+            title={t(color === "white" ? "ins.opFamiliesWhite" : "ins.opFamiliesBlack")}
+            summary={t(
+              color === "white" ? "ins.opFamiliesWhiteSub" : "ins.opFamiliesBlackSub",
+              { n: families.length, b: de(deep.openings.baseline_score) }
+            )}
+            defaultOpen={color === "black"}
+          >
+            <div className="space-y-3">
+              {families.map((family) => (
+                <MetricBar
+                  key={family.key}
+                  label={family.label}
+                  note={t("ins.opFamilyNote", {
+                    n: deInt(family.games),
+                    m: family.avg_departure_ply > 0
+                      ? Math.ceil(family.avg_departure_ply / 2)
+                      : 0,
+                    a: family.opening_accuracy == null ? "—" : de(family.opening_accuracy),
+                  })}
+                  value={family.score_pct}
+                  good={deep.openings.baseline_score + 5}
+                  bad={deep.openings.baseline_score - 5}
+                />
+              ))}
+            </div>
+            <p className="mt-3 text-[11.5px] leading-relaxed text-ink3">
+              {t("ins.opFamilyLegend", { b: de(deep.openings.baseline_score) })}
+            </p>
+          </Section>
+        );
+      })}
+
       <Section title={t("ins.openingsTitle")} summary={t("ins.opPlayedSummary")} defaultOpen>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart

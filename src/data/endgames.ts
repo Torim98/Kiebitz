@@ -9,7 +9,7 @@
  */
 
 /** `random` sind erzeugte Stellungen (siehe lib/randomEndgame.ts). */
-export type EndgameCategory = "mates" | "pawn" | "rook" | "queen" | "random";
+export type EndgameCategory = "mates" | "pawn" | "rook" | "queen" | "minor" | "random";
 
 export interface EndgameDrill {
   id: string;
@@ -150,6 +150,88 @@ export const ENDGAME_DRILLS: EndgameDrill[] = [
       en: "Check the king in front of its pawn · every time it blocks the promotion square, your own king gains a step.",
     },
   },
+
+  // ── Leichtfiguren ──────────────────────────────────────────────────────────
+  // Die Materialsignatur in `insights.rs` kennt "minor", "opposite-bishops"
+  // und "rook+minor" · ohne Drills dazu könnte der Lernplan eine Schwäche
+  // benennen, aber nichts dagegen anbieten.
+  {
+    id: "minor-opposite-bishops",
+    category: "minor",
+    side: "black",
+    goal: "draw",
+    fen: "8/8/4kb2/8/3KP3/5B2/8/8 b - - 0 1",
+    name: { de: "Ungleichfarbige Läufer", en: "Opposite-coloured bishops" },
+    hint: {
+      de: "Ein Mehrbauer gewinnt hier fast nie: Stell den Läufer so auf, dass er das Umwandlungsfeld deckt, und blockiere den Bauern mit dem König. Der gegnerische Läufer kann dein Feld nie betreten.",
+      en: "An extra pawn almost never wins here: put the bishop where it covers the promotion square and block the pawn with the king. The enemy bishop can never touch your colour.",
+    },
+  },
+  {
+    id: "minor-bishop-knight-pawn",
+    category: "minor",
+    side: "white",
+    goal: "win",
+    fen: "8/8/8/4k3/8/3BKN2/4P3/8 w - - 0 1",
+    name: { de: "Läufer und Springer schieben den Bauern", en: "Bishop and knight escort the pawn" },
+    hint: {
+      de: "Der Läufer kontrolliert die Diagonale vor dem Bauern, der Springer nimmt dem gegnerischen König das Blockadefeld. Erst dann rückt der Bauer.",
+      en: "The bishop controls the diagonal ahead of the pawn, the knight takes away the blockading square. Only then does the pawn advance.",
+    },
+  },
+  {
+    id: "minor-knight-vs-rook-pawn",
+    category: "minor",
+    side: "black",
+    goal: "draw",
+    fen: "8/8/8/8/8/5n2/6PK/6k1 b - - 0 1",
+    name: { de: "Springer hält den Randbauern", en: "Knight holds the rook pawn" },
+    hint: {
+      de: "Der Springer muss das Umwandlungsfeld oder das Feld davor im Blick behalten · und der eigene König bleibt in der Nähe, damit der Springer nicht gefangen wird.",
+      en: "The knight must keep the promotion square or the one in front of it under control · and your king stays close so the knight is never trapped.",
+    },
+  },
+
+  // ── Turm plus Leichtfigur ──────────────────────────────────────────────────
+  {
+    id: "rook-minor-vs-rook",
+    category: "rook",
+    side: "white",
+    goal: "win",
+    fen: "8/8/8/3k4/8/3K4/8/3RB3 w - - 0 1",
+    name: { de: "Turm und Läufer gegen Turm", en: "Rook and bishop vs rook" },
+    hint: {
+      de: "Die Philidor-Stellung ist das Ziel: Turm auf der 7. Reihe, Läufer deckt, der gegnerische König steht in der Ecke der Läuferfarbe. Es ist theoretisch gewonnen, aber zäh · die 50-Züge-Regel läuft mit.",
+      en: "Aim for the Philidor position: rook on the 7th, bishop covering, the enemy king in the corner of the bishop's colour. Theoretically won but stubborn · the 50-move rule is ticking.",
+    },
+  },
+  {
+    id: "rook-vs-minor",
+    category: "rook",
+    side: "black",
+    goal: "draw",
+    fen: "8/8/8/4k3/8/4K3/8/3Rb3 b - - 0 1",
+    name: { de: "Läufer hält gegen den Turm", en: "Bishop holds against the rook" },
+    hint: {
+      de: "Der König strebt in die Ecke, deren Farbe der Läufer *nicht* kontrolliert · dort ist die Stellung remis. Der Läufer bleibt beim König, nie allein im freien Feld.",
+      en: "Head for the corner whose colour the bishop does *not* control · that corner is drawn. Keep the bishop next to the king, never loose in the open.",
+    },
+  },
 ];
 
-export const CATEGORY_ORDER: EndgameCategory[] = ["mates", "pawn", "rook", "queen"];
+export const CATEGORY_ORDER: EndgameCategory[] = ["mates", "pawn", "rook", "queen", "minor"];
+
+/**
+ * Endspieltyp aus der Materialsignatur (`insights.rs`) auf die Drill-Kategorie.
+ * Ohne diese Brücke bliebe der Befund „Turmendspiele laufen schlecht" ein
+ * Hinweis ohne Übung dahinter.
+ */
+export const ENDGAME_TYPE_CATEGORY: Record<string, EndgameCategory> = {
+  pawn: "pawn",
+  rook: "rook",
+  "rook+minor": "rook",
+  queen: "queen",
+  "queen+rook": "queen",
+  minor: "minor",
+  "opposite-bishops": "minor",
+};

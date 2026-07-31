@@ -537,6 +537,44 @@ pub struct ReviewResult {
     pub interval_days: i64,
 }
 
+/// SAN-Kette von der Wurzel bis zum Knoten, plus seine Seite · derselbe
+/// geräteunabhängige Schlüssel, den der Sync für Knoten und Tombstones nutzt.
+/// Damit kann das Wiederholungslog zwischen Geräten vereinigt werden, ohne
+/// dass lokale `id`-Werte kollidieren.
+pub(crate) fn node_path(conn: &Connection, node_id: i64) -> Option<(String, String)> {
+    let mut sans: Vec<String> = Vec::new();
+    let mut side = String::new();
+    let mut cur = node_id;
+    // Ein Repertoirepfad ist kurz · die Obergrenze schützt nur davor, dass eine
+    // defekte parent_id die Schleife ewig laufen lässt.
+    for _ in 0..64 {
+        if cur == 0 {
+            break;
+        }
+        let row = conn.query_row(
+            "SELECT parent_id, side, san FROM rep_nodes WHERE id = ?1",
+            params![cur],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
+        );
+        match row {
+            Ok((parent, node_side, san)) => {
+                side = node_side;
+                sans.push(san);
+                cur = parent;
+            }
+            Err(_) => return None,
+        }
+    }
+    sans.reverse();
+    Some((side, sans.join(" ")))
+}
+
 /// Bewertet eine Trainingsantwort: 1 = falsch, 2 = schwer, 3 = gut, 4 = leicht.
 #[tauri::command]
 pub fn rep_review(db: State<db::Db>, node_id: i64, grade: u8) -> Result<ReviewResult, String> {
@@ -568,6 +606,16 @@ pub fn rep_review(db: State<db::Db>, node_id: i64, grade: u8) -> Result<ReviewRe
         params![node_id, s, d, lapses, due_ts, now],
     )
     .map_err(|e| e.to_string())?;
+    // Append-only Verlauf für die Wirkungsmessung. `rep_nodes.last_ts` hält nur
+    // die letzte Wiederholung · ohne dieses Log löscht sich die Trainingslast
+    // der Vergangenheit selbst. Ein Fehler hier darf das Training nicht stoppen.
+    if let Some((side, path)) = node_path(&conn, node_id) {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO rep_review_log (node_id, ts, grade, side, path)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![node_id, now, grade as i64, side, path],
+        );
+    }
     Ok(ReviewResult {
         due_ts,
         interval_days: interval,

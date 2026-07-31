@@ -53,6 +53,10 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     notify_puzzles: true,
     notify_endgame: true,
     notify_analysis: true,
+    weekly_minutes: 0,
+    training_days: 0,
+    goal_date: "",
+    focus_cycle_days: 14,
     onboarded: true,
     ...overrides,
   };

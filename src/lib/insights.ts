@@ -365,6 +365,34 @@ export interface Spotlight {
   played_at: string;
 }
 
+// ── Block I · Eröffnungsfamilien ────────────────────────────────────────────
+
+export interface OpeningFamily {
+  key: string;
+  label: string;
+  /** Meine Farbe · als Weiß meine Wahl, als Schwarz das System des Gegners. */
+  color: "white" | "black";
+  root: string;
+  games: number;
+  score_pct: number;
+  accuracy: number | null;
+  opening_accuracy: number | null;
+  avg_loss: number;
+  blunders_per_100: number;
+  moves: number;
+  analyzed: number;
+  in_book: number;
+  my_departure: number;
+  avg_departure_ply: number;
+  last_ts: number;
+}
+
+export interface OpeningInsights {
+  families: OpeningFamily[];
+  baseline_score: number;
+  games: number;
+}
+
 export interface DeepInsights {
   coverage: Coverage;
   time: TimeInsights;
@@ -374,11 +402,50 @@ export interface DeepInsights {
   progress: ProgressInsights;
   repertoire: RepertoireInsights;
   formats: FormatInsights;
+  openings: OpeningInsights;
   spotlight: Spotlight | null;
 }
 
 export function deepInsights(): Promise<DeepInsights> {
   return invoke<DeepInsights>("deep_insights");
+}
+
+// ── Block J · Wirkungsfenster ───────────────────────────────────────────────
+
+export type MetricUnit = "pct" | "per100" | "elo";
+
+export interface MetricValue {
+  key: string;
+  value: number | null;
+  /** Partien, Züge oder Versuche · je nach Kennzahl. */
+  n: number;
+  /** Streuung der Einzelwerte, wo eine berechenbar ist. */
+  sd: number | null;
+  unit: MetricUnit;
+  lower_is_better: boolean;
+}
+
+/** Ratingstand eines Pools · erst `formatScale.ts` macht Pools vergleichbar. */
+export interface RatingPoint {
+  source: string;
+  time_class: string;
+  first: number;
+  last: number;
+  games: number;
+}
+
+export interface MetricWindow {
+  from_ts: number;
+  to_ts: number;
+  games: number;
+  metrics: MetricValue[];
+  ratings: RatingPoint[];
+}
+
+export function studyMetrics(
+  windows: { from_ts: number; to_ts: number }[]
+): Promise<MetricWindow[]> {
+  return invoke<MetricWindow[]>("study_metrics", { windows });
 }
 
 // ── Kleine Ableitungen fürs Rendern ─────────────────────────────────────────

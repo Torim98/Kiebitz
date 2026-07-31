@@ -173,3 +173,103 @@ export function deleteStudyUnit(
     return deleted;
   });
 }
+
+// ── Trainingsprogramm ───────────────────────────────────────────────────────
+
+/** Trainingsbereiche · dieselben Schlüssel wie in `study.rs`. */
+export type Area = "play" | "tactics" | "openings" | "endgames" | "analysis";
+
+export const AREAS: Area[] = ["play", "tactics", "openings", "endgames", "analysis"];
+
+/** Wählbare Zykluslängen in Tagen. */
+export const CYCLE_DAYS = [7, 14, 28] as const;
+export type CycleDays = (typeof CYCLE_DAYS)[number];
+
+/**
+ * Ein Fokus-Zyklus. Gespeichert wird nur die Absicht · Baseline und Wirkung
+ * werden aus den Rohdaten neu gerechnet, damit sie nach Nachimport, neuer
+ * Analyse oder Gerätesync noch stimmen.
+ */
+export interface StudyFocus {
+  id: number;
+  area: Area;
+  /** Kennzahl aus `study_metrics`, an der die Wirkung gemessen wird. */
+  metric_key: string;
+  /** JSON mit den Parametern für die Beschriftung (Motiv, Eröffnung, …). */
+  label_params: string;
+  target: number | null;
+  cycle_days: number;
+  start_ts: number;
+  /** 0, solange der Zyklus läuft. */
+  end_ts: number;
+  status: "active" | "done" | "dropped";
+}
+
+export interface StudyFocusInput {
+  id?: number;
+  area: Area;
+  metric_key: string;
+  label_params?: string;
+  target?: number | null;
+  cycle_days?: number;
+}
+
+export interface AreaLoad {
+  area: Area;
+  items: number;
+  minutes: number;
+}
+
+export interface LoadDay {
+  day_ts: number;
+  play: number;
+  tactics: number;
+  openings: number;
+  endgames: number;
+  analysis: number;
+}
+
+export interface TrainingProgram {
+  focuses: StudyFocus[];
+  history: StudyFocus[];
+  load_28d: AreaLoad[];
+  days: LoadDay[];
+  /** Aus den letzten acht Wochen abgeleitetes Wochenbudget in Minuten. */
+  observed_weekly_minutes: number;
+}
+
+export function trainingProgram(days?: number): Promise<TrainingProgram> {
+  return invoke<TrainingProgram>("training_program", { days: days ?? null });
+}
+
+export function setStudyFocus(focus: StudyFocusInput): Promise<StudyFocus> {
+  return invoke<StudyFocus>("set_study_focus", { focus }).then((result) => {
+    emitDataChange();
+    return result;
+  });
+}
+
+export function closeStudyFocus(focusId: number, status: "done" | "dropped"): Promise<void> {
+  return invoke<void>("close_study_focus", { focusId, status }).then(() => emitDataChange());
+}
+
+export function deleteStudyFocus(focusId: number): Promise<void> {
+  return invoke<void>("delete_study_focus", { focusId }).then(() => emitDataChange());
+}
+
+/** Minuten eines Tages über alle Bereiche. */
+export function dayMinutes(day: LoadDay): number {
+  return day.play + day.tactics + day.openings + day.endgames + day.analysis;
+}
+
+/** Beschriftungsparameter eines Fokus · defekte Werte werden ignoriert. */
+export function focusParams(focus: StudyFocus): Record<string, string | number> {
+  try {
+    const parsed: unknown = JSON.parse(focus.label_params || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, string | number>)
+      : {};
+  } catch {
+    return {};
+  }
+}

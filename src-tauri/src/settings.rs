@@ -76,8 +76,43 @@ pub struct Settings {
     pub notify_puzzles: bool,
     pub notify_endgame: bool,
     pub notify_analysis: bool,
+    /// Trainingsbudget in Minuten pro Woche · Obergrenze für den Wochenplan.
+    /// 0 = keine Vorgabe, dann leitet der Plan das Budget aus der bisherigen
+    /// Aktivität ab (die Historie weiß besser als die Selbsteinschätzung, was
+    /// realistisch ist · die Eingabe ist die Grenze, nicht die Schätzung).
+    pub weekly_minutes: u32,
+    /// Wochentage, an denen trainiert wird · Bitmaske, Bit 0 = Montag.
+    /// 0 = keine Vorgabe (alle Tage erlaubt).
+    pub training_days: u32,
+    /// Optionales Zieldatum ("YYYY-MM-DD"), z. B. ein Turnier. Leer = keins.
+    pub goal_date: String,
+    /// Länge eines Fokus-Zyklus in Tagen (7, 14 oder 28).
+    pub focus_cycle_days: u32,
     /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
     pub onboarded: bool,
+}
+
+/// "YYYY-MM-DD" oder leer · alles andere wird verworfen, statt später in
+/// Datumsrechnungen als stiller Unsinn aufzutauchen.
+fn normalize_day(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() || value.len() != 10 {
+        return String::new();
+    }
+    let bytes = value.as_bytes();
+    if bytes[4] != b'-' || bytes[7] != b'-' {
+        return String::new();
+    }
+    let ok = |range: std::ops::Range<usize>, lo: u32, hi: u32| {
+        value[range]
+            .parse::<u32>()
+            .is_ok_and(|v| (lo..=hi).contains(&v))
+    };
+    if ok(0..4, 1970, 2999) && ok(5..7, 1, 12) && ok(8..10, 1, 31) {
+        value.to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf 18:00 zurück.
@@ -138,6 +173,10 @@ impl Default for Settings {
             notify_puzzles: true,
             notify_endgame: true,
             notify_analysis: true,
+            weekly_minutes: 0,
+            training_days: 0,
+            goal_date: String::new(),
+            focus_cycle_days: 14,
             onboarded: false,
         }
     }
@@ -159,6 +198,17 @@ fn normalize(mut s: Settings) -> Settings {
     s.rep_due_limit = s.rep_due_limit.min(500);
     s.rep_new_limit = s.rep_new_limit.min(500);
     s.sound_volume = s.sound_volume.min(100);
+    // 0 bleibt 0 ("keine Vorgabe"); alles andere auf eine sinnvolle Woche.
+    if s.weekly_minutes > 0 {
+        s.weekly_minutes = s.weekly_minutes.clamp(30, 3000);
+    }
+    s.training_days &= 0b111_1111;
+    s.goal_date = normalize_day(&s.goal_date);
+    s.focus_cycle_days = match s.focus_cycle_days {
+        7 => 7,
+        28 => 28,
+        _ => 14,
+    };
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
     s.display_name = s.display_name.trim().to_string();

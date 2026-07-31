@@ -32,18 +32,28 @@ const CATEGORY_KEY: Record<EndgameCategory, Key> = {
   pawn: "eg.catPawn",
   rook: "eg.catRook",
   queen: "eg.catQueen",
+  minor: "eg.catMinor",
   random: "eg.randomTitle",
 };
 
 type Status = "playing" | "thinking" | "solved" | "failed";
 
-export default function Endgame() {
+/**
+ * `initialCategory` kommt aus dem Lernplan: der Befund nennt einen
+ * Endspieltyp aus der Materialsignatur, und `ENDGAME_TYPE_CATEGORY` übersetzt
+ * ihn in die Drill-Kategorie · sonst landet der Nutzer nach dem Klick auf
+ * „Endspiel trainieren" wieder beim Damenmatt.
+ */
+export default function Endgame({ initialCategory }: { initialCategory?: EndgameCategory }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
 
-  const [drill, setDrill] = useState<EndgameDrill>(ENDGAME_DRILLS[0]);
-  const [fen, setFen] = useState(ENDGAME_DRILLS[0].fen);
+  const firstDrill =
+    (initialCategory && ENDGAME_DRILLS.find((d) => d.category === initialCategory)) ??
+    ENDGAME_DRILLS[0];
+  const [drill, setDrill] = useState<EndgameDrill>(firstDrill);
+  const [fen, setFen] = useState(firstDrill.fen);
   const [status, setStatus] = useState<Status>("playing");
   const [endMsg, setEndMsg] = useState<Key | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +63,7 @@ export default function Endgame() {
   const [shake, setShake] = useState(false);
   const [stats, setStats] = useState<Record<string, DrillStat>>({});
 
-  const chessRef = useRef(new Chess(ENDGAME_DRILLS[0].fen));
+  const chessRef = useRef(new Chess(firstDrill.fen));
   // Läuft eine Engine-Anfrage noch, während der Drill gewechselt wird,
   // darf ihre Antwort das neue Brett nicht mehr anfassen.
   const runRef = useRef(0);

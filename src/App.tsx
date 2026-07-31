@@ -46,6 +46,7 @@ import Games from "./pages/Games";
 import Analysis from "./pages/Analysis";
 import Repertoire from "./pages/Repertoire";
 import Endgame from "./pages/Endgame";
+import type { EndgameCategory } from "./data/endgames";
 import Puzzles from "./pages/Puzzles";
 import Study from "./pages/Study";
 import Insights from "./pages/InsightsV2";
@@ -102,9 +103,21 @@ export default function App() {
   // Modus, Gegner, Eröffnung oder Ergebnis).
   const openGames = (filter?: GamesFilter) => goTo("games", { filter: filter ?? null });
 
-  // Deep-Link vom Coach: Puzzles direkt mit Motiv-Filter öffnen · ebenfalls
-  // eine Detailebene, damit Zurück wieder im Training landet.
-  const openPuzzles = (theme?: string) => push("puzzles", { theme: theme ?? "" });
+  // Deep-Link aus dem Trainingsplan: Puzzles mit Motiv *und* Schwierigkeitsband
+  // öffnen · ebenfalls eine Detailebene, damit Zurück wieder im Training landet.
+  // Ohne das Band bliebe von „15 Aufgaben zwischen 1420 und 1580" nur ein
+  // Ratschlag übrig, den der Nutzer von Hand nachstellen müsste.
+  const openPuzzles = (theme?: string, band?: { minRating?: number; maxRating?: number }) =>
+    push("puzzles", {
+      theme: theme ?? "",
+      minRating: band?.minRating ?? 0,
+      maxRating: band?.maxRating ?? 0,
+    });
+
+  // Dasselbe fürs Endspiel: der Lernplan kennt den schwachen Typ, also soll er
+  // ihn auch vorwählen können.
+  const openEndgame = (category?: EndgameCategory) =>
+    push("endgame", { endgameCategory: category });
 
   // Rückmeldung ist immer eine Detailebene · Zurück führt dorthin zurück, wo
   // der Nutzer gerade war, egal ob er über die Einstellungen kam oder geschüttelt hat.
@@ -386,9 +399,17 @@ export default function App() {
       )}
       {page === "analysis" && <Analysis targetGameId={route.gameId ?? null} />}
       {page === "repertoire" && <Repertoire />}
-      {page === "endgame" && <Endgame />}
-      {page === "puzzles" && <Puzzles initialTheme={route.theme ?? ""} />}
-      {page === "study" && <Study go={navigate} openPuzzles={openPuzzles} />}
+      {page === "endgame" && <Endgame initialCategory={route.endgameCategory} />}
+      {page === "puzzles" && (
+        <Puzzles
+          initialTheme={route.theme ?? ""}
+          initialMinRating={route.minRating ?? 0}
+          initialMaxRating={route.maxRating ?? 0}
+        />
+      )}
+      {page === "study" && (
+        <Study go={navigate} openPuzzles={openPuzzles} openEndgame={openEndgame} />
+      )}
       {page === "insights" && (
         <Insights go={navigate} openPuzzles={openPuzzles} openAnalysis={openAnalysis} />
       )}

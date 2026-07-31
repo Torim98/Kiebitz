@@ -48,6 +48,8 @@ import {
   restoreDatabase,
   setSettings,
   testEngine,
+  trainingDayList,
+  trainingDayMask,
   useDatabase,
   type DbInfo,
   type EngineTest,
@@ -86,14 +88,33 @@ import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../li
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className={`flex flex-col gap-1.5 ${className}`}>
       <span className="text-[12px] text-ink3">{label}</span>
       {children}
     </label>
   );
 }
+
+/** Wochentage der Trainingstage-Auswahl · Index 0 = Montag. */
+const WEEKDAY_KEYS = [
+  "set.dayMon",
+  "set.dayTue",
+  "set.dayWed",
+  "set.dayThu",
+  "set.dayFri",
+  "set.daySat",
+  "set.daySun",
+] as const;
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none";
@@ -970,6 +991,62 @@ export default function SettingsPage({
             />
             <p className="text-[12px] leading-relaxed text-ink3 min-[640px]:col-span-3">
               {t("set.repLimitNote")}
+            </p>
+
+            {/* Trainingsprogramm · drei Felder, kein Fragebogen. Alles Weitere
+                leitet der Lernplan aus der tatsächlichen Aktivität ab. */}
+            <NumberField
+              label={t("set.weeklyMinutes")}
+              value={draft.weekly_minutes}
+              min={0}
+              max={3000}
+              onChange={(v) => patch({ weekly_minutes: v })}
+            />
+            <Field label={t("set.focusCycle")}>
+              <select
+                value={draft.focus_cycle_days}
+                onChange={(e) => patch({ focus_cycle_days: Number(e.target.value) })}
+                className={inputCls}
+              >
+                {[7, 14, 28].map((days) => (
+                  <option key={days} value={days}>
+                    {t("set.focusCycleDays", { n: days })}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("set.goalDate")}>
+              <input
+                type="date"
+                value={draft.goal_date}
+                onChange={(e) => patch({ goal_date: e.target.value })}
+                className={inputCls}
+              />
+            </Field>
+            <Field label={t("set.trainingDays")} className="min-[640px]:col-span-3">
+              <div className="flex flex-wrap gap-1.5">
+                {trainingDayList(draft.training_days).map((active, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      const days = trainingDayList(draft.training_days);
+                      days[index] = !days[index];
+                      patch({ training_days: trainingDayMask(days) });
+                    }}
+                    className={`rounded-md border px-2.5 py-1 text-[12px] transition-colors ${
+                      active
+                        ? "border-accent-dim bg-accent-soft text-accent"
+                        : "border-line text-ink3 hover:text-ink"
+                    }`}
+                  >
+                    {t(WEEKDAY_KEYS[index])}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <p className="text-[12px] leading-relaxed text-ink3 min-[640px]:col-span-3">
+              {t("set.trainingNote")}
             </p>
             <label className="flex cursor-pointer items-start gap-3 min-[640px]:col-span-3">
               <input

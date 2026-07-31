@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GamesFilter } from "./gameUi";
+import type { EndgameCategory } from "../data/endgames";
 
 export type PageId =
   | "dashboard"
@@ -32,8 +33,13 @@ export interface Route {
   gameId?: number | null;
   /** Partien: Vorfilter aus dem Dashboard. */
   filter?: GamesFilter | null;
-  /** Puzzles: Motiv-Filter aus dem Coach. */
+  /** Puzzles: Motiv-Filter aus dem Trainingsplan. */
   theme?: string;
+  /** Puzzles: Schwierigkeitsband aus der Verordnung (0 = keine Vorgabe). */
+  minRating?: number;
+  maxRating?: number;
+  /** Endspiele: vorgewählte Drill-Kategorie aus dem Lernplan. */
+  endgameCategory?: EndgameCategory;
   /** Rückmeldung: vorgewählte Meldungsart (z. B. Absturz nach Schütteln). */
   reportType?: "feedback" | "crash" | "feature";
 }

@@ -8,7 +8,7 @@
 use crate::{db, settings};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use tauri::{Manager, State};
 
 #[derive(Serialize)]
@@ -795,6 +795,423 @@ fn study_data_from_conn(
     })
 }
 
+// ── Trainingsprogramm: Fokus, Ist-Aufwand, Trainingslast ────────────────────
+//
+// Gespeichert wird nur die *Absicht* (welcher Fokus, ab wann, mit welchem
+// Ziel). Jede Kennzahl dazu wird aus den Rohdaten neu gerechnet · siehe die
+// Begründung an der Migration in `db.rs`.
+
+/// Trainingsbereiche. Dieselben Schlüssel benutzt `lib/plan.ts`.
+pub const AREAS: [&str; 5] = ["play", "tactics", "openings", "endgames", "analysis"];
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct StudyFocus {
+    pub id: i64,
+    /// play | tactics | openings | endgames | analysis
+    pub area: String,
+    /// Kennzahl, an der die Wirkung gemessen wird (Schlüssel aus `effect.ts`).
+    pub metric_key: String,
+    /// JSON mit den Parametern für die Beschriftung (Motiv, Eröffnung, …).
+    pub label_params: String,
+    pub target: Option<f64>,
+    pub cycle_days: i64,
+    pub start_ts: i64,
+    /// 0, solange der Zyklus läuft.
+    pub end_ts: i64,
+    /// active | done | dropped
+    pub status: String,
+}
+
+#[derive(Deserialize)]
+pub struct StudyFocusInput {
+    pub id: Option<i64>,
+    pub area: String,
+    pub metric_key: String,
+    pub label_params: Option<String>,
+    pub target: Option<f64>,
+    pub cycle_days: Option<i64>,
+}
+
+fn read_focus_rows(conn: &Connection, only_active: bool) -> Result<Vec<StudyFocus>, String> {
+    let sql = if only_active {
+        "SELECT id, area, metric_key, label_params, target, cycle_days, start_ts, end_ts, status
+         FROM study_focus WHERE deleted = 0 AND status = 'active' ORDER BY start_ts, id"
+    } else {
+        "SELECT id, area, metric_key, label_params, target, cycle_days, start_ts, end_ts, status
+         FROM study_focus WHERE deleted = 0 ORDER BY start_ts DESC, id DESC"
+    };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(StudyFocus {
+                id: r.get(0)?,
+                area: r.get(1)?,
+                metric_key: r.get(2)?,
+                label_params: r.get(3)?,
+                target: r.get(4)?,
+                cycle_days: r.get(5)?,
+                start_ts: r.get(6)?,
+                end_ts: r.get(7)?,
+                status: r.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// Startet einen Fokus-Zyklus (oder ändert einen laufenden).
+///
+/// Ein neuer Fokus im selben Bereich beendet den bisherigen · zwei gleichzeitige
+/// Ziele für dieselbe Sache wären nicht auswertbar.
+#[tauri::command]
+pub fn set_study_focus(db: State<db::Db>, focus: StudyFocusInput) -> Result<StudyFocus, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    set_focus_on_conn(&conn, focus, now_ts())
+}
+
+fn set_focus_on_conn(
+    conn: &Connection,
+    focus: StudyFocusInput,
+    now: i64,
+) -> Result<StudyFocus, String> {
+    if !AREAS.contains(&focus.area.as_str()) {
+        return Err("Unbekannter Trainingsbereich".into());
+    }
+    let metric = clean_text(focus.metric_key, 60);
+    if metric.is_empty() {
+        return Err("Kennzahl fehlt".into());
+    }
+    let params = clean_text(focus.label_params.unwrap_or_default(), 1_000);
+    let params = if params.is_empty() {
+        "{}".to_string()
+    } else {
+        params
+    };
+    let cycle = match focus.cycle_days.unwrap_or(14) {
+        7 => 7,
+        28 => 28,
+        _ => 14,
+    };
+
+    let id = match focus.id {
+        Some(id) => {
+            let changed = conn
+                .execute(
+                    "UPDATE study_focus SET area=?1, metric_key=?2, label_params=?3, target=?4,
+                        cycle_days=?5, updated_ts=?6, deleted=0 WHERE id=?7",
+                    params![
+                        focus.area,
+                        metric,
+                        params,
+                        focus.target,
+                        cycle,
+                        now,
+                        id
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            if changed == 0 {
+                return Err("Fokus nicht gefunden".into());
+            }
+            id
+        }
+        None => {
+            conn.execute(
+                "UPDATE study_focus SET status='dropped', end_ts=?2, updated_ts=?2
+                 WHERE area=?1 AND status='active' AND deleted=0",
+                params![focus.area, now],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT INTO study_focus
+                 (sync_key, area, metric_key, label_params, target, cycle_days, start_ts,
+                  status, created_ts, updated_ts)
+                 VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5, ?6, 'active', ?6, ?6)",
+                params![focus.area, metric, params, focus.target, cycle, now],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.last_insert_rowid()
+        }
+    };
+    read_focus_rows(conn, false)?
+        .into_iter()
+        .find(|f| f.id == id)
+        .ok_or_else(|| "Fokus nicht gefunden".to_string())
+}
+
+/// Beendet einen Zyklus: "done" (Ziel erreicht bzw. abgehakt) oder "dropped".
+#[tauri::command]
+pub fn close_study_focus(db: State<db::Db>, focus_id: i64, status: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let status = match status.as_str() {
+        "done" => "done",
+        _ => "dropped",
+    };
+    let now = now_ts();
+    let changed = conn
+        .execute(
+            "UPDATE study_focus SET status=?2, end_ts=?3, updated_ts=?3 WHERE id=?1 AND deleted=0",
+            params![focus_id, status, now],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Fokus nicht gefunden".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_study_focus(db: State<db::Db>, focus_id: i64) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE study_focus SET deleted = 1, updated_ts = ?2 WHERE id = ?1",
+        params![focus_id, now_ts()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Aufwand eines Bereichs in einem Zeitraum · Minuten sind geschätzt, damit
+/// Puzzles, Drills, Wiederholungen und Partien überhaupt vergleichbar werden.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct AreaLoad {
+    pub area: String,
+    /// Rohzähler (Puzzleversuche, Drills, Wiederholungen, Partien, Analysen).
+    pub items: i64,
+    pub minutes: i64,
+}
+
+/// Ein Tag der Trainingslast · Grundlage der Verlaufsdarstellung.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct LoadDay {
+    pub day_ts: i64,
+    pub play: i64,
+    pub tactics: i64,
+    pub openings: i64,
+    pub endgames: i64,
+    pub analysis: i64,
+}
+
+#[derive(Serialize, Default)]
+pub struct TrainingProgram {
+    pub focuses: Vec<StudyFocus>,
+    pub history: Vec<StudyFocus>,
+    /// Ist-Aufwand der letzten 28 Tage je Bereich.
+    pub load_28d: Vec<AreaLoad>,
+    /// Tageslast (Minuten) über das angefragte Fenster, aufsteigend.
+    pub days: Vec<LoadDay>,
+    /// Aus der Historie abgeleitetes Wochenbudget in Minuten (Median-nah:
+    /// Durchschnitt der letzten acht Wochen).
+    pub observed_weekly_minutes: i64,
+}
+
+/// Minutenschätzung je Einheit. Bewusst grob und an einer Stelle · wer sie
+/// ändert, ändert alle Auswertungen gleichzeitig.
+const MIN_PER_PUZZLE: f64 = 1.5;
+const MIN_PER_DRILL: f64 = 4.0;
+const MIN_PER_REVIEW: f64 = 0.5;
+const MIN_PER_ANALYSIS: f64 = 6.0;
+
+/// Spielminuten einer Partie aus ihrer Zeitkontrolle ("300+3"), sonst nach
+/// Zeitklasse geschätzt. Beide Seiten zusammen, gedeckelt · eine Fernpartie
+/// über zwei Wochen ist keine zweiwöchige Trainingseinheit.
+fn game_minutes(time_control: &str, time_class: &str, moves_count: i64) -> f64 {
+    let base = time_control
+        .split_once('+')
+        .and_then(|(base, inc)| {
+            let base: f64 = base.trim().parse().ok()?;
+            let inc: f64 = inc.trim().parse().ok()?;
+            Some(base + inc * moves_count.clamp(0, 120) as f64 / 2.0)
+        })
+        .or_else(|| time_control.trim().parse::<f64>().ok());
+    let seconds = match base {
+        Some(seconds) => seconds,
+        None => match time_class {
+            "bullet" => 120.0,
+            "blitz" => 400.0,
+            "rapid" => 900.0,
+            "classical" => 2_400.0,
+            _ => 600.0,
+        },
+    };
+    // Partien enden selten mit leerer Uhr; zwei Drittel der Nominalzeit ist
+    // eine ehrlichere Schätzung als die volle Bedenkzeit.
+    (seconds * 2.0 / 3.0 / 60.0).clamp(1.0, 180.0)
+}
+
+fn day_bucket(ts: i64) -> i64 {
+    ts.div_euclid(86_400) * 86_400
+}
+
+#[tauri::command]
+pub fn training_program(db: State<db::Db>, days: Option<i64>) -> Result<TrainingProgram, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    training_program_from_conn(&conn, now_ts(), days.unwrap_or(180).clamp(28, 730))
+}
+
+fn training_program_from_conn(
+    conn: &Connection,
+    now: i64,
+    window_days: i64,
+) -> Result<TrainingProgram, String> {
+    let today = day_bucket(now);
+    let from = today - (window_days - 1) * 86_400;
+    let mut by_day: BTreeMap<i64, LoadDay> = BTreeMap::new();
+
+    // Puzzles und Endspiel-Drills: ein Zeitstempel je Versuch.
+    for (sql, area) in [
+        ("SELECT ts FROM puzzle_attempts WHERE ts >= ?1", "tactics"),
+        ("SELECT ts FROM endgame_attempts WHERE ts >= ?1", "endgames"),
+        ("SELECT ts FROM rep_review_log WHERE ts >= ?1", "openings"),
+        (
+            "SELECT analyzed_ts FROM games WHERE analyzed_ts >= ?1",
+            "analysis",
+        ),
+    ] {
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![from], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        for ts in rows {
+            let day = day_bucket(ts.map_err(|e| e.to_string())?);
+            let entry = by_day.entry(day).or_insert(LoadDay {
+                day_ts: day,
+                ..Default::default()
+            });
+            match area {
+                "tactics" => entry.tactics += (MIN_PER_PUZZLE * 100.0) as i64,
+                "endgames" => entry.endgames += (MIN_PER_DRILL * 100.0) as i64,
+                "openings" => entry.openings += (MIN_PER_REVIEW * 100.0) as i64,
+                _ => entry.analysis += (MIN_PER_ANALYSIS * 100.0) as i64,
+            }
+        }
+    }
+
+    // Gespielte Partien: Minuten aus der Zeitkontrolle.
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT played_ts, time_control, time_class, moves_count
+                 FROM games WHERE played_ts >= ?1 AND analysis_excluded = 0",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![from], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (ts, tc, class, moves) = row.map_err(|e| e.to_string())?;
+            let day = day_bucket(ts);
+            by_day
+                .entry(day)
+                .or_insert(LoadDay {
+                    day_ts: day,
+                    ..Default::default()
+                })
+                .play += (game_minutes(&tc, &class, moves) * 100.0) as i64;
+        }
+    }
+
+    // Hundertstel-Minuten zurück auf Minuten · so bleibt die Summe ehrlich,
+    // ohne dass jede einzelne Einheit auf 0 gerundet wird.
+    let days: Vec<LoadDay> = by_day
+        .into_values()
+        .map(|d| LoadDay {
+            day_ts: d.day_ts,
+            play: d.play / 100,
+            tactics: d.tactics / 100,
+            openings: d.openings / 100,
+            endgames: d.endgames / 100,
+            analysis: d.analysis / 100,
+        })
+        .collect();
+
+    let cutoff_28 = today - 27 * 86_400;
+    let recent: Vec<&LoadDay> = days.iter().filter(|d| d.day_ts >= cutoff_28).collect();
+    let sum = |pick: fn(&LoadDay) -> i64| -> i64 { recent.iter().map(|d| pick(d)).sum() };
+    let load_28d = vec![
+        AreaLoad {
+            area: "play".into(),
+            items: count(
+                conn,
+                "SELECT COUNT(*) FROM games WHERE played_ts >= ?1 AND played_ts < ?2
+                 AND analysis_excluded = 0",
+                cutoff_28,
+                now + 86_400,
+            )?,
+            minutes: sum(|d| d.play),
+        },
+        AreaLoad {
+            area: "tactics".into(),
+            items: count(
+                conn,
+                "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
+                cutoff_28,
+                now + 86_400,
+            )?,
+            minutes: sum(|d| d.tactics),
+        },
+        AreaLoad {
+            area: "openings".into(),
+            items: count(
+                conn,
+                "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
+                cutoff_28,
+                now + 86_400,
+            )?,
+            minutes: sum(|d| d.openings),
+        },
+        AreaLoad {
+            area: "endgames".into(),
+            items: count(
+                conn,
+                "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
+                cutoff_28,
+                now + 86_400,
+            )?,
+            minutes: sum(|d| d.endgames),
+        },
+        AreaLoad {
+            area: "analysis".into(),
+            items: count(
+                conn,
+                "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
+                cutoff_28,
+                now + 86_400,
+            )?,
+            minutes: sum(|d| d.analysis),
+        },
+    ];
+
+    // Beobachtetes Wochenbudget aus den letzten acht Wochen · ohne Vorgabe in
+    // den Einstellungen plant der Wochenplan damit.
+    let cutoff_8w = today - 55 * 86_400;
+    let observed: i64 = days
+        .iter()
+        .filter(|d| d.day_ts >= cutoff_8w)
+        .map(|d| d.play + d.tactics + d.openings + d.endgames + d.analysis)
+        .sum();
+
+    Ok(TrainingProgram {
+        focuses: read_focus_rows(conn, true)?,
+        history: read_focus_rows(conn, false)?
+            .into_iter()
+            .filter(|f| f.status != "active")
+            .take(12)
+            .collect(),
+        load_28d,
+        days,
+        observed_weekly_minutes: observed / 8,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1072,5 +1489,169 @@ mod tests {
         assert_eq!(day.units, 11);
         // Neue Repertoire-Karten sind heute fällig.
         assert_eq!(day.due_reviews, 1);
+    }
+
+    #[test]
+    fn a_new_focus_supersedes_the_running_one_in_the_same_area() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+
+        let first = set_focus_on_conn(
+            &conn,
+            StudyFocusInput {
+                id: None,
+                area: "tactics".into(),
+                metric_key: "blunders_middlegame_per100".into(),
+                label_params: None,
+                target: Some(2.0),
+                cycle_days: Some(14),
+            },
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(first.status, "active");
+        assert_eq!(first.cycle_days, 14);
+        assert_eq!(first.label_params, "{}");
+
+        // Zweiter Fokus im selben Bereich · der erste wird beendet, sonst wären
+        // zwei Ziele gleichzeitig scharf und keines auswertbar.
+        set_focus_on_conn(
+            &conn,
+            StudyFocusInput {
+                id: None,
+                area: "tactics".into(),
+                metric_key: "puzzle_solve_pct".into(),
+                label_params: Some(r#"{"theme":"fork"}"#.into()),
+                target: None,
+                cycle_days: Some(28),
+            },
+            NOW + 3_600,
+        )
+        .unwrap();
+        // Ein anderer Bereich bleibt davon unberührt.
+        set_focus_on_conn(
+            &conn,
+            StudyFocusInput {
+                id: None,
+                area: "endgames".into(),
+                metric_key: "acc_endgame".into(),
+                label_params: None,
+                target: None,
+                cycle_days: None,
+            },
+            NOW + 7_200,
+        )
+        .unwrap();
+
+        let active = read_focus_rows(&conn, true).unwrap();
+        assert_eq!(active.len(), 2);
+        assert!(active.iter().any(|f| f.metric_key == "puzzle_solve_pct"));
+        assert!(active.iter().any(|f| f.area == "endgames"));
+        // Voreinstellung greift bei fehlender Angabe.
+        assert_eq!(
+            active.iter().find(|f| f.area == "endgames").unwrap().cycle_days,
+            14
+        );
+
+        let program = training_program_from_conn(&conn, NOW + 7_200, 60).unwrap();
+        assert_eq!(program.focuses.len(), 2);
+        assert_eq!(program.history.len(), 1);
+        assert_eq!(program.history[0].status, "dropped");
+    }
+
+    #[test]
+    fn unknown_areas_and_empty_metrics_are_rejected() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let bad_area = set_focus_on_conn(
+            &conn,
+            StudyFocusInput {
+                id: None,
+                area: "vibes".into(),
+                metric_key: "score_pct".into(),
+                label_params: None,
+                target: None,
+                cycle_days: None,
+            },
+            NOW,
+        );
+        assert!(bad_area.is_err());
+        let no_metric = set_focus_on_conn(
+            &conn,
+            StudyFocusInput {
+                id: None,
+                area: "play".into(),
+                metric_key: "   ".into(),
+                label_params: None,
+                target: None,
+                cycle_days: None,
+            },
+            NOW,
+        );
+        assert!(no_metric.is_err());
+    }
+
+    #[test]
+    fn training_load_splits_minutes_by_area() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let day_start = TODAY * 86_400;
+
+        for offset in 0..4 {
+            conn.execute(
+                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after)
+                 VALUES ('p', ?1, 1, 1500, 1510)",
+                params![day_start + offset * 60],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO endgame_attempts (drill_id, ts, solved, moves) VALUES ('lucena', ?1, 1, 20)",
+            params![day_start + 500],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO rep_review_log (node_id, ts, grade, side, path)
+             VALUES (1, ?1, 3, 'white', 'e4')",
+            params![day_start + 600],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO games (source, source_id, played_ts, time_control, time_class, moves_count)
+             VALUES ('lichess', 'g1', ?1, '600+0', 'rapid', 40)",
+            params![day_start + 700],
+        )
+        .unwrap();
+
+        let program = training_program_from_conn(&conn, NOW, 28).unwrap();
+        let by_area = |area: &str| -> AreaLoad {
+            program
+                .load_28d
+                .iter()
+                .find(|l| l.area == area)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(by_area("tactics").items, 4);
+        // 4 × 1,5 Minuten
+        assert_eq!(by_area("tactics").minutes, 6);
+        assert_eq!(by_area("endgames").items, 1);
+        assert_eq!(by_area("endgames").minutes, 4);
+        assert_eq!(by_area("openings").items, 1);
+        assert_eq!(by_area("play").items, 1);
+        // 600 s nominal, zwei Drittel davon, in Minuten.
+        assert_eq!(by_area("play").minutes, 6);
+        assert_eq!(program.days.len(), 1);
+    }
+
+    #[test]
+    fn game_minutes_fall_back_to_the_time_class() {
+        // Zeitkontrolle mit Inkrement: 300 s + 3 s × 20 Züge = 360 s → 4 min.
+        assert_eq!(game_minutes("300+3", "blitz", 40).round(), 4.0);
+        // Ohne verwertbare Angabe entscheidet die Klasse.
+        assert_eq!(game_minutes("", "bullet", 30).round(), 1.0);
+        assert_eq!(game_minutes("-", "rapid", 30).round(), 10.0);
+        // Eine Fernpartie ist keine zweiwöchige Trainingseinheit.
+        assert!(game_minutes("1209600+0", "daily", 60) <= 180.0);
     }
 }

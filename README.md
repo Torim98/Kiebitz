@@ -24,8 +24,11 @@ the local network.
 - **Puzzles** — offline tactics from the Lichess database *and* from your own
   missed moves, with Elo and per-theme tracking.
 - **Endgames** — curated theoretical drills against the engine, optional Syzygy.
-- **Study** — data-driven weakness recommendations, daily checklist, and a
-  drag-and-drop study planner.
+- **Study** — a training programme: budget split across playing, tactics,
+  openings, endgames and analysis, quantified prescriptions (which puzzle band,
+  which opening, which endgame type), focus cycles that measure whether the
+  training actually changed anything, and a drag-and-drop study planner that can
+  be filled from the recommendations.
 - **Mobile** — Android build with native per-ABI Stockfish and encrypted
   device-to-device LAN sync (QR pairing) with the desktop as hub.
 

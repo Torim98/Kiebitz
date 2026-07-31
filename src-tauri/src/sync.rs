@@ -218,6 +218,34 @@ pub struct SyncStudyEvent {
     pub series_key: String,
 }
 
+/// Eine Repertoire-Wiederholung. Der natürliche Schlüssel ist `(side, path)`
+/// wie bei Knoten und Tombstones · lokale `node_id` reisen nicht mit.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncRepReview {
+    pub side: String,
+    pub path: String,
+    pub ts: i64,
+    pub grade: i64,
+}
+
+/// Ein Fokus-Zyklus. Enthält nur die Absicht; Messwerte werden auf jedem Gerät
+/// aus den Rohdaten neu gerechnet.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncStudyFocus {
+    pub sync_key: String,
+    pub area: String,
+    pub metric_key: String,
+    pub label_params: String,
+    pub target: Option<f64>,
+    pub cycle_days: i64,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub status: String,
+    pub created_ts: i64,
+    pub updated_ts: i64,
+    pub deleted: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SyncRequest {
     pub code: String,
@@ -235,6 +263,10 @@ pub struct SyncRequest {
     pub study_templates: Vec<SyncStudyTemplate>,
     #[serde(default)]
     pub study_events: Vec<SyncStudyEvent>,
+    #[serde(default)]
+    pub rep_reviews: Vec<SyncRepReview>,
+    #[serde(default)]
+    pub study_focus: Vec<SyncStudyFocus>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -256,6 +288,10 @@ pub struct SyncResponse {
     pub study_templates: Vec<SyncStudyTemplate>,
     #[serde(default)]
     pub study_events: Vec<SyncStudyEvent>,
+    #[serde(default)]
+    pub rep_reviews: Vec<SyncRepReview>,
+    #[serde(default)]
+    pub study_focus: Vec<SyncStudyFocus>,
 }
 
 // ── Collect: lokale Daten für die Gegenseite einsammeln ─────────────────────
@@ -672,6 +708,56 @@ fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEv
                 deleted: r.get::<_, i64>(8)? != 0,
                 repeat_rule: r.get(9)?,
                 series_key: r.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+fn collect_rep_reviews(conn: &Connection, since: i64) -> Result<Vec<SyncRepReview>, String> {
+    let mut stmt = conn
+        .prepare("SELECT side, path, ts, grade FROM rep_review_log WHERE ts >= ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncRepReview {
+                side: r.get(0)?,
+                path: r.get(1)?,
+                ts: r.get(2)?,
+                grade: r.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
+fn collect_study_focus(conn: &Connection, since: i64) -> Result<Vec<SyncStudyFocus>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sync_key, area, metric_key, label_params, target, cycle_days,
+                    start_ts, end_ts, status, created_ts, updated_ts, deleted
+             FROM study_focus WHERE updated_ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncStudyFocus {
+                sync_key: r.get(0)?,
+                area: r.get(1)?,
+                metric_key: r.get(2)?,
+                label_params: r.get(3)?,
+                target: r.get(4)?,
+                cycle_days: r.get(5)?,
+                start_ts: r.get(6)?,
+                end_ts: r.get(7)?,
+                status: r.get(8)?,
+                created_ts: r.get(9)?,
+                updated_ts: r.get(10)?,
+                deleted: r.get::<_, i64>(11)? != 0,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1254,6 +1340,91 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
     Ok(merged)
 }
 
+/// Wiederholungen sind append-only · der Merge ist eine Vereinigung über den
+/// natürlichen Schlüssel `(side, path, ts)`.
+///
+/// Fremde Zeilen bekommen `node_id = 0`: SQLite-IDs sind gerätelokal, und für
+/// die Trainingslast zählt allein der Zeitpunkt. Die Spalte bleibt eine
+/// Bequemlichkeit für lokal geschriebene Zeilen, kein Fremdschlüssel.
+fn apply_rep_reviews(conn: &Connection, reviews: &[SyncRepReview]) -> Result<usize, String> {
+    let mut merged = 0usize;
+    for review in reviews {
+        merged += conn
+            .execute(
+                "INSERT OR IGNORE INTO rep_review_log (node_id, ts, grade, side, path)
+                 VALUES (0, ?1, ?2, ?3, ?4)",
+                params![review.ts, review.grade, review.side, review.path],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(merged)
+}
+
+fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<usize, String> {
+    let mut merged = 0usize;
+    for focus in focuses {
+        let existing = conn.query_row(
+            "SELECT id, updated_ts FROM study_focus WHERE sync_key = ?1",
+            params![focus.sync_key],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        );
+        match existing {
+            Ok((id, updated_ts)) if focus.updated_ts > updated_ts => {
+                merged += conn
+                    .execute(
+                        "UPDATE study_focus
+                         SET area=?1, metric_key=?2, label_params=?3, target=?4, cycle_days=?5,
+                             start_ts=?6, end_ts=?7, status=?8, created_ts=?9, updated_ts=?10,
+                             deleted=?11
+                         WHERE id=?12",
+                        params![
+                            focus.area,
+                            focus.metric_key,
+                            focus.label_params,
+                            focus.target,
+                            focus.cycle_days,
+                            focus.start_ts,
+                            focus.end_ts,
+                            focus.status,
+                            focus.created_ts,
+                            focus.updated_ts,
+                            focus.deleted as i64,
+                            id
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(_) => {}
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                merged += conn
+                    .execute(
+                        "INSERT INTO study_focus
+                         (sync_key, area, metric_key, label_params, target, cycle_days,
+                          start_ts, end_ts, status, created_ts, updated_ts, deleted)
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                        params![
+                            focus.sync_key,
+                            focus.area,
+                            focus.metric_key,
+                            focus.label_params,
+                            focus.target,
+                            focus.cycle_days,
+                            focus.start_ts,
+                            focus.end_ts,
+                            focus.status,
+                            focus.created_ts,
+                            focus.updated_ts,
+                            focus.deleted as i64
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(merged)
+}
+
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
 #[cfg(any(desktop, test))]
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
@@ -1268,6 +1439,8 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
     apply_endgame_attempts(conn, &req.endgame_attempts)?;
     apply_study_templates(conn, &req.study_templates)?;
     apply_study_events(conn, &req.study_events)?;
+    apply_rep_reviews(conn, &req.rep_reviews)?;
+    apply_study_focus(conn, &req.study_focus)?;
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
@@ -1279,6 +1452,8 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         endgame_attempts: collect_endgame_attempts(conn, req.since)?,
         study_templates: collect_study_templates(conn, req.since)?,
         study_events: collect_study_events(conn, req.since)?,
+        rep_reviews: collect_rep_reviews(conn, req.since)?,
+        study_focus: collect_study_focus(conn, req.since)?,
     })
 }
 
@@ -1795,6 +1970,8 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 endgame_attempts: collect_endgame_attempts(&conn, since)?,
                 study_templates: collect_study_templates(&conn, since)?,
                 study_events: collect_study_events(&conn, since)?,
+                rep_reviews: collect_rep_reviews(&conn, since)?,
+                study_focus: collect_study_focus(&conn, since)?,
             };
             (since, req)
         };
@@ -1832,6 +2009,8 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let eg = apply_endgame_attempts(&conn, &resp.endgame_attempts)?;
         let study_templates = apply_study_templates(&conn, &resp.study_templates)?;
         let study_events = apply_study_events(&conn, &resp.study_events)?;
+        let rep_reviews = apply_rep_reviews(&conn, &resp.rep_reviews)?;
+        let study_focus = apply_study_focus(&conn, &resp.study_focus)?;
         db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
         Ok(SyncSummary {
             games_pulled,
@@ -1839,7 +2018,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
             own_puzzles_pulled,
             puzzle_attempts_pulled: pz,
             endgame_attempts_pulled: eg,
-            study_merged: study_templates + study_events,
+            study_merged: study_templates + study_events + rep_reviews + study_focus,
         })
     })
     .await
@@ -2205,6 +2384,72 @@ mod tests {
     }
 
     #[test]
+    fn rep_reviews_union_without_duplicating() {
+        let conn = mem_db();
+        let review = |ts: i64, grade: i64| SyncRepReview {
+            side: "white".into(),
+            path: "e4 e5 Nf3".into(),
+            ts,
+            grade,
+        };
+
+        assert_eq!(apply_rep_reviews(&conn, &[review(100, 3)]).unwrap(), 1);
+        // Append-only heißt: derselbe Eintrag zweimal bleibt ein Eintrag. Ohne
+        // das würde jede Synchronisation die Trainingslast aufblähen.
+        assert_eq!(apply_rep_reviews(&conn, &[review(100, 3)]).unwrap(), 0);
+        assert_eq!(apply_rep_reviews(&conn, &[review(200, 1)]).unwrap(), 1);
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM rep_review_log", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        // Eingesammelt wird ab dem Cursor (mit Karenz), nicht alles.
+        let collected = collect_rep_reviews(&conn, 150 + SLACK).unwrap();
+        assert_eq!(collected.len(), 1);
+        assert_eq!(collected[0].ts, 200);
+        assert_eq!(collected[0].path, "e4 e5 Nf3");
+    }
+
+    #[test]
+    fn study_focus_merges_by_last_write() {
+        let conn = mem_db();
+        let mut focus = SyncStudyFocus {
+            sync_key: "focus-tactics".into(),
+            area: "tactics".into(),
+            metric_key: "blunders_middlegame_per100".into(),
+            label_params: "{}".into(),
+            target: Some(2.0),
+            cycle_days: 14,
+            start_ts: 1_000,
+            end_ts: 0,
+            status: "active".into(),
+            created_ts: 1_000,
+            updated_ts: 1_000,
+            deleted: false,
+        };
+
+        assert_eq!(apply_study_focus(&conn, &[focus.clone()]).unwrap(), 1);
+        // Ein älterer Stand darf den neueren nicht überschreiben.
+        let mut stale = focus.clone();
+        stale.status = "dropped".into();
+        stale.updated_ts = 500;
+        assert_eq!(apply_study_focus(&conn, &[stale]).unwrap(), 0);
+
+        focus.status = "done".into();
+        focus.end_ts = 2_000;
+        focus.updated_ts = 2_000;
+        assert_eq!(apply_study_focus(&conn, &[focus.clone()]).unwrap(), 1);
+
+        let collected = collect_study_focus(&conn, 0).unwrap();
+        assert_eq!(collected.len(), 1);
+        assert_eq!(collected[0].status, "done");
+        assert_eq!(collected[0].end_ts, 2_000);
+        // Der Zyklus trägt nur die Absicht · Messwerte gibt es hier bewusst nicht.
+        assert_eq!(collected[0].metric_key, "blunders_middlegame_per100");
+    }
+
+    #[test]
     fn tombstones_delete_subtree_but_newer_nodes_survive() {
         let mut conn = mem_db();
         let node = |path: &str, depth: i64, last_ts: i64, created_ts: i64| SyncRepNode {
@@ -2374,6 +2619,8 @@ mod tests {
             endgame_attempts: vec![],
             study_templates: vec![],
             study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
         };
         let tls_config = pinned_tls_config(&fingerprint).unwrap();
         let agent = ureq::AgentBuilder::new()
@@ -2428,6 +2675,8 @@ mod tests {
             endgame_attempts: vec![],
             study_templates: vec![],
             study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
         };
         let resp = handle_sync(&mut desktop, &req).unwrap();
         assert_eq!(resp.games.len(), 1);

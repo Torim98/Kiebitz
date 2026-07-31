@@ -48,8 +48,25 @@ export interface Settings {
   notify_puzzles: boolean;
   notify_endgame: boolean;
   notify_analysis: boolean;
+  /** Trainingsbudget in Minuten pro Woche (0 = aus der Aktivität ableiten). */
+  weekly_minutes: number;
+  /** Trainingstage als Bitmaske, Bit 0 = Montag (0 = keine Vorgabe). */
+  training_days: number;
+  /** Optionales Zieldatum "YYYY-MM-DD" (leer = keins). */
+  goal_date: string;
+  /** Länge eines Fokus-Zyklus in Tagen: 7, 14 oder 28. */
+  focus_cycle_days: number;
   /** Wurde die Ersteinrichtung durchlaufen? */
   onboarded: boolean;
+}
+
+/** Wochentage aus der Bitmaske · Index 0 = Montag. */
+export function trainingDayList(mask: number): boolean[] {
+  return Array.from({ length: 7 }, (_, index) => (mask & (1 << index)) !== 0);
+}
+
+export function trainingDayMask(days: boolean[]): number {
+  return days.reduce((mask, active, index) => (active ? mask | (1 << index) : mask), 0);
 }
 
 export interface EngineTest {

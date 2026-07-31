@@ -37,17 +37,40 @@ import { Button, Card, Chip, Spark } from "../components/ui";
 import { dateLocale, deInt } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
 
-export default function Puzzles({ initialTheme = "" }: { initialTheme?: string }) {
+export interface PuzzleEntry {
+  initialTheme?: string;
+  /** Schwierigkeitsband aus dem Trainingsplan; 0 = keine Vorgabe. */
+  initialMinRating?: number;
+  initialMaxRating?: number;
+}
+
+export default function Puzzles({
+  initialTheme = "",
+  initialMinRating = 0,
+  initialMaxRating = 0,
+}: PuzzleEntry) {
   const backend = useBackendInfo();
   if (backend.mode === "pending") return <PuzzleLoading />;
-  return backend.mode === "desktop" ? <LivePuzzles initialTheme={initialTheme} /> : <DemoPuzzles />;
+  return backend.mode === "desktop" ? (
+    <LivePuzzles
+      initialTheme={initialTheme}
+      initialMinRating={initialMinRating}
+      initialMaxRating={initialMaxRating}
+    />
+  ) : (
+    <DemoPuzzles />
+  );
 }
 
 // ── Echte Seite (Desktop) ────────────────────────────────────────────────────
 
 const FILTER_THEMES = ["mateIn1", "mateIn2", "fork", "pin", "skewer", "backRankMate", "discoveredAttack", "endgame"];
 
-function LivePuzzles({ initialTheme = "" }: { initialTheme?: string }) {
+function LivePuzzles({
+  initialTheme = "",
+  initialMinRating = 0,
+  initialMaxRating = 0,
+}: PuzzleEntry) {
   const [stats, setStats] = useState<PuzzleStats | null>(null);
   // Das Tagesziel steht in den Einstellungen, nicht in den Puzzle-Statistiken ·
   // dasselbe Ziel, das Dashboard und Lernplan anzeigen.
@@ -67,6 +90,8 @@ function LivePuzzles({ initialTheme = "" }: { initialTheme?: string }) {
       goal={goal}
       reloadStats={reloadStats}
       initialTheme={initialTheme}
+      initialMinRating={initialMinRating}
+      initialMaxRating={initialMaxRating}
     />
   );
 }
@@ -222,12 +247,13 @@ function TrainerView({
   goal,
   reloadStats,
   initialTheme = "",
-}: {
+  initialMinRating = 0,
+  initialMaxRating = 0,
+}: PuzzleEntry & {
   stats: PuzzleStats;
   /** Tagesziel aus den Einstellungen; 0 = noch nicht geladen. */
   goal: number;
   reloadStats: () => void;
-  initialTheme?: string;
 }) {
   const { locale, t } = useI18n();
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
@@ -238,9 +264,16 @@ function TrainerView({
   const [showHint, setShowHint] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
-  // Vorbelegt z. B. vom Coach ("schwächstes Motiv trainieren").
+  // Vorbelegt aus dem Trainingsplan ("schwächstes Motiv, Band 1420–1580").
   const [theme, setTheme] = useState<string>(initialTheme);
   const [source, setSource] = useState<"all" | "lichess" | "own">("all");
+  // Ein aus dem Plan mitgebrachtes Band bleibt aktiv, bis der Nutzer es
+  // aufhebt · sonst wäre die Dosis nach der ersten Aufgabe wieder vergessen.
+  const [band, setBand] = useState<{ min: number; max: number } | null>(
+    initialMinRating > 0 && initialMaxRating > initialMinRating
+      ? { min: initialMinRating, max: initialMaxRating }
+      : null
+  );
 
   const chessRef = useRef(new Chess());
   const idxRef = useRef(0);
@@ -256,14 +289,23 @@ function TrainerView({
     setFen(chessRef.current.fen());
   };
 
-  const load = (t: string = theme, s: "all" | "lichess" | "own" = source) => {
+  const load = (
+    t: string = theme,
+    s: "all" | "lichess" | "own" = source,
+    b: { min: number; max: number } | null = band
+  ) => {
     setStatus("loading");
     setWrong(false);
     setShowHint(false);
     setSelected(null);
     setRatingDelta(null);
     failedRef.current = false;
-    nextPuzzle({ theme: t || undefined, source: s === "all" ? undefined : s })
+    nextPuzzle({
+      theme: t || undefined,
+      source: s === "all" ? undefined : s,
+      minRating: b?.min,
+      maxRating: b?.max,
+    })
       .then((p) => {
         if (!p) {
           setStatus("empty");
@@ -580,6 +622,25 @@ function TrainerView({
                 </Chip>
               ))}
             </div>
+            {band && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2">
+                <span className="text-[12px] text-accent">
+                  {t("pz.bandActive", { lo: deInt(band.min), hi: deInt(band.max) })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBand(null);
+                    // `band` steht erst im nächsten Render neu · deshalb geht
+                    // das aufgehobene Band ausdrücklich mit in den Aufruf.
+                    load(theme, source, null);
+                  }}
+                  className="rounded-md border border-line px-2 py-0.5 text-[11.5px] text-ink3 transition-colors hover:text-ink"
+                >
+                  {t("pz.bandClear")}
+                </button>
+              </div>
+            )}
             <div className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-ink3">
               {t("pz.bandInfo")}
             </div>

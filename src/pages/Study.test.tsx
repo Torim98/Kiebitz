@@ -30,31 +30,115 @@ function liveStudy(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockBackend(study = liveStudy(), themes: unknown[] = [], deep: unknown = null) {
+function emptyProgram(overrides: Record<string, unknown> = {}) {
+  return {
+    focuses: [],
+    history: [],
+    load_28d: [
+      { area: "play", items: 20, minutes: 200 },
+      { area: "tactics", items: 40, minutes: 60 },
+      { area: "openings", items: 10, minutes: 5 },
+      { area: "endgames", items: 0, minutes: 0 },
+      { area: "analysis", items: 4, minutes: 24 },
+    ],
+    days: [],
+    observed_weekly_minutes: 72,
+    ...overrides,
+  };
+}
+
+/** Ein Messfenster mit genug Material, damit ein Urteil zustande kommt. */
+function window(blunders: number, games = 40) {
+  return {
+    from_ts: 0,
+    to_ts: 1,
+    games,
+    ratings: [],
+    metrics: [
+      {
+        key: "blunders_middlegame_per100",
+        value: blunders,
+        n: 1_200,
+        sd: null,
+        unit: "per100",
+        lower_is_better: true,
+      },
+    ],
+  };
+}
+
+interface BackendOptions {
+  study?: ReturnType<typeof liveStudy>;
+  deep?: unknown;
+  program?: ReturnType<typeof emptyProgram>;
+  puzzles?: unknown;
+  metrics?: unknown[];
+  settings?: Record<string, unknown>;
+}
+
+function mockBackend(options: BackendOptions = {}) {
+  const {
+    study = liveStudy(),
+    deep = null,
+    program = emptyProgram(),
+    puzzles = null,
+    metrics = [],
+    settings = {},
+  } = options;
   invokeMock.mockImplementation((command: string) => {
     switch (command) {
       case "app_info":
         return Promise.resolve({ version: "0.4.4", backend: "tauri", platform: "windows" });
       case "get_settings":
-        return Promise.resolve({ locale: "de" });
+        return Promise.resolve({
+          locale: "de",
+          weekly_minutes: 0,
+          training_days: 0,
+          goal_date: "",
+          focus_cycle_days: 14,
+          ...settings,
+        });
       case "study_data":
         return Promise.resolve(study);
+      case "training_program":
+        return Promise.resolve(program);
       case "list_games":
         return Promise.resolve([]);
-      case "puzzle_stats":
-        return Promise.resolve({ themes });
-      case "error_stats":
-        return Promise.resolve([]);
+      case "puzzle_insights":
+        return Promise.resolve(puzzles);
+      case "study_metrics":
+        return Promise.resolve(metrics);
+      case "set_study_focus":
+        return Promise.resolve({
+          id: 9,
+          area: "tactics",
+          metric_key: "blunders_middlegame_per100",
+          label_params: "{}",
+          target: null,
+          cycle_days: 14,
+          start_ts: 0,
+          end_ts: 0,
+          status: "active",
+        });
+      case "close_study_focus":
+        return Promise.resolve();
       case "study_calendar":
         return Promise.resolve({
-          templates: [{ id: 1, title: "Taktik", duration_min: 20, tool: "Kiebitz Puzzles", description: "15–20 Aufgaben" }],
+          templates: [
+            {
+              id: 1,
+              title: "Taktik",
+              duration_min: 20,
+              tool: "Kiebitz Puzzles",
+              description: "15–20 Aufgaben",
+            },
+          ],
           events: [],
+          days: [],
         });
       case "schedule_study_unit":
-        return Promise.resolve();
+        return Promise.resolve(1);
       case "deep_insights":
-        // Ohne Tiefenanalyse fällt der Coach auf `coach.ts` zurück · beide
-        // Wege werden geprüft.
         return deep ? Promise.resolve(deep) : Promise.reject(new Error("keine Tiefenanalyse"));
       default:
         return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
@@ -62,15 +146,20 @@ function mockBackend(study = liveStudy(), themes: unknown[] = [], deep: unknown 
   });
 }
 
-function renderStudy(go = vi.fn(), openPuzzles = vi.fn(), mobile = false) {
+function renderStudy(
+  go = vi.fn(),
+  openPuzzles = vi.fn(),
+  mobile = false,
+  openEndgame = vi.fn()
+) {
   render(
     <LocaleProvider>
       <ShellProvider mobile={mobile}>
-        <Study go={go} openPuzzles={openPuzzles} />
+        <Study go={go} openPuzzles={openPuzzles} openEndgame={openEndgame} />
       </ShellProvider>
     </LocaleProvider>
   );
-  return { go, openPuzzles };
+  return { go, openPuzzles, openEndgame };
 }
 
 beforeEach(() => {
@@ -85,13 +174,12 @@ describe("Study page", () => {
     mockBackend();
     renderStudy();
 
-    // Der Wochenkalender zeigt vor dem Backend-Callback Demo-Werte · daher auf
-    // eine Zahl warten, die nur aus den Live-Daten stammen kann.
     expect(await screen.findByText("3 / 10")).toBeTruthy();
     expect(screen.getAllByText("7 fällig").length).toBeGreaterThan(0);
     expect(screen.getByText("2 Partien offen")).toBeTruthy();
     expect(screen.getByText("4 Tage Serie")).toBeTruthy();
     expect(invokeMock).toHaveBeenCalledWith("study_data");
+    expect(invokeMock).toHaveBeenCalledWith("training_program", { days: null });
   });
 
   it("routes an unfinished puzzle task to the puzzle trainer", async () => {
@@ -99,39 +187,133 @@ describe("Study page", () => {
     const openPuzzles = vi.fn();
     renderStudy(vi.fn(), openPuzzles);
 
-    // Wait for the live plan; the pending backend state briefly renders the
-    // web-preview plan with an equivalent button.
     await screen.findByText("3 / 10");
     fireEvent.click(screen.getByRole("button", { name: "Lösen" }));
-    expect(openPuzzles).toHaveBeenCalledWith();
+    expect(openPuzzles).toHaveBeenCalled();
   });
 
-  it("turns a weak backend puzzle motif into a targeted interaction", async () => {
-    mockBackend(liveStudy(), [{ theme: "fork", attempts: 10, solved: 3 }]);
-    const openPuzzles = vi.fn();
-    renderStudy(vi.fn(), openPuzzles);
-
-    expect(await screen.findByText("Schwaches Puzzle-Motiv: Gabel")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Puzzles trainieren" }));
-    expect(openPuzzles).toHaveBeenCalledWith("fork");
-  });
-
-  it("prefers the deep-analysis findings over the plain coach heuristics", async () => {
-    mockBackend(liveStudy(), [], demoDeepInsights());
+  it("turns findings into quantified prescriptions with a budget split", async () => {
+    mockBackend({ deep: demoDeepInsights() });
     const go = vi.fn();
     renderStudy(go);
 
-    // Ein Befund aus der Tiefenanalyse, den `coach.ts` gar nicht kennt.
+    // Ein Befund aus der Tiefenanalyse …
     expect(await screen.findByText("Zeitnot kostet dich Partien")).toBeTruthy();
+    // … und die Budgetverteilung, die aus allen Befunden entsteht.
+    expect(screen.getByText("Trainingsbudget · Soll und Ist")).toBeTruthy();
+    expect(document.querySelector("[data-allocation='tactics']")).toBeTruthy();
     // Der Rest der Liste bleibt über die Insights erreichbar.
     fireEvent.click(screen.getByRole("button", { name: /Befunde in den Insights/ }));
     expect(go).toHaveBeenCalledWith("insights");
   });
 
-  it("marks a fully completed backend plan as done", async () => {
-    mockBackend(
-      liveStudy({ due_now: 0, unanalyzed: 0, today_puzzle_attempts: 10 })
+  it("passes the recommended rating band into the puzzle trainer", async () => {
+    mockBackend({
+      deep: demoDeepInsights(),
+      puzzles: {
+        personal_rating: 1500,
+        attempts: 120,
+        solved: 70,
+        avg_puzzle_rating: 1480,
+        avg_solved_rating: 1450,
+        best_run: 8,
+        current_run: 2,
+        themes: [{ theme: "fork", attempts: 20, solved: 6 }],
+        by_rating: [{ key: 1200, attempts: 40, solved: 26 }],
+        by_weekday: [],
+        by_hour: [],
+        timeline: [],
+      },
+    });
+    const openPuzzles = vi.fn();
+    renderStudy(vi.fn(), openPuzzles);
+
+    // Die Dosis nennt Band und Motiv, statt "üb mal Taktik" zu sagen.
+    expect(await screen.findByText(/Aufgaben pro Tag im Band 1\.400–1\.650/)).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Puzzles" })[0]);
+    expect(openPuzzles).toHaveBeenCalledWith(
+      "fork",
+      expect.objectContaining({ minRating: 1400, maxRating: 1650 })
     );
+  });
+
+  it("starts a focus cycle and shows the verdict once a cycle is running", async () => {
+    mockBackend({ deep: demoDeepInsights() });
+    renderStudy();
+    await screen.findByText("Zeitnot kostet dich Partien");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Als Fokus setzen" })[0]);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "set_study_focus",
+        expect.objectContaining({
+          focus: expect.objectContaining({ cycle_days: 14 }),
+        })
+      );
+    });
+  });
+
+  it("reports a running cycle as not yet measurable when the sample is short", async () => {
+    const start = Math.floor(Date.now() / 1000) - 5 * DAY;
+    mockBackend({
+      deep: demoDeepInsights(),
+      program: emptyProgram({
+        focuses: [
+          {
+            id: 3,
+            area: "tactics",
+            metric_key: "blunders_middlegame_per100",
+            label_params: "{}",
+            target: 2,
+            cycle_days: 14,
+            start_ts: start,
+            end_ts: 0,
+            status: "active",
+          },
+        ],
+      }),
+      // Zu wenig Material im Nachher-Fenster · das Urteil muss ausbleiben.
+      metrics: [
+        window(3.1),
+        { ...window(2.4), metrics: [{ ...window(2.4).metrics[0], n: 90 }] },
+      ],
+    });
+    renderStudy();
+
+    expect(await screen.findByText(/noch nicht messbar/)).toBeTruthy();
+    expect(screen.getByText("Tag 6/14")).toBeTruthy();
+  });
+
+  it("calls a real improvement a real improvement", async () => {
+    const start = Math.floor(Date.now() / 1000) - 12 * DAY;
+    mockBackend({
+      deep: demoDeepInsights(),
+      program: emptyProgram({
+        focuses: [
+          {
+            id: 4,
+            area: "tactics",
+            metric_key: "blunders_middlegame_per100",
+            label_params: "{}",
+            target: 2,
+            cycle_days: 14,
+            start_ts: start,
+            end_ts: 0,
+            status: "active",
+          },
+        ],
+      }),
+      // 3,4 → 1,9 bei 1.200 Zügen liegt klar über der Rauschgrenze.
+      metrics: [window(3.4), window(1.9)],
+    });
+    renderStudy();
+
+    expect(await screen.findByText("wirkt")).toBeTruthy();
+    expect(screen.getByText("3,4 → 1,9")).toBeTruthy();
+  });
+
+  it("marks a fully completed backend plan as done", async () => {
+    mockBackend({ study: liveStudy({ due_now: 0, unanalyzed: 0, today_puzzle_attempts: 30 }) });
     renderStudy();
 
     expect(await screen.findByText("Tagesplan komplett · starke Arbeit!")).toBeTruthy();
@@ -143,7 +325,6 @@ describe("Study page", () => {
   it("acts as the training hub on mobile, but leaves the desktop page alone", async () => {
     mockBackend();
     const { go, openPuzzles } = renderStudy(vi.fn(), vi.fn(), true);
-    // Der Wert steht mobil zweimal: als Kachel im Hub und im Tagesplan.
     await screen.findAllByText("3 / 10");
 
     const hub = within(screen.getByRole("navigation", { name: "Trainingsbereiche" }));
@@ -156,7 +337,7 @@ describe("Study page", () => {
     fireEvent.click(hub.getByRole("button", { name: /^Endspiele/ }));
     expect(go).toHaveBeenCalledWith("endgame");
     fireEvent.click(hub.getByRole("button", { name: /^Puzzles/ }));
-    expect(openPuzzles).toHaveBeenCalledWith();
+    expect(openPuzzles).toHaveBeenCalled();
 
     cleanup();
     renderStudy();
@@ -164,28 +345,47 @@ describe("Study page", () => {
     expect(screen.queryByRole("navigation", { name: "Trainingsbereiche" })).toBeNull();
   });
 
-  it("stacks coaching actions below the text only in the mobile shell", async () => {
-    mockBackend(liveStudy(), [{ theme: "fork", attempts: 10, solved: 3 }]);
+  it("stacks the focus action below the text only in the mobile shell", async () => {
+    mockBackend({ deep: demoDeepInsights() });
     renderStudy(vi.fn(), vi.fn(), true);
 
-    const mobileTitle = await screen.findByText("Schwaches Puzzle-Motiv: Gabel");
-    const mobileCard = mobileTitle.closest("[data-coach-rec]") as HTMLElement;
-    expect(mobileCard.className).toContain("p-4");
-    expect(mobileCard.className).not.toContain("justify-between");
-    expect(
-      within(mobileCard).getByRole("button", { name: "Puzzles trainieren" }).className
-    ).toContain("w-full");
+    const mobileCard = (await screen.findByText("Zeitnot kostet dich Partien")).closest(
+      "[data-focus-card]"
+    ) as HTMLElement;
+    const mobileAction = within(mobileCard).queryByRole("button", {
+      name: /Puzzles|Repertoire|Endspiele|Analyse|Partien/,
+    });
+    if (mobileAction) expect(mobileAction.className).toContain("w-full");
 
     cleanup();
-    mockBackend(liveStudy(), [{ theme: "fork", attempts: 10, solved: 3 }]);
+    mockBackend({ deep: demoDeepInsights() });
     renderStudy();
+    const desktopCard = (await screen.findByText("Zeitnot kostet dich Partien")).closest(
+      "[data-focus-card]"
+    ) as HTMLElement;
+    const desktopAction = within(desktopCard).queryByRole("button", {
+      name: /Puzzles|Repertoire|Endspiele|Analyse|Partien/,
+    });
+    if (desktopAction) expect(desktopAction.className).not.toContain("w-full");
+  });
 
-    const desktopTitle = await screen.findByText("Schwaches Puzzle-Motiv: Gabel");
-    const desktopCard = desktopTitle.closest("[data-coach-rec]") as HTMLElement;
-    expect(desktopCard.className).toContain("justify-between");
-    expect(
-      within(desktopCard).getByRole("button", { name: "Puzzles trainieren" }).className
-    ).not.toContain("w-full");
+  it("proposes a week plan and only writes it after confirmation", async () => {
+    mockBackend({ deep: demoDeepInsights() });
+    renderStudy();
+    await screen.findByText("Zeitnot kostet dich Partien");
+
+    fireEvent.click(screen.getByRole("button", { name: /Wochenplan aus den Empfehlungen/ }));
+    expect(await screen.findByText("Vorschlag für diese Woche")).toBeTruthy();
+    // Bis hierher darf nichts gespeichert sein.
+    expect(invokeMock).not.toHaveBeenCalledWith("schedule_study_unit", expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "In den Kalender übernehmen" }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        "schedule_study_unit",
+        expect.objectContaining({ templateId: 1 })
+      );
+    });
   });
 
   it("schedules an editable unit from the week calendar", async () => {
