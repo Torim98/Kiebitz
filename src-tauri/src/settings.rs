@@ -188,8 +188,13 @@ fn normalize(mut s: Settings) -> Settings {
     if s.locale != "en" {
         s.locale = "de".into();
     }
-    s.engine_hash_mb = s.engine_hash_mb.clamp(16, 4096);
-    s.engine_multipv = s.engine_multipv.clamp(1, 5);
+    // Stockfish can run as batch + live process at the same time. Bounding the
+    // batch table prevents a manual "Max" setting from paging out the WebView;
+    // live analysis applies the tighter 128 MiB cap in engine.rs.
+    s.engine_hash_mb = s.engine_hash_mb.clamp(16, 512);
+    // The live panel renders at most three lines. Asking Stockfish for more
+    // would spend CPU and bridge bandwidth on invisible variations.
+    s.engine_multipv = s.engine_multipv.clamp(1, 3);
     s.live_depth = s.live_depth.clamp(8, 40);
     s.batch_depth = s.batch_depth.clamp(6, 30);
     s.engine_threads = s.engine_threads.min(128);
@@ -267,17 +272,26 @@ pub fn get_settings(state: tauri::State<SettingsState>) -> Result<Settings, Stri
 /// Speichert neue Einstellungen und wendet sie an. Die Live-Engine wird
 /// beendet, damit sie beim nächsten Zug mit den neuen Optionen startet.
 #[tauri::command]
-pub fn set_settings(
+pub async fn set_settings(
     app: tauri::AppHandle,
-    state: tauri::State<SettingsState>,
     new_settings: Settings,
 ) -> Result<Settings, String> {
-    let normalized = normalize(new_settings);
-    save(&app, &normalized)?;
-    *state.0.lock().map_err(|e| e.to_string())? = normalized.clone();
-    app.state::<live::LiveEngine>().shutdown();
-    app.state::<endgame::EndgameEngine>().shutdown();
-    Ok(normalized)
+    // Persisting settings and restarting a currently thinking engine both use
+    // blocking OS primitives. In particular the endgame engine owns its mutex
+    // until Stockfish returns a move; never make the IPC executor wait on it.
+    tauri::async_runtime::spawn_blocking(move || {
+        let normalized = normalize(new_settings);
+        save(&app, &normalized)?;
+        *app.state::<SettingsState>()
+            .0
+            .lock()
+            .map_err(|e| e.to_string())? = normalized.clone();
+        app.state::<live::LiveEngine>().shutdown();
+        app.state::<endgame::EndgameEngine>().shutdown();
+        Ok(normalized)
+    })
+    .await
+    .map_err(|e| format!("Einstellungen konnten nicht angewendet werden: {e}"))?
 }
 
 #[derive(Serialize)]
@@ -289,7 +303,17 @@ pub struct EngineTest {
 
 /// Testet eine Engine (expliziter Pfad oder die aktuell aufgelöste).
 #[tauri::command]
-pub fn test_engine(app: tauri::AppHandle, path: Option<String>) -> EngineTest {
+pub async fn test_engine(app: tauri::AppHandle, path: Option<String>) -> EngineTest {
+    tauri::async_runtime::spawn_blocking(move || test_engine_blocking(&app, path))
+        .await
+        .unwrap_or_else(|e| EngineTest {
+            ok: false,
+            name: format!("Engine-Test fehlgeschlagen: {e}"),
+            path: String::new(),
+        })
+}
+
+fn test_engine_blocking(app: &tauri::AppHandle, path: Option<String>) -> EngineTest {
     let resolved = match path.filter(|p| !p.trim().is_empty()) {
         Some(p) => {
             let p = PathBuf::from(p.trim());
@@ -303,7 +327,7 @@ pub fn test_engine(app: tauri::AppHandle, path: Option<String>) -> EngineTest {
                 };
             }
         }
-        None => crate::resolve_engine(&app),
+        None => crate::resolve_engine(app),
     };
     match resolved {
         Some(p) => match crate::engine::UciEngine::spawn(&p.to_string_lossy()) {
@@ -630,8 +654,16 @@ mod tests {
             ..Settings::default()
         });
         assert_eq!(s.locale, "de");
-        assert_eq!(s.engine_hash_mb, 4096);
+        assert_eq!(s.engine_hash_mb, 512);
         assert_eq!(s.engine_multipv, 1);
+        assert_eq!(
+            normalize(Settings {
+                engine_multipv: 99,
+                ..Settings::default()
+            })
+            .engine_multipv,
+            3
+        );
         assert_eq!(s.live_depth, 40);
         assert_eq!(s.batch_depth, 6);
         assert_eq!(s.cc_user, "Torim98");

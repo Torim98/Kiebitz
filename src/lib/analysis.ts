@@ -19,9 +19,13 @@ export interface LiveDone {
   bestmove: string;
 }
 
+interface LiveInfoBatch {
+  lines: LiveInfo[];
+}
+
 /** Startet die Dauer-Analyse; liefert die Generation dieser Anfrage. */
-export function analyzeLive(fen: string, depth = 24): Promise<number> {
-  return invoke<number>("analyze_live", { fen, depth });
+export function analyzeLive(fen: string, depth?: number): Promise<number> {
+  return invoke<number>("analyze_live", { fen, depth: depth ?? null });
 }
 
 export function stopLive(): Promise<void> {
@@ -29,7 +33,12 @@ export function stopLive(): Promise<void> {
 }
 
 export function onEngineInfo(cb: (info: LiveInfo) => void): Promise<UnlistenFn> {
-  return listen<LiveInfo>("engine://info", (e) => cb(e.payload));
+  // Rust coalesces the latest MultiPV slots into one bridge message. Fan-out
+  // happens only after deserialization, keeping Stockfish chatter away from
+  // the WebView event queue while preserving the small callback API.
+  return listen<LiveInfoBatch>("engine://info-batch", (e) => {
+    e.payload.lines.forEach(cb);
+  });
 }
 
 export function onEngineDone(cb: (done: LiveDone) => void): Promise<UnlistenFn> {

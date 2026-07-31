@@ -118,6 +118,7 @@ export async function importChessCom(
         eco: pgnHeader(pgn, "ECO"),
         moves_count: Math.ceil(sans.length / 2),
         accuracy: (iAmWhite ? g.accuracies?.white : g.accuracies?.black) ?? null,
+        opponent_accuracy: (iAmWhite ? g.accuracies?.black : g.accuracies?.white) ?? null,
         moves: sans.join(" "),
         clocks: serializeClocks(clocks.slice(0, sans.length)),
         time_control: timeControl,

@@ -49,6 +49,7 @@ import {
   timeControlLabel,
 } from "../lib/clocks";
 import { tcLabel } from "../lib/gameUi";
+import { accuraciesFromMoveEvals } from "../lib/accuracy";
 
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
@@ -643,6 +644,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     return { ...counts, acpl: acpl(viewMoves) };
   }, [viewMoves, live, game]);
 
+  const derivedAccuracies = useMemo(
+    () => game && rows?.length ? accuraciesFromMoveEvals(rows, game.color) : null,
+    [game, rows]
+  );
+
   const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
   const orientation = live && game.color === "black" ? "black" : "white";
   const ownPlayerName = live
@@ -665,6 +671,32 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(storeCapture ? captureBlack : featuredGame.black);
   const topPlayer = orientation === "white" ? blackPlayer : whitePlayer;
   const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
+  const accuracyCells = live ? [
+    {
+      key: "overall",
+      label: t("an.overallAccuracy"),
+      mine: game.accuracy ?? derivedAccuracies?.mine.overall ?? null,
+      opponent: game.opponent_accuracy ?? derivedAccuracies?.opponent.overall ?? null,
+    },
+    {
+      key: "opening",
+      label: t("ins.phase.opening"),
+      mine: game.accuracy_opening ?? derivedAccuracies?.mine.opening ?? null,
+      opponent: game.opponent_accuracy_opening ?? derivedAccuracies?.opponent.opening ?? null,
+    },
+    {
+      key: "middlegame",
+      label: t("ins.phase.middlegame"),
+      mine: game.accuracy_middlegame ?? derivedAccuracies?.mine.middlegame ?? null,
+      opponent: game.opponent_accuracy_middlegame ?? derivedAccuracies?.opponent.middlegame ?? null,
+    },
+    {
+      key: "endgame",
+      label: t("ins.phase.endgame"),
+      mine: game.accuracy_endgame ?? derivedAccuracies?.mine.endgame ?? null,
+      opponent: game.opponent_accuracy_endgame ?? derivedAccuracies?.opponent.endgame ?? null,
+    },
+  ] : [];
   const currentQuality = currentMove?.judgment;
   const currentTarget = currentMove?.playedUci?.slice(2, 4);
   const nextMove = !variation ? viewMoves[ply] : null;
@@ -1047,21 +1079,28 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
           {live && (
             <Card title={t("an.phaseAccuracy")}>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {([
-                  [t("ins.phase.opening"), game.accuracy_opening],
-                  [t("ins.phase.middlegame"), game.accuracy_middlegame],
-                  [t("ins.phase.endgame"), game.accuracy_endgame],
-                ] as const).map(([label, value]) => (
-                  <div key={label} className="rounded-lg bg-panel2 px-1.5 py-2">
-                    <div className="text-[10.5px] text-ink3">{label}</div>
-                    <div className="mt-0.5 text-[13px] font-semibold text-ink2">
-                      {value == null ? "—" : `${de(value)} %`}
+              <div className="grid grid-cols-2 gap-2">
+                {accuracyCells.map(({ key, label, mine, opponent }) => (
+                  <div key={key} role="group" aria-label={label} className="min-w-0 rounded-lg bg-panel2 px-2 py-2">
+                    <div className="mb-1.5 text-center text-[10.5px] font-medium text-ink3">{label}</div>
+                    <div className="space-y-1 text-[11.5px]">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="truncate text-ink3" title={ownPlayerName}>{ownPlayerName}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-ink2">
+                          {mine == null ? "—" : `${de(mine)} %`}
+                        </span>
+                      </div>
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="truncate text-ink3" title={game.opponent}>{game.opponent}</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-ink2">
+                          {opponent == null ? "—" : `${de(opponent)} %`}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-              {game.accuracy_opening == null && game.accuracy_middlegame == null && game.accuracy_endgame == null && (
+              {accuracyCells.slice(1).every(({ mine, opponent }) => mine == null && opponent == null) && (
                 <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">{t("an.phaseAccuracyMissing")}</p>
               )}
             </Card>

@@ -2,10 +2,14 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Board from "./Board";
 
-const boardMock = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
+const boardMock = vi.hoisted(() => ({
+  props: null as Record<string, unknown> | null,
+  renders: 0,
+}));
 vi.mock("react-chessboard", () => ({
   Chessboard: (props: Record<string, unknown>) => {
     boardMock.props = props;
+    boardMock.renders += 1;
     return (
       <div data-testid="chessboard">
         <div data-square="e2"><div data-piece="wP" /></div>
@@ -31,9 +35,12 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  boardMock.props = null;
+  boardMock.renders = 0;
 });
 
 const FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const FEN_AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
 
 describe("Board badges", () => {
   it("shows legal targets while a piece is being dragged", () => {
@@ -67,6 +74,7 @@ describe("Board badges", () => {
     );
 
     expect(boardMock.props?.arePiecesDraggable).toBe(false);
+    expect(boardMock.props?.animationDuration).toBe(0);
     const piece = document.querySelector<HTMLElement>('[data-piece="wP"]')!;
     const target = document.querySelector<HTMLElement>('[data-square="e4"]')!;
     const originalElementFromPoint = document.elementFromPoint;
@@ -101,6 +109,109 @@ describe("Board badges", () => {
         value: undefined,
       });
     }
+  });
+
+  it("keeps engine overlays and changing callbacks out of the 64-square render tree", () => {
+    const firstDrop = vi.fn(() => true);
+    const latestDrop = vi.fn(() => true);
+    const view = render(
+      <Board
+        boardId="stable"
+        fen={FEN}
+        width={400}
+        draggable
+        onPieceDrop={firstDrop}
+        arrows={[["e2", "e4", "#22c08a"]]}
+      />
+    );
+    expect(boardMock.renders).toBe(1);
+
+    view.rerender(
+      <Board
+        boardId="stable"
+        fen={FEN}
+        width={400}
+        draggable
+        onPieceDrop={latestDrop}
+        squareStyles={{}}
+        arrows={[["d2", "d4", "#d9a028"]]}
+      />
+    );
+
+    // The lightweight SVG changed, but react-chessboard did not reconcile.
+    expect(boardMock.renders).toBe(1);
+    expect(screen.getByTestId("board-arrows").querySelector("line")?.getAttribute("stroke"))
+      .toBe("#d9a028");
+
+    const drop = boardMock.props?.onPieceDrop as (from: string, to: string) => boolean;
+    expect(drop("e2", "e4")).toBe(true);
+    expect(firstDrop).not.toHaveBeenCalled();
+    expect(latestDrop).toHaveBeenCalledWith("e2", "e4");
+  });
+
+  it("cancels the imperative drag when the position changes", () => {
+    const onPieceDrop = vi.fn(() => true);
+    const view = render(
+      <Board
+        boardId="changing"
+        fen={FEN}
+        width={400}
+        draggable
+        mouseDrag
+        silent
+        onPieceDrop={onPieceDrop}
+      />
+    );
+    const piece = document.querySelector<HTMLElement>('[data-piece="wP"]')!;
+
+    fireEvent.mouseDown(piece, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 20, clientY: 20 });
+    expect(piece.style.visibility).toBe("hidden");
+    expect(document.querySelectorAll('[data-piece="wP"]')).toHaveLength(2);
+
+    view.rerender(
+      <Board
+        boardId="changing"
+        fen={FEN_AFTER_E4}
+        width={400}
+        draggable
+        mouseDrag
+        silent
+        onPieceDrop={onPieceDrop}
+      />
+    );
+    expect(piece.style.visibility).toBe("");
+    expect(document.querySelectorAll('[data-piece="wP"]')).toHaveLength(1);
+
+    fireEvent.mouseUp(window, { button: 0, clientX: 20, clientY: 20 });
+    expect(onPieceDrop).not.toHaveBeenCalled();
+  });
+
+  it("does not complete a drag on a square from another board", () => {
+    const onPieceDrop = vi.fn(() => true);
+    render(
+      <>
+        <Board boardId="active" fen={FEN} width={400} draggable mouseDrag onPieceDrop={onPieceDrop} />
+        <div data-square="d4" data-testid="foreign-square" />
+      </>
+    );
+    const piece = document.querySelector<HTMLElement>('[data-piece="wP"]')!;
+    const foreignSquare = screen.getByTestId("foreign-square");
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => foreignSquare),
+    });
+
+    fireEvent.mouseDown(piece, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 20, clientY: 20 });
+    fireEvent.mouseUp(window, { button: 0, clientX: 20, clientY: 20 });
+    expect(onPieceDrop).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: originalElementFromPoint,
+    });
   });
 
   it("disables move animation on Android and blocks native text dragging", () => {

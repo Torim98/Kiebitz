@@ -30,17 +30,20 @@ impl EndgameEngine {
 
 /// Liefert den Engine-Zug (UCI) für die Gegenseite in der Stellung `fen`.
 #[tauri::command]
-pub fn endgame_move(
-    app: tauri::AppHandle,
-    state: tauri::State<EndgameEngine>,
-    fen: String,
-) -> Result<String, String> {
-    let path = crate::resolve_engine(&app).ok_or("Keine Engine gefunden")?;
+pub async fn endgame_move(app: tauri::AppHandle, fen: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || endgame_move_blocking(&app, &fen))
+        .await
+        .map_err(|e| format!("Engine-Zug fehlgeschlagen: {e}"))?
+}
+
+fn endgame_move_blocking(app: &tauri::AppHandle, fen: &str) -> Result<String, String> {
+    let path = crate::resolve_engine(app).ok_or("Keine Engine gefunden")?;
+    let state = app.state::<EndgameEngine>();
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if guard.is_none() {
         let mut uci = UciEngine::spawn(&path.to_string_lossy())?;
         // Kleine Instanz reicht; mit Tablebases (falls konfiguriert) perfekt.
-        let _ = uci.set_option("Threads", "2");
+        let _ = uci.set_option("Threads", "1");
         let _ = uci.set_option("Hash", "64");
         let syzygy = app
             .state::<settings::SettingsState>()
@@ -53,7 +56,7 @@ pub fn endgame_move(
         }
         *guard = Some(uci);
     }
-    match guard.as_mut().unwrap().analyze(&fen, REPLY_DEPTH) {
+    match guard.as_mut().unwrap().analyze(fen, REPLY_DEPTH) {
         Ok(r) if !r.bestmove.is_empty() && r.bestmove != "(none)" => Ok(r.bestmove),
         Ok(_) => Err("Keine Züge möglich · die Partie ist beendet.".into()),
         Err(e) => {

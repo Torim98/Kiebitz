@@ -24,6 +24,11 @@ export interface GameRecord {
   accuracy_opening?: number | null;
   accuracy_middlegame?: number | null;
   accuracy_endgame?: number | null;
+  /** Genauigkeit des Gegners, aus Plattformdaten oder der Auto-Analyse. */
+  opponent_accuracy?: number | null;
+  opponent_accuracy_opening?: number | null;
+  opponent_accuracy_middlegame?: number | null;
+  opponent_accuracy_endgame?: number | null;
   moves: string; // SAN-Züge, leerzeichengetrennt
   /** Restzeit nach jedem Halbzug in Hundertstelsekunden, leerzeichengetrennt. */
   clocks?: string;

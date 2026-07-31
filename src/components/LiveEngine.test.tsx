@@ -6,6 +6,7 @@ import LiveEngine from "./LiveEngine";
 
 const mocks = vi.hoisted(() => ({
   analyzeLive: vi.fn(),
+  doneListener: null as ((done: { generation: number; bestmove: string }) => void) | null,
   engineInfo: vi.fn(),
   infoListener: null as ((info: LiveInfo) => void) | null,
   stopLive: vi.fn(),
@@ -16,7 +17,10 @@ vi.mock("../lib/backend", () => ({
 }));
 vi.mock("../lib/analysis", () => ({
   analyzeLive: mocks.analyzeLive,
-  onEngineDone: vi.fn(() => Promise.resolve(vi.fn())),
+  onEngineDone: vi.fn((listener: (done: { generation: number; bestmove: string }) => void) => {
+    mocks.doneListener = listener;
+    return Promise.resolve(vi.fn());
+  }),
   onEngineInfo: vi.fn((listener: (info: LiveInfo) => void) => {
     mocks.infoListener = listener;
     return Promise.resolve(vi.fn());
@@ -39,6 +43,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.clearAllMocks();
+  mocks.doneListener = null;
   mocks.infoListener = null;
 });
 
@@ -92,6 +97,22 @@ describe("LiveEngine", () => {
     expect(onEval).toHaveBeenLastCalledWith(20, null);
     expect(onBestMove).toHaveBeenLastCalledWith("e2e3");
 
+    act(() => {
+      mocks.infoListener?.({
+        generation: 7,
+        depth: 21,
+        multipv: 1,
+        eval_cp: 21,
+        mate_in: null,
+        nps: 21_000,
+        pv: ["e2e3"],
+      });
+    });
+    expect(vi.getTimerCount()).toBe(1);
+    act(() => mocks.doneListener?.({ generation: 7, bestmove: "e2e3" }));
+    expect(vi.getTimerCount()).toBe(0);
+    expect(onEval).toHaveBeenCalledTimes(2);
+
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     await act(async () => {
       await Promise.resolve();
@@ -137,5 +158,103 @@ describe("LiveEngine", () => {
 
     expect(mocks.analyzeLive).toHaveBeenCalledTimes(1);
     expect(mocks.analyzeLive).toHaveBeenCalledWith(thirdFen);
+  });
+
+  it("retains a short search result that arrives before the invoke response", async () => {
+    let resolveAnalysis!: (generation: number) => void;
+    mocks.analyzeLive.mockImplementation(
+      () => new Promise<number>((resolve) => (resolveAnalysis = resolve))
+    );
+    const onEval = vi.fn();
+    render(
+      <LocaleProvider>
+        <LiveEngine
+          fen="8/8/8/8/8/8/4K3/7k w - - 0 1"
+          demoLines={[]}
+          onEval={onEval}
+        />
+      </LocaleProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(120));
+    await act(async () => Promise.resolve());
+
+    // The native reader can finish before Tauri resolves analyze_live.
+    act(() => {
+      mocks.infoListener?.({
+        generation: 11,
+        depth: 18,
+        multipv: 1,
+        eval_cp: 42,
+        mate_in: null,
+        nps: 25_000,
+        pv: ["e2e3"],
+      });
+      mocks.doneListener?.({ generation: 11, bestmove: "e2e3" });
+    });
+    expect(onEval).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveAnalysis(11);
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(150));
+    expect(onEval).toHaveBeenCalledWith(42, null);
+  });
+
+  it("serializes an old analysis, its stop, and the newest analysis", async () => {
+    const firstFen = "8/8/8/8/8/8/4K3/7k w - - 0 1";
+    const secondFen = "8/8/8/8/8/4K3/8/7k b - - 1 1";
+    let resolveFirstAnalysis!: (generation: number) => void;
+    mocks.analyzeLive
+      .mockImplementationOnce(
+        () => new Promise<number>((resolve) => (resolveFirstAnalysis = resolve))
+      )
+      .mockResolvedValueOnce(8);
+
+    const view = render(
+      <LocaleProvider>
+        <LiveEngine fen={firstFen} demoLines={[]} />
+      </LocaleProvider>
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(120));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.analyzeLive).toHaveBeenCalledTimes(1);
+    expect(mocks.analyzeLive).toHaveBeenLastCalledWith(firstFen);
+    const stopsBeforePositionChange = mocks.stopLive.mock.calls.length;
+
+    view.rerender(
+      <LocaleProvider>
+        <LiveEngine fen={secondFen} demoLines={[]} />
+      </LocaleProvider>
+    );
+    act(() => vi.advanceTimersByTime(120));
+    await act(async () => Promise.resolve());
+
+    // The old invoke is still in flight, so neither its ordered stop nor the
+    // replacement analysis may overtake it.
+    expect(mocks.stopLive).toHaveBeenCalledTimes(stopsBeforePositionChange);
+    expect(mocks.analyzeLive).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirstAnalysis(7);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.stopLive).toHaveBeenCalledTimes(stopsBeforePositionChange + 1);
+    expect(mocks.analyzeLive).toHaveBeenCalledTimes(2);
+    expect(mocks.analyzeLive).toHaveBeenLastCalledWith(secondFen);
   });
 });

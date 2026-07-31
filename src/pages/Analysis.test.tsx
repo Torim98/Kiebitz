@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import Analysis from "./Analysis";
 
@@ -186,6 +186,35 @@ describe("Analysis page", () => {
     expect(screen.getByRole("button", { name: "Nf3" })).toBeTruthy();
     // Exzellente Züge werden in der Zugliste jetzt ebenfalls markiert.
     expect(screen.getByRole("button", { name: "Bc4 ✓" })).toBeTruthy();
+  });
+
+  it("shows overall and phase accuracy for both players in the same cells", async () => {
+    mocks.listGames.mockResolvedValue([{
+      ...excludedGame,
+      analyzed: true,
+      accuracy: 88.4,
+      accuracy_opening: 91.2,
+      accuracy_middlegame: 84.5,
+      accuracy_endgame: 89.7,
+      opponent_accuracy: 76.3,
+      opponent_accuracy_opening: 82.1,
+      opponent_accuracy_middlegame: 70.4,
+      opponent_accuracy_endgame: 75.8,
+    }]);
+    render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+    const overall = screen.getByRole("group", { name: "Gesamt · Partie" });
+    expect(within(overall).getByText("88,4 %")).toBeTruthy();
+    expect(within(overall).getByText("76,3 %")).toBeTruthy();
+    expect(within(overall).getByTitle("Dr. Tom Maurer")).toBeTruthy();
+    expect(within(overall).getByTitle("Friend")).toBeTruthy();
+
+    const opening = screen.getByRole("group", { name: "Eröffnung" });
+    expect(within(opening).getByText("91,2 %")).toBeTruthy();
+    expect(within(opening).getByText("82,1 %")).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Mittelspiel" })).getByText("70,4 %")).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "Endspiel" })).getByText("75,8 %")).toBeTruthy();
   });
 
   it("saves notes and tags of the selected game from the analysis panel", async () => {

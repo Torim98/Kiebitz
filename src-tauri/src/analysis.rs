@@ -11,7 +11,10 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
+
+const PROGRESS_EVENT_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct AnalysisState {
     pub running: AtomicBool,
@@ -334,11 +337,7 @@ fn run_worker(
         let s = app.state::<crate::settings::SettingsState>();
         let s = s.0.lock().map_err(|e| e.to_string())?;
         (
-            if s.engine_threads == 0 {
-                UciEngine::worker_threads()
-            } else {
-                s.engine_threads as usize
-            },
+            UciEngine::configured_worker_threads(s.engine_threads),
             s.engine_hash_mb,
         )
     };
@@ -381,6 +380,7 @@ fn run_worker(
         )?);
 
         let mut canceled = false;
+        let mut last_progress_emit: Option<Instant> = None;
         for w in &walked {
             if state.cancel.load(Ordering::SeqCst) {
                 canceled = true;
@@ -395,17 +395,24 @@ fn run_worker(
                 white_to_move_after,
                 depth,
             )?);
-            let _ = app.emit(
-                "analysis://progress",
-                Progress {
-                    game_index: idx + 1,
-                    games_total: total,
-                    game_id,
-                    opponent: opponent.clone(),
-                    ply: w.ply,
-                    plies,
-                },
-            );
+            let now = Instant::now();
+            let progress_due = last_progress_emit
+                .map(|last| now.saturating_duration_since(last) >= PROGRESS_EVENT_INTERVAL)
+                .unwrap_or(true);
+            if progress_due || w.ply == plies {
+                last_progress_emit = Some(now);
+                let _ = app.emit(
+                    "analysis://progress",
+                    Progress {
+                        game_index: idx + 1,
+                        games_total: total,
+                        game_id,
+                        opponent: opponent.clone(),
+                        ply: w.ply,
+                        plies,
+                    },
+                );
+            }
         }
         if canceled {
             break;
@@ -417,6 +424,10 @@ fn run_worker(
         let mut opening_losses: Vec<f64> = Vec::new();
         let mut middlegame_losses: Vec<f64> = Vec::new();
         let mut endgame_losses: Vec<f64> = Vec::new();
+        let mut opponent_losses: Vec<f64> = Vec::new();
+        let mut opponent_opening_losses: Vec<f64> = Vec::new();
+        let mut opponent_middlegame_losses: Vec<f64> = Vec::new();
+        let mut opponent_endgame_losses: Vec<f64> = Vec::new();
         let mut counts = (0u32, 0u32, 0u32); // inaccuracy, mistake, blunder
         let mut rows: Vec<(u32, &WalkedMove, &PosEval, &'static str)> = Vec::new();
         for (i, w) in walked.iter().enumerate() {
@@ -437,6 +448,14 @@ fn run_worker(
                     "endgame" => endgame_losses.push(drop),
                     _ => {}
                 }
+            } else {
+                opponent_losses.push(drop);
+                match w.phase {
+                    "opening" => opponent_opening_losses.push(drop),
+                    "middlegame" => opponent_middlegame_losses.push(drop),
+                    "endgame" => opponent_endgame_losses.push(drop),
+                    _ => {}
+                }
             }
             let judgment = judgment_for(drop);
             match judgment {
@@ -451,6 +470,10 @@ fn run_worker(
         let accuracy_opening = accuracy_from_losses(&opening_losses);
         let accuracy_middlegame = accuracy_from_losses(&middlegame_losses);
         let accuracy_endgame = accuracy_from_losses(&endgame_losses);
+        let opponent_accuracy = accuracy_from_losses(&opponent_losses);
+        let opponent_accuracy_opening = accuracy_from_losses(&opponent_opening_losses);
+        let opponent_accuracy_middlegame = accuracy_from_losses(&opponent_middlegame_losses);
+        let opponent_accuracy_endgame = accuracy_from_losses(&opponent_endgame_losses);
         let own_puzzles: Vec<crate::puzzles::OwnPuzzleCandidate> = rows
             .iter()
             .filter(|(_, w, _, judgment)| {
@@ -504,13 +527,20 @@ fn run_worker(
         conn.execute(
             "UPDATE games SET analyzed = 1, accuracy = COALESCE(accuracy, ?2),
                 accuracy_opening = ?3, accuracy_middlegame = ?4, accuracy_endgame = ?5,
-                updated_ts = ?6, analyzed_ts = ?6 WHERE id = ?1",
+                opponent_accuracy = COALESCE(opponent_accuracy, ?6),
+                opponent_accuracy_opening = ?7, opponent_accuracy_middlegame = ?8,
+                opponent_accuracy_endgame = ?9,
+                updated_ts = ?10, analyzed_ts = ?10 WHERE id = ?1",
             params![
                 game_id,
                 accuracy,
                 accuracy_opening,
                 accuracy_middlegame,
                 accuracy_endgame,
+                opponent_accuracy,
+                opponent_accuracy_opening,
+                opponent_accuracy_middlegame,
+                opponent_accuracy_endgame,
                 crate::db::now_ts()
             ],
         )

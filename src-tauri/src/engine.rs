@@ -27,7 +27,7 @@ pub(crate) fn lower_child_process_priority(child: &Child) {
         use std::ffi::c_void;
         use std::os::windows::io::AsRawHandle;
 
-        const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+        const IDLE_PRIORITY_CLASS: u32 = 0x0000_0040;
         #[link(name = "kernel32")]
         extern "system" {
             fn SetPriorityClass(process: *mut c_void, priority_class: u32) -> i32;
@@ -35,7 +35,7 @@ pub(crate) fn lower_child_process_priority(child: &Child) {
 
         // A failed priority adjustment is not fatal: the engine remains usable
         // with the platform default priority.
-        let _ = unsafe { SetPriorityClass(child.as_raw_handle(), BELOW_NORMAL_PRIORITY_CLASS) };
+        let _ = unsafe { SetPriorityClass(child.as_raw_handle(), IDLE_PRIORITY_CLASS) };
     }
 
     #[cfg(unix)]
@@ -48,7 +48,7 @@ pub(crate) fn lower_child_process_priority(child: &Child) {
 
         // Positive niceness gives the UI precedence without throttling the
         // engine while the device is otherwise idle.
-        let _ = unsafe { setpriority(PRIO_PROCESS, child.id(), 10) };
+        let _ = unsafe { setpriority(PRIO_PROCESS, child.id(), 15) };
     }
 
     #[cfg(not(any(windows, unix)))]
@@ -115,6 +115,34 @@ impl UciEngine {
         std::thread::available_parallelism()
             .map(|n| n.get().saturating_sub(2).max(1))
             .unwrap_or(1)
+    }
+
+    /// Applies an explicit setting without allowing it to consume the logical
+    /// cores reserved for input, the WebView compositor and audio. Stockfish
+    /// can still use every remaining core while the UI is idle.
+    pub fn configured_worker_threads(configured: u32) -> usize {
+        let ceiling = Self::worker_threads();
+        if configured == 0 {
+            ceiling
+        } else {
+            (configured as usize).clamp(1, ceiling)
+        }
+    }
+
+    /// Live analysis deliberately uses a single search thread. The batch
+    /// analyzer may be running in a second Stockfish process with up to
+    /// `cores - 2` threads; on normal 4+ core devices this leaves at least one
+    /// logical core unsaturated even at the maximum setting. Very small
+    /// devices additionally rely on the engine process's idle scheduler class.
+    pub fn configured_live_threads(configured: u32) -> usize {
+        Self::configured_worker_threads(configured).min(1)
+    }
+
+    /// A second 4 GiB transposition table next to batch analysis can force the
+    /// WebView into paging. Live evaluation benefits far more from immediacy
+    /// than from a huge hash, so its independent process stays compact.
+    pub fn configured_live_hash_mb(configured: u32) -> u32 {
+        configured.clamp(16, 128)
     }
 
     /// Liest Zeilen bis `uciok` und merkt sich dabei den `id name`-Wert.
@@ -233,6 +261,11 @@ impl UciEngine {
 impl Drop for UciEngine {
     fn drop(&mut self) {
         let _ = self.send("quit");
+        // A custom UCI engine is allowed to misbehave. Never wait forever in a
+        // Tauri command (for example while settings restart the engine).
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+        }
         let _ = self.child.wait();
     }
 }
@@ -241,6 +274,19 @@ impl Drop for UciEngine {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn configured_threads_always_preserve_the_ui_reserve() {
+        let ceiling = UciEngine::worker_threads();
+        assert!(ceiling >= 1);
+        assert_eq!(UciEngine::configured_worker_threads(0), ceiling);
+        assert_eq!(UciEngine::configured_worker_threads(1), 1);
+        assert_eq!(UciEngine::configured_worker_threads(u32::MAX), ceiling);
+        assert_eq!(UciEngine::configured_live_threads(0), 1);
+        assert_eq!(UciEngine::configured_live_threads(u32::MAX), 1);
+        assert_eq!(UciEngine::configured_live_hash_mb(64), 64);
+        assert_eq!(UciEngine::configured_live_hash_mb(u32::MAX), 128);
+    }
 
     /// Testet den echten Analyse-Pfad gegen die gebündelte Engine.
     /// Wird übersprungen, wenn keine stockfish.exe vorhanden ist.

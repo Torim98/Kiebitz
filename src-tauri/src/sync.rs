@@ -24,10 +24,12 @@
 //!
 //! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
 //! `sync_last_ts`) und beide Seiten filtern veränderliche Datensätze mit einem
-//! Sicherheitsfenster (SLACK). Append-only Puzzle-Versuche reisen dagegen
-//! vollständig mit: ihr `ts` ist der Zeitpunkt des Trainings, kein verlässlicher
-//! Änderungs-Cursor. Doppel-Übertragungen sind durch den idempotenten Merge
-//! gratis und so werden auch ältere, bisher verpasste Versuche nachgezogen.
+//! Sicherheitsfenster (SLACK). Manuell importierte Partien und append-only
+//! Puzzle-Versuche reisen dagegen vollständig mit: Erstere lassen sich nicht
+//! von einer Online-Quelle nachladen, bei Letzteren ist `ts` der Zeitpunkt des
+//! Trainings und kein verlässlicher Änderungs-Cursor. Doppel-Übertragungen sind
+//! durch die idempotenten Merges gratis; Tombstones verhindern, dass gelöschte
+//! manuelle Partien dabei wieder auftauchen.
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
@@ -88,6 +90,14 @@ pub struct SyncGame {
     pub accuracy_middlegame: Option<f64>,
     #[serde(default)]
     pub accuracy_endgame: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_opening: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_middlegame: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_endgame: Option<f64>,
     pub moves: String,
     /// Restzeit nach jedem Halbzug (Hundertstelsekunden). Ältere Gegenstellen
     /// kennen das Feld nicht · dort bleibt die Partie ohne Uhren.
@@ -306,9 +316,12 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color,
                     my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                    opponent_accuracy, opponent_accuracy_opening,
+                    opponent_accuracy_middlegame, opponent_accuracy_endgame,
                     moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
                     analyzed_ts, clocks, time_control
-             FROM games WHERE updated_ts >= ?1",
+             FROM games
+             WHERE source = 'manual' OR updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
     let rows: Vec<(i64, SyncGame)> = stmt
@@ -335,17 +348,21 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     accuracy_opening: r.get(17)?,
                     accuracy_middlegame: r.get(18)?,
                     accuracy_endgame: r.get(19)?,
-                    moves: r.get(20)?,
-                    note: r.get(21)?,
-                    note_ts: r.get(22)?,
-                    tags: serde_json::from_str(&r.get::<_, String>(23)?).unwrap_or_default(),
-                    tags_ts: r.get(24)?,
-                    analyzed: r.get::<_, i64>(25)? != 0,
-                    analysis_excluded: r.get::<_, i64>(26)? != 0,
-                    updated_ts: r.get(27)?,
-                    analyzed_ts: r.get(28)?,
-                    clocks: r.get(29)?,
-                    time_control: r.get(30)?,
+                    opponent_accuracy: r.get(20)?,
+                    opponent_accuracy_opening: r.get(21)?,
+                    opponent_accuracy_middlegame: r.get(22)?,
+                    opponent_accuracy_endgame: r.get(23)?,
+                    moves: r.get(24)?,
+                    note: r.get(25)?,
+                    note_ts: r.get(26)?,
+                    tags: serde_json::from_str(&r.get::<_, String>(27)?).unwrap_or_default(),
+                    tags_ts: r.get(28)?,
+                    analyzed: r.get::<_, i64>(29)? != 0,
+                    analysis_excluded: r.get::<_, i64>(30)? != 0,
+                    updated_ts: r.get(31)?,
+                    analyzed_ts: r.get(32)?,
+                    clocks: r.get(33)?,
+                    time_control: r.get(34)?,
                     evals: Vec::new(),
                 },
             ))
@@ -838,14 +855,18 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
                         color, my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                        opponent_accuracy, opponent_accuracy_opening,
+                        opponent_accuracy_middlegame, opponent_accuracy_endgame,
                         moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
                         analyzed_ts, clocks, time_control)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.my_name, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
                         g.moves_count, g.accuracy, g.accuracy_opening, g.accuracy_middlegame,
-                        g.accuracy_endgame, g.moves, g.note, g.note_ts,
+                        g.accuracy_endgame, g.opponent_accuracy, g.opponent_accuracy_opening,
+                        g.opponent_accuracy_middlegame, g.opponent_accuracy_endgame,
+                        g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
                         g.analyzed as i64, g.analysis_excluded as i64, incoming_updated,
                         g.analyzed_ts, g.clocks, g.time_control
@@ -862,17 +883,21 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         accuracy_opening = COALESCE(accuracy_opening, ?3),
                         accuracy_middlegame = COALESCE(accuracy_middlegame, ?4),
                         accuracy_endgame = COALESCE(accuracy_endgame, ?5),
-                        analyzed = MAX(analyzed, ?6),
+                        opponent_accuracy = COALESCE(opponent_accuracy, ?6),
+                        opponent_accuracy_opening = COALESCE(opponent_accuracy_opening, ?7),
+                        opponent_accuracy_middlegame = COALESCE(opponent_accuracy_middlegame, ?8),
+                        opponent_accuracy_endgame = COALESCE(opponent_accuracy_endgame, ?9),
+                        analyzed = MAX(analyzed, ?10),
                         -- Erste bekannte Analysezeit gewinnt (0 = noch keine).
-                        analyzed_ts = CASE WHEN analyzed_ts = 0 THEN ?11 ELSE analyzed_ts END,
-                        analysis_excluded = CASE WHEN ?7 >= updated_ts THEN ?8 ELSE analysis_excluded END,
-                        time_class = CASE WHEN ?7 >= updated_ts THEN ?9 ELSE time_class END,
-                        my_name = CASE WHEN ?7 >= updated_ts AND ?10 != '' THEN ?10 ELSE my_name END,
+                        analyzed_ts = CASE WHEN analyzed_ts = 0 THEN ?15 ELSE analyzed_ts END,
+                        analysis_excluded = CASE WHEN ?11 >= updated_ts THEN ?12 ELSE analysis_excluded END,
+                        time_class = CASE WHEN ?11 >= updated_ts THEN ?13 ELSE time_class END,
+                        my_name = CASE WHEN ?11 >= updated_ts AND ?14 != '' THEN ?14 ELSE my_name END,
                         -- Uhrendaten sind unveränderliche Partiedaten: wer sie
                         -- hat, behält sie; wer keine hat, übernimmt sie.
-                        clocks = CASE WHEN clocks = '' THEN ?12 ELSE clocks END,
-                        time_control = CASE WHEN time_control = '' THEN ?13 ELSE time_control END,
-                        updated_ts = MAX(updated_ts, ?7)
+                        clocks = CASE WHEN clocks = '' THEN ?16 ELSE clocks END,
+                        time_control = CASE WHEN time_control = '' THEN ?17 ELSE time_control END,
+                        updated_ts = MAX(updated_ts, ?11)
                      WHERE id = ?1",
                     params![
                         id,
@@ -880,6 +905,10 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.accuracy_opening,
                         g.accuracy_middlegame,
                         g.accuracy_endgame,
+                        g.opponent_accuracy,
+                        g.opponent_accuracy_opening,
+                        g.opponent_accuracy_middlegame,
+                        g.opponent_accuracy_endgame,
                         g.analyzed as i64,
                         incoming_updated,
                         g.analysis_excluded as i64,
@@ -2059,6 +2088,10 @@ mod tests {
             accuracy_opening: None,
             accuracy_middlegame: None,
             accuracy_endgame: None,
+            opponent_accuracy: None,
+            opponent_accuracy_opening: None,
+            opponent_accuracy_middlegame: None,
+            opponent_accuracy_endgame: None,
             moves: "e4 e5".into(),
             note: String::new(),
             note_ts: 0,
@@ -2083,19 +2116,24 @@ mod tests {
         g.tags = vec!["OTB".into()];
         g.tags_ts = 50;
         g.accuracy_opening = Some(91.0);
+        g.opponent_accuracy = Some(76.4);
+        g.opponent_accuracy_opening = Some(79.2);
         apply_games(&mut conn, &[g.clone()]).unwrap();
         apply_games(&mut conn, &[g.clone()]).unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
-        let (tags, opening): (String, Option<f64>) = conn
-            .query_row("SELECT tags, accuracy_opening FROM games", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
+        let (tags, opening, opponent, opponent_opening):
+            (String, Option<f64>, Option<f64>, Option<f64>) = conn
+            .query_row("SELECT tags, accuracy_opening, opponent_accuracy, opponent_accuracy_opening FROM games", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })
             .unwrap();
         assert_eq!(tags, r#"["OTB"]"#);
         assert_eq!(opening, Some(91.0));
+        assert_eq!(opponent, Some(76.4));
+        assert_eq!(opponent_opening, Some(79.2));
 
         // Ältere Notiz verliert, neuere gewinnt.
         let mut older = g.clone();
@@ -2150,6 +2188,148 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1, "a genuinely newer reimport may recreate the game");
+    }
+
+    #[test]
+    fn manual_games_converge_even_when_they_predate_the_sync_cursor() {
+        let mut desktop = mem_db();
+        let mut mobile = mem_db();
+
+        let mut desktop_game = sample_game("desktop-manual-legacy");
+        desktop_game.source = "manual".into();
+        desktop_game.updated_ts = 1;
+        apply_games(&mut desktop, &[desktop_game]).unwrap();
+        // Reproduziert eine Partie aus einer alten Datenbankmigration: Ein
+        // Delta-Sync hinter einem gesetzten Cursor würde sie nie einsammeln.
+        desktop
+            .execute(
+                "UPDATE games SET updated_ts = 0 WHERE source_id = 'desktop-manual-legacy'",
+                [],
+            )
+            .unwrap();
+
+        let mut mobile_game = sample_game("mobile-manual-offline");
+        mobile_game.source = "manual".into();
+        mobile_game.updated_ts = 1_000;
+        apply_games(&mut mobile, &[mobile_game]).unwrap();
+        let mut old_online_game = sample_game("mobile-online-old");
+        old_online_game.updated_ts = 1_000;
+        apply_games(&mut mobile, &[old_online_game]).unwrap();
+
+        let since = 50_000;
+        let outgoing = collect_games(&mobile, since).unwrap();
+        // Nur der nicht wiederbeschaffbare manuelle Datensatz umgeht den
+        // Cursor; alte Onlinepartien blähen das Delta nicht auf.
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0].source_id, "mobile-manual-offline");
+
+        let request = SyncRequest {
+            code: "000000".into(),
+            since,
+            games: outgoing,
+            game_tombstones: collect_game_tombstones(&mobile).unwrap(),
+            rep_nodes: vec![],
+            rep_tombstones: vec![],
+            puzzle_attempts: vec![],
+            endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
+        };
+        let response = handle_sync(&mut desktop, &request).unwrap();
+        apply_game_tombstones(&mut mobile, &response.game_tombstones).unwrap();
+        apply_games(&mut mobile, &response.games).unwrap();
+
+        for conn in [&desktop, &mobile] {
+            let ids: Vec<String> = conn
+                .prepare("SELECT source_id FROM games WHERE source = 'manual' ORDER BY source_id")
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(ids, vec!["desktop-manual-legacy", "mobile-manual-offline"]);
+        }
+
+        // Der Vollabgleich darf beim nächsten Roundtrip keine Duplikate
+        // erzeugen; der Natural Key bleibt die einzige Zeile pro Partie.
+        let second_request = SyncRequest {
+            code: "000000".into(),
+            since,
+            games: collect_games(&mobile, since).unwrap(),
+            game_tombstones: collect_game_tombstones(&mobile).unwrap(),
+            rep_nodes: vec![],
+            rep_tombstones: vec![],
+            puzzle_attempts: vec![],
+            endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
+        };
+        let second_response = handle_sync(&mut desktop, &second_request).unwrap();
+        apply_games(&mut mobile, &second_response.games).unwrap();
+        for conn in [&desktop, &mobile] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM games WHERE source = 'manual'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 2);
+        }
+    }
+
+    #[test]
+    fn manual_full_sync_does_not_resurrect_a_tombstoned_game() {
+        let mut desktop = mem_db();
+        let mut mobile = mem_db();
+        let mut stale = sample_game("deleted-manual");
+        stale.source = "manual".into();
+        stale.updated_ts = 100;
+        apply_games(&mut desktop, &[stale.clone()]).unwrap();
+        apply_games(&mut mobile, &[stale]).unwrap();
+
+        let deletion = SyncGameTombstone {
+            source: "manual".into(),
+            source_id: "deleted-manual".into(),
+            deleted_ts: 200,
+        };
+        apply_game_tombstones(&mut desktop, &[deletion]).unwrap();
+
+        let since = 50_000;
+        let request = SyncRequest {
+            code: "000000".into(),
+            since,
+            games: collect_games(&mobile, since).unwrap(),
+            game_tombstones: collect_game_tombstones(&mobile).unwrap(),
+            rep_nodes: vec![],
+            rep_tombstones: vec![],
+            puzzle_attempts: vec![],
+            endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
+        };
+        assert_eq!(request.games.len(), 1, "manual games bypass the cursor");
+        let response = handle_sync(&mut desktop, &request).unwrap();
+        assert!(response.games.is_empty());
+        apply_game_tombstones(&mut mobile, &response.game_tombstones).unwrap();
+        apply_games(&mut mobile, &response.games).unwrap();
+
+        for conn in [&desktop, &mobile] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM games WHERE source_id = 'deleted-manual'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 0);
+        }
     }
 
     #[test]

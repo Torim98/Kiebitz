@@ -236,18 +236,22 @@ fn db_stats(db: tauri::State<db::Db>) -> Result<db::DbStats, String> {
 /// Einmalige Analyse: startet die Engine, analysiert die Stellung, beendet sie.
 /// (Bleibt als Fallback; die Live-Analyse läuft über `analyze_live`.)
 #[tauri::command]
-fn analyze_position(
+async fn analyze_position(
     app: tauri::AppHandle,
     fen: String,
     depth: u32,
 ) -> Result<engine::AnalysisResult, String> {
-    let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
-    let mut uci = engine::UciEngine::spawn(&path.to_string_lossy())?;
-    uci.analyze(&fen, depth.clamp(1, 40))
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
+        let mut uci = engine::UciEngine::spawn(&path.to_string_lossy())?;
+        uci.analyze(&fen, depth.clamp(1, 40))
+    })
+    .await
+    .map_err(|e| format!("Engine-Analyse fehlgeschlagen: {e}"))?
 }
 
 /// Dauer-Analyse über die persistente Engine: `info`-Zeilen kommen als
-/// `engine://info`-Events. Liefert die Generation dieser Anfrage.
+/// `engine://info-batch`-Events. Liefert die Generation dieser Anfrage.
 #[tauri::command]
 async fn analyze_live(
     app: tauri::AppHandle,

@@ -46,6 +46,13 @@ function tags(value = ""): string[] {
   return [...new Set(value.split(/[,;]/).map((v) => v.trim()).filter(Boolean))];
 }
 
+/** Liest einen optionalen, plausiblen Prozentwert aus einem Kiebitz-Header. */
+function accuracy(value = ""): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : null;
+}
+
 function normalizedPlayer(value = ""): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase();
 }
@@ -113,6 +120,26 @@ export function importPgn(
     const result = h.Result === "1/2-1/2" ? "draw" : h.Result === (color === "white" ? "1-0" : "0-1") ? "win" : "loss";
     const date = unixDate(h.UTCDate || h.Date, h.UTCTime);
     const stable = [h.Date, h.Round, h.White, h.Black, moves.join(" ")].join("|");
+    const storedMine = {
+      overall: accuracy(h.KiebitzAccuracy),
+      opening: accuracy(h.KiebitzAccuracyOpening),
+      middlegame: accuracy(h.KiebitzAccuracyMiddlegame),
+      endgame: accuracy(h.KiebitzAccuracyEndgame),
+    };
+    const storedOpponent = {
+      overall: accuracy(h.KiebitzOpponentAccuracy),
+      opening: accuracy(h.KiebitzOpponentAccuracyOpening),
+      middlegame: accuracy(h.KiebitzOpponentAccuracyMiddlegame),
+      endgame: accuracy(h.KiebitzOpponentAccuracyEndgame),
+    };
+    const storedColor = h.KiebitzAccuracyColor?.trim().toLowerCase();
+    // Seit beide Seiten exportiert werden, reist die damalige eigene Farbe
+    // explizit mit. So bleiben die Werte auch korrekt, wenn dieselbe PGN aus
+    // Sicht des anderen Spielers importiert wird. Alte Exporte ohne Marker
+    // behalten aus Kompatibilitätsgründen ihre bisherige Perspektive.
+    const swapAccuracy = (storedColor === "white" || storedColor === "black") && storedColor !== color;
+    const mine = swapAccuracy ? storedOpponent : storedMine;
+    const theirs = swapAccuracy ? storedMine : storedOpponent;
     return {
       id: null,
       source: "manual",
@@ -130,10 +157,14 @@ export function importPgn(
       opening: h.Opening || "",
       eco: h.ECO || "",
       moves_count: Math.ceil(moves.length / 2),
-      accuracy: null,
-      accuracy_opening: null,
-      accuracy_middlegame: null,
-      accuracy_endgame: null,
+      accuracy: mine.overall,
+      accuracy_opening: mine.opening,
+      accuracy_middlegame: mine.middlegame,
+      accuracy_endgame: mine.endgame,
+      opponent_accuracy: theirs.overall,
+      opponent_accuracy_opening: theirs.opening,
+      opponent_accuracy_middlegame: theirs.middlegame,
+      opponent_accuracy_endgame: theirs.endgame,
       moves: moves.join(" "),
       clocks: serializeClocks(
         clocksFromPgn(block, parseTimeControl(h.TimeControl ?? "")).slice(0, moves.length)
@@ -180,10 +211,24 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
     if (game.tags?.length) values.KiebitzTags = game.tags.join(", ");
     if (game.note) values.KiebitzNote = game.note;
     if (game.analysis_excluded) values.KiebitzAnalysisExcluded = "true";
+    if ([
+      game.accuracy,
+      game.accuracy_opening,
+      game.accuracy_middlegame,
+      game.accuracy_endgame,
+      game.opponent_accuracy,
+      game.opponent_accuracy_opening,
+      game.opponent_accuracy_middlegame,
+      game.opponent_accuracy_endgame,
+    ].some((value) => value != null)) values.KiebitzAccuracyColor = game.color;
     if (game.accuracy != null) values.KiebitzAccuracy = game.accuracy.toFixed(1);
     if (game.accuracy_opening != null) values.KiebitzAccuracyOpening = game.accuracy_opening.toFixed(1);
     if (game.accuracy_middlegame != null) values.KiebitzAccuracyMiddlegame = game.accuracy_middlegame.toFixed(1);
     if (game.accuracy_endgame != null) values.KiebitzAccuracyEndgame = game.accuracy_endgame.toFixed(1);
+    if (game.opponent_accuracy != null) values.KiebitzOpponentAccuracy = game.opponent_accuracy.toFixed(1);
+    if (game.opponent_accuracy_opening != null) values.KiebitzOpponentAccuracyOpening = game.opponent_accuracy_opening.toFixed(1);
+    if (game.opponent_accuracy_middlegame != null) values.KiebitzOpponentAccuracyMiddlegame = game.opponent_accuracy_middlegame.toFixed(1);
+    if (game.opponent_accuracy_endgame != null) values.KiebitzOpponentAccuracyEndgame = game.opponent_accuracy_endgame.toFixed(1);
     for (const [key, value] of Object.entries(values)) chess.setHeader(key, value);
     // Uhren gehen als %clk-Kommentare mit, so wie sie hereingekommen sind ·
     // ein Export/Import-Rundlauf verliert die Zeitdaten damit nicht.

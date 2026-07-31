@@ -34,6 +34,15 @@ pub struct GameRecord {
     pub accuracy_middlegame: Option<f64>,
     #[serde(default)]
     pub accuracy_endgame: Option<f64>,
+    /// Gesamtgenauigkeit des Gegners aus Import oder eigener Auto-Analyse.
+    #[serde(default)]
+    pub opponent_accuracy: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_opening: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_middlegame: Option<f64>,
+    #[serde(default)]
+    pub opponent_accuracy_endgame: Option<f64>,
     pub moves: String,
     /// Restzeit nach jedem Halbzug in Hundertstelsekunden, leerzeichengetrennt ·
     /// aus den %clk-Kommentaren der PGN bzw. der lichess-Uhrenliste. Leer, wenn
@@ -275,6 +284,12 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         // beider Seiten, sobald eine Partie sie mitbringt.
         "ALTER TABLE games ADD COLUMN clocks TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE games ADD COLUMN time_control TEXT NOT NULL DEFAULT ''",
+        // Migration v15: Die Partieanalyse zeigt dieselben Gesamt- und
+        // Phasenwerte auch fuer den Gegner.
+        "ALTER TABLE games ADD COLUMN opponent_accuracy REAL",
+        "ALTER TABLE games ADD COLUMN opponent_accuracy_opening REAL",
+        "ALTER TABLE games ADD COLUMN opponent_accuracy_middlegame REAL",
+        "ALTER TABLE games ADD COLUMN opponent_accuracy_endgame REAL",
     ] {
         let _ = conn.execute(sql, []);
     }
@@ -559,10 +574,12 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
             .prepare(
                 "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class, color,
                     my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
-                    accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
+                    accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                    opponent_accuracy, opponent_accuracy_opening,
+                    opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
                     note, note_ts, tags, tags_ts, analysis_excluded, updated_ts,
                     clocks, time_control)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
@@ -576,6 +593,10 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     accuracy_opening = COALESCE(excluded.accuracy_opening, games.accuracy_opening),
                     accuracy_middlegame = COALESCE(excluded.accuracy_middlegame, games.accuracy_middlegame),
                     accuracy_endgame = COALESCE(excluded.accuracy_endgame, games.accuracy_endgame),
+                    opponent_accuracy = COALESCE(excluded.opponent_accuracy, games.opponent_accuracy),
+                    opponent_accuracy_opening = COALESCE(excluded.opponent_accuracy_opening, games.opponent_accuracy_opening),
+                    opponent_accuracy_middlegame = COALESCE(excluded.opponent_accuracy_middlegame, games.opponent_accuracy_middlegame),
+                    opponent_accuracy_endgame = COALESCE(excluded.opponent_accuracy_endgame, games.opponent_accuracy_endgame),
                     moves = excluded.moves,
                     moves_count = excluded.moves_count,
                     time_class = excluded.time_class,
@@ -621,6 +642,10 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.accuracy_opening,
                     g.accuracy_middlegame,
                     g.accuracy_endgame,
+                    g.opponent_accuracy,
+                    g.opponent_accuracy_opening,
+                    g.opponent_accuracy_middlegame,
+                    g.opponent_accuracy_endgame,
                     g.moves,
                     g.note,
                     if g.note.is_empty() { 0 } else { changed_at },
@@ -650,7 +675,9 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
         .prepare(
             "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, my_name, opponent,
                     opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
-                    accuracy_opening, accuracy_middlegame, accuracy_endgame, moves,
+                    accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                    opponent_accuracy, opponent_accuracy_opening,
+                    opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
                     note, tags, analyzed, analysis_excluded, clocks, time_control
              FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
@@ -678,13 +705,17 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 accuracy_opening: r.get(17)?,
                 accuracy_middlegame: r.get(18)?,
                 accuracy_endgame: r.get(19)?,
-                moves: r.get(20)?,
-                note: r.get(21)?,
-                tags: serde_json::from_str(&r.get::<_, String>(22)?).unwrap_or_default(),
-                analyzed: r.get::<_, i64>(23)? != 0,
-                analysis_excluded: r.get::<_, i64>(24)? != 0,
-                clocks: r.get(25)?,
-                time_control: r.get(26)?,
+                opponent_accuracy: r.get(20)?,
+                opponent_accuracy_opening: r.get(21)?,
+                opponent_accuracy_middlegame: r.get(22)?,
+                opponent_accuracy_endgame: r.get(23)?,
+                moves: r.get(24)?,
+                note: r.get(25)?,
+                tags: serde_json::from_str(&r.get::<_, String>(26)?).unwrap_or_default(),
+                analyzed: r.get::<_, i64>(27)? != 0,
+                analysis_excluded: r.get::<_, i64>(28)? != 0,
+                clocks: r.get(29)?,
+                time_control: r.get(30)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -793,6 +824,10 @@ mod tests {
             accuracy_opening: None,
             accuracy_middlegame: None,
             accuracy_endgame: None,
+            opponent_accuracy: None,
+            opponent_accuracy_opening: None,
+            opponent_accuracy_middlegame: None,
+            opponent_accuracy_endgame: None,
             moves: "e4 c6 Qf3 e5".into(),
             clocks: "59500 59300 58800 58100".into(),
             time_control: "600+0".into(),
@@ -832,6 +867,8 @@ mod tests {
         // Re-Import derselben Partie mit jetzt vorhandener Accuracy
         let mut updated = sample("abc");
         updated.accuracy = Some(84.2);
+        updated.opponent_accuracy = Some(77.6);
+        updated.opponent_accuracy_opening = Some(81.3);
         let r2 = upsert_games(&mut conn, &[updated, sample("ghi")]).unwrap();
         assert_eq!(r2.inserted, 1, "abc existierte schon, nur ghi ist neu");
         assert_eq!(r2.total, 3);
@@ -839,6 +876,16 @@ mod tests {
         let games = list_games(&conn).unwrap();
         let abc = games.iter().find(|g| g.source_id == "abc").unwrap();
         assert_eq!(abc.accuracy, Some(84.2), "Accuracy aktualisiert");
+        assert_eq!(
+            abc.opponent_accuracy,
+            Some(77.6),
+            "Gegner-Accuracy aktualisiert"
+        );
+        assert_eq!(
+            abc.opponent_accuracy_opening,
+            Some(81.3),
+            "Gegner-Phase aktualisiert"
+        );
         let noted = games.iter().find(|g| g.id == Some(id)).unwrap();
         assert_eq!(noted.note, "Merken: Cb6!", "Notiz überlebt den Re-Import");
     }

@@ -3,10 +3,12 @@
 //! Events an das Frontend gestreamt (Eval-Bar und Tiefe aktualisieren live).
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 
 pub struct LiveEngine {
@@ -52,6 +54,60 @@ pub struct LiveInfo {
 pub struct LiveDone {
     pub generation: u64,
     pub bestmove: String,
+}
+
+#[derive(Serialize, Clone)]
+struct LiveInfoBatch {
+    lines: Vec<LiveInfo>,
+}
+
+/// Crossing the Tauri/WebView bridge for every Stockfish `info` line can make
+/// the JavaScript event loop contend with board input. Keep draining stdout at
+/// full speed, but send only the newest line per MultiPV slot in one bounded
+/// bridge event. The final values are always flushed before `engine://done`.
+const INFO_BATCH_INTERVAL: Duration = Duration::from_millis(120);
+
+#[derive(Default)]
+struct InfoBatcher {
+    pending: BTreeMap<u32, LiveInfo>,
+    last_emit: Option<Instant>,
+}
+
+impl InfoBatcher {
+    fn push(&mut self, info: LiveInfo, now: Instant) -> Option<Vec<LiveInfo>> {
+        self.pending.insert(info.multipv, info);
+        if self
+            .last_emit
+            .map(|last| now.saturating_duration_since(last) < INFO_BATCH_INTERVAL)
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        self.last_emit = Some(now);
+        self.take_pending()
+    }
+
+    fn finish_generation(&mut self) -> Option<Vec<LiveInfo>> {
+        let lines = self.take_pending();
+        // A new position should get its first evaluation immediately, even if
+        // the previous search ended less than one interval ago.
+        self.last_emit = None;
+        lines
+    }
+
+    fn take_pending(&mut self) -> Option<Vec<LiveInfo>> {
+        if self.pending.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.pending).into_values().collect())
+        }
+    }
+}
+
+fn emit_info_batch(app: &tauri::AppHandle, lines: Option<Vec<LiveInfo>>) {
+    if let Some(lines) = lines {
+        let _ = app.emit("engine://info-batch", LiveInfoBatch { lines });
+    }
 }
 
 impl Default for LiveEngine {
@@ -143,12 +199,8 @@ impl LiveEngine {
             let s = app.state::<crate::settings::SettingsState>();
             let s = s.0.lock().map_err(|e| e.to_string())?;
             (
-                if s.engine_threads == 0 {
-                    crate::engine::UciEngine::worker_threads()
-                } else {
-                    s.engine_threads as usize
-                },
-                s.engine_hash_mb,
+                crate::engine::UciEngine::configured_live_threads(s.engine_threads),
+                crate::engine::UciEngine::configured_live_hash_mb(s.engine_hash_mb),
                 s.engine_multipv,
             )
         };
@@ -167,6 +219,7 @@ impl LiveEngine {
         std::thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
+            let mut info_batcher = InfoBatcher::default();
             loop {
                 line.clear();
                 match reader.read_line(&mut line) {
@@ -182,9 +235,11 @@ impl LiveEngine {
                     if let Some(info) =
                         generation.and_then(|generation| parse_info(trimmed, generation))
                     {
-                        let _ = app.emit("engine://info", info);
+                        let lines = info_batcher.push(info, Instant::now());
+                        emit_info_batch(&app, lines);
                     }
                 } else if let Some(rest) = trimmed.strip_prefix("bestmove ") {
+                    emit_info_batch(&app, info_batcher.finish_generation());
                     let finished_generation = if let Ok(mut state) = reader_search.lock() {
                         let finished = state.active_generation.take();
                         state.stopping = false;
@@ -210,6 +265,7 @@ impl LiveEngine {
                     }
                 }
             }
+            emit_info_batch(&app, info_batcher.finish_generation());
         });
 
         Ok(LiveProc {
@@ -344,6 +400,69 @@ mod tests {
         assert!(parse_info("info depth 0 score cp 20 pv e2e4", 1).is_none());
         assert!(parse_info("info depth 18 pv e2e4", 1).is_none());
         assert!(parse_info("info depth nope score cp 20 pv e2e4", 1).is_none());
+    }
+
+    #[test]
+    fn batches_latest_line_per_multipv_and_flushes_the_final_values() {
+        let start = Instant::now();
+        let mut batcher = InfoBatcher::default();
+        let make_info = |multipv, depth| LiveInfo {
+            generation: 4,
+            depth,
+            multipv,
+            eval_cp: Some(depth as i32),
+            mate_in: None,
+            nps: Some(10_000),
+            pv: vec!["e2e4".into()],
+        };
+
+        let first = batcher.push(make_info(1, 8), start).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].depth, 8);
+
+        assert!(batcher
+            .push(make_info(2, 8), start + Duration::from_millis(10))
+            .is_none());
+        assert!(batcher
+            .push(make_info(2, 12), start + Duration::from_millis(20))
+            .is_none());
+        assert!(batcher
+            .push(make_info(1, 14), start + Duration::from_millis(30))
+            .is_none());
+
+        let latest = batcher
+            .push(
+                make_info(3, 13),
+                start + INFO_BATCH_INTERVAL + Duration::from_millis(1),
+            )
+            .unwrap();
+        assert_eq!(
+            latest.iter().map(|line| line.multipv).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(
+            latest.iter().map(|line| line.depth).collect::<Vec<_>>(),
+            vec![14, 12, 13]
+        );
+
+        assert!(batcher
+            .push(
+                make_info(1, 16),
+                start + INFO_BATCH_INTERVAL + Duration::from_millis(2)
+            )
+            .is_none());
+        let final_lines = batcher.finish_generation().unwrap();
+        assert_eq!(final_lines.len(), 1);
+        assert_eq!(final_lines[0].depth, 16);
+
+        // Resetting at bestmove makes the first value of the next position
+        // visible immediately instead of inheriting the old throttle window.
+        assert!(batcher
+            .push(
+                make_info(1, 6),
+                start + INFO_BATCH_INTERVAL + Duration::from_millis(3)
+            )
+            .is_some());
     }
 
     #[test]

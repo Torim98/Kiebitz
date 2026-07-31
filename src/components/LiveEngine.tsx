@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Cpu, Pause, Play } from "lucide-react";
 import { engineInfo, type EngineInfo } from "../lib/backend";
@@ -75,7 +75,19 @@ export default function LiveEngine({
   const onBestMoveRef = useRef(onBestMove);
   onBestMoveRef.current = onBestMove;
   const pendingInfoRef = useRef<Map<number, LiveInfo>>(new Map());
+  const earlyInfoRef = useRef<Map<number, Map<number, LiveInfo>>>(new Map());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushInfoRef = useRef<() => void>(() => {});
+  const lastEvalRef = useRef<{ fen: string; cp: number | null; mate: number | null } | null>(null);
+  const lastBestMoveRef = useRef<{ fen: string; uci: string | null } | null>(null);
+  // Tauri-Kommandos strikt ordnen: Ein verspäteter Stop einer alten
+  // Stellung darf niemals eine bereits gestartete neuere Suche beenden.
+  const engineCommandRef = useRef<Promise<void>>(Promise.resolve());
+  const queueStop = useCallback(() => {
+    const next = engineCommandRef.current.then(() => stopLive());
+    engineCommandRef.current = next.catch(() => {});
+    return engineCommandRef.current;
+  }, []);
 
   useEffect(() => {
     engineInfo()
@@ -108,31 +120,76 @@ export default function LiveEngine({
         });
         if (newest?.nps != null) setNps(newest.nps);
 
-        if (primary && onEvalRef.current) {
-          const blackToMove = fenRef.current.split(" ")[1] === "b";
+        if (primary) {
+          const currentFen = fenRef.current;
+          const blackToMove = currentFen.split(" ")[1] === "b";
           const sign = blackToMove ? -1 : 1;
-          onEvalRef.current(
-            primary.eval_cp != null ? sign * primary.eval_cp : null,
-            primary.mate_in != null ? sign * primary.mate_in : null
-          );
+          const cp = primary.eval_cp != null ? sign * primary.eval_cp : null;
+          const mate = primary.mate_in != null ? sign * primary.mate_in : null;
+          const previousEval = lastEvalRef.current;
+          if (
+            !previousEval
+            || previousEval.fen !== currentFen
+            || previousEval.cp !== cp
+            || previousEval.mate !== mate
+          ) {
+            lastEvalRef.current = { fen: currentFen, cp, mate };
+            onEvalRef.current?.(cp, mate);
+          }
+
+          const uci = primary.pv[0] ?? null;
+          const previousMove = lastBestMoveRef.current;
+          if (!previousMove || previousMove.fen !== currentFen || previousMove.uci !== uci) {
+            lastBestMoveRef.current = { fen: currentFen, uci };
+            onBestMoveRef.current?.(uci);
+          }
         }
-        if (primary) onBestMoveRef.current?.(primary.pv[0] ?? null);
       });
     };
 
-    onEngineInfo((info) => {
-      if (info.generation !== genRef.current) return;
-      pendingInfoRef.current.set(info.multipv, info);
+    flushInfoRef.current = flushInfo;
+
+    const enqueue = (info: LiveInfo) => {
+      const previous = pendingInfoRef.current.get(info.multipv);
+      if (!previous || info.depth >= previous.depth) {
+        pendingInfoRef.current.set(info.multipv, info);
+      }
       if (flushTimerRef.current == null) {
         flushTimerRef.current = setTimeout(flushInfo, ENGINE_UI_INTERVAL_MS);
       }
+    };
+
+    onEngineInfo((info) => {
+      if (info.generation === genRef.current) {
+        enqueue(info);
+      } else if (genRef.current === -1) {
+        // The native reader can beat the invoke response for very short
+        // searches. Retain those values by generation; the analyze promise
+        // below adopts only the exact generation it requested.
+        const bucket = earlyInfoRef.current.get(info.generation) ?? new Map<number, LiveInfo>();
+        const previous = bucket.get(info.multipv);
+        if (!previous || info.depth >= previous.depth) bucket.set(info.multipv, info);
+        earlyInfoRef.current.set(info.generation, bucket);
+        while (earlyInfoRef.current.size > 4) {
+          const oldest = earlyInfoRef.current.keys().next().value;
+          if (oldest == null) break;
+          earlyInfoRef.current.delete(oldest);
+        }
+      }
     }).then((u) => (disposed ? u() : (unInfo = u)));
-    onEngineDone(() => {}).then((u) => (disposed ? u() : (unDone = u)));
+    onEngineDone((done) => {
+      if (done.generation === genRef.current) {
+        if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
+        flushInfo();
+      }
+    }).then((u) => (disposed ? u() : (unDone = u)));
     return () => {
       disposed = true;
       if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
       pendingInfoRef.current.clear();
+      earlyInfoRef.current.clear();
+      flushInfoRef.current = () => {};
       unInfo?.();
       unDone?.();
     };
@@ -144,42 +201,59 @@ export default function LiveEngine({
     if (flushTimerRef.current != null) clearTimeout(flushTimerRef.current);
     flushTimerRef.current = null;
     pendingInfoRef.current.clear();
+    earlyInfoRef.current.clear();
     // Bis analyzeLive die neue Generation liefert, keine Rest-Events der
     // vorherigen Stellung mehr annehmen.
     genRef.current = -1;
+    lastEvalRef.current = null;
+    lastBestMoveRef.current = null;
     setLines(new Map());
     setNps(null);
     onBestMoveRef.current?.(null);
+    queueStop();
     if (!running) {
-      stopLive().catch(() => {});
       return;
     }
     let stale = false;
     // Die laufende Suche sofort stoppen, den Neustart aber kurz entprellen.
     // Dadurch bleibt schnelles Ziehen flüssig und erzeugt keine Engine-Queue.
-    const stopped = stopLive().catch(() => {});
     const startTimer = setTimeout(() => {
-      stopped.then(() => {
+      const next = engineCommandRef.current.then(async () => {
         if (stale) return;
-        analyzeLive(fen)
-          .then((generation) => {
-            if (!stale) genRef.current = generation;
-          })
-          .catch(() => {});
+        const generation = await analyzeLive(fen);
+        if (stale) return;
+        genRef.current = generation;
+        const early = earlyInfoRef.current.get(generation);
+        earlyInfoRef.current.clear();
+        if (early) {
+          early.forEach((info, multipv) => {
+            const previous = pendingInfoRef.current.get(multipv);
+            if (!previous || info.depth >= previous.depth) {
+              pendingInfoRef.current.set(multipv, info);
+            }
+          });
+          if (flushTimerRef.current == null) {
+            flushTimerRef.current = setTimeout(
+              () => flushInfoRef.current(),
+              ENGINE_UI_INTERVAL_MS
+            );
+          }
+        }
       });
+      engineCommandRef.current = next.catch(() => {});
     }, ENGINE_START_DELAY_MS);
     return () => {
       stale = true;
       clearTimeout(startTimer);
     };
-  }, [available, fen, running]);
+  }, [available, fen, queueStop, running]);
 
   // Beim Verlassen der Seite die Engine anhalten.
   useEffect(() => {
     return () => {
-      if (available) stopLive().catch(() => {});
+      if (available) queueStop();
     };
-  }, [available]);
+  }, [available, queueStop]);
 
   const blackToMove = fen.split(" ")[1] === "b";
   const ordered = [1, 2, 3]

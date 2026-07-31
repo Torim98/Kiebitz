@@ -1541,14 +1541,14 @@ export default function SettingsPage({
                 label={t("set.hash")}
                 value={draft.engine_hash_mb}
                 min={16}
-                max={4096}
+                max={512}
                 onChange={(v) => patch({ engine_hash_mb: v })}
               />
               <NumberField
                 label={t("set.multipv")}
                 value={draft.engine_multipv}
                 min={1}
-                max={5}
+                max={3}
                 onChange={(v) => patch({ engine_multipv: v })}
               />
               <NumberField

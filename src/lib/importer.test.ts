@@ -53,6 +53,7 @@ describe("importChessCom", () => {
       opp_elo: 1400,
       my_elo: 1500,
       accuracy: 88.5,
+      opponent_accuracy: 60.1,
       played_at: "2026-07-01",
     });
   });
@@ -79,6 +80,26 @@ describe("importChessCom", () => {
     expect(game.result).toBe("loss");
     expect(game.time_class).toBe("daily");
     expect(game.accuracy).toBeNull();
+  });
+
+  it("maps both chess.com accuracies into the player's perspective", async () => {
+    const g = {
+      ...ccGame,
+      accuracies: { white: 92.4, black: 71.6 },
+      white: { username: "villain", rating: 1400, result: "win" },
+      black: { username: "Torim98", rating: 1500, result: "resigned" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/archives")
+          ? jsonResponse({ archives: ["m"] })
+          : jsonResponse({ games: [g] })
+      )
+    );
+
+    const [game] = await importChessCom("Torim98");
+    expect(game).toMatchObject({ accuracy: 71.6, opponent_accuracy: 92.4 });
   });
 
   it("throws on an HTTP error from the archive list", async () => {

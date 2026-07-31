@@ -27,12 +27,59 @@ describe("PGN import/export", () => {
   });
 
   it("round-trips multiple games", () => {
-    const game = importPgn(SAMPLE, "Tom")[0];
+    const game = {
+      ...importPgn(SAMPLE, "Tom")[0],
+      accuracy: 88.4,
+      accuracy_opening: 91.2,
+      accuracy_middlegame: 86.7,
+      accuracy_endgame: 84.1,
+      opponent_accuracy: 75.6,
+      opponent_accuracy_opening: 79.3,
+      opponent_accuracy_middlegame: 73.2,
+      opponent_accuracy_endgame: 70.8,
+    };
     const text = exportPgn([game, { ...game, source_id: "second" }], "Tom");
     const imported = importPgn(text, "Tom");
     expect(imported).toHaveLength(2);
     expect(imported[0].moves).toBe(game.moves);
     expect(imported[0].tags).toEqual(game.tags);
+    expect(imported[0]).toMatchObject({
+      accuracy: 88.4,
+      accuracy_opening: 91.2,
+      accuracy_middlegame: 86.7,
+      accuracy_endgame: 84.1,
+      opponent_accuracy: 75.6,
+      opponent_accuracy_opening: 79.3,
+      opponent_accuracy_middlegame: 73.2,
+      opponent_accuracy_endgame: 70.8,
+    });
+
+    // Der Export stammt aus Sicht von Schwarz (Tom). Wählt ein Import
+    // stattdessen Weiß (Alice), müssen beide Genauigkeiten die Seiten tauschen.
+    const fromWhite = importPgn(text, "Alice")[0];
+    expect(fromWhite).toMatchObject({
+      color: "white",
+      accuracy: 75.6,
+      accuracy_opening: 79.3,
+      accuracy_middlegame: 73.2,
+      accuracy_endgame: 70.8,
+      opponent_accuracy: 88.4,
+      opponent_accuracy_opening: 91.2,
+      opponent_accuracy_middlegame: 86.7,
+      opponent_accuracy_endgame: 84.1,
+    });
+  });
+
+  it("keeps the player-relative interpretation of older accuracy headers", () => {
+    const legacy = SAMPLE.replace(
+      '[KiebitzNote "Good finish"]',
+      '[KiebitzNote "Good finish"]\n[KiebitzAccuracy "87.2"]\n[KiebitzOpponentAccuracy "74.9"]'
+    );
+    expect(importPgn(legacy, "Tom")[0]).toMatchObject({
+      color: "black",
+      accuracy: 87.2,
+      opponent_accuracy: 74.9,
+    });
   });
 
   it("rejects an import when the player matches neither color", () => {

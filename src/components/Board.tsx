@@ -1,5 +1,15 @@
 import { Chessboard } from "react-chessboard";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { moveTargetStyles, selectionStyles } from "../lib/boardMoves";
 import { soundsForTransition } from "../lib/boardSound";
 import { playBoardSound } from "../lib/sound";
@@ -14,9 +24,262 @@ const boardTheme = {
   },
 };
 
+const mutedBoardTheme = {
+  customDarkSquareStyle: { backgroundColor: "#68716b" },
+  customLightSquareStyle: { backgroundColor: "#d0d0c8" },
+};
+
+const EMPTY_ARROWS: [string, string, string?][] = [];
+const EMPTY_BADGES: BoardBadge[] = [];
+const EMPTY_STYLES: Record<string, CSSProperties> = {};
+
+type BoardArrow = [string, string, string?];
+type BoardBadge = { square: string; label: ReactNode; color: string; title?: string };
+
+type BoardProps = {
+  fen: string;
+  /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
+  width: number;
+  draggable?: boolean;
+  onPieceDrop?: (from: string, to: string) => boolean;
+  onSquareClick?: (square: string) => void;
+  squareStyles?: Record<string, CSSProperties>;
+  orientation?: "white" | "black";
+  boardId: string;
+  shake?: boolean;
+  /** Engine-/Partiezug-Pfeile im Format [von, nach, Farbe]. */
+  arrows?: BoardArrow[];
+  /** Kleine Zugqualitaets-Marker auf der oberen rechten Feldecke. */
+  badges?: BoardBadge[];
+  /** Varianten werden durch entsaettigte Felder vom Partieverlauf abgesetzt. */
+  muted?: boolean;
+  /** Gemeinsamer WebView-Drag fuer Maus, Stift und Touch statt react-dnd. */
+  mouseDrag?: boolean;
+  /** Reine Vorschaubretter bleiben stumm, auch wenn Ton aktiviert ist. */
+  silent?: boolean;
+};
+
 function isAndroidWebView(): boolean {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 }
+
+function requestUiFrame(callback: FrameRequestCallback): number {
+  if (typeof requestAnimationFrame === "function") return requestAnimationFrame(callback);
+  return window.setTimeout(() => callback(performance.now()), 16);
+}
+
+function cancelUiFrame(frame: number): void {
+  if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(frame);
+  else window.clearTimeout(frame);
+}
+
+function sameStyleRecord(
+  left: Record<string, CSSProperties>,
+  right: Record<string, CSSProperties>
+): boolean {
+  if (left === right) return true;
+  const leftSquares = Object.keys(left);
+  const rightSquares = Object.keys(right);
+  if (leftSquares.length !== rightSquares.length) return false;
+  for (const square of leftSquares) {
+    const leftStyle = left[square] as Record<string, unknown> | undefined;
+    const rightStyle = right[square] as Record<string, unknown> | undefined;
+    if (!leftStyle || !rightStyle) return false;
+    const leftKeys = Object.keys(leftStyle);
+    const rightKeys = Object.keys(rightStyle);
+    if (leftKeys.length !== rightKeys.length) return false;
+    if (leftKeys.some((key) => leftStyle[key] !== rightStyle[key])) return false;
+  }
+  return true;
+}
+
+type BoardSurfaceProps = {
+  boardId: string;
+  fen: string;
+  width: number;
+  draggable: boolean;
+  mouseDrag: boolean;
+  orientation: "white" | "black";
+  dragSource: string | null;
+  squareStyles: Record<string, CSSProperties>;
+  muted: boolean;
+  android: boolean;
+  hasDropHandler: boolean;
+  hasSquareClickHandler: boolean;
+  onPieceDrop: (from: string, to: string) => boolean;
+  onSquareClick: (square: string) => void;
+  onPieceDragBegin: (piece: string, source: string) => void;
+  onPieceDragEnd: () => void;
+};
+
+/**
+ * `react-chessboard` places almost all state in one context. Any parent render
+ * would therefore reconcile all 64 squares, even when only an engine label or
+ * clock changed. This small memo boundary keeps that expensive tree completely
+ * untouched until a visual board input actually changes.
+ */
+const BoardSurface = memo(
+  function BoardSurface({
+    boardId,
+    fen,
+    width,
+    draggable,
+    mouseDrag,
+    orientation,
+    dragSource,
+    squareStyles,
+    muted,
+    android,
+    hasDropHandler,
+    hasSquareClickHandler,
+    onPieceDrop,
+    onSquareClick,
+    onPieceDragBegin,
+    onPieceDragEnd,
+  }: BoardSurfaceProps) {
+    const combinedStyles = useMemo(
+      () => ({ ...selectionStyles(fen, dragSource), ...squareStyles }),
+      [fen, dragSource, squareStyles]
+    );
+
+    return (
+      <Chessboard
+        id={boardId}
+        position={fen}
+        boardWidth={width}
+        arePiecesDraggable={draggable && !mouseDrag}
+        onPieceDrop={!mouseDrag && hasDropHandler ? onPieceDrop : undefined}
+        onPieceDragBegin={draggable && !mouseDrag ? onPieceDragBegin : undefined}
+        onPieceDragEnd={draggable && !mouseDrag ? onPieceDragEnd : undefined}
+        onSquareClick={hasSquareClickHandler ? onSquareClick : undefined}
+        customSquareStyles={combinedStyles}
+        boardOrientation={orientation}
+        // The shared pointer path reports a move as an external position
+        // change. react-chessboard would otherwise lock that board for the
+        // animation duration after every user move.
+        animationDuration={mouseDrag || android ? 0 : 150}
+        {...boardTheme}
+        {...(muted ? mutedBoardTheme : {})}
+      />
+    );
+  },
+  (previous, next) =>
+    previous.boardId === next.boardId
+    && previous.fen === next.fen
+    && previous.width === next.width
+    && previous.draggable === next.draggable
+    && previous.mouseDrag === next.mouseDrag
+    && previous.orientation === next.orientation
+    && previous.dragSource === next.dragSource
+    && previous.muted === next.muted
+    && previous.android === next.android
+    && previous.hasDropHandler === next.hasDropHandler
+    && previous.hasSquareClickHandler === next.hasSquareClickHandler
+    && sameStyleRecord(previous.squareStyles, next.squareStyles)
+);
+
+function squareCenter(square: string, orientation: "white" | "black") {
+  if (!/^[a-h][1-8]$/.test(square)) return null;
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]) - 1;
+  const x = orientation === "white" ? file : 7 - file;
+  const y = orientation === "white" ? 7 - rank : rank;
+  return { x: (x + 0.5) * 12.5, y: (y + 0.5) * 12.5 };
+}
+
+function sameArrows(left: BoardArrow[], right: BoardArrow[]): boolean {
+  return left === right || (
+    left.length === right.length
+    && left.every((arrow, index) =>
+      arrow[0] === right[index]?.[0]
+      && arrow[1] === right[index]?.[1]
+      && arrow[2] === right[index]?.[2]
+    )
+  );
+}
+
+/** Engine arrows live outside react-chessboard so a changing PV repaints one
+ * SVG line instead of invalidating the board context and all 64 squares. */
+const BoardArrows = memo(function BoardArrows({
+    boardId,
+    arrows,
+    orientation,
+  }: {
+    boardId: string;
+    arrows: BoardArrow[];
+    orientation: "white" | "black";
+  }) {
+  if (arrows.length === 0) return null;
+  const markerPrefix = `kiebitz-arrow-${boardId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const drawable = arrows.flatMap(([fromSquare, toSquare, color], index) => {
+    const from = squareCenter(fromSquare, orientation);
+    const to = squareCenter(toSquare, orientation);
+    if (!from || !to || fromSquare === toSquare) return [];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    if (length === 0) return [];
+    const sharedTarget = arrows.some(
+      ([otherFrom, otherTo], otherIndex) =>
+        otherIndex !== index && otherFrom !== fromSquare && otherTo === toSquare
+    );
+    const reducer = sharedTarget ? 6.25 : 3.125;
+    return [{
+      color: color ?? "rgb(255,170,0)",
+      from,
+      index,
+      to: {
+        x: from.x + (dx * (length - reducer)) / length,
+        y: from.y + (dy * (length - reducer)) / length,
+      },
+    }];
+  });
+  if (drawable.length === 0) return null;
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+      data-testid="board-arrows"
+      viewBox="0 0 100 100"
+    >
+      <defs>
+        {drawable.map((arrow) => (
+          <marker
+            key={`marker-${arrow.index}`}
+            id={`${markerPrefix}-${arrow.index}`}
+            markerHeight="2.5"
+            markerWidth="2"
+            orient="auto"
+            refX="1.25"
+            refY="1.25"
+          >
+            <polygon fill={arrow.color} points="0.3 0, 2 1.25, 0.3 2.5" />
+          </marker>
+        ))}
+      </defs>
+      {drawable.map((arrow) => (
+        <line
+          key={arrow.index}
+          data-arrow-index={arrow.index}
+          markerEnd={`url(#${markerPrefix}-${arrow.index})`}
+          opacity="0.65"
+          stroke={arrow.color}
+          strokeLinecap="round"
+          strokeWidth="2.5"
+          x1={arrow.from.x}
+          x2={arrow.to.x}
+          y1={arrow.from.y}
+          y2={arrow.to.y}
+        />
+      ))}
+    </svg>
+  );
+}, (previous, next) =>
+  previous.boardId === next.boardId
+  && previous.orientation === next.orientation
+  && sameArrows(previous.arrows, next.arrows)
+);
 
 /**
  * Schachbrett mit responsiver Breite: `width` ist die Maximalbreite; auf
@@ -32,61 +295,74 @@ export default function Board({
   orientation = "white",
   boardId,
   shake = false,
-  arrows = [],
-  badges = [],
+  arrows = EMPTY_ARROWS,
+  badges = EMPTY_BADGES,
   muted = false,
   mouseDrag = false,
   silent = false,
-}: {
-  fen: string;
-  /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
-  width: number;
-  draggable?: boolean;
-  onPieceDrop?: (from: string, to: string) => boolean;
-  onSquareClick?: (square: string) => void;
-  squareStyles?: Record<string, CSSProperties>;
-  orientation?: "white" | "black";
-  boardId: string;
-  shake?: boolean;
-  /** Engine-/Partiezug-Pfeile im Format [von, nach, Farbe]. */
-  arrows?: [string, string, string?][];
-  /** Kleine Zugqualitaets-Marker auf der oberen rechten Feldecke. */
-  badges?: { square: string; label: ReactNode; color: string; title?: string }[];
-  /** Varianten werden durch entsaettigte Felder vom Partieverlauf abgesetzt. */
-  muted?: boolean;
-  /** Gemeinsamer WebView-Drag fuer Maus, Stift und Touch statt react-dnd. */
-  mouseDrag?: boolean;
-  /** Reine Vorschaubretter bleiben stumm, auch wenn Ton aktiviert ist. */
-  silent?: boolean;
-}) {
+}: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
   const [dragSource, setDragSource] = useState<string | null>(null);
   const dropRef = useRef(onPieceDrop);
+  const squareClickRef = useRef(onSquareClick);
   const draggableRef = useRef(draggable);
   const fenRef = useRef(fen);
   const suppressClickUntilRef = useRef(0);
+  const cancelPointerDragRef = useRef<(() => void) | null>(null);
 
   dropRef.current = onPieceDrop;
+  squareClickRef.current = onSquareClick;
   draggableRef.current = draggable;
   fenRef.current = fen;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => {
+    let frame: number | null = null;
+    const measure = () => {
       const avail = el.clientWidth;
       setW(avail > 0 ? Math.min(width, avail) : width);
     };
-    update();
+    const update = () => {
+      if (frame != null) return;
+      frame = requestUiFrame(() => {
+        frame = null;
+        measure();
+      });
+    };
+    measure();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      if (frame != null) cancelUiFrame(frame);
+      ro.disconnect();
+    };
   }, [width]);
+
+  // Stable proxies let BoardSurface skip parent-only renders without ever
+  // retaining stale page callbacks.
+  const handlePieceDrop = useCallback(
+    (from: string, to: string) => dropRef.current?.(from, to) ?? false,
+    []
+  );
+  const handleSquareClick = useCallback(
+    (square: string) => squareClickRef.current?.(square),
+    []
+  );
+  const handlePieceDragBegin = useCallback((_piece: string, source: string) => {
+    startTransition(() => setDragSource(source));
+  }, []);
+  const handlePieceDragEnd = useCallback(() => {
+    startTransition(() => setDragSource(null));
+  }, []);
 
   // A new position always ends the old drag, including moves completed by an
   // automated opponent response.
-  useEffect(() => setDragSource(null), [fen]);
+  useEffect(() => {
+    cancelPointerDragRef.current?.();
+    setDragSource(null);
+  }, [fen]);
 
   /**
    * Zug- und Schlagklänge hängen an der Stellung, nicht am Eingabeweg: so
@@ -125,26 +401,49 @@ export default function Board({
       startY: number;
       offsetX: number;
       offsetY: number;
+      width: number;
+      height: number;
     };
 
     let session: DragSession | null = null;
+    let previewFrame: number | null = null;
+    let previewX = 0;
+    let previewY = 0;
 
     const removePreview = () => {
+      if (previewFrame != null) {
+        cancelUiFrame(previewFrame);
+        previewFrame = null;
+      }
       if (!session) return;
       session.piece.style.visibility = "";
       session.ghost?.remove();
       session = null;
-      setDragSource(null);
+      startTransition(() => setDragSource(null));
     };
+    cancelPointerDragRef.current = removePreview;
 
     type DragEvent = PointerEvent | MouseEvent;
     const eventId = (event: DragEvent) => ("pointerId" in event ? event.pointerId : -1);
 
-    const movePreview = (event: DragEvent) => {
+    const paintPreview = () => {
+      previewFrame = null;
       if (!session?.ghost) return;
-      session.ghost.style.transform = `translate3d(${
-        event.clientX - session.offsetX
-      }px, ${event.clientY - session.offsetY}px, 0)`;
+      session.ghost.style.transform = `translate3d(${previewX}px, ${previewY}px, 0)`;
+    };
+
+    const movePreview = (event: DragEvent, immediate = false) => {
+      if (!session?.ghost) return;
+      previewX = event.clientX - session.offsetX;
+      previewY = event.clientY - session.offsetY;
+      if (immediate) {
+        if (previewFrame != null) cancelUiFrame(previewFrame);
+        paintPreview();
+      } else if (previewFrame == null) {
+        // Pointer events can arrive much faster than the display refresh. One
+        // transform write per frame keeps input dispatch practically free.
+        previewFrame = requestUiFrame(paintPreview);
+      }
     };
 
     const beginPreview = (event: DragEvent) => {
@@ -154,26 +453,26 @@ export default function Board({
       // hat, wird diese Auswahl beim tatsächlichen Drag sofort entfernt.
       window.getSelection()?.removeAllRanges();
 
-      const rect = session.piece.getBoundingClientRect();
       const ghost = session.piece.cloneNode(true) as HTMLElement;
       Object.assign(ghost.style, {
         position: "fixed",
         left: "0",
         top: "0",
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
+        width: `${session.width}px`,
+        height: `${session.height}px`,
         margin: "0",
         opacity: "0.94",
         pointerEvents: "none",
         transition: "none",
+        willChange: "transform",
         zIndex: "2147483000",
         cursor: "grabbing",
       });
       document.body.appendChild(ghost);
       session.ghost = ghost;
       session.piece.style.visibility = "hidden";
-      setDragSource(session.source);
-      movePreview(event);
+      startTransition(() => setDragSource(session?.source ?? null));
+      movePreview(event, true);
     };
 
     const onDragDown = (event: DragEvent) => {
@@ -205,6 +504,8 @@ export default function Board({
         startY: event.clientY,
         offsetX: event.clientX - rect.left,
         offsetY: event.clientY - rect.top,
+        width: rect.width,
+        height: rect.height,
       };
     };
 
@@ -232,10 +533,14 @@ export default function Board({
       event.preventDefault();
       event.stopPropagation();
       const source = session.source;
-      const target = document
+      const targetSquare = document
         .elementFromPoint(event.clientX, event.clientY)
-        ?.closest<HTMLElement>("[data-square]")
-        ?.dataset.square;
+        ?.closest<HTMLElement>("[data-square]");
+      // Several pages can temporarily contain a preview board next to the
+      // active one. A drag belongs exclusively to the board it started on.
+      const target = targetSquare && board.contains(targetSquare)
+        ? targetSquare.dataset.square
+        : undefined;
 
       // Android kann den zum Pointer-Up gehörenden Kompatibilitäts-Klick erst
       // deutlich später senden. Er darf den eben ausgeführten Zug nicht noch
@@ -260,6 +565,9 @@ export default function Board({
     window.addEventListener("mouseup", onDragUp, { capture: true, passive: false });
     window.addEventListener("pointercancel", onPointerCancel, true);
     return () => {
+      if (cancelPointerDragRef.current === removePreview) {
+        cancelPointerDragRef.current = null;
+      }
       removePreview();
       board.removeEventListener("pointerdown", onDragDown, true);
       board.removeEventListener("mousedown", onDragDown, true);
@@ -285,13 +593,6 @@ export default function Board({
     };
   };
 
-  const squareTheme = muted
-    ? {
-        customDarkSquareStyle: { backgroundColor: "#68716b" },
-        customLightSquareStyle: { backgroundColor: "#d0d0c8" },
-      }
-    : boardTheme;
-
   return (
     <div
       ref={ref}
@@ -306,25 +607,25 @@ export default function Board({
       onDragStartCapture={(event) => event.preventDefault()}
     >
       <div className="relative" style={{ width: w, height: w }}>
-        <Chessboard
-          id={boardId}
-          position={fen}
-          boardWidth={w}
-          arePiecesDraggable={draggable && !mouseDrag}
-          onPieceDrop={!mouseDrag && onPieceDrop ? (s, t) => onPieceDrop(s, t) : undefined}
-          onPieceDragBegin={draggable && !mouseDrag ? (_piece, source) => setDragSource(source) : undefined}
-          onPieceDragEnd={draggable && !mouseDrag ? () => setDragSource(null) : undefined}
-          onSquareClick={onSquareClick}
-          customSquareStyles={{
-            ...selectionStyles(fen, dragSource),
-            ...squareStyles,
-          }}
-          customArrows={arrows as never}
-          boardOrientation={orientation}
-          animationDuration={isAndroidWebView() ? 0 : 150}
-          {...boardTheme}
-          {...squareTheme}
+        <BoardSurface
+          android={isAndroidWebView()}
+          boardId={boardId}
+          dragSource={dragSource}
+          draggable={draggable}
+          fen={fen}
+          hasDropHandler={onPieceDrop != null}
+          hasSquareClickHandler={onSquareClick != null}
+          mouseDrag={mouseDrag}
+          muted={muted}
+          onPieceDragBegin={handlePieceDragBegin}
+          onPieceDragEnd={handlePieceDragEnd}
+          onPieceDrop={handlePieceDrop}
+          onSquareClick={handleSquareClick}
+          orientation={orientation}
+          squareStyles={squareStyles ?? EMPTY_STYLES}
+          width={w}
         />
+        <BoardArrows boardId={boardId} arrows={arrows} orientation={orientation} />
         {badges.map((badge, index) => (
           <span
             key={`${badge.square}-${index}`}
