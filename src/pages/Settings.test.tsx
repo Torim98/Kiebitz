@@ -104,7 +104,6 @@ const androidSettings = {
   notify_endgame: true,
   notify_analysis: true,
   onboarded: true,
-  news_seen: "",
 } satisfies Settings;
 
 const sectionLoads = [dbInfo, puzzleStats, syncInfo, legalDocuments].map((fn) => vi.mocked(fn));

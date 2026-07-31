@@ -50,8 +50,6 @@ export interface Settings {
   notify_analysis: boolean;
   /** Wurde die Ersteinrichtung durchlaufen? */
   onboarded: boolean;
-  /** Kennung der zuletzt weggeklickten Neuigkeit (leer = noch keine). */
-  news_seen: string;
 }
 
 export interface EngineTest {

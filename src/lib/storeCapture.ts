@@ -18,15 +18,6 @@ export function isMobilePreview(): boolean {
   return devFlag("mobile-preview");
 }
 
-/**
- * Zeigt die aktuelle Neuigkeit sofort an · sonst bekäme man sie beim
- * Verfassen nur zu sehen, indem man sie in den Einstellungen wieder
- * "ungesehen" macht. Nur zum Entwickeln.
- */
-export function isNewsPreview(): boolean {
-  return devFlag("news-preview");
-}
-
 function devFlag(name: string): boolean {
   const localPreview = window.location.hostname === "127.0.0.1"
     || window.location.hostname === "localhost";

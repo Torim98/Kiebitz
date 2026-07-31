@@ -546,34 +546,13 @@ The pieces that make it work:
   Attach it (plus installer and `.sig`) to the GitHub release yourself.
   </details>
 
-## What's new on first start (optional)
-
-`src/lib/news.ts` holds exactly one entry, `CURRENT_NEWS`. On the first start
-after an update the desktop and Android apps show it in a dialog; *Don't show
-again* stores its `id` in `news_seen` in `settings.json`, and the dialog stays
-away until a **different** id appears there. *Later* only closes it for this
-run.
-
-To announce something in a release, edit `CURRENT_NEWS` before tagging:
-
-1. Give it a fresh `id` (anything, as long as it differs from the last one).
-2. Point `titleKey`, `introKey`, `pointKeys` and `outroKey` at new `news.*`
-   entries in `src/lib/i18n.tsx` — German and English.
-3. Check the wording and length with `npm run dev` and
-   `http://localhost:5173/?news-preview` (add `&mobile-preview` for the phone
-   layout); this shows the dialog without touching any settings.
-
-Leaving `CURRENT_NEWS` untouched is a valid release: everyone who dismissed it
-keeps it dismissed, and nobody is greeted with an empty window.
-
 ## Release checklist
 
 The automated flow (see *Releasing a new version*) is the short version of this:
 
-1. Decide whether this release says something (see *What's new on first start*).
-2. On a clean `main`, run `.\scripts\release.ps1 -Version X.Y.Z`.
-3. Wait for the GitHub Actions run to finish, including the final `publish` job.
-4. Smoke-test: install the new release (or let an existing copy auto-update),
+1. On a clean `main`, run `.\scripts\release.ps1 -Version X.Y.Z`.
+2. Wait for the GitHub Actions run to finish, including the final `publish` job.
+3. Smoke-test: install the new release (or let an existing copy auto-update),
    import games, run a live analysis, confirm the database is untouched in the
    app-data directory.
 

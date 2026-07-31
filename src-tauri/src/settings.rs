@@ -78,11 +78,6 @@ pub struct Settings {
     pub notify_analysis: bool,
     /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
     pub onboarded: bool,
-    /// Kennung der zuletzt weggeklickten Neuigkeit ("nicht mehr anzeigen").
-    /// Leer heißt: noch keine. Eine neue Kennung im Frontend lässt die
-    /// Meldung beim nächsten Start wieder erscheinen · deshalb ein Text und
-    /// kein Schalter.
-    pub news_seen: String,
 }
 
 /// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf 18:00 zurück.
@@ -144,7 +139,6 @@ impl Default for Settings {
             notify_endgame: true,
             notify_analysis: true,
             onboarded: false,
-            news_seen: String::new(),
         }
     }
 }
@@ -168,7 +162,6 @@ fn normalize(mut s: Settings) -> Settings {
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
     s.display_name = s.display_name.trim().to_string();
-    s.news_seen = s.news_seen.trim().to_string();
     s.engine_path = s
         .engine_path
         .map(|p| p.trim().to_string())

@@ -52,11 +52,9 @@ import Insights from "./pages/InsightsV2";
 import SettingsPage from "./pages/Settings";
 import Support from "./pages/Support";
 import Onboarding from "./components/Onboarding";
-import NewsDialog from "./components/NewsDialog";
-import { CURRENT_NEWS, pendingNews, type NewsEntry } from "./lib/news";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
-import { isMobilePreview, isNewsPreview, isStoreCapture } from "./lib/storeCapture";
+import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
 
 export type { PageId };
 
@@ -138,18 +136,12 @@ export default function App() {
     return installCrashReporter();
   }, [backend.mode]);
 
-  // Ersteinrichtung: nur beim allerersten Start, danach nie wieder. Direkt
-  // dahinter die Neuigkeit zur Version · nie beides gleichzeitig, sonst
-  // stapeln sich zwei Fenster übereinander.
+  // Ersteinrichtung: nur beim allerersten Start, danach nie wieder.
   const [onboarding, setOnboarding] = useState<Settings | null>(null);
-  const [news, setNews] = useState<NewsEntry | null>(isNewsPreview() ? CURRENT_NEWS : null);
   useEffect(() => {
     if (backend.mode !== "desktop") return;
     getSettings()
-      .then((s) => {
-        setOnboarding(s.onboarded ? null : s);
-        if (!isNewsPreview()) setNews(pendingNews(s));
-      })
+      .then((s) => setOnboarding(s.onboarded ? null : s))
       .catch(() => {});
   }, [backend.mode]);
 
@@ -411,11 +403,10 @@ export default function App() {
           onDone={(applied) => {
             setOnboarding(null);
             // Neue Konten sofort nutzen (Sprache steckt schon im Provider).
-            setNews(pendingNews(applied));
+            void applied;
           }}
         />
       )}
-      {!onboarding && news && <NewsDialog entry={news} onClose={() => setNews(null)} />}
       {update ? (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">
           <Loader2 size={15} className="animate-spin text-accent" />
