@@ -421,7 +421,7 @@ function LiveRepertoire() {
         </>
       ) : (
         <div className="rounded-xl border border-dashed border-line2 px-4 py-6 text-center text-[12.5px] leading-relaxed text-ink3">
-          {t("rep.selectHint")}
+          {t(compact ? "rep.selectHintMobile" : "rep.selectHint")}
         </div>
       )}
 

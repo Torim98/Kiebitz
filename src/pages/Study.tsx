@@ -215,14 +215,17 @@ export default function Study({
 
   const proposePlan = () => {
     if (!plan || !state) return;
-    const monday = mondayOf(new Date());
+    // `due_week[0]` bedeutet heute. Die alte Verankerung am Montag verschob
+    // diese Fälligkeiten mitten in der Woche rückwärts auf vergangene Tage.
+    const today = new Date();
+    const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
     setPlanning(
       buildWeekPlan(
         plan.allocation,
         state.templates,
         data?.due_week ?? [],
         state.trainingDays,
-        monday
+        firstDay
       )
     );
   };
@@ -550,7 +553,7 @@ export default function Study({
               ) : (
                 <>
                   <p className="mb-3 text-[12.5px] leading-relaxed text-ink3">
-                    {t("plan.proposalNote", { n: planning.length })}
+                    {t("plan.proposalNote", { n: planning.length, m: plan.weeklyMinutes })}
                   </p>
                   <ul className="mb-3 flex flex-col gap-1.5">
                     {planning.map((unit, index) => (
@@ -599,11 +602,6 @@ export default function Study({
 
 function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-function mondayOf(date: Date): Date {
-  const day = date.getUTCDay() || 7;
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - day + 1));
 }
 
 export { DAY };

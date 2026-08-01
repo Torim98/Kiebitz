@@ -195,8 +195,32 @@ describe("Befund-Engine", () => {
     const pool = buildFindings(deep, live).find((f) => f.id === "format-pool");
     expect(pool).toBeTruthy();
     expect(pool!.params.best).toBe("blitz");
-    expect(pool!.params.busy).toBe("rapid");
-    expect(Number(pool!.params.bestValue)).toBeGreaterThan(Number(pool!.params.busyValue));
+    expect(pool!.params.weak).toBe("rapid");
+    expect(Number(pool!.params.bestValue)).toBeGreaterThan(Number(pool!.params.weakValue));
+  });
+
+  it("does not turn a negligible clock-loss rate into a coaching problem", () => {
+    const deep = deepWith((d) => {
+      d.time.games = 597;
+      d.time.trouble.flag_losses = 3;
+    });
+    expect(buildFindings(deep, live).some((f) => f.id === "time-flag")).toBe(false);
+  });
+
+  it("describes a positive average clock difference as time ahead", () => {
+    const deep = deepWith((d) => {
+      d.time.edge = {
+        games: 593,
+        ahead_games: 385,
+        ahead_score: 58.8,
+        behind_games: 208,
+        behind_score: 48.6,
+        avg_diff: 33.1,
+      };
+    });
+    const edge = buildFindings(deep, live).find((f) => f.id === "time-edge");
+    expect(edge?.bodyKey).toBe("fnd.edgeAheadBody");
+    expect(edge?.params).toMatchObject({ an: 385, bn: 208, d: 33.1 });
   });
 
   it("meldet einen dünnen Analysestand als eigenen Befund", () => {

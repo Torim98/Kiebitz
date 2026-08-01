@@ -30,6 +30,24 @@ function g(partial: Partial<GameRecord> = {}): GameRecord {
 }
 
 describe("buildDashboard", () => {
+  it("carries the last rating into a new month until a new game is played", () => {
+    const july = Math.floor(new Date(2026, 6, 31, 18).getTime() / 1000);
+    const realNow = Date.now;
+    Date.now = () => new Date(2026, 7, 1, 9).getTime();
+    try {
+      const d = buildDashboard(
+        [
+          g({ source: "chess.com", played_ts: july, my_elo: 812 }),
+          g({ source: "lichess", played_ts: july, my_elo: 1078 }),
+        ],
+        { locale: "en", ccUser: "u", liUser: "u" }
+      );
+      expect(d.history[d.history.length - 1]).toMatchObject({ month: "Aug", cc: 812, li: 1078 });
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it("takes the latest rating per platform/time-control bucket", () => {
     const d = buildDashboard(
       [

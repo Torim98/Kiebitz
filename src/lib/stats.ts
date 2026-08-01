@@ -87,8 +87,11 @@ export function buildDashboard(
   });
 
   // Monatsverlauf: letztes Rapid-/Blitz-Rating je Kalendermonat und Quelle.
+  // Der laufende Monat beginnt mit dem letzten bekannten Stand. Sonst ist die
+  // Kurve am Monatsanfang leer, bis die erste neue Partie importiert wurde,
+  // obwohl sich das Rating in der Zwischenzeit nicht geändert hat.
   const history: HistoryPoint[] = [];
-  const currentMonth = new Date();
+  const currentMonth = new Date(Date.now());
   currentMonth.setDate(1);
   currentMonth.setHours(0, 0, 0, 0);
   for (let offset = 5; offset >= 0; offset--) {
@@ -105,12 +108,30 @@ export function buildDashboard(
           g.my_elo > 0 &&
           (g.time_class === "rapid" || g.time_class === "blitz")
       );
+    const latestBefore = (src: string) =>
+      asc.filter(
+        (g) =>
+          g.source === src &&
+          g.played_ts < start &&
+          g.my_elo > 0 &&
+          (g.time_class === "rapid" || g.time_class === "blitz")
+      );
     const cc = inMonth("chess.com");
     const li = inMonth("lichess");
+    const ccPrevious = offset === 0 ? latestBefore("chess.com") : [];
+    const liPrevious = offset === 0 ? latestBefore("lichess") : [];
     history.push({
       month: startDate.toLocaleDateString(opts.locale === "de" ? "de-DE" : "en-US", { month: "short" }),
-      cc: cc.length ? cc[cc.length - 1].my_elo : null,
-      li: li.length ? li[li.length - 1].my_elo : null,
+      cc: cc.length
+        ? cc[cc.length - 1].my_elo
+        : ccPrevious.length
+          ? ccPrevious[ccPrevious.length - 1].my_elo
+          : null,
+      li: li.length
+        ? li[li.length - 1].my_elo
+        : liPrevious.length
+          ? liPrevious[liPrevious.length - 1].my_elo
+          : null,
     });
   }
 

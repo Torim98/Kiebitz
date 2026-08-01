@@ -58,6 +58,7 @@ export default function Time({
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
   const { time, formats, coverage } = deep;
+  const flagLossPct = time.games > 0 ? (time.trouble.flag_losses / time.games) * 100 : 0;
 
   if (time.games === 0) {
     return (
@@ -103,8 +104,8 @@ export default function Time({
         <Kpi
           label={t("ins.tmFlag")}
           value={deInt(time.trouble.flag_losses)}
-          sub={t("ins.tmFlagSub")}
-          tone={time.trouble.flag_losses >= 3 ? "bad" : undefined}
+          sub={t("ins.tmFlagSub", { p: de(flagLossPct) })}
+          tone={time.trouble.flag_losses >= 3 && flagLossPct >= 3 ? "bad" : undefined}
         />
       </div>
 
@@ -420,52 +421,54 @@ export default function Time({
 
   /**
    * Die Empfehlung als ein Satz. Drei Fälle, weil es drei ehrliche Antworten
-   * gibt: wechsle, bleib, oder es macht keinen Unterschied.
+   * gibt: Fokus erhöhen, Fokus beibehalten, oder kein belastbarer Unterschied.
    */
   function recommendationLine(pick: FormatRecommendation): string {
     const best = tcLabel(pick.best.timeClass, locale);
-    const versus = tcLabel(pick.versus.timeClass, locale);
-    if (!isMeaningful(pick)) return t("ins.fmtPickEven", { best, other: versus });
-    if (pick.matches) return t("ins.fmtPickStay", { best, other: versus });
+    const weak = tcLabel(pick.weakest.timeClass, locale);
+    if (!isMeaningful(pick)) return t("ins.fmtPickEven", { best, other: weak });
+    if (pick.weakest.key === pick.busiest.key) {
+      return t("ins.fmtPickStay", { weak, best, p: pick.weakestShare });
+    }
     return t("ins.fmtPickSwitch", {
       best,
-      busy: tcLabel(pick.busiest.timeClass, locale),
-      p: pick.busiestShare,
+      weak,
+      p: pick.weakestShare,
     });
   }
 
   /** Die Zahlen hinter der Empfehlung · ohne sie ist sie nur eine Behauptung. */
   function recommendationReason(pick: FormatRecommendation): string {
     const best = tcLabel(pick.best.timeClass, locale);
-    const other = tcLabel(pick.versus.timeClass, locale);
+    const other = tcLabel(pick.weakest.timeClass, locale);
     switch (pick.evidence) {
       case "pool":
         return t("ins.fmtWhyPool", {
           best,
           other,
           b: deInt(pick.best.reference ?? 0),
-          o: deInt(pick.versus.reference ?? 0),
-          n: deInt(pick.best.games),
+          o: deInt(pick.weakest.reference ?? 0),
+          n: deInt(pick.weakest.games),
         });
       case "skill":
         return t("ins.fmtWhySkill", {
           best,
           other,
           b: de(pick.best.blundersPer100 ?? 0),
-          o: de(pick.versus.blundersPer100 ?? 0),
+          o: de(pick.weakest.blundersPer100 ?? 0),
         });
       case "score":
         return t("ins.fmtWhyScore", {
           best,
           other,
           b: de(pick.best.scorePct),
-          o: de(pick.versus.scorePct),
+          o: de(pick.weakest.scorePct),
         });
     }
   }
 
   function RecommendationCard({ pick }: { pick: FormatRecommendation }) {
-    const switching = isMeaningful(pick) && !pick.matches;
+    const switching = isMeaningful(pick) && pick.weakest.key !== pick.busiest.key;
     return (
       <div
         className={`mb-4 flex gap-3 rounded-lg border px-3.5 py-3 ${

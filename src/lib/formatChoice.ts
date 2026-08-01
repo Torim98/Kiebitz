@@ -1,5 +1,5 @@
 /**
- * Welches Zeitformat sollte gespielt werden?
+ * Welches Zeitformat sollte gezielt trainiert werden?
  *
  * Die Formattabelle beantwortet die Frage schon, aber nur, wenn man sie zu
  * lesen weiß · neun Spalten, und die entscheidende (das poolbereinigte Rating)
@@ -36,8 +36,10 @@ export interface FormatChoice {
 }
 
 export interface FormatRecommendation {
-  /** Das Format, das gespielt werden sollte. */
+  /** Das stärkste Format · Vergleichsmaßstab, nicht Trainingsziel. */
   best: FormatChoice;
+  /** Das schwächste belastbar vergleichbare Format · der Trainingsfokus. */
+  weakest: FormatChoice;
   /** Das meistgespielte · daran misst sich die Empfehlung. */
   busiest: FormatChoice;
   /**
@@ -46,13 +48,15 @@ export interface FormatRecommendation {
    * Begründung ein Format gegen sich selbst.
    */
   versus: FormatChoice;
-  /** Spielst du schon überwiegend das empfohlene Format? */
+  /** Ist das stärkste Format zugleich das meistgespielte? */
   matches: boolean;
   /** Anteil des meistgespielten Formats an den verglichenen Partien, in Prozent. */
   busiestShare: number;
+  /** Anteil des schwächsten Formats an den verglichenen Partien. */
+  weakestShare: number;
   evidence: FormatEvidence;
   /**
-   * Vorsprung des empfohlenen Formats gegenüber `versus`, in der Einheit des
+   * Abstand zwischen stärkstem und schwächstem Format, in der Einheit des
    * Belegs: Referenzpunkte, Patzer je 100 Züge oder Prozentpunkte Ausbeute.
    */
   margin: number;
@@ -87,7 +91,7 @@ function toChoice(format: FormatStat): FormatChoice {
 }
 
 /**
- * Das empfohlene Format, oder `null`, wenn zwei Formate mit genug Partien
+ * Der Vergleich von stärkstem und schwächstem Format, oder `null`, wenn zwei Formate mit genug Partien
  * fehlen · dann gibt es schlicht nichts zu vergleichen, und eine Empfehlung
  * aus einem einzigen Pool wäre keine.
  */
@@ -126,6 +130,7 @@ export function recommendFormat(formats: FormatStat[]): FormatRecommendation | n
   }
 
   const best = ranked[0];
+  const weakest = ranked[ranked.length - 1];
   // Das meistgespielte wird unter *denselben* Kandidaten gesucht: sonst stünde
   // die Empfehlung gegen ein Format, für das die Belege gar nicht reichen.
   const busiest = [...ranked].sort((a, b) => b.games - a.games)[0];
@@ -134,12 +139,14 @@ export function recommendFormat(formats: FormatStat[]): FormatRecommendation | n
 
   return {
     best: toChoice(best),
+    weakest: toChoice(weakest),
     busiest: toChoice(busiest),
     versus: toChoice(versus),
     matches: best.key === busiest.key,
     busiestShare: total > 0 ? Math.round((busiest.games / total) * 100) : 0,
+    weakestShare: total > 0 ? Math.round((weakest.games / total) * 100) : 0,
     evidence,
-    margin: Math.round(Math.abs(valueOf(best) - valueOf(versus)) * 10) / 10,
+    margin: Math.round(Math.abs(valueOf(best) - valueOf(weakest)) * 10) / 10,
   };
 }
 

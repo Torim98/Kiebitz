@@ -151,7 +151,7 @@ describe("native notification bridge", () => {
     });
   });
 
-  it("persists and verifies the inexact daily Android alarm", async () => {
+  it("persists and verifies the inexact daily Android alarm without serializing native pending objects", async () => {
     invokeMock.mockImplementation((command?: string) => {
       if (!command) return Promise.resolve();
       if (command === "get_settings") {
@@ -177,9 +177,6 @@ describe("native notification bridge", () => {
         return Promise.resolve({ events: [] });
       }
       if (command === "plugin:notification|batch") return Promise.resolve([4711]);
-      if (command === "plugin:notification|get_pending") {
-        return Promise.resolve([{ id: 4711 }]);
-      }
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
@@ -219,6 +216,6 @@ describe("native notification bridge", () => {
         },
       })
     );
-    expect(invokeMock).toHaveBeenCalledWith("plugin:notification|get_pending");
+    expect(invokeMock).not.toHaveBeenCalledWith("plugin:notification|get_pending");
   });
 });

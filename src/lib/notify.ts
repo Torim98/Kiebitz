@@ -38,10 +38,6 @@ type NativeNotificationOptions = {
   sourceJson?: string;
 };
 
-type PendingNotification = {
-  id: number;
-};
-
 /** Was heute noch offen ist · Datenbasis des Erinnerungstexts. */
 export interface ReminderInput {
   /** Offene geplante Lerneinheiten des Tages. */
@@ -153,13 +149,14 @@ async function nativeScheduledNotification(options: NativeNotificationOptions): 
     ...options,
     sourceJson: JSON.stringify(options),
   };
-  await invoke<number[]>("plugin:notification|batch", {
+  const scheduled = await invoke<number[]>("plugin:notification|batch", {
     notifications: [persistedOptions],
   });
-  const pending = await invoke<PendingNotification[]>(
-    "plugin:notification|get_pending"
-  );
-  if (!pending.some((notification) => notification.id === options.id)) {
+  // `get_pending` cannot currently cross the Android bridge: the plugin
+  // returns native PendingNotification objects for which Jackson has no bean
+  // serializer. The batch result already contains the IDs accepted by the
+  // AlarmManager and is the safe acknowledgement to validate here.
+  if (options.id != null && !scheduled.includes(options.id)) {
     throw new Error("Die geplante Android-Benachrichtigung wurde nicht registriert.");
   }
 }

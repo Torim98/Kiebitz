@@ -45,9 +45,11 @@ describe("recommendFormat", () => {
     ])!;
     expect(pick.evidence).toBe("pool");
     expect(pick.best.timeClass).toBe("blitz");
+    expect(pick.weakest.timeClass).toBe("rapid");
     expect(pick.busiest.timeClass).toBe("rapid");
     expect(pick.matches).toBe(false);
     expect(pick.busiestShare).toBe(80);
+    expect(pick.weakestShare).toBe(80);
   });
 
   it("fällt ohne Ratings auf die Patzerquote zurück", () => {

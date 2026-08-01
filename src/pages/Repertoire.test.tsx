@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
 import { fenAfter } from "../lib/util";
 import type { RepNode } from "../lib/repertoire";
 import Repertoire from "./Repertoire";
@@ -114,6 +115,19 @@ async function startTraining() {
 }
 
 describe("Repertoire training", () => {
+  it("points to the variation list below on mobile", async () => {
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Repertoire />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    expect(
+      await screen.findByText("Wähle unten eine Variante · oder lege mit „Variante hinzufügen“ los.")
+    ).toBeTruthy();
+  });
+
   it("navigates previous positions with the left and right arrow keys", async () => {
     const board = await startTraining();
     await waitFor(() => {

@@ -375,7 +375,7 @@ describe("Study page", () => {
     await screen.findByText("Zeitnot kostet dich Partien");
 
     fireEvent.click(screen.getByRole("button", { name: /Wochenplan aus den Empfehlungen/ }));
-    expect(await screen.findByText("Vorschlag für diese Woche")).toBeTruthy();
+    expect(await screen.findByText("Vorschlag für die nächsten 7 Tage")).toBeTruthy();
     // Bis hierher darf nichts gespeichert sein.
     expect(invokeMock).not.toHaveBeenCalledWith("schedule_study_unit", expect.anything());
 

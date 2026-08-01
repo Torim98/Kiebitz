@@ -14,9 +14,9 @@
  *    Vernünftiges da, statt einer Empfehlung aus zwölf Partien.
  * 2. **Trainierbarkeit.** Ein Befund zählt nur so weit, wie Kiebitz ihn
  *    überhaupt trainieren kann (`Finding.lever`).
- * 3. **Bedarf ≠ Reihenfolge.** Der Soll-Anteil hängt am Bedarf, die Auswahl der
- *    Fokusse zusätzlich an der Lücke zum tatsächlichen Aufwand. Wer ohnehin
- *    täglich Taktik macht, bekommt nicht noch eine vierte Taktikempfehlung.
+ * 3. **Priorität bleibt Priorität.** Der Soll-Anteil berücksichtigt die reale
+ *    Trainingslücke; die Coaching-Insights selbst stehen strikt nach Schwere
+ *    des Befunds, damit die wichtigste Baustelle immer zuerst kommt.
  *
  * Reine Funktionen ohne Backend-Zugriff · testbar wie `findings.ts`, und die
  * Seite reicht nur Rohdaten herein.
@@ -237,17 +237,14 @@ export function buildPrescriptions(
   dose: PuzzleDose | null,
   trainingDays: number
 ): Prescription[] {
-  const gap = new Map(allocation.map((need) => [need.area, need.target - need.actual]));
   const candidates = findings.filter((finding) => finding.tone !== "good" && finding.lever);
 
-  // Sortiert nach Dringlichkeit *und* Lücke: ein schwerer Befund in einem
-  // Bereich, der ohnehin trainiert wird, ist weniger dringend als ein
-  // mittlerer in einem, der brachliegt.
-  const ranked = [...candidates].sort((a, b) => {
-    const scoreOf = (finding: Finding) =>
-      finding.severity + Math.max(0, gap.get(finding.lever!.area) ?? 0) * 1.5;
-    return scoreOf(b) - scoreOf(a);
-  });
+  // Die Befund-Engine berechnet die Priorität bereits aus Effekt und
+  // Stichprobenvertrauen. Die Ist-/Soll-Lücke verändert das Budget, aber nicht
+  // die Reihenfolge der Aussagen.
+  const ranked = [...candidates].sort(
+    (a, b) => b.severity - a.severity || a.id.localeCompare(b.id)
+  );
 
   const out: Prescription[] = [];
   const usedAreas = new Set<Area>();
@@ -358,18 +355,19 @@ export function buildHygiene(deep: DeepInsights, live: LiveInsights): HygieneTip
   const out: HygieneTip[] = [];
   const { sessions, time } = deep;
 
-  // Welches Format · steht ganz oben, weil es die Entscheidung *vor* allen
-  // anderen ist. Ohne Aussage lieber nichts sagen als ein Achselzucken.
+  // Das schwächste belastbar vergleichbare Format ist der Trainingsfokus. Die
+  // Vergleichslogik selbst bleibt poolbereinigt; nur das Ziel ist bewusst
+  // nicht mehr „spiele dort, wo du ohnehin schon am besten bist“.
   const format = recommendFormat(deep.formats.formats);
   if (format && isMeaningful(format)) {
+    const alreadyFocused = format.weakest.key === format.busiest.key;
     out.push({
       id: "format",
-      key: format.matches ? "plan.hygieneFormatStay" : "plan.hygieneFormatSwitch",
+      key: alreadyFocused ? "plan.hygieneFormatContinue" : "plan.hygieneFormatTrain",
       params: {
         best: format.best.timeClass,
-        busy: format.busiest.timeClass,
-        other: format.versus.timeClass,
-        p: format.busiestShare,
+        weak: format.weakest.timeClass,
+        p: format.weakestShare,
       },
     });
   }
@@ -447,8 +445,10 @@ export function templateArea(template: StudyTemplate): Area | null {
   if (haystack.includes("puzzle") || haystack.includes("tact") || haystack.includes("taktik")) {
     return "tactics";
   }
-  if (haystack.includes("analys")) return "analysis";
+  // Die Standardvorlage „Game + analysis“ erfüllt primär das stets
+  // eingeplante Spielbudget. Reine Analysevorlagen landen weiterhin darunter.
   if (haystack.includes("game") || haystack.includes("partie")) return "play";
+  if (haystack.includes("analys")) return "analysis";
   return null;
 }
 
@@ -499,7 +499,7 @@ export function buildWeekPlan(
   const out: PlannedUnit[] = [];
   for (const need of allocation) {
     const template = byArea.get(need.area);
-    if (!template || need.minutes < 10) continue;
+    if (!template || need.minutes < template.duration_min / 2) continue;
 
     // Wie viele Einheiten passen ins Budget dieses Bereichs?
     const count = Math.min(

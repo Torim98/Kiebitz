@@ -162,17 +162,20 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     });
   }
 
-  if (time.trouble.flag_losses >= 3) {
+  const flagLossPct = time.games > 0 ? (time.trouble.flag_losses / time.games) * 100 : 0;
+  // Drei Ausreißer in mehreren hundert Partien sind kein Trainingsproblem.
+  // Absolutzahl und Anteil müssen deshalb beide relevant sein.
+  if (time.trouble.flag_losses >= 3 && flagLossPct >= 3) {
     push({
       id: "time-flag",
       lever: { area: "play", trainability: 0.9 },
       metricKey: "trouble_pct",
-      severity: severity(time.trouble.flag_losses * 8, time.games, 40),
+      severity: severity(flagLossPct * 10, time.trouble.flag_losses, 5),
       tone: "bad",
       tab: "time",
       titleKey: "fnd.flagTitle",
       bodyKey: "fnd.flagBody",
-      params: { n: time.trouble.flag_losses, g: time.games },
+      params: { n: time.trouble.flag_losses, g: time.games, p: round(flagLossPct) },
     });
   }
 
@@ -184,11 +187,18 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       tone: "warn",
       tab: "time",
       titleKey: "fnd.edgeTitle",
-      bodyKey: "fnd.edgeBody",
+      bodyKey:
+        time.edge.avg_diff > 1
+          ? "fnd.edgeAheadBody"
+          : time.edge.avg_diff < -1
+            ? "fnd.edgeBehindBody"
+            : "fnd.edgeEvenBody",
       params: {
         a: round(time.edge.ahead_score),
         b: round(time.edge.behind_score),
-        d: round(time.edge.avg_diff),
+        an: time.edge.ahead_games,
+        bn: time.edge.behind_games,
+        d: round(Math.abs(time.edge.avg_diff)),
       },
     });
   }
@@ -558,23 +568,23 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
   const rated = formats.formats.filter((f) => f.games >= 20 && f.perf_edge != null);
   if (rated.length >= 2) {
     const best = [...rated].sort((a, b) => (b.perf_edge ?? 0) - (a.perf_edge ?? 0))[0];
-    const busiest = [...rated].sort((a, b) => b.games - a.games)[0];
+    const weakest = [...rated].sort((a, b) => (a.perf_edge ?? 0) - (b.perf_edge ?? 0))[0];
     const totalGames = rated.reduce((sum, f) => sum + f.games, 0);
-    if (best.key !== busiest.key && (best.perf_edge ?? 0) - (busiest.perf_edge ?? 0) >= 25) {
+    if (best.key !== weakest.key && (best.perf_edge ?? 0) - (weakest.perf_edge ?? 0) >= 25) {
       push({
         id: "format-mismatch",
-      lever: { area: "play", trainability: 1.0 },
-        severity: severity((best.perf_edge! - busiest.perf_edge!) / 2, best.games, 40),
+        lever: { area: "play", trainability: 1.0 },
+        severity: severity((best.perf_edge! - weakest.perf_edge!) / 2, weakest.games, 40),
         tone: "warn",
         tab: "time",
         titleKey: "fnd.formatTitle",
         bodyKey: "fnd.formatBody",
         params: {
           best: best.time_class,
-          busy: busiest.time_class,
+          weak: weakest.time_class,
           e: best.perf_edge!,
-          o: busiest.perf_edge!,
-          p: Math.round((busiest.games / totalGames) * 100),
+          o: weakest.perf_edge!,
+          p: Math.round((weakest.games / totalGames) * 100),
         },
       });
     }
@@ -630,6 +640,7 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
   for (const family of weakestFamilies(deep.openings.families, deep.openings.baseline_score)) {
     const gap = deep.openings.baseline_score - family.score_pct;
     const asWhite = family.color === "white";
+    const hasMatchingLine = family.avg_departure_ply > 0;
     push({
       id: `opening-${family.color}-${family.key}`,
       lever: { area: "openings", trainability: 1 },
@@ -641,7 +652,13 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       tone: gap >= 12 ? "bad" : "warn",
       tab: "openings",
       titleKey: asWhite ? "fnd.openMineTitle" : "fnd.openFacedTitle",
-      bodyKey: asWhite ? "fnd.openMineBody" : "fnd.openFacedBody",
+      bodyKey: asWhite
+        ? hasMatchingLine
+          ? "fnd.openMineBody"
+          : "fnd.openMineNoLineBody"
+        : hasMatchingLine
+          ? "fnd.openFacedBody"
+          : "fnd.openFacedNoLineBody",
       params: {
         name: family.label,
         p: round(family.score_pct),
@@ -668,29 +685,30 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     .filter((entry): entry is { format: (typeof formats.formats)[number]; scale: NonNullable<ReturnType<typeof toReference>> } => entry.scale != null);
   if (scaled.length >= 2) {
     const best = [...scaled].sort((a, b) => b.scale.value - a.scale.value)[0];
-    const busiest = [...scaled].sort((a, b) => b.format.games - a.format.games)[0];
+    const weakest = [...scaled].sort((a, b) => a.scale.value - b.scale.value)[0];
     const totalGames = scaled.reduce((sum, entry) => sum + entry.format.games, 0);
-    const edge = best.scale.value - busiest.scale.value;
-    // 60 Referenzpunkte sind rund eine Klasse · darunter lohnt kein Umzug.
-    if (best.format.key !== busiest.format.key && edge >= 60) {
+    const edge = best.scale.value - weakest.scale.value;
+    // 60 Referenzpunkte sind rund eine Klasse · darunter ist die Trainingslücke
+    // nicht belastbar genug, um einen Formatfokus daraus zu machen.
+    if (best.format.key !== weakest.format.key && edge >= 60) {
       push({
         id: "format-pool",
         lever: { area: "play", trainability: 1 },
         metricKey: "score_pct",
-        severity: severity(edge / 2, Math.min(best.format.games, busiest.format.games), 40),
+        severity: severity(edge / 2, Math.min(best.format.games, weakest.format.games), 40),
         tone: "warn",
         tab: "time",
         titleKey: "fnd.poolTitle",
         bodyKey: "fnd.poolBody",
         params: {
           best: best.format.time_class,
-          busy: busiest.format.time_class,
+          weak: weakest.format.time_class,
           bestValue: best.scale.value,
-          busyValue: busiest.scale.value,
+          weakValue: weakest.scale.value,
           bestRaw: best.format.rating ?? 0,
-          busyRaw: busiest.format.rating ?? 0,
-          p: Math.round((busiest.format.games / totalGames) * 100),
-          confidence: best.scale.confidence === "measured" && busiest.scale.confidence === "measured"
+          weakRaw: weakest.format.rating ?? 0,
+          p: Math.round((weakest.format.games / totalGames) * 100),
+          confidence: best.scale.confidence === "measured" && weakest.scale.confidence === "measured"
             ? "measured"
             : "estimated",
         },
@@ -768,7 +786,7 @@ export function localizeFindingParams(
   if (typeof out.type === "string") out.type = t(`ins.endgame.${out.type}` as Key);
   if (typeof out.piece === "string") out.piece = t(`ins.piece.${out.piece}` as Key);
   if (typeof out.theme === "string") out.theme = themeLabel(out.theme, locale);
-  for (const key of ["best", "busy", "other", "clean", "messy"]) {
+  for (const key of ["best", "busy", "weak", "other", "clean", "messy"]) {
     if (typeof out[key] === "string") out[key] = tcLabel(out[key] as string, locale);
   }
   return out;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAllocation,
+  buildHygiene,
   buildPrescriptions,
   buildWeekPlan,
   puzzleDose,
@@ -13,6 +14,8 @@ import type { Finding } from "./findings";
 import type { DeepInsights } from "./insights";
 import type { AreaLoad, StudyTemplate } from "./study";
 import type { PuzzleInsights } from "./puzzles";
+import type { LiveInsights } from "./stats";
+import { demoDeepInsights } from "../pages/insights/demo";
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -121,7 +124,7 @@ describe("buildPrescriptions", () => {
     expect(out.map((p) => p.id)).not.toContain("b");
   });
 
-  it("prefers a neglected area over a slightly heavier finding in a saturated one", () => {
+  it("orders coaching insights strictly by finding priority", () => {
     const saturated: AreaNeed[] = [
       { area: "tactics", target: 30, actual: 60, minutes: 90, actualMinutes: 180, evidence: 0 },
       { area: "endgames", target: 20, actual: 0, minutes: 60, actualMinutes: 0, evidence: 0 },
@@ -138,7 +141,7 @@ describe("buildPrescriptions", () => {
       null,
       5
     );
-    expect(out[0].id).toBe("endgames");
+    expect(out[0].id).toBe("tactics");
   });
 
   it("keeps the puzzle band and motif on the action, not just in the text", () => {
@@ -161,6 +164,22 @@ describe("buildPrescriptions", () => {
   it("skips findings without a lever · there is nothing to prescribe", () => {
     const out = buildPrescriptions([finding({ lever: undefined })], allocation, null, 5);
     expect(out).toHaveLength(0);
+  });
+});
+
+describe("buildHygiene", () => {
+  it("keeps the weaker pool-corrected format as the training focus", () => {
+    const deep = demoDeepInsights();
+    deep.formats.formats = [
+      { ...deep.formats.formats[0], key: "cc/blitz", source: "chess.com", time_class: "blitz", rating: 1700, games: 40 },
+      { ...deep.formats.formats[0], key: "cc/rapid", source: "chess.com", time_class: "rapid", rating: 1720, games: 160 },
+    ];
+    const tips = buildHygiene(deep, { byTimeSlot: [] } as unknown as LiveInsights);
+    expect(tips[0]).toMatchObject({
+      id: "format",
+      key: "plan.hygieneFormatContinue",
+      params: { best: "blitz", weak: "rapid", p: 80 },
+    });
   });
 });
 
@@ -283,6 +302,7 @@ describe("buildWeekPlan", () => {
     expect(templateArea(templates[0])).toBe("openings");
     expect(templateArea(templates[1])).toBe("tactics");
     expect(templateArea(templates[2])).toBe("endgames");
+    expect(templateArea({ ...templates[0], title: "Game + analysis", tool: "Lichess + Kiebitz Analysis" })).toBe("play");
     expect(templateArea({ ...templates[0], tool: "Notizbuch", title: "Nachdenken" })).toBeNull();
   });
 
@@ -320,5 +340,15 @@ describe("buildWeekPlan", () => {
       { area: "tactics", target: 2, actual: 0, minutes: 5, actualMinutes: 0, evidence: 0 },
     ];
     expect(buildWeekPlan(allocation, templates, [], [], monday)).toHaveLength(0);
+  });
+
+  it("uses the supplied current day as day zero instead of inventing past dates", () => {
+    const saturday = new Date(Date.UTC(2026, 7, 1));
+    const allocation: AreaNeed[] = [
+      { area: "tactics", target: 100, actual: 0, minutes: 20, actualMinutes: 0, evidence: 1 },
+    ];
+    const plan = buildWeekPlan(allocation, templates, [9, 0, 0, 0, 0, 0, 0], [], saturday);
+    expect(plan[0].day).toBe("2026-08-01");
+    expect(plan.every((unit) => unit.day >= "2026-08-01")).toBe(true);
   });
 });
