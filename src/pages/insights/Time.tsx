@@ -5,6 +5,7 @@
  * das Zeitformat, das du am meisten spielst, zu dem, in dem du am besten
  * spielst? Beides hängt an denselben Uhrdaten, deshalb steht es zusammen.
  */
+import { Lightbulb } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -25,6 +26,7 @@ import { de, deInt } from "../../lib/util";
 import { tcLabel } from "../../lib/gameUi";
 import type { DeepInsights, FormatStat } from "../../lib/insights";
 import { toReference, REFERENCE_LABEL, REFERENCE_SOURCE } from "../../lib/formatScale";
+import { isMeaningful, recommendFormat, type FormatRecommendation } from "../../lib/formatChoice";
 import type { Finding } from "../../lib/findings";
 import { CoverageNote, Empty, FindingStrip, Kpi, MetricBar, Section, Stat, Versus } from "./parts";
 
@@ -292,24 +294,18 @@ export default function Time({
     if (list.length === 0) {
       return null;
     }
-    const busiest = [...list].sort((a, b) => b.games - a.games)[0];
-    const bestEdge = [...list]
-      .filter((f) => f.perf_edge != null)
-      .sort((a, b) => (b.perf_edge ?? 0) - (a.perf_edge ?? 0))[0];
+    // Die Empfehlung steht schon in der Zusammenfassung, damit sie auch bei
+    // zugeklappter Karte lesbar ist · sie ist die Antwort auf die Frage, mit
+    // der die meisten diesen Reiter überhaupt öffnen.
+    const pick = recommendFormat(list);
 
     return (
       <Section
         title={t("ins.fmtTitle")}
-        summary={
-          bestEdge
-            ? t("ins.fmtSummary", {
-                busy: tcLabel(busiest.time_class, locale),
-                best: tcLabel(bestEdge.time_class, locale),
-              })
-            : t("ins.fmtSummaryPlain", { n: list.length })
-        }
+        summary={pick ? recommendationLine(pick) : t("ins.fmtSummaryPlain", { n: list.length })}
         defaultOpen
       >
+        {pick && <RecommendationCard pick={pick} />}
         {mobile ? (
           <div className="flex flex-col gap-2">
             {list.map((format) => (
@@ -419,6 +415,76 @@ export default function Time({
           <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">{t("ins.fmtNeedAnalysis")}</p>
         )}
       </Section>
+    );
+  }
+
+  /**
+   * Die Empfehlung als ein Satz. Drei Fälle, weil es drei ehrliche Antworten
+   * gibt: wechsle, bleib, oder es macht keinen Unterschied.
+   */
+  function recommendationLine(pick: FormatRecommendation): string {
+    const best = tcLabel(pick.best.timeClass, locale);
+    const versus = tcLabel(pick.versus.timeClass, locale);
+    if (!isMeaningful(pick)) return t("ins.fmtPickEven", { best, other: versus });
+    if (pick.matches) return t("ins.fmtPickStay", { best, other: versus });
+    return t("ins.fmtPickSwitch", {
+      best,
+      busy: tcLabel(pick.busiest.timeClass, locale),
+      p: pick.busiestShare,
+    });
+  }
+
+  /** Die Zahlen hinter der Empfehlung · ohne sie ist sie nur eine Behauptung. */
+  function recommendationReason(pick: FormatRecommendation): string {
+    const best = tcLabel(pick.best.timeClass, locale);
+    const other = tcLabel(pick.versus.timeClass, locale);
+    switch (pick.evidence) {
+      case "pool":
+        return t("ins.fmtWhyPool", {
+          best,
+          other,
+          b: deInt(pick.best.reference ?? 0),
+          o: deInt(pick.versus.reference ?? 0),
+          n: deInt(pick.best.games),
+        });
+      case "skill":
+        return t("ins.fmtWhySkill", {
+          best,
+          other,
+          b: de(pick.best.blundersPer100 ?? 0),
+          o: de(pick.versus.blundersPer100 ?? 0),
+        });
+      case "score":
+        return t("ins.fmtWhyScore", {
+          best,
+          other,
+          b: de(pick.best.scorePct),
+          o: de(pick.versus.scorePct),
+        });
+    }
+  }
+
+  function RecommendationCard({ pick }: { pick: FormatRecommendation }) {
+    const switching = isMeaningful(pick) && !pick.matches;
+    return (
+      <div
+        className={`mb-4 flex gap-3 rounded-lg border px-3.5 py-3 ${
+          switching ? "border-gold/40 bg-[#2a2414]" : "border-accent-dim bg-accent-soft"
+        }`}
+      >
+        <Lightbulb
+          size={15}
+          className={`mt-0.5 shrink-0 ${switching ? "text-gold" : "text-accent"}`}
+        />
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium leading-snug text-ink">
+            {recommendationLine(pick)}
+          </div>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-ink3">
+            {recommendationReason(pick)}
+          </p>
+        </div>
+      </div>
     );
   }
 }

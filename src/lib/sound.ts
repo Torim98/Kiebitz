@@ -7,6 +7,9 @@
  * Die fünf Ausschnitte liegen als kleine Offline-Assets im App-Bundle. Zug,
  * Schlag, Rochade und Matt stammen aus dem gewählten Set D; für Schach wird
  * auf Wunsch der kräftige Matt-Anschlag aus Set F verwendet.
+ *
+ * Alle fünf sind mit *einem* gemeinsamen Faktor auf 0,89 Vollausschlag
+ * angehoben · gemeinsam, damit der Schlag lauter bleibt als der Zug.
  */
 
 export type BoardSoundKind =
@@ -42,7 +45,7 @@ export function boardSoundEnabled(): boolean {
   return enabled;
 }
 
-/** 0 … 1; bei 100 % bleibt etwas Headroom für schnell aufeinanderfolgende Züge. */
+/** 0 … 1; 100 % gibt die Aufnahmen unverändert aus. */
 export function setBoardSoundVolume(value: number): void {
   volume = Math.max(0, Math.min(1, value));
   for (const pool of pools.values()) {
@@ -52,7 +55,11 @@ export function setBoardSoundVolume(value: number): void {
 
 function outputVolume(): number {
   // Der leicht gekrümmte Verlauf gibt dem unteren Teil des Reglers mehr Raum.
-  return Math.pow(volume, 1.15) * 0.82;
+  // Den Kopfraum gegen Übersteuerung tragen die Aufnahmen selbst · sie sind auf
+  // 0,89 Vollausschlag normalisiert, damit hier nichts mehr abgeregelt werden
+  // muss. Vorher lag der Regler bei Voreinstellung effektiv bei knapp 30 %
+  // Amplitude, und das war schlicht zu leise.
+  return Math.pow(volume, 1.15);
 }
 
 function createAudio(kind: BoardSoundKind): HTMLAudioElement | null {

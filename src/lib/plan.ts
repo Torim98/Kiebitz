@@ -29,6 +29,7 @@ import type { Finding, FindingAction } from "./findings";
 import type { AreaLoad, StudyTemplate, TrainingProgram } from "./study";
 import { AREAS, type Area } from "./study";
 import { toReference } from "./formatScale";
+import { isMeaningful, recommendFormat } from "./formatChoice";
 
 // ── Ratingband-Priors ───────────────────────────────────────────────────────
 
@@ -356,6 +357,22 @@ export interface HygieneTip {
 export function buildHygiene(deep: DeepInsights, live: LiveInsights): HygieneTip[] {
   const out: HygieneTip[] = [];
   const { sessions, time } = deep;
+
+  // Welches Format · steht ganz oben, weil es die Entscheidung *vor* allen
+  // anderen ist. Ohne Aussage lieber nichts sagen als ein Achselzucken.
+  const format = recommendFormat(deep.formats.formats);
+  if (format && isMeaningful(format)) {
+    out.push({
+      id: "format",
+      key: format.matches ? "plan.hygieneFormatStay" : "plan.hygieneFormatSwitch",
+      params: {
+        best: format.best.timeClass,
+        busy: format.busiest.timeClass,
+        other: format.versus.timeClass,
+        p: format.busiestShare,
+      },
+    });
+  }
 
   if (sessions.recommended_length > 0 && sessions.by_index.length > 1) {
     out.push({

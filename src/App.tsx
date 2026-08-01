@@ -166,18 +166,18 @@ export default function App() {
     isMobilePreview();
   // Querformat auf Telefonhöhe: die Navigation tritt an die linke Kante.
   const rail = useLandscapePhone();
-  const mobileMainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
-  // Die mobile Shell behält denselben Scroll-Container über alle Seiten
-  // hinweg. Ohne Reset übernimmt der nächste Tab die Position des vorherigen
-  // und beginnt dadurch irgendwo mitten im Inhalt.
+  // Beide Shells behalten denselben Scroll-Container über alle Seiten hinweg.
+  // Ohne Reset übernimmt der nächste Tab die Position des vorherigen und
+  // beginnt dadurch irgendwo mitten im Inhalt · auf dem Desktop war das
+  // besonders auffällig, weil die Seiten dort länger sind.
   useLayoutEffect(() => {
-    if (!isMobile) return;
-    const main = mobileMainRef.current;
+    const main = mainRef.current;
     if (!main) return;
     main.scrollTop = 0;
     main.scrollLeft = 0;
-  }, [isMobile, page]);
+  }, [page]);
 
   // Kräftiges Schütteln öffnet auf dem Handy die Rückmeldung · vorgewählt als
   // Absturzbericht, weil man das Gerät selten aus Begeisterung schüttelt.
@@ -494,7 +494,7 @@ export default function App() {
             onSettings={() => navigate("settings")}
             settingsActive={page === "settings"}
           />
-          <main ref={mobileMainRef} className="min-w-0 flex-1 overflow-y-auto">
+          <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
             {mainContent}
           </main>
         </div>
@@ -547,6 +547,7 @@ export default function App() {
       )}
 
       <main
+        ref={mainRef}
         className="min-w-0 flex-1 overflow-y-auto"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >

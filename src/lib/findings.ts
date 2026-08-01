@@ -768,7 +768,7 @@ export function localizeFindingParams(
   if (typeof out.type === "string") out.type = t(`ins.endgame.${out.type}` as Key);
   if (typeof out.piece === "string") out.piece = t(`ins.piece.${out.piece}` as Key);
   if (typeof out.theme === "string") out.theme = themeLabel(out.theme, locale);
-  for (const key of ["best", "busy", "clean", "messy"]) {
+  for (const key of ["best", "busy", "other", "clean", "messy"]) {
     if (typeof out[key] === "string") out[key] = tcLabel(out[key] as string, locale);
   }
   return out;

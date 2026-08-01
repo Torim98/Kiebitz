@@ -167,6 +167,12 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
         },
       ],
       hygiene: [
+        // Blitz ist in der Demo das meistgespielte Format, Rapid das stärkere.
+        {
+          id: "format",
+          key: "plan.hygieneFormatSwitch",
+          params: { best: "rapid", busy: "blitz", p: 46 },
+        },
         { id: "length", key: "plan.hygieneLength", params: { n: 4 } },
         { id: "requeue", key: "plan.hygieneRequeue", params: { m: 10, p: 9 } },
         { id: "clock", key: "plan.hygieneClock", params: { m: 28, p: 17 } },

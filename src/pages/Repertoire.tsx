@@ -261,7 +261,9 @@ function LiveRepertoire() {
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
-      <div className="p-2">
+      {/* Der Baum wächst mit dem Repertoire und schöbe sonst alles unter ihm
+          aus dem Bild · deshalb scrollt er in sich, statt die Seite zu dehnen. */}
+      <div className="max-h-[min(58vh,620px)] overflow-y-auto p-2">
         {(["white", "black"] as const).map((side) => (
           <div key={side} className="mb-2">
             <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
@@ -281,6 +283,8 @@ function LiveRepertoire() {
             ))}
           </div>
         ))}
+      </div>
+      <div className="border-t border-line p-2">
         {nodes.length === 0 && (
           <button
             onClick={seedStarter}
@@ -291,10 +295,12 @@ function LiveRepertoire() {
         )}
         <button
           onClick={() => setMode("add")}
-          className="mt-1 flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-left text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
         >
-          <Plus size={14} />{" "}
-          {selected ? t("rep.addLineFrom", { label: moveLabel(selected) }) : t("rep.addLine")}
+          <Plus size={14} className="shrink-0" />
+          <span className="min-w-0 truncate">
+            {selected ? t("rep.addLineFrom", { label: moveLabel(selected) }) : t("rep.addLine")}
+          </span>
         </button>
       </div>
     </Panel>
@@ -490,12 +496,48 @@ function LiveRepertoire() {
           {treePanel}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
-          {treePanel}
-          {boardPane}
-          {detailsPane}
-        </div>
+        <RepertoireGrid tree={treePanel} board={boardPane} details={detailsPane} />
       )}
+    </div>
+  );
+}
+
+/**
+ * Die drei Bereiche der Browse-Ansicht über die Fensterbreite verteilt.
+ *
+ * Das Brett hat eine feste Kantenlänge, die beiden anderen Spalten nicht ·
+ * deshalb hängt die Aufteilung an genau zwei Schwellen:
+ *
+ * - schmal · eine Spalte, Brett zuerst; der Baum ist Navigation und darf nach
+ *   unten, sonst steht die Stellung unter der Falz.
+ * - ab 1180 px · Brett und Baum links untereinander, Details rechts daneben.
+ *   Dieselbe Schwelle wie auf der Puzzle-Seite, die dieselbe Form hat.
+ * - ab 1480 px · alle drei nebeneinander, wie gehabt.
+ *
+ * Ohne die mittlere Stufe stand auf jedem üblichen Fenster (1440 px minus
+ * Seitenleiste) alles untereinander, mit einem 1200 px breiten Variantenbaum
+ * ganz oben.
+ */
+function RepertoireGrid({
+  tree,
+  board,
+  details,
+}: {
+  tree: ReactNode;
+  board: ReactNode;
+  details: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-1 items-start gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)] min-[1480px]:grid-cols-[280px_528px_minmax(0,1fr)]">
+      <div className="order-1 min-[1180px]:col-start-1 min-[1180px]:row-start-1 min-[1480px]:col-start-2">
+        {board}
+      </div>
+      <div className="order-2 min-[1180px]:col-start-2 min-[1180px]:row-start-1 min-[1180px]:row-span-2 min-[1480px]:col-start-3">
+        {details}
+      </div>
+      <div className="order-3 min-[1180px]:col-start-1 min-[1180px]:row-start-2 min-[1480px]:col-start-1 min-[1480px]:row-start-1 min-[1480px]:row-span-2">
+        {tree}
+      </div>
     </div>
   );
 }
@@ -609,17 +651,51 @@ function CoverageCard({
   );
 }
 
-/** Lücken aus den eigenen Partien · der kürzeste Weg zu neuen Varianten. */
+/**
+ * Lücken aus den eigenen Partien · der kürzeste Weg zu neuen Varianten.
+ *
+ * Zugeklappt, weil die Liste lang wird und niemand sie bei jedem Blick aufs
+ * Repertoire braucht · die Kopfzeile sagt trotzdem, wie viele es sind.
+ */
 function GapsCard({ gaps, onAdopt }: { gaps: RepGap[] | null; onAdopt: (gap: RepGap) => void }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
   return (
-    <Card title={t("rep.gaps")}>
-      {gaps == null ? (
+    <Card
+      title={
+        <span className="flex items-baseline gap-2">
+          {t("rep.gaps")}
+          {gaps != null && gaps.length > 0 && (
+            <span className="text-[11.5px] font-normal tabular-nums text-ink3">{gaps.length}</span>
+          )}
+        </span>
+      }
+      action={
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-ink3 transition-colors hover:bg-panel2 hover:text-ink"
+        >
+          {t(open ? "rep.gapsHide" : "rep.gapsShow")}
+          <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      }
+    >
+      {!open ? (
+        <p className="text-[12px] leading-relaxed text-ink3">
+          {gaps == null
+            ? t("common.loading")
+            : gaps.length === 0
+              ? t("rep.gapsNone")
+              : t("rep.gapsCollapsed", { n: gaps.length })}
+        </p>
+      ) : gaps == null ? (
         <div className="text-[12.5px] text-ink3">{t("common.loading")}</div>
       ) : gaps.length === 0 ? (
         <div className="text-[12.5px] leading-relaxed text-ink3">{t("rep.gapsNone")}</div>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
           {gaps.map((gap) => (
             <li
               key={`${gap.node_id}-${gap.side}-${gap.san}`}
@@ -647,7 +723,7 @@ function GapsCard({ gaps, onAdopt }: { gaps: RepGap[] | null; onAdopt: (gap: Rep
           ))}
         </ul>
       )}
-      <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("rep.gapsNote")}</p>
+      {open && <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("rep.gapsNote")}</p>}
     </Card>
   );
 }
@@ -1124,7 +1200,7 @@ function DemoRepertoire() {
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
-      <div className="p-2">
+      <div className="max-h-[min(58vh,620px)] overflow-y-auto p-2">
         {demoRepertoire.map((side) => (
           <div key={side.side} className="mb-2">
             <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
@@ -1217,11 +1293,7 @@ function DemoRepertoire() {
           {treePanel}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 min-[1480px]:grid-cols-[300px_528px_minmax(0,1fr)]">
-          {treePanel}
-          {boardPane}
-          {detailsPane}
-        </div>
+        <RepertoireGrid tree={treePanel} board={boardPane} details={detailsPane} />
       )}
     </div>
   );

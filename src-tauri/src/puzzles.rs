@@ -356,6 +356,22 @@ pub async fn next_puzzle(
 /// wiederholt werden, nur eben nicht am selben Tag.
 pub const SOLVED_COOLDOWN_DAYS: i64 = 30;
 
+/// Auch eine verpatzte Aufgabe kommt nicht sofort zurück. Sie zu wiederholen
+/// ist richtig, aber nicht, solange die Lösung noch im Kurzzeitgedächtnis
+/// liegt · das misst dann nur noch Erinnerung statt Können.
+pub const ATTEMPT_COOLDOWN_DAYS: i64 = 5;
+
+/// So viele Nachbarn holt ein Indexsprung, bevor daraus zufällig einer genommen
+/// wird.
+///
+/// Ohne das liefert `ORDER BY rating LIMIT 1` für dasselbe Zielrating immer
+/// dieselbe Zeile: bei Millionen Aufgaben liegen auf jedem Rating tausende, und
+/// welche davon zuerst im Index steht, ändert sich nie. Der Vorrat schrumpfte
+/// dadurch auf zwei Aufgaben je möglichem Zielrating · in einem 150 Punkte
+/// breiten Band also auf wenige hundert, und Wiederholungen kamen entsprechend
+/// schnell.
+const CANDIDATE_POOL: usize = 32;
+
 fn next_puzzle_from_conn(
     conn: &Connection,
     theme: Option<String>,
@@ -387,8 +403,10 @@ fn next_puzzle_at(
     let theme_filter = theme.filter(|t| !t.is_empty());
     let source_filter = source.filter(|s| s == "lichess" || s == "own");
     let theme_pattern = theme_filter.as_ref().map(|t| format!("% {t} %"));
-    let cooldown = now - SOLVED_COOLDOWN_DAYS * 86_400;
-    // Kürzlich gelöste Aufgaben überspringen; ältere dürfen zurückkommen.
+    let solved_cooldown = now - SOLVED_COOLDOWN_DAYS * 86_400;
+    let attempt_cooldown = now - ATTEMPT_COOLDOWN_DAYS * 86_400;
+    // Kürzlich gelöste und überhaupt kürzlich versuchte Aufgaben überspringen;
+    // ältere dürfen zurückkommen.
     let filter = puzzle_selection_filter(source_filter.as_deref());
     let columns = "SELECT id, fen, moves, rating, themes, source, source_game_id, setup_plies";
     // Ein zufälliges Zielrating und je ein Indexsprung nach oben und unten:
@@ -398,30 +416,38 @@ fn next_puzzle_at(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(1);
+    let mut next_random = move |bound: u64| {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+        (seed >> 33).rem_euclid(bound.max(1))
+    };
     for widen in [0i64, 150, 400, 1200, 4000] {
         let lo = base_lo - widen;
         let hi = base_hi + widen;
-        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
         let span = (hi - lo).max(1) as u64;
-        let target = lo + (seed >> 33).rem_euclid(span) as i64;
+        let target = lo + next_random(span) as i64;
         for (window_lo, window_hi, order) in [(target, hi, "ASC"), (lo, target, "DESC")] {
-            let sql = format!("{columns} {filter} ORDER BY rating {order} LIMIT 1");
-            let row = conn.query_row(
-                &sql,
-                params![
-                    window_lo,
-                    window_hi,
-                    source_filter.as_deref(),
-                    theme_pattern.as_deref(),
-                    cooldown
-                ],
-                map_puzzle,
-            );
-            match row {
-                Ok(p) => return Ok(Some(p)),
-                Err(rusqlite::Error::QueryReturnedNoRows) => continue,
-                Err(e) => return Err(e.to_string()),
+            let sql = format!("{columns} {filter} ORDER BY rating {order} LIMIT {CANDIDATE_POOL}");
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let mut found: Vec<PuzzleOut> = stmt
+                .query_map(
+                    params![
+                        window_lo,
+                        window_hi,
+                        source_filter.as_deref(),
+                        theme_pattern.as_deref(),
+                        solved_cooldown,
+                        attempt_cooldown
+                    ],
+                    map_puzzle,
+                )
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            if found.is_empty() {
+                continue;
             }
+            let index = next_random(found.len() as u64) as usize;
+            return Ok(Some(found.swap_remove(index)));
         }
     }
     Ok(None)
@@ -440,7 +466,8 @@ fn puzzle_selection_filter(source: Option<&str>) -> &'static str {
            AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
            AND NOT EXISTS (
              SELECT 1 FROM puzzle_attempts AS pa
-             WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
+             WHERE pa.puzzle_id = puzzles.id
+               AND ((pa.solved = 1 AND pa.ts >= ?5) OR pa.ts >= ?6)
            )"
     } else {
         "FROM puzzles INDEXED BY idx_puzzles_rating
@@ -449,7 +476,8 @@ fn puzzle_selection_filter(source: Option<&str>) -> &'static str {
            AND (?4 IS NULL OR (' ' || themes || ' ') LIKE ?4)
            AND NOT EXISTS (
              SELECT 1 FROM puzzle_attempts AS pa
-             WHERE pa.puzzle_id = puzzles.id AND pa.solved = 1 AND pa.ts >= ?5
+             WHERE pa.puzzle_id = puzzles.id
+               AND ((pa.solved = 1 AND pa.ts >= ?5) OR pa.ts >= ?6)
            )"
     }
 }
@@ -1091,6 +1119,31 @@ mod tests {
     }
 
     #[test]
+    fn failed_puzzles_do_not_come_straight_back() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        puzzle(&conn, "fork-1", 1500, "fork short");
+        let failed_at = 1_800_000_000i64;
+        record_attempt_at(&conn, "fork-1", false, failed_at).unwrap();
+
+        let pick = |now: i64| {
+            next_puzzle_at(&conn, None, None, Some(1400), Some(1600), now)
+                .unwrap()
+                .map(|p| p.id)
+        };
+        // Der häufigste Fall: gescheitert, sofort weiter · dieselbe Aufgabe
+        // dürfte hier nicht wieder erscheinen.
+        assert_eq!(pick(failed_at + 60), None);
+        assert_eq!(pick(failed_at + (ATTEMPT_COOLDOWN_DAYS - 1) * 86_400), None);
+        // Später wieder · gescheiterte Aufgaben sollen ja zurückkommen, nur
+        // nicht sofort. Insbesondere greift die 30-Tage-Sperre hier nicht.
+        assert_eq!(
+            pick(failed_at + (ATTEMPT_COOLDOWN_DAYS + 1) * 86_400),
+            Some("fork-1".to_string())
+        );
+    }
+
+    #[test]
     fn solved_puzzles_return_after_the_cooldown() {
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
@@ -1133,6 +1186,27 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert!(seen.len() >= 3, "zu wenig Streuung: {seen:?}");
+    }
+
+    #[test]
+    fn selection_spreads_across_puzzles_of_the_same_rating() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        // Der reale Fall: der Lichess-Dump hat auf jedem Rating tausende
+        // Aufgaben. Ein Indexsprung auf ein Zielrating traf davon immer
+        // dieselbe · genau daher kamen die Wiederholungen.
+        for i in 0..60 {
+            puzzle(&conn, &format!("p{i}"), 1500, "fork short");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..30 {
+            if let Some(p) =
+                next_puzzle_at(&conn, None, None, Some(1500), Some(1500), 1_800_000_000 + i).unwrap()
+            {
+                seen.insert(p.id);
+            }
+        }
+        assert!(seen.len() >= 10, "zu wenig Streuung: {} von 30", seen.len());
     }
 
     #[test]
@@ -1282,7 +1356,7 @@ mod tests {
         let mut stmt = conn.prepare(&sql).unwrap();
         let details: Vec<String> = stmt
             .query_map(
-                params![1400, 1600, "own", Option::<String>::None, 0],
+                params![1400, 1600, "own", Option::<String>::None, 0, 0],
                 |row| row.get(3),
             )
             .unwrap()

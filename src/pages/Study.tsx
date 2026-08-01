@@ -31,7 +31,7 @@ import {
 import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
 import { deepInsights, studyMetrics, type DeepInsights, type MetricWindow } from "../lib/insights";
-import { buildFindings, type Finding } from "../lib/findings";
+import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
 import { buildPlan, buildWeekPlan, type PlannedUnit, type TrainingPlan } from "../lib/plan";
 import {
   cycleWindows,
@@ -517,7 +517,9 @@ export default function Study({
                     key={tip.id}
                     className="rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
                   >
-                    {t(tip.key, tip.params)}
+                    {/* Der Formattipp trägt Zeitformate als Rohwerte · dieselbe
+                        Übersetzung wie in den Befunden. */}
+                    {t(tip.key, localizeFindingParams(tip.params, t, locale))}
                   </li>
                 ))}
               </ul>

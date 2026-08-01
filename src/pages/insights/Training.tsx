@@ -76,7 +76,6 @@ export default function Training({
 }) {
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
-  const [themesOpen, setThemesOpen] = useState(false);
   const { progress } = deep;
 
   const monthData = progress.months.map((month) => ({
@@ -275,7 +274,7 @@ export default function Training({
       </Section>
 
       {puzzles && puzzles.attempts > 0 ? (
-        <PuzzleSections data={puzzles} themesOpen={themesOpen} setThemesOpen={setThemesOpen} mobile={mobile} />
+        <PuzzleSections data={puzzles} mobile={mobile} />
       ) : (
         <Section title={t("ins.tabPuzzles")} disabled disabledNote={t("ins.pzNoAttempts")}>
           <div />
@@ -491,17 +490,7 @@ export default function Training({
     );
   }
 
-  function PuzzleSections({
-    data,
-    themesOpen,
-    setThemesOpen,
-    mobile,
-  }: {
-    data: PuzzleInsights;
-    themesOpen: boolean;
-    setThemesOpen: (open: boolean) => void;
-    mobile: boolean;
-  }) {
+  function PuzzleSections({ data, mobile }: { data: PuzzleInsights; mobile: boolean }) {
     const timeline = data.timeline.map((point) => ({
       ...point,
       failed: point.attempts - point.solved,
@@ -620,72 +609,64 @@ export default function Training({
         </Section>
 
         <Section title={t("ins.pzThemeTable")} summary={t("ins.trThemeTableSummary", { n: data.themes.length })}>
-          <button
-            type="button"
-            onClick={() => setThemesOpen(!themesOpen)}
-            className="mb-3 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12px] text-ink3 transition-colors hover:text-ink"
-          >
-            {t(themesOpen ? "ins.collapse" : "ins.expand", { n: data.themes.length })}
-          </button>
-          {themesOpen &&
-            (mobile ? (
-              <div className="-mx-4">
-                {data.themes.map((theme) => (
-                  <div key={theme.theme} className="border-b border-line/70 px-4 py-2.5 last:border-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+          {mobile ? (
+            <div className="-mx-4">
+              {data.themes.map((theme) => (
+                <div key={theme.theme} className="border-b border-line/70 px-4 py-2.5 last:border-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">
+                      {themeLabel(theme.theme, locale)}
+                    </span>
+                    <span
+                      className={`shrink-0 text-[12.5px] font-medium tabular-nums ${
+                        solveRate(theme) >= 60 ? "text-win" : solveRate(theme) < 45 ? "text-loss" : "text-ink2"
+                      }`}
+                    >
+                      {solveRate(theme)} %
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[11.5px] tabular-nums text-ink3">
+                    {t("ins.pzSolvedOfAttempts", { s: deInt(theme.solved), n: deInt(theme.attempts) })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-left">
+                <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
+                  <tr>
+                    <th className="px-4 py-2.5">{t("ins.pzTheme")}</th>
+                    <th className="px-3 py-2.5 text-right">{t("ins.pzAttempts")}</th>
+                    <th className="px-3 py-2.5 text-right">{t("ins.pzSolved")}</th>
+                    <th className="px-4 py-2.5 text-right">{t("ins.pzSolveRate")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.themes.map((theme) => (
+                    <tr key={theme.theme} className="border-b border-line/70 last:border-0">
+                      <td className="max-w-[280px] truncate px-4 py-2.5 text-[12.5px] text-ink">
                         {themeLabel(theme.theme, locale)}
-                      </span>
-                      <span
-                        className={`shrink-0 text-[12.5px] font-medium tabular-nums ${
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">
+                        {deInt(theme.attempts)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">
+                        {deInt(theme.solved)}
+                      </td>
+                      <td
+                        className={`px-4 py-2.5 text-right text-[12px] font-medium tabular-nums ${
                           solveRate(theme) >= 60 ? "text-win" : solveRate(theme) < 45 ? "text-loss" : "text-ink2"
                         }`}
                       >
                         {solveRate(theme)} %
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11.5px] tabular-nums text-ink3">
-                      {t("ins.pzSolvedOfAttempts", { s: deInt(theme.solved), n: deInt(theme.attempts) })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] text-left">
-                  <thead className="border-b border-line bg-panel2 text-[10.5px] uppercase tracking-wide text-ink3">
-                    <tr>
-                      <th className="px-4 py-2.5">{t("ins.pzTheme")}</th>
-                      <th className="px-3 py-2.5 text-right">{t("ins.pzAttempts")}</th>
-                      <th className="px-3 py-2.5 text-right">{t("ins.pzSolved")}</th>
-                      <th className="px-4 py-2.5 text-right">{t("ins.pzSolveRate")}</th>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.themes.map((theme) => (
-                      <tr key={theme.theme} className="border-b border-line/70 last:border-0">
-                        <td className="max-w-[280px] truncate px-4 py-2.5 text-[12.5px] text-ink">
-                          {themeLabel(theme.theme, locale)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">
-                          {deInt(theme.attempts)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-[12px] tabular-nums text-ink2">
-                          {deInt(theme.solved)}
-                        </td>
-                        <td
-                          className={`px-4 py-2.5 text-right text-[12px] font-medium tabular-nums ${
-                            solveRate(theme) >= 60 ? "text-win" : solveRate(theme) < 45 ? "text-loss" : "text-ink2"
-                          }`}
-                        >
-                          {solveRate(theme)} %
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Section>
       </>
     );
