@@ -65,7 +65,9 @@ fn win_prob(eval_cp: Option<i64>, mate_in: Option<i64>) -> f64 {
 /// Werte aus Teilmengen (Phase, Zeitformat, Gegnerzüge) vergleichbar bleiben.
 fn accuracy_from_losses(losses: &[f64]) -> Option<f64> {
     let m = mean(losses)? * 100.0;
-    Some(r1((103.1668 * (-0.04354 * m).exp() - 3.1669).clamp(0.0, 100.0)))
+    Some(r1(
+        (103.1668 * (-0.04354 * m).exp() - 3.1669).clamp(0.0, 100.0)
+    ))
 }
 
 /// Zieht Weiß den Halbzug `ply`? (1-basiert, Weiß beginnt.)
@@ -193,6 +195,13 @@ fn parse_time_control(raw: &str) -> Option<(f64, f64)> {
 }
 
 fn clocks_of(game: &RawGame) -> Option<Clocks> {
+    // Chess.com verwendet `%clk` in Fernpartie-PGNs für eine Tages-/Zuguhr,
+    // nicht für eine durchlaufende Partieuhr. Der Vergleich mit der nominellen
+    // Ein- bis Sieben-Tage-Vorgabe ließ fast jeden Fernschachzug wie Zeitnot
+    // aussehen. Zeitmanagement-Auswertungen verwenden deshalb nur Livepartien.
+    if matches!(game.time_class.as_str(), "daily" | "correspondence") {
+        return None;
+    }
     let (initial, increment) = parse_time_control(&game.time_control)?;
     if game.clocks.trim().is_empty() {
         return None;
@@ -802,6 +811,10 @@ struct GameView<'a> {
     clocks: Option<Clocks>,
     /// Erste Abweichung vom Buch, falls ein Repertoire vorliegt.
     book_departure: Option<(i64, bool)>,
+    /// Anzahl der Halbzüge, die vom Start weg wirklich im eigenen
+    /// farbspezifischen Repertoire stehen. 0 bedeutet ausdrücklich: kein
+    /// passender Repertoirepfad; es ist nicht dasselbe wie "keine Abweichung".
+    book_plies: i64,
 }
 
 impl<'a> GameView<'a> {
@@ -870,21 +883,14 @@ fn compute(conn: &Connection) -> Result<DeepInsights, String> {
         for ev in rows {
             wp.push(win_prob(ev.eval_cp, ev.mate_in));
         }
-        let book_departure = if nodes.is_empty() {
-            None
-        } else {
-            match repertoire::walk_book(&children, &game.color, &game.moves, BOOK_PLIES) {
-                Some(d) if d.book_has_moves => Some((d.ply, game.mine(d.ply))),
-                // Bis zur Prüftiefe im Buch geblieben bzw. Ende der Linie.
-                _ => None,
-            }
-        };
+        let (book_departure, book_plies) = book_progress(&nodes, &children, game);
         views.push(GameView {
             raw: game,
             evals: rows,
             wp,
             clocks: clocks_of(game),
             book_departure,
+            book_plies,
         });
     }
 
@@ -916,6 +922,34 @@ fn compute(conn: &Connection) -> Result<DeepInsights, String> {
 /// Prüftiefe für den Buchabgleich · 20 Halbzüge sind zehn Züge und decken das
 /// ab, was ein Amateurrepertoire realistisch enthält.
 const BOOK_PLIES: usize = 20;
+
+/// Liefert getrennt die fachliche Abweichung und die tatsächlich passende
+/// Präfixlänge. `None` bei der Abweichung kann nämlich sowohl "bis zum Ende im
+/// Buch" als auch "gespeicherte Linie ist hier zu Ende" heißen; nur die Länge
+/// ist für die Kennzahl "bekannte Züge" eindeutig.
+fn book_progress(
+    nodes: &[repertoire::RepNodeOut],
+    children: &repertoire::BookChildren,
+    game: &RawGame,
+) -> (Option<(i64, bool)>, i64) {
+    if nodes.is_empty() {
+        return (None, 0);
+    }
+    let walk = repertoire::walk_book(children, &game.color, &game.moves, BOOK_PLIES);
+    let book_plies = match &walk {
+        Some(departure) => departure.ply - 1,
+        None => game.moves.split_whitespace().take(BOOK_PLIES).count() as i64,
+    };
+    let departure = match walk {
+        Some(departure) if departure.book_has_moves => {
+            Some((departure.ply, game.mine(departure.ply)))
+        }
+        // Ende einer angelegten Linie ist keine Abweichung, aber auch kein
+        // Freibrief, alle weiteren Eröffnungszüge als bekannt zu zählen.
+        _ => None,
+    };
+    (departure, book_plies)
+}
 
 fn load_games(conn: &Connection) -> Result<Vec<RawGame>, String> {
     let mut stmt = conn
@@ -1127,7 +1161,10 @@ fn time_insights(views: &[GameView], sessions: &[(usize, i64)]) -> TimeInsights 
             buckets[bucket].0 += 1;
             buckets[bucket].3 += share;
 
-            let judgment = view.evals.get((ply - 1) as usize).map(|e| e.judgment.as_str());
+            let judgment = view
+                .evals
+                .get((ply - 1) as usize)
+                .map(|e| e.judgment.as_str());
             let is_error = matches!(judgment, Some("mistake") | Some("blunder"));
             if is_error {
                 buckets[bucket].1 += 1;
@@ -1142,7 +1179,11 @@ fn time_insights(views: &[GameView], sessions: &[(usize, i64)]) -> TimeInsights 
             // Zeit gegen Stellungswert: Wo wird nachgedacht, wo nicht?
             // Vor dem ersten Halbzug gibt es keine gespeicherte Bewertung ·
             // die Grundstellung gilt als ausgeglichen.
-            let before = if ply == 1 { Some(0.0) } else { view.cp_mine(ply - 1) };
+            let before = if ply == 1 {
+                Some(0.0)
+            } else {
+                view.cp_mine(ply - 1)
+            };
             if let Some(cp) = before {
                 if cp.abs() <= 100.0 {
                     balanced.push(share);
@@ -1168,26 +1209,15 @@ fn time_insights(views: &[GameView], sessions: &[(usize, i64)]) -> TimeInsights 
                 }
             }
 
-            // Buchzeit
-            if let Some((departure, _)) = view.book_departure {
-                if ply < departure {
-                    book_time += spent;
-                    book_moves += 1;
-                    game_book_moves += 1;
-                    book_shares.push(share);
-                } else {
-                    own_shares.push(share);
-                }
+            // Buchzeit: nur ein vom Start bis zu diesem Halbzug lückenlos
+            // passender Pfad im eigenen Weiß-/Schwarz-Repertoire zählt.
+            if ply <= view.book_plies {
+                book_time += spent;
+                book_moves += 1;
+                game_book_moves += 1;
+                book_shares.push(share);
             } else {
-                // Ohne Abweichung gilt die geprüfte Tiefe als Buch.
-                if (ply as usize) <= BOOK_PLIES {
-                    book_time += spent;
-                    book_moves += 1;
-                    game_book_moves += 1;
-                    book_shares.push(share);
-                } else {
-                    own_shares.push(share);
-                }
+                own_shares.push(share);
             }
 
             if clocks.increment > 0.0 {
@@ -1459,7 +1489,9 @@ fn content_from(views: &[&GameView]) -> ContentInsights {
         let mut low = f64::MAX;
         let mut advantage_lost_at: Option<i64> = None;
         for ply in 1..=plies {
-            let Some(cp) = view.cp_mine(ply) else { continue };
+            let Some(cp) = view.cp_mine(ply) else {
+                continue;
+            };
             if cp > peak {
                 peak = cp;
             }
@@ -1500,7 +1532,9 @@ fn content_from(views: &[&GameView]) -> ContentInsights {
         let mut crossing: Option<i64> = None;
         let mut previous_side: Option<bool> = None;
         for ply in 1..=plies {
-            let Some(cp) = view.cp_mine(ply) else { continue };
+            let Some(cp) = view.cp_mine(ply) else {
+                continue;
+            };
             if cp.abs() < 150.0 {
                 previous_side = None;
                 continue;
@@ -1815,7 +1849,8 @@ fn session_insights(
 
     let (mut fast_games, mut fast_score, mut slow_games, mut slow_score) = (0i64, 0.0, 0i64, 0.0);
     let (mut first_games, mut first_score, mut rest_games, mut rest_score) = (0i64, 0.0, 0i64, 0.0);
-    let (mut primed_games, mut primed_score, mut cold_games, mut cold_score) = (0i64, 0.0, 0i64, 0.0);
+    let (mut primed_games, mut primed_score, mut cold_games, mut cold_score) =
+        (0i64, 0.0, 0i64, 0.0);
     let mut seen_days: HashMap<i64, bool> = HashMap::new();
 
     for (position, view) in views.iter().enumerate() {
@@ -2115,7 +2150,10 @@ fn theme_progress(conn: &Connection) -> Result<Vec<ThemeProgress>, String> {
         .map(|(theme, attempts)| {
             let half = attempts.len() / 2;
             let rate = |slice: &[bool]| -> f64 {
-                pct(slice.iter().filter(|s| **s).count() as f64, slice.len() as f64)
+                pct(
+                    slice.iter().filter(|s| **s).count() as f64,
+                    slice.len() as f64,
+                )
             };
             let early = rate(&attempts[..half]);
             let late = rate(&attempts[half..]);
@@ -2320,7 +2358,10 @@ fn repertoire_insights(
 }
 
 /// Benannte Linie eines Knotens · sonst der Pfad bis dorthin.
-fn line_name(by_id: &HashMap<i64, &repertoire::RepNodeOut>, node: &repertoire::RepNodeOut) -> String {
+fn line_name(
+    by_id: &HashMap<i64, &repertoire::RepNodeOut>,
+    node: &repertoire::RepNodeOut,
+) -> String {
     let mut current = Some(node);
     let mut path: Vec<String> = Vec::new();
     while let Some(n) = current {
@@ -2578,7 +2619,12 @@ fn opening_insights(views: &[GameView]) -> OpeningInsights {
 
     for view in views {
         let raw = view.raw;
-        let root = raw.moves.split_whitespace().next().unwrap_or("").to_string();
+        let root = raw
+            .moves
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
         if root.is_empty() {
             continue;
         }
@@ -2733,7 +2779,14 @@ pub struct MetricWindow {
     pub ratings: Vec<RatingPoint>,
 }
 
-fn metric(key: &str, value: Option<f64>, n: i64, sd: Option<f64>, unit: &str, lower: bool) -> MetricValue {
+fn metric(
+    key: &str,
+    value: Option<f64>,
+    n: i64,
+    sd: Option<f64>,
+    unit: &str,
+    lower: bool,
+) -> MetricValue {
     MetricValue {
         key: key.into(),
         value: value.map(r1),
@@ -3018,21 +3071,18 @@ fn metrics_from_conn(
     let mut views: Vec<GameView> = Vec::with_capacity(asc.len());
     for game in &asc {
         let rows = evals.get(&game.id).unwrap_or(&empty);
-        let wp = rows.iter().map(|ev| win_prob(ev.eval_cp, ev.mate_in)).collect();
-        let book_departure = if nodes.is_empty() {
-            None
-        } else {
-            match repertoire::walk_book(&children, &game.color, &game.moves, BOOK_PLIES) {
-                Some(d) if d.book_has_moves => Some((d.ply, game.mine(d.ply))),
-                _ => None,
-            }
-        };
+        let wp = rows
+            .iter()
+            .map(|ev| win_prob(ev.eval_cp, ev.mate_in))
+            .collect();
+        let (book_departure, book_plies) = book_progress(&nodes, &children, game);
         views.push(GameView {
             raw: game,
             evals: rows,
             wp,
             clocks: clocks_of(game),
             book_departure,
+            book_plies,
         });
     }
 
@@ -3082,7 +3132,9 @@ fn spotlight(views: &[GameView]) -> Option<Spotlight> {
                 continue;
             }
             let Some(loss) = view.loss(ply) else { continue };
-            let Some(before) = view.cp_mine(ply - 1).or(if ply == 1 { Some(0.0) } else { None })
+            let Some(before) = view
+                .cp_mine(ply - 1)
+                .or(if ply == 1 { Some(0.0) } else { None })
             else {
                 continue;
             };
@@ -3132,6 +3184,26 @@ mod tests {
     }
 
     #[test]
+    fn correspondence_clocks_are_not_live_time_management_data() {
+        let game = RawGame {
+            id: 1,
+            played_ts: 0,
+            source: "chess.com".into(),
+            time_class: "daily".into(),
+            color: "white".into(),
+            result: "win".into(),
+            moves: "e4 e5 Nf3 Nc6".into(),
+            clocks: "60000 50000 40000 30000".into(),
+            time_control: "1/86400".into(),
+            my_elo: 1500,
+            opp_elo: 1500,
+            accuracy: None,
+            opening: String::new(),
+        };
+        assert!(clocks_of(&game).is_none());
+    }
+
+    #[test]
     fn clock_spending_uses_the_players_own_previous_reading() {
         let clocks = Clocks {
             initial: 600.0,
@@ -3175,7 +3247,10 @@ mod tests {
         // Weißer Läufer c1 (dunkel), schwarzer Läufer f8 (dunkel) → gleichfarbig.
         assert_eq!(endgame_signature("5b2/8/8/8/8/8/8/2B1K2k"), "minor");
         // Weiß c1 (dunkel), Schwarz c8 (hell) → ungleichfarbig.
-        assert_eq!(endgame_signature("2b5/8/8/8/8/8/8/2B1K2k"), "opposite-bishops");
+        assert_eq!(
+            endgame_signature("2b5/8/8/8/8/8/8/2B1K2k"),
+            "opposite-bishops"
+        );
     }
 
     #[test]
@@ -3312,13 +3387,17 @@ mod tests {
                 phase: "opening".into(),
             },
         ];
-        let wp = evals.iter().map(|e| win_prob(e.eval_cp, e.mate_in)).collect();
+        let wp = evals
+            .iter()
+            .map(|e| win_prob(e.eval_cp, e.mate_in))
+            .collect();
         let view = GameView {
             raw: &raw,
             evals: &evals,
             wp,
             clocks: None,
             book_departure: None,
+            book_plies: 0,
         };
         // Halbzug 2 ist Schwarz und verschlechtert die Lage von Schwarz.
         let loss = view.loss(2).unwrap();
@@ -3386,17 +3465,42 @@ mod tests {
         // Zeit: fünf eigene Halbzüge, der Patzer ist der teuerste davon.
         assert_eq!(out.time.games, 1);
         assert_eq!(out.time.moves, 5);
+        assert_eq!(
+            out.time.theory.book_moves, 0,
+            "ohne Repertoire ist kein Zug bekannt"
+        );
         assert!(
             out.time.focus.error_share > out.time.focus.ok_share,
             "der lange Zug war der Fehlzug: {:?}",
             out.time.focus
         );
 
+        // Eine schmale Linie kennt genau die passenden eigenen Züge. Nach
+        // ihrem Ende werden die restlichen Eröffnungszüge nicht pauschal zu
+        // Repertoirezügen erklärt.
+        conn.execute(
+            "INSERT INTO rep_nodes (id, parent_id, side, san, fen_key, depth)
+             VALUES (1, 0, 'white', 'e4', 'book-e4', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO rep_nodes (id, parent_id, side, san, fen_key, depth)
+             VALUES (2, 1, 'white', 'd5', 'book-e4-d5', 2)",
+            [],
+        )
+        .unwrap();
+        let with_book = compute(&conn).unwrap();
+        assert_eq!(with_book.time.theory.book_moves, 1);
+
         // Inhalt: der Patzer wird der Figur zugeordnet, die gezogen hat (Läufer
         // Bd2), und der übersehene Bestzug war forcierend.
         assert_eq!(out.content.games, 1);
         assert_eq!(out.content.anatomy.errors, 1);
-        assert_eq!(out.content.anatomy.forcing_missed, 1, "Bb5+ wäre ein Schach");
+        assert_eq!(
+            out.content.anatomy.forcing_missed, 1,
+            "Bb5+ wäre ein Schach"
+        );
         let bishop = out
             .content
             .anatomy
@@ -3537,6 +3641,7 @@ mod tests {
                 wp: Vec::new(),
                 clocks: None,
                 book_departure: None,
+                book_plies: 0,
             })
             .collect();
         let bounds = session_bounds(&views);

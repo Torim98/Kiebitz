@@ -589,7 +589,7 @@ export default function Study({
         </div>
       )}
 
-      {/* Wochenkalender: erledigte Einheiten, Fälligkeiten und geplante Units. */}
+      {/* Wochenkalender: Ist-Minuten, Fälligkeiten und geplante Einheiten. */}
       <StudyPlanner desktop={desktop} />
     </div>
   );

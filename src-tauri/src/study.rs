@@ -16,12 +16,12 @@ pub struct DayActivity {
     /// Unix-Sekunden des UTC-Tagesbeginns.
     pub day_ts: i64,
     pub puzzle_attempts: i64,
-    /// Gelöste Puzzles · sie zählen als Lerneinheiten im Wochenkalender.
+    /// Gelöste Puzzles für Erfolgs- und Streak-Anzeigen.
     pub puzzle_solved: i64,
     pub endgame_attempts: i64,
-    /// Approximation: Knoten, deren letzte Wiederholung an diesem Tag war.
+    /// Tatsächliche Wiederholungen aus dem append-only Review-Log.
     pub rep_reviews: i64,
-    /// An diesem Tag fertig analysierte Partien (ein Review = 10 Einheiten).
+    /// Manuell als erledigt markierte Analyse-Termine im Lernkalender.
     pub game_reviews: i64,
 }
 
@@ -98,17 +98,19 @@ fn default_horizon(rule: &str) -> i64 {
     }
 }
 
-/// Tageskennzahlen des Wochenkalenders: erledigte Lerneinheiten (Vergangenheit
+/// Tageskennzahlen des Wochenkalenders: erfasste Ist-Minuten (Vergangenheit
 /// und heute) sowie fällige Wiederholungen (heute und Zukunft).
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct StudyDay {
     pub day: String,
+    pub puzzle_attempts: i64,
     pub puzzle_solved: i64,
     pub endgame_attempts: i64,
     pub rep_reviews: i64,
     pub game_reviews: i64,
-    /// Summe der Einheiten; ein vollständiges Partie-Review zählt zehnfach.
-    pub units: i64,
+    /// Tatsächlicher Aufwand nach genau derselben Minutenregel wie das
+    /// Ist-Budget im Trainingsplan.
+    pub actual_minutes: i64,
     /// An diesem Tag fällige Repertoire-Wiederholungen (heute inkl. überfällig
     /// und neuer Karten).
     pub due_reviews: i64,
@@ -121,9 +123,6 @@ pub struct StudyCalendar {
     /// Ein Eintrag je Tag des angefragten Zeitraums (aufsteigend).
     pub days: Vec<StudyDay>,
 }
-
-/// Ein vollständiges Partie-Review ist eine große Einheit · es zählt zehnfach.
-const GAME_REVIEW_UNITS: i64 = 10;
 
 /// Tage seit 1970-01-01 (Howard Hinnants `days_from_civil`).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
@@ -214,6 +213,12 @@ fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
 fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, String> {
     let day_end = day_start + 86_400;
     let today_start = now - now.rem_euclid(86_400);
+    let puzzle_attempts = count(
+        conn,
+        "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
+        day_start,
+        day_end,
+    )?;
     let puzzle_solved = count(
         conn,
         "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1 AND ts < ?2",
@@ -228,16 +233,17 @@ fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, St
     )?;
     let rep_reviews = count(
         conn,
-        "SELECT COUNT(*) FROM rep_nodes WHERE last_ts >= ?1 AND last_ts < ?2",
+        "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
         day_start,
         day_end,
     )?;
-    let game_reviews = count(
-        conn,
-        "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
-        day_start,
-        day_end,
-    )?;
+    let (game_reviews, analysis_centi) = completed_analysis_load(conn, day_start, day_end)?;
+    let play_centi = game_load_between(conn, day_start, day_end)?.1;
+    let actual_centi = play_centi
+        + puzzle_attempts * CENTI_PER_PUZZLE
+        + endgame_attempts * CENTI_PER_DRILL
+        + rep_reviews * CENTI_PER_REVIEW
+        + analysis_centi;
     // my_move-Parität wie in repertoire.rs: Weiß trainiert ungerade Halbzüge.
     let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
     let due_reviews = if day_start < today_start {
@@ -265,11 +271,12 @@ fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, St
     };
     Ok(StudyDay {
         day: iso_day(day_start),
+        puzzle_attempts,
         puzzle_solved,
         endgame_attempts,
         rep_reviews,
         game_reviews,
-        units: puzzle_solved + endgame_attempts + rep_reviews + game_reviews * GAME_REVIEW_UNITS,
+        actual_minutes: round_centi(actual_centi),
         due_reviews,
     })
 }
@@ -744,16 +751,11 @@ fn study_data_from_conn(
             )?,
             rep_reviews: count(
                 conn,
-                "SELECT COUNT(*) FROM rep_nodes WHERE last_ts >= ?1 AND last_ts < ?2",
+                "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
                 lo,
                 hi,
             )?,
-            game_reviews: count(
-                conn,
-                "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
-                lo,
-                hi,
-            )?,
+            game_reviews: completed_analysis_load(conn, lo, hi)?.0,
         });
     }
 
@@ -762,7 +764,11 @@ fn study_data_from_conn(
     for sql in [
         "SELECT DISTINCT ts / 86400 FROM puzzle_attempts",
         "SELECT DISTINCT ts / 86400 FROM endgame_attempts",
-        "SELECT DISTINCT last_ts / 86400 FROM rep_nodes WHERE last_ts > 0",
+        "SELECT DISTINCT ts / 86400 FROM rep_review_log",
+        "SELECT DISTINCT e.completed_ts / 86400
+           FROM study_events e JOIN study_templates t ON t.id = e.template_id
+          WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
+            AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
     ] {
         let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
         let rows = stmt
@@ -900,15 +906,7 @@ fn set_focus_on_conn(
                 .execute(
                     "UPDATE study_focus SET area=?1, metric_key=?2, label_params=?3, target=?4,
                         cycle_days=?5, updated_ts=?6, deleted=0 WHERE id=?7",
-                    params![
-                        focus.area,
-                        metric,
-                        params,
-                        focus.target,
-                        cycle,
-                        now,
-                        id
-                    ],
+                    params![focus.area, metric, params, focus.target, cycle, now, id],
                 )
                 .map_err(|e| e.to_string())?;
             if changed == 0 {
@@ -1006,17 +1004,26 @@ pub struct TrainingProgram {
     pub observed_weekly_minutes: i64,
 }
 
-/// Minutenschätzung je Einheit. Bewusst grob und an einer Stelle · wer sie
-/// ändert, ändert alle Auswertungen gleichzeitig.
-const MIN_PER_PUZZLE: f64 = 1.5;
-const MIN_PER_DRILL: f64 = 4.0;
-const MIN_PER_REVIEW: f64 = 0.5;
-const MIN_PER_ANALYSIS: f64 = 6.0;
+/// Aufwandsschätzung in Hundertstelminuten. Kalender und Ist-Budget benutzen
+/// dieselben Konstanten; gerundet wird erst nach dem Summieren.
+const CENTI_PER_PUZZLE: i64 = 150;
+const CENTI_PER_DRILL: i64 = 400;
+const CENTI_PER_REVIEW: i64 = 50;
+
+fn round_centi(value: i64) -> i64 {
+    ((value.max(0) as f64) / 100.0).round() as i64
+}
 
 /// Spielminuten einer Partie aus ihrer Zeitkontrolle ("300+3"), sonst nach
 /// Zeitklasse geschätzt. Beide Seiten zusammen, gedeckelt · eine Fernpartie
 /// über zwei Wochen ist keine zweiwöchige Trainingseinheit.
 fn game_minutes(time_control: &str, time_class: &str, moves_count: i64) -> f64 {
+    // Bei Fernpartien verteilt sich die Arbeit über Tage; der Endzeitpunkt und
+    // die mehrtägige Nominaluhr taugen nicht als Trainingsdauer. Eine erfundene
+    // 180-Minuten-Buchung wäre schlechter als keine Schätzung.
+    if matches!(time_class, "daily" | "correspondence") {
+        return 0.0;
+    }
     let base = time_control
         .split_once('+')
         .and_then(|(base, inc)| {
@@ -1040,6 +1047,50 @@ fn game_minutes(time_control: &str, time_class: &str, moves_count: i64) -> f64 {
     (seconds * 2.0 / 3.0 / 60.0).clamp(1.0, 180.0)
 }
 
+/// Live-Partien und ihre geschätzte eigene Spielzeit im Zeitraum.
+fn game_load_between(conn: &Connection, from: i64, to: i64) -> Result<(i64, i64), String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT time_control, time_class, moves_count
+               FROM games
+              WHERE played_ts >= ?1 AND played_ts < ?2 AND analysis_excluded = 0
+                AND time_class NOT IN ('daily', 'correspondence')",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![from, to], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut items = 0;
+    let mut centi = 0;
+    for row in rows {
+        let (control, class, moves) = row.map_err(|e| e.to_string())?;
+        items += 1;
+        centi += (game_minutes(&control, &class, moves) * 100.0).round() as i64;
+    }
+    Ok((items, centi))
+}
+
+/// Nur bewusst abgehakte Analyse-Termine sind reale Lernzeit. Das bloße
+/// Fertigwerden der Engine ist Rechenarbeit und darf kein Ist-Budget erzeugen.
+fn completed_analysis_load(conn: &Connection, from: i64, to: i64) -> Result<(i64, i64), String> {
+    conn.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(t.duration_min), 0) * 100
+           FROM study_events e JOIN study_templates t ON t.id = e.template_id
+          WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
+            AND e.completed_ts >= ?1 AND e.completed_ts < ?2
+            AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+        params![from, to],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn day_bucket(ts: i64) -> i64 {
     ts.div_euclid(86_400) * 86_400
 }
@@ -1059,15 +1110,11 @@ fn training_program_from_conn(
     let from = today - (window_days - 1) * 86_400;
     let mut by_day: BTreeMap<i64, LoadDay> = BTreeMap::new();
 
-    // Puzzles und Endspiel-Drills: ein Zeitstempel je Versuch.
+    // Interne Trainer: ein Zeitstempel je tatsächlichem Versuch/Review.
     for (sql, area) in [
         ("SELECT ts FROM puzzle_attempts WHERE ts >= ?1", "tactics"),
         ("SELECT ts FROM endgame_attempts WHERE ts >= ?1", "endgames"),
         ("SELECT ts FROM rep_review_log WHERE ts >= ?1", "openings"),
-        (
-            "SELECT analyzed_ts FROM games WHERE analyzed_ts >= ?1",
-            "analysis",
-        ),
     ] {
         let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
         let rows = stmt
@@ -1080,11 +1127,40 @@ fn training_program_from_conn(
                 ..Default::default()
             });
             match area {
-                "tactics" => entry.tactics += (MIN_PER_PUZZLE * 100.0) as i64,
-                "endgames" => entry.endgames += (MIN_PER_DRILL * 100.0) as i64,
-                "openings" => entry.openings += (MIN_PER_REVIEW * 100.0) as i64,
-                _ => entry.analysis += (MIN_PER_ANALYSIS * 100.0) as i64,
+                "tactics" => entry.tactics += CENTI_PER_PUZZLE,
+                "endgames" => entry.endgames += CENTI_PER_DRILL,
+                _ => entry.openings += CENTI_PER_REVIEW,
             }
+        }
+    }
+
+    // Analysezeit ist eine bewusste, im Lernkalender abgehakte Sitzung. Eine
+    // Engine kann 1.000 Partien im Hintergrund rechnen, ohne dass der Nutzer
+    // 1.000 Partie-Reviews absolviert hat.
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT e.completed_ts, t.duration_min
+                   FROM study_events e JOIN study_templates t ON t.id = e.template_id
+                  WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
+                    AND e.completed_ts >= ?1
+                    AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![from], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (ts, minutes) = row.map_err(|e| e.to_string())?;
+            by_day
+                .entry(day_bucket(ts))
+                .or_insert(LoadDay {
+                    day_ts: day_bucket(ts),
+                    ..Default::default()
+                })
+                .analysis += minutes.max(0) * 100;
         }
     }
 
@@ -1109,43 +1185,49 @@ fn training_program_from_conn(
         for row in rows {
             let (ts, tc, class, moves) = row.map_err(|e| e.to_string())?;
             let day = day_bucket(ts);
-            by_day
-                .entry(day)
-                .or_insert(LoadDay {
-                    day_ts: day,
-                    ..Default::default()
-                })
-                .play += (game_minutes(&tc, &class, moves) * 100.0) as i64;
+            let centi = (game_minutes(&tc, &class, moves) * 100.0).round() as i64;
+            if centi > 0 {
+                by_day
+                    .entry(day)
+                    .or_insert(LoadDay {
+                        day_ts: day,
+                        ..Default::default()
+                    })
+                    .play += centi;
+            }
         }
     }
 
-    // Hundertstel-Minuten zurück auf Minuten · so bleibt die Summe ehrlich,
-    // ohne dass jede einzelne Einheit auf 0 gerundet wird.
-    let days: Vec<LoadDay> = by_day
-        .into_values()
+    // Summen werden aus den ungerundeten Hundertstelminuten gebildet. So geht
+    // etwa eine einzelne 30-Sekunden-Repertoirewiederholung nicht an jedem Tag
+    // durch Ganzzahldivision verloren.
+    let centi_days: Vec<LoadDay> = by_day.into_values().collect();
+    let days: Vec<LoadDay> = centi_days
+        .iter()
         .map(|d| LoadDay {
             day_ts: d.day_ts,
-            play: d.play / 100,
-            tactics: d.tactics / 100,
-            openings: d.openings / 100,
-            endgames: d.endgames / 100,
-            analysis: d.analysis / 100,
+            play: round_centi(d.play),
+            tactics: round_centi(d.tactics),
+            openings: round_centi(d.openings),
+            endgames: round_centi(d.endgames),
+            analysis: round_centi(d.analysis),
         })
         .collect();
 
     let cutoff_28 = today - 27 * 86_400;
-    let recent: Vec<&LoadDay> = days.iter().filter(|d| d.day_ts >= cutoff_28).collect();
-    let sum = |pick: fn(&LoadDay) -> i64| -> i64 { recent.iter().map(|d| pick(d)).sum() };
+    let recent: Vec<&LoadDay> = centi_days
+        .iter()
+        .filter(|d| d.day_ts >= cutoff_28)
+        .collect();
+    let sum =
+        |pick: fn(&LoadDay) -> i64| -> i64 { round_centi(recent.iter().map(|d| pick(d)).sum()) };
+    let recent_end = now + 86_400;
+    let (play_items, _) = game_load_between(conn, cutoff_28, recent_end)?;
+    let (analysis_items, _) = completed_analysis_load(conn, cutoff_28, recent_end)?;
     let load_28d = vec![
         AreaLoad {
             area: "play".into(),
-            items: count(
-                conn,
-                "SELECT COUNT(*) FROM games WHERE played_ts >= ?1 AND played_ts < ?2
-                 AND analysis_excluded = 0",
-                cutoff_28,
-                now + 86_400,
-            )?,
+            items: play_items,
             minutes: sum(|d| d.play),
         },
         AreaLoad {
@@ -1154,7 +1236,7 @@ fn training_program_from_conn(
                 conn,
                 "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
                 cutoff_28,
-                now + 86_400,
+                recent_end,
             )?,
             minutes: sum(|d| d.tactics),
         },
@@ -1164,7 +1246,7 @@ fn training_program_from_conn(
                 conn,
                 "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
                 cutoff_28,
-                now + 86_400,
+                recent_end,
             )?,
             minutes: sum(|d| d.openings),
         },
@@ -1174,18 +1256,13 @@ fn training_program_from_conn(
                 conn,
                 "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
                 cutoff_28,
-                now + 86_400,
+                recent_end,
             )?,
             minutes: sum(|d| d.endgames),
         },
         AreaLoad {
             area: "analysis".into(),
-            items: count(
-                conn,
-                "SELECT COUNT(*) FROM games WHERE analyzed_ts >= ?1 AND analyzed_ts < ?2",
-                cutoff_28,
-                now + 86_400,
-            )?,
+            items: analysis_items,
             minutes: sum(|d| d.analysis),
         },
     ];
@@ -1193,7 +1270,7 @@ fn training_program_from_conn(
     // Beobachtetes Wochenbudget aus den letzten acht Wochen · ohne Vorgabe in
     // den Einstellungen plant der Wochenplan damit.
     let cutoff_8w = today - 55 * 86_400;
-    let observed: i64 = days
+    let observed_centi: i64 = centi_days
         .iter()
         .filter(|d| d.day_ts >= cutoff_8w)
         .map(|d| d.play + d.tactics + d.openings + d.endgames + d.analysis)
@@ -1208,7 +1285,7 @@ fn training_program_from_conn(
             .collect(),
         load_28d,
         days,
-        observed_weekly_minutes: observed / 8,
+        observed_weekly_minutes: round_centi(observed_centi / 8),
     })
 }
 
@@ -1275,6 +1352,12 @@ mod tests {
             "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
              VALUES ('lucena', ?1, 1, 8)",
             params![(TODAY - 2) * 86_400 + 200],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO rep_review_log (node_id, ts, grade, side, path)
+             VALUES (1, ?1, 3, 'white', 'e4')",
+            params![(TODAY - 2) * 86_400 + 10],
         )
         .unwrap();
 
@@ -1395,7 +1478,11 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
         let template_id: i64 = conn
-            .query_row("SELECT id FROM study_templates ORDER BY id LIMIT 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT id FROM study_templates ORDER BY id LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
 
         let key = new_series_key(&conn).unwrap();
@@ -1448,7 +1535,7 @@ mod tests {
     }
 
     #[test]
-    fn calendar_days_count_units_and_due_reviews() {
+    fn calendar_days_use_the_same_minutes_as_the_real_budget() {
         let conn = Connection::open_in_memory().unwrap();
         db::init(&conn).unwrap();
         let today = iso_day(NOW);
@@ -1481,12 +1568,31 @@ mod tests {
         )
         .unwrap();
 
+        // Ein bewusst abgehakter Analyse-Termin zählt mit seiner Dauer; das
+        // oben bloß von der Engine analysierte Spiel dagegen nicht.
+        let analysis_template: i64 = conn
+            .query_row(
+                "SELECT id FROM study_templates WHERE title = 'Game + analysis'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO study_events
+             (template_id, day, position, completed, completed_ts)
+             VALUES (?1, ?2, 0, 1, ?3)",
+            params![analysis_template, today, day_start + 240],
+        )
+        .unwrap();
+
         let calendar = calendar_from_conn(&conn, &today, &today, NOW).unwrap();
         let day = &calendar.days[0];
-        // Nur gelöste Puzzles zählen; ein Partie-Review zählt zehnfach.
+        // Beide Puzzleversuche zählen als investierte Zeit: 2 × 1,5 Minuten,
+        // dazu die manuell bestätigte 40-Minuten-Analyse.
+        assert_eq!(day.puzzle_attempts, 2);
         assert_eq!(day.puzzle_solved, 1);
         assert_eq!(day.game_reviews, 1);
-        assert_eq!(day.units, 11);
+        assert_eq!(day.actual_minutes, 43);
         // Neue Repertoire-Karten sind heute fällig.
         assert_eq!(day.due_reviews, 1);
     }
@@ -1549,7 +1655,11 @@ mod tests {
         assert!(active.iter().any(|f| f.area == "endgames"));
         // Voreinstellung greift bei fehlender Angabe.
         assert_eq!(
-            active.iter().find(|f| f.area == "endgames").unwrap().cycle_days,
+            active
+                .iter()
+                .find(|f| f.area == "endgames")
+                .unwrap()
+                .cycle_days,
             14
         );
 
@@ -1617,9 +1727,10 @@ mod tests {
         )
         .unwrap();
         conn.execute(
-            "INSERT INTO games (source, source_id, played_ts, time_control, time_class, moves_count)
-             VALUES ('lichess', 'g1', ?1, '600+0', 'rapid', 40)",
-            params![day_start + 700],
+            "INSERT INTO games
+             (source, source_id, played_ts, time_control, time_class, moves_count, analyzed, analyzed_ts)
+             VALUES ('lichess', 'g1', ?1, '600+0', 'rapid', 40, 1, ?2)",
+            params![day_start + 700, day_start + 800],
         )
         .unwrap();
 
@@ -1638,9 +1749,13 @@ mod tests {
         assert_eq!(by_area("endgames").items, 1);
         assert_eq!(by_area("endgames").minutes, 4);
         assert_eq!(by_area("openings").items, 1);
+        assert_eq!(by_area("openings").minutes, 1);
         assert_eq!(by_area("play").items, 1);
-        // 600 s nominal, zwei Drittel davon, in Minuten.
-        assert_eq!(by_area("play").minutes, 6);
+        // 600 s nominal, zwei Drittel davon: 6,67 Minuten, am Ende gerundet.
+        assert_eq!(by_area("play").minutes, 7);
+        // Das Fertigwerden der Engine ist kein bewusstes Partie-Review.
+        assert_eq!(by_area("analysis").items, 0);
+        assert_eq!(by_area("analysis").minutes, 0);
         assert_eq!(program.days.len(), 1);
     }
 
@@ -1651,7 +1766,8 @@ mod tests {
         // Ohne verwertbare Angabe entscheidet die Klasse.
         assert_eq!(game_minutes("", "bullet", 30).round(), 1.0);
         assert_eq!(game_minutes("-", "rapid", 30).round(), 10.0);
-        // Eine Fernpartie ist keine zweiwöchige Trainingseinheit.
-        assert!(game_minutes("1209600+0", "daily", 60) <= 180.0);
+        // Bei einer Fernpartie lässt sich aus Endzeitpunkt und Tagesuhr keine
+        // reale Sitzungsdauer ableiten.
+        assert_eq!(game_minutes("1209600+0", "daily", 60), 0.0);
     }
 }

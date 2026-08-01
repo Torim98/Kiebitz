@@ -11,9 +11,6 @@ export interface DayActivity {
   game_reviews: number;
 }
 
-/** Ein vollständiges Partie-Review ist eine große Einheit · es zählt zehnfach. */
-export const GAME_REVIEW_UNITS = 10;
-
 /** Spiegelt study::StudyData. */
 export interface StudyData {
   due_now: number;
@@ -29,18 +26,6 @@ export interface StudyData {
 
 export function studyData(): Promise<StudyData> {
   return invoke<StudyData>("study_data");
-}
-
-/**
- * Lerneinheiten eines Tages: gelöste Puzzles, Endspiel-Drills und
- * Repertoire-Wiederholungen zählen einfach, ein vollständiges Partie-Review
- * zehnfach. Der Wochenkalender bekommt denselben Wert fertig gerechnet aus
- * `study_calendar`; hier steht die Regel für Tagesauswertungen.
- */
-export function dayUnits(d: DayActivity): number {
-  return (
-    d.puzzle_solved + d.endgame_attempts + d.rep_reviews + d.game_reviews * GAME_REVIEW_UNITS
-  );
 }
 
 export interface StudyTemplate {
@@ -80,12 +65,13 @@ export interface StudyEvent {
 /** Tageskennzahlen des Wochenkalenders (spiegelt study::StudyDay). */
 export interface StudyDay {
   day: string;
+  puzzle_attempts: number;
   puzzle_solved: number;
   endgame_attempts: number;
   rep_reviews: number;
   game_reviews: number;
-  /** Erledigte Einheiten; Partie-Reviews zählen zehnfach. */
-  units: number;
+  /** Ist-Minuten nach derselben Regel wie das Trainingsbudget. */
+  actual_minutes: number;
   /** Fällige Repertoire-Wiederholungen an diesem Tag. */
   due_reviews: number;
 }

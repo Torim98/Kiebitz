@@ -35,7 +35,7 @@ beforeEach(() => {
         return Promise.resolve({
           templates: [TEMPLATE],
           events: [],
-          days: [{ day: monday, puzzle_solved: 4, endgame_attempts: 0, rep_reviews: 1, game_reviews: 1, units: 15, due_reviews: 2 }],
+          days: [{ day: monday, puzzle_attempts: 4, puzzle_solved: 4, endgame_attempts: 0, rep_reviews: 1, game_reviews: 0, actual_minutes: 7, due_reviews: 2 }],
         });
       case "schedule_study_unit":
         return Promise.resolve();
@@ -65,11 +65,10 @@ function pointToDay(day: string) {
 }
 
 describe("Week calendar", () => {
-  it("shows units earned and reviews due per day", async () => {
+  it("shows actual minutes and reviews due per day", async () => {
     render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
 
-    // 4 gelöste Puzzles + 1 Wiederholung + 1 Partie-Review (×10) = 15 Einheiten.
-    expect(await screen.findByText(/15 Einheiten/)).toBeTruthy();
+    expect(await screen.findByText(/7 Min. Ist/)).toBeTruthy();
   });
 
   it("schedules a dragged template on the day under the pointer", async () => {

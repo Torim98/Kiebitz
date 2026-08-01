@@ -206,7 +206,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
       { id: 4, title: "Game + analysis", duration_min: 40, tool: "Lichess + Kiebitz Analysis", description: "Play rapid, review yourself, then understand the three biggest errors." },
     ];
     const today = isoDay(new Date());
-    const demoUnits = [14, 0, 9, 24, 6, 11, 0];
+    const demoMinutes = [24, 0, 16, 40, 10, 19, 0];
     return {
       templates,
       events: [
@@ -218,11 +218,12 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
         const past = day <= today;
         return {
           day,
-          puzzle_solved: past ? demoUnits[index] : 0,
+          puzzle_attempts: past ? demoMinutes[index] / 2 : 0,
+          puzzle_solved: past ? Math.round(demoMinutes[index] / 3) : 0,
           endgame_attempts: 0,
           rep_reviews: 0,
           game_reviews: past && index === 3 ? 1 : 0,
-          units: past ? demoUnits[index] : 0,
+          actual_minutes: past ? demoMinutes[index] : 0,
           due_reviews: day >= today ? [14, 6, 9, 4, 11, 3, 7][index] : 0,
         };
       }),
@@ -379,7 +380,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                 const metrics = (visibleCalendar.days ?? []).find((entry) => entry.day === day);
                 const isToday = day === today;
                 const future = day > today;
-                const units = metrics?.units ?? 0;
+                const actualMinutes = metrics?.actual_minutes ?? 0;
                 const due = (metrics?.due_reviews ?? 0) + events.filter((event) => !event.completed).length;
                 // Leere vergangene Tage tragen mobil nichts bei und blähen die
                 // Liste auf · sie schrumpfen auf eine Zeile.
@@ -421,8 +422,8 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                         }`}
                       >
                         {!future && (
-                          <span className={units > 0 ? "text-ink2" : "text-ink3"}>
-                            {units} {t(units === 1 ? "st.units.one" : "st.units.many")}
+                          <span className={actualMinutes > 0 ? "text-ink2" : "text-ink3"}>
+                            {t("st.actualMinutes", { n: actualMinutes })}
                           </span>
                         )}
                         {(future || isToday) && due > 0 && (

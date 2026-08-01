@@ -44,6 +44,7 @@ export default function AllocationBars({
                   target: need.target,
                   actual: need.actual,
                   m: deInt(need.minutes),
+                  a: deInt(need.actualMinutes),
                 })}
               </span>
             </div>
