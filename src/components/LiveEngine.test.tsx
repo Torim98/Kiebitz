@@ -120,6 +120,37 @@ describe("LiveEngine", () => {
     expect(mocks.stopLive).toHaveBeenCalled();
   });
 
+  it("plays the first move of a clicked engine line", async () => {
+    const onMove = vi.fn();
+    render(
+      <LocaleProvider>
+        <LiveEngine fen="8/8/8/8/8/8/4K3/7k w - - 0 1" demoLines={[]} onMove={onMove} />
+      </LocaleProvider>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(120));
+    await act(async () => Promise.resolve());
+    act(() => {
+      mocks.infoListener?.({
+        generation: 7,
+        depth: 18,
+        multipv: 1,
+        eval_cp: 32,
+        mate_in: null,
+        nps: 25_000,
+        pv: ["e2e3", "h1g1"],
+      });
+      vi.advanceTimersByTime(150);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Ke3/ }));
+    expect(onMove).toHaveBeenCalledWith("e2e3");
+  });
+
   it("analyzes only the latest position in a quick move sequence", async () => {
     const firstFen = "8/8/8/8/8/8/4K3/7k w - - 0 1";
     const secondFen = "8/8/8/8/8/4K3/8/7k b - - 1 1";

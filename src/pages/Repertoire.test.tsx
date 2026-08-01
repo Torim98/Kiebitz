@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   repReview: vi.fn(),
   /** Der Zug, den ein Klick auf das Brett-Double auslöst. */
   drop: { from: "", to: "" },
+  engineMove: "e2e4",
 }));
 
 vi.mock("../lib/backend", () => ({
@@ -39,7 +40,10 @@ vi.mock("../lib/settings", () => ({
   chessdbQuery: vi.fn(() => Promise.resolve({ status: "unknown", moves: [], cached: false })),
   getSettings: vi.fn(() => Promise.resolve({ rep_due_limit: 20, rep_new_limit: 5 })),
 }));
-vi.mock("../components/LiveEngine", () => ({ default: () => null }));
+vi.mock("../components/LiveEngine", () => ({
+  default: ({ onMove }: { onMove?: (uci: string) => void }) =>
+    onMove ? <button onClick={() => onMove(mocks.engineMove)}>play engine move</button> : null,
+}));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 // Das Brett-Double reicht den Zug durch, den der Test vorher in mocks.drop
 // gelegt hat · so lässt sich ein Zug ohne echtes Drag-and-drop auslösen.
@@ -76,6 +80,7 @@ function blackTree(): RepNode[] {
 beforeEach(() => {
   localStorage.setItem("kiebitz.locale", "de");
   mocks.drop = { from: "", to: "" };
+  mocks.engineMove = "e2e4";
   mocks.repReview.mockResolvedValue({ due_ts: 0, interval_days: 1 });
   mocks.repList.mockResolvedValue([]);
   mocks.repGaps.mockResolvedValue([]);
@@ -115,6 +120,26 @@ async function startTraining() {
 }
 
 describe("Repertoire training", () => {
+  it("plays engine moves while adding a line and keeps a custom variation name", async () => {
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Variante hinzufügen" }));
+
+    const name = screen.getByPlaceholderText("Name der Variante (optional)") as HTMLInputElement;
+    fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
+    await waitFor(() => expect(name.value).toBe("1.e4"));
+    expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4"]));
+
+    fireEvent.change(name, { target: { value: "Mein Königsbauer" } });
+    mocks.engineMove = "e7e5";
+    fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
+    await waitFor(() => expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4", "e5"])));
+    expect(name.value).toBe("Mein Königsbauer");
+  });
+
   it("points to the variation list below on mobile", async () => {
     render(
       <LocaleProvider>

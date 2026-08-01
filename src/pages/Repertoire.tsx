@@ -925,12 +925,19 @@ function AddLine({
   const t = useT();
   const [draft, setDraft] = useState<string[]>([]);
   const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
   const [side, setSide] = useState<"white" | "black">(baseSide ?? "white");
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [twins, setTwins] = useState<RepNode[]>([]);
   const chessRef = useRef<Chess>(new Chess());
 
   const sans = useMemo(() => [...baseSans, ...draft], [baseSans, draft]);
+
+  // Solange der Benutzer keinen eigenen Namen eingibt, ist die Zugfolge selbst
+  // der unmittelbar sichtbare und zugleich speicherbare Variantenname.
+  useEffect(() => {
+    if (!nameEdited) setName(moveText(sans));
+  }, [nameEdited, sans]);
 
   useEffect(() => {
     const c = new Chess();
@@ -997,6 +1004,20 @@ function AddLine({
     }
   };
 
+  /** Ersten Zug einer angeklickten Engine-Linie auf das Brett übernehmen. */
+  const playUci = (uci: string) => {
+    try {
+      const move = chessRef.current.move({
+        from: uci.slice(0, 2),
+        to: uci.slice(2, 4),
+        promotion: uci[4] ?? "q",
+      });
+      setDraft((d) => [...d, move.san]);
+    } catch {
+      /* Veraltete Engine-Zeile nach einem Stellungswechsel ignorieren. */
+    }
+  };
+
   const save = async () => {
     if (draft.length === 0) return;
     try {
@@ -1038,7 +1059,10 @@ function AddLine({
           )}
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameEdited(true);
+            }}
             placeholder={t("rep.namePlaceholder")}
             className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
           />
@@ -1096,7 +1120,7 @@ function AddLine({
           )}
         </Card>
 
-        <LiveEngine fen={fen} demoLines={[]} />
+        <LiveEngine fen={fen} demoLines={[]} onMove={playUci} />
 
         <div className="rounded-xl border border-dashed border-line2 px-4 py-3 text-[12px] leading-relaxed text-ink3">
           {t("rep.playBothSides", {

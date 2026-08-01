@@ -489,11 +489,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     [sans, ply, variation]
   );
 
-  const playBoardMove = (from: string, to: string): boolean => {
+  const playBoardMove = (from: string, to: string, promotion = "q"): boolean => {
     if (!scratch && !live) return false;
     try {
       const chess = new Chess(fen);
-      const move = chess.move({ from, to, promotion: "q" });
+      const move = chess.move({ from, to, promotion });
       if (scratch) {
         const next = [...scratchSans.slice(0, ply), move.san];
         setScratchSans(next);
@@ -1057,6 +1057,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             demoLines={scratch ? [] : featuredGame.pvLines}
             onEval={(cp, mate) => setLiveEval({ cp, mate })}
             onBestMove={setLiveBestUci}
+            onMove={(uci) => playBoardMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] ?? "q")}
           />
 
           <Card title={live ? t("an.myMoves") : t("an.autoAnnotation")}>

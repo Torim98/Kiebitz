@@ -45,6 +45,45 @@ function lineEvalLabel(blackToMove: boolean, info: LiveInfo): string {
   return "–";
 }
 
+function EngineLineCard({
+  blackToMove,
+  depthLabel,
+  info,
+  line,
+  onMove,
+}: {
+  blackToMove: boolean;
+  depthLabel: string;
+  info: LiveInfo;
+  line: string;
+  onMove?: (uci: string) => void;
+}) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between">
+        <span className="text-[14px] font-semibold tabular-nums text-accent">
+          {lineEvalLabel(blackToMove, info)}
+        </span>
+        <span className="text-[11px] text-ink3">{depthLabel}</span>
+      </div>
+      <div className="mt-1 truncate text-[12px] leading-relaxed text-ink2">{line}</div>
+    </>
+  );
+  const firstMove = info.pv[0];
+
+  return onMove && firstMove ? (
+    <button
+      type="button"
+      onClick={() => onMove(firstMove)}
+      className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-left transition-colors hover:border-line2 hover:bg-panel3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+    >
+      {content}
+    </button>
+  ) : (
+    <div className="rounded-lg border border-line bg-panel2 px-3 py-2">{content}</div>
+  );
+}
+
 /**
  * Live-Analyse über die persistente Stockfish-Instanz: sobald sich die
  * Stellung ändert, rechnet die Engine neu; info-Zeilen streamen als Events
@@ -55,12 +94,15 @@ export default function LiveEngine({
   demoLines,
   onEval,
   onBestMove,
+  onMove,
 }: {
   fen: string;
   demoLines: { eval: string; depth: number; line: string }[];
   /** Bewertung aus Weiß-Sicht, sobald die Engine Tiefe gewinnt. */
   onEval?: (evalCp: number | null, mateIn: number | null) => void;
   onBestMove?: (uci: string | null) => void;
+  /** Spielt den ersten Zug einer angeklickten Hauptvariante. */
+  onMove?: (uci: string) => void;
 }) {
   const t = useT();
   const [engine, setEngine] = useState<EngineState>({ mode: "checking" });
@@ -310,17 +352,14 @@ export default function LiveEngine({
             <div className="flex flex-col gap-2">
               {ordered.length > 0
                 ? ordered.map((l) => (
-                    <div key={l.multipv} className="rounded-lg border border-line bg-panel2 px-3 py-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[14px] font-semibold tabular-nums text-accent">
-                          {lineEvalLabel(blackToMove, l)}
-                        </span>
-                        <span className="text-[11px] text-ink3">{t("eng.depth", { d: l.depth })}</span>
-                      </div>
-                      <div className="mt-1 truncate text-[12px] leading-relaxed text-ink2">
-                        {pvToSan(fen, l.pv)}
-                      </div>
-                    </div>
+                    <EngineLineCard
+                      key={l.multipv}
+                      blackToMove={blackToMove}
+                      depthLabel={t("eng.depth", { d: l.depth })}
+                      info={l}
+                      line={pvToSan(fen, l.pv)}
+                      onMove={onMove}
+                    />
                   ))
                 : running && (
                     <div className="rounded-lg border border-dashed border-line2 px-3 py-4 text-center text-[12px] text-ink3">

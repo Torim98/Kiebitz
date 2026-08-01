@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   setGameNote: vi.fn(),
   setGameTags: vi.fn(),
   getSettings: vi.fn(),
+  engineMove: "f1c4",
 }));
 
 vi.mock("../lib/backend", () => ({
@@ -34,7 +35,8 @@ vi.mock("../lib/analysis", () => ({
   startAnalysis: mocks.startAnalysis,
 }));
 vi.mock("../components/Board", () => ({
-  default: ({ onPieceDrop, draggable, muted, mouseDrag, arrows, badges }: {
+  default: ({ fen, onPieceDrop, draggable, muted, mouseDrag, arrows, badges }: {
+    fen: string;
     onPieceDrop?: (from: string, to: string) => boolean;
     draggable?: boolean;
     muted?: boolean;
@@ -45,6 +47,7 @@ vi.mock("../components/Board", () => ({
   }) => (
     <div
       data-testid="analysis-board"
+      data-fen={fen}
       data-draggable={String(!!draggable)}
       data-mouse-drag={String(!!mouseDrag)}
       data-muted={String(!!muted)}
@@ -58,7 +61,13 @@ vi.mock("../components/Board", () => ({
     </div>
   ),
 }));
-vi.mock("../components/LiveEngine", () => ({ default: () => <div data-testid="live-engine" /> }));
+vi.mock("../components/LiveEngine", () => ({
+  default: ({ onMove }: { onMove?: (uci: string) => void }) => (
+    <div data-testid="live-engine">
+      {onMove && <button onClick={() => onMove(mocks.engineMove)}>play engine move</button>}
+    </div>
+  ),
+}));
 vi.mock("recharts", () => {
   const Container = ({ children }: { children?: unknown }) => <div>{children as never}</div>;
   const Empty = () => null;
@@ -119,6 +128,7 @@ beforeEach(() => {
   mocks.startAnalysis.mockResolvedValue(undefined);
   mocks.setGameNote.mockResolvedValue(undefined);
   mocks.setGameTags.mockImplementation((_id: number, tags: string[]) => Promise.resolve(tags));
+  mocks.engineMove = "f1c4";
 });
 
 afterEach(() => {
@@ -186,6 +196,17 @@ describe("Analysis page", () => {
     expect(screen.getByRole("button", { name: "Nf3" })).toBeTruthy();
     // Exzellente Züge werden in der Zugliste jetzt ebenfalls markiert.
     expect(screen.getByRole("button", { name: "Bc4 ✓" })).toBeTruthy();
+  });
+
+  it("plays a clicked engine move on the analysis board", async () => {
+    render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+
+    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
+
+    expect(await screen.findByText(/Variante ab Zug 3/)).toBeTruthy();
+    expect(screen.getByTestId("analysis-board").dataset.fen).toContain("b KQkq");
+    expect(screen.getByText(/Bc4/)).toBeTruthy();
   });
 
   it("shows overall and phase accuracy for both players in the same cells", async () => {
