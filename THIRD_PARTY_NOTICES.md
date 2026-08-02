@@ -33,6 +33,13 @@ The offline tactics trainer imports the public Lichess puzzle dump, released
 under the CC0 1.0 public domain dedication. The database is downloaded per
 device and is not redistributed by Kiebitz.
 
+## Lichess opening names (CC0 1.0)
+
+The offline opening-name lookup is generated from the public
+[`lichess-org/chess-openings`](https://github.com/lichess-org/chess-openings)
+dataset at commit `51b886249b9e418498d25b6e39b926c3de99c29a`, released under the CC0 1.0
+public domain dedication.
+
 ## Wooden chess-piece recordings (CC0 1.0)
 
 The short board sounds are edited excerpts from **"chess pieces.wav"** by

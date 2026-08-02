@@ -933,10 +933,21 @@ function AddLine({
 
   const sans = useMemo(() => [...baseSans, ...draft], [baseSans, draft]);
 
-  // Solange der Benutzer keinen eigenen Namen eingibt, ist die Zugfolge selbst
-  // der unmittelbar sichtbare und zugleich speicherbare Variantenname.
+  // Der große ECO-Datensatz wird erst beim Anlegen einer Variante geladen. So
+  // bleibt der normale Seitenstart klein, der Name funktioniert aber offline.
   useEffect(() => {
-    if (!nameEdited) setName(moveText(sans));
+    if (nameEdited) return;
+    let stale = false;
+    import("../lib/openings")
+      .then(({ openingName }) => {
+        if (!stale) setName(openingName(sans));
+      })
+      .catch(() => {
+        if (!stale) setName("");
+      });
+    return () => {
+      stale = true;
+    };
   }, [nameEdited, sans]);
 
   useEffect(() => {

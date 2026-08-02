@@ -19,6 +19,7 @@
     "store-assets:marketing-v2": "python scripts/compose-store-assets.py artifacts/store-assets artifacts/store-assets-v2 artifacts/Kiebitz-Play-Store-Assets-v2.zip",
     "licenses": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
+    "openings:generate": "node scripts/generate-opening-names.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

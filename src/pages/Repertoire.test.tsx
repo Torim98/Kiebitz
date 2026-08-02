@@ -120,7 +120,7 @@ async function startTraining() {
 }
 
 describe("Repertoire training", () => {
-  it("plays engine moves while adding a line and keeps a custom variation name", async () => {
+  it("recognizes the opening while adding a line and keeps a custom variation name", async () => {
     render(
       <LocaleProvider>
         <Repertoire />
@@ -129,14 +129,21 @@ describe("Repertoire training", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Variante hinzufügen" }));
 
     const name = screen.getByPlaceholderText("Name der Variante (optional)") as HTMLInputElement;
-    fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
-    await waitFor(() => expect(name.value).toBe("1.e4"));
-    expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4"]));
+    for (const uci of ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4"]) {
+      mocks.engineMove = uci;
+      fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
+    }
+    await waitFor(() => expect(name.value).toBe("Italian Game"));
+    expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(
+      fenAfter(["e4", "e5", "Nf3", "Nc6", "Bc4"])
+    );
 
     fireEvent.change(name, { target: { value: "Mein Königsbauer" } });
-    mocks.engineMove = "e7e5";
+    mocks.engineMove = "g8f6";
     fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
-    await waitFor(() => expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4", "e5"])));
+    await waitFor(() => expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(
+      fenAfter(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6"])
+    ));
     expect(name.value).toBe("Mein Königsbauer");
   });
 
