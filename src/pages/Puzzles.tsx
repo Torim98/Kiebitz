@@ -4,6 +4,10 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronFirst,
+  ChevronLast,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Eye,
   Flame,
@@ -260,7 +264,9 @@ function TrainerView({
   const { locale, t } = useI18n();
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
   const [status, setStatus] = useState<Status>("loading");
-  const [fen, setFen] = useState("");
+  /** Tatsächlich gezeigte Stellungen, inklusive Puzzle-Ausgangsstellung. */
+  const [positionHistory, setPositionHistory] = useState<string[]>([]);
+  const [viewPly, setViewPly] = useState(0);
   const [wrong, setWrong] = useState(false);
   const [shake, setShake] = useState(false);
   const [showHint, setShowHint] = useState(false);
@@ -281,6 +287,27 @@ function TrainerView({
   const idxRef = useRef(0);
   const failedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyRef = useRef<string[]>([]);
+  const viewPlyRef = useRef(0);
+
+  const goToPly = (ply: number) => {
+    const last = Math.max(0, historyRef.current.length - 1);
+    const next = Math.max(0, Math.min(last, ply));
+    viewPlyRef.current = next;
+    setViewPly(next);
+    setSelected(null);
+  };
+
+  const appendPosition = (nextFen: string) => {
+    const current = historyRef.current;
+    const previousLivePly = Math.max(0, current.length - 1);
+    const next = [...current, nextFen];
+    historyRef.current = next;
+    setPositionHistory(next);
+    // Wer gerade die Live-Stellung sieht, folgt dem Zug. Beim Blättern in der
+    // Vergangenheit bleibt das Brett dagegen bewusst an derselben Stelle.
+    if (viewPlyRef.current === previousLivePly) goToPly(next.length - 1);
+  };
 
   const playUci = (uci: string) => {
     chessRef.current.move({
@@ -288,7 +315,7 @@ function TrainerView({
       to: uci.slice(2, 4),
       promotion: uci.length > 4 ? uci[4] : undefined,
     });
-    setFen(chessRef.current.fen());
+    appendPosition(chessRef.current.fen());
   };
 
   const load = (
@@ -301,6 +328,9 @@ function TrainerView({
     setShowHint(false);
     setSelected(null);
     setRatingDelta(null);
+    historyRef.current = [];
+    setPositionHistory([]);
+    goToPly(0);
     failedRef.current = false;
     nextPuzzle({
       theme: t || undefined,
@@ -315,7 +345,9 @@ function TrainerView({
         }
         setPuzzle(p);
         chessRef.current = new Chess(p.fen);
-        setFen(p.fen);
+        historyRef.current = [p.fen];
+        setPositionHistory([p.fen]);
+        goToPly(0);
         idxRef.current = 0;
         if (p.setup_plies === 0) {
           setStatus("playing");
@@ -346,6 +378,26 @@ function TrainerView({
     return solverWhite ? "white" : "black";
   }, [puzzle]);
 
+  const lastPly = Math.max(0, positionHistory.length - 1);
+  const fen = positionHistory[viewPly] ?? puzzle?.fen ?? "";
+  const atLive = viewPly === lastPly;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToPly(viewPlyRef.current - 1);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goToPly(viewPlyRef.current + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lastPly]);
+
   const finish = (solvedFirstTry: boolean) => {
     if (!puzzle) return;
     recordAttempt(puzzle.id, solvedFirstTry)
@@ -357,7 +409,7 @@ function TrainerView({
   };
 
   const tryMove = (from: string, to: string): boolean => {
-    if (!puzzle || status !== "playing") return false;
+    if (!puzzle || status !== "playing" || !atLive) return false;
     const chess = chessRef.current;
     let move;
     try {
@@ -380,7 +432,7 @@ function TrainerView({
       }
       return false;
     }
-    setFen(chess.fen());
+    appendPosition(chess.fen());
     setWrong(false);
     idxRef.current += 1;
     if (idxRef.current >= puzzle.moves.length || chess.isCheckmate()) {
@@ -397,7 +449,7 @@ function TrainerView({
   };
 
   const onSquareClick = (square: string) => {
-    if (status !== "playing") return;
+    if (status !== "playing" || !atLive) return;
     const chess = chessRef.current;
     const piece = chess.get(square as Parameters<typeof chess.get>[0]);
     if (selected && selected !== square) {
@@ -422,9 +474,9 @@ function TrainerView({
     step();
   };
 
-  const hintSquare = puzzle && status === "playing" ? puzzle.moves[idxRef.current]?.slice(0, 2) : null;
+  const hintSquare = puzzle && status === "playing" && atLive ? puzzle.moves[idxRef.current]?.slice(0, 2) : null;
   const squareStyles: Record<string, React.CSSProperties> = {
-    ...(status === "playing" ? moveTargetStyles(fen, selected) : {}),
+    ...(status === "playing" && atLive ? moveTargetStyles(fen, selected) : {}),
   };
   if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
   if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px #d9a028" };
@@ -490,7 +542,7 @@ function TrainerView({
             boardId="puzzle"
             fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
             width={BOARD_WIDTH}
-            draggable={status === "playing"}
+            draggable={status === "playing" && atLive}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
             squareStyles={squareStyles}
@@ -498,6 +550,27 @@ function TrainerView({
             shake={shake}
             mouseDrag
           />
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
+            <span className="text-[12.5px] text-ink2">{t("pz.positionHistory")}</span>
+            <div className="flex items-center gap-1">
+              <Button onClick={() => goToPly(0)} className="px-2" title={t("pz.firstPosition")}>
+                <ChevronFirst size={14} />
+              </Button>
+              <Button onClick={() => goToPly(viewPly - 1)} className="px-2" title={t("pz.previousPosition")}>
+                <ChevronLeft size={14} />
+              </Button>
+              <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
+                {viewPly} / {lastPly}
+              </span>
+              <Button onClick={() => goToPly(viewPly + 1)} className="px-2" title={t("pz.nextPosition")}>
+                <ChevronRight size={14} />
+              </Button>
+              <Button onClick={() => goToPly(lastPly)} className="px-2" title={t("pz.currentPosition")}>
+                <ChevronLast size={14} />
+              </Button>
+            </div>
+          </div>
 
           <div className="mt-3 flex min-h-[52px] items-center">
             {status === "solved" ? (
