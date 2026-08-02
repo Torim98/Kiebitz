@@ -3,7 +3,6 @@ import { Chess } from "chess.js";
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   CornerUpLeft,
   Download,
   FileUp,
@@ -79,6 +78,153 @@ function moveText(sans: string[]): string {
   return sans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
 }
 
+interface VariationLine {
+  key: string;
+  side: "white" | "black";
+  targetId: number | string;
+  name: string;
+  sans: string[];
+  due: number;
+  nodeIds?: number[];
+  hasNote?: boolean;
+  hasTransposition?: boolean;
+}
+
+/**
+ * Eine flache, tastaturbedienbare Linienliste. Der Repertoire-Baum bleibt das
+ * Datenmodell, in der UI ist aber jede spielbare Variante ein lesbarer Eintrag.
+ */
+function VariationList({
+  lines,
+  selectedLineKey,
+  selectedPly,
+  onSelect,
+}: {
+  lines: VariationLine[];
+  selectedLineKey: string | null;
+  selectedPly: number;
+  onSelect: (line: VariationLine, ply: number) => void;
+}) {
+  const t = useT();
+  const optionRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  const selectAndFocus = (line: VariationLine, ply: number) => {
+    onSelect(line, ply);
+    optionRefs.current.get(line.key)?.focus();
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, line: VariationLine) => {
+    const index = lines.findIndex((candidate) => candidate.key === line.key);
+    const currentPly = selectedLineKey === line.key ? selectedPly : line.sans.length - 1;
+
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const delta = event.key === "ArrowUp" ? -1 : 1;
+      const next = lines[Math.max(0, Math.min(lines.length - 1, index + delta))];
+      if (next) selectAndFocus(next, next.sans.length - 1);
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const delta = event.key === "ArrowLeft" ? -1 : 1;
+      onSelect(line, Math.max(-1, Math.min(line.sans.length - 1, currentPly + delta)));
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      onSelect(line, event.key === "Home" ? -1 : line.sans.length - 1);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(line, line.sans.length - 1);
+    }
+  };
+
+  return (
+    <div>
+      <div className="border-b border-line px-3 py-2 text-[11px] leading-relaxed text-ink3">
+        {t("rep.variationKeys")}
+      </div>
+      <div
+        role="listbox"
+        aria-label={t("rep.variants")}
+        className="max-h-[min(58vh,620px)] overflow-y-auto p-2"
+      >
+        {(["white", "black"] as const).map((side) => {
+          const sideLines = lines.filter((line) => line.side === side);
+          if (sideLines.length === 0) return null;
+          return (
+            <div
+              key={side}
+              role="group"
+              aria-label={side === "white" ? t("common.asWhite") : t("common.asBlack")}
+              className="mb-3 last:mb-0"
+            >
+              <div className="sticky top-0 z-10 bg-panel/95 px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3 backdrop-blur-sm">
+                {side === "white" ? t("common.asWhite") : t("common.asBlack")}
+              </div>
+              <div className="space-y-1.5">
+                {sideLines.map((line) => {
+                  const active = selectedLineKey === line.key;
+                  const globalIndex = lines.findIndex((candidate) => candidate.key === line.key);
+                  return (
+                    <button
+                      key={line.key}
+                      ref={(element) => {
+                        if (element) optionRefs.current.set(line.key, element);
+                        else optionRefs.current.delete(line.key);
+                      }}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      aria-label={`${line.name}: ${moveText(line.sans)}`}
+                      tabIndex={active || (selectedLineKey == null && globalIndex === 0) ? 0 : -1}
+                      onClick={() => onSelect(line, line.sans.length - 1)}
+                      onKeyDown={(event) => onKeyDown(event, line)}
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-accent-dim ${
+                        active
+                          ? "border-accent-dim bg-accent-soft text-ink"
+                          : "border-line bg-panel2/60 text-ink2 hover:border-line2 hover:bg-panel2"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{line.name}</span>
+                        {line.hasNote && <Lightbulb aria-hidden="true" size={12} className="shrink-0 text-ink3" />}
+                        {line.hasTransposition && <Shuffle aria-hidden="true" size={12} className="shrink-0 text-gold" />}
+                        {line.due > 0 && (
+                          <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
+                            {line.due}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px] leading-5">
+                        <span
+                          className={`rounded px-1 ${active && selectedPly === -1 ? "bg-accent text-[#06251a]" : "text-ink3"}`}
+                        >
+                          {t("rep.startShort")}
+                        </span>
+                        {line.sans.map((san, ply) => (
+                          <span
+                            key={`${ply}:${san}`}
+                            className={`rounded px-1 ${active && selectedPly === ply ? "bg-accent text-[#06251a]" : "bg-panel3/70 text-ink2"}`}
+                          >
+                            {ply % 2 === 0 ? `${ply / 2 + 1}.${san}` : san}
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Auf dem Handy klappt ein Bereich zu, auf dem Desktop steht er offen. */
 function Panel({
   compact,
@@ -131,6 +277,7 @@ function LiveRepertoire() {
   const [gaps, setGaps] = useState<RepGap[] | null>(null);
   const [plies, setPlies] = useState(8);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
   const [nodeStats, setNodeStats] = useState<NodeGameStats | null>(null);
   const [mode, setMode] = useState<"browse" | "add" | "train">("browse");
   const [notice, setNotice] = useState<string | null>(null);
@@ -187,30 +334,59 @@ function LiveRepertoire() {
     [transpositions]
   );
 
-  /** Anzahl fälliger eigener Züge im Teilbaum (inkl. Knoten selbst). */
-  const dueCount = useCallback(
-    (n: RepNode): number => {
-      const self = n.my_move && (n.reps === 0 || n.due_ts <= now) ? 1 : 0;
-      const kids = children.get(`${n.side}:${n.id}`) ?? [];
-      return self + kids.reduce((s, k) => s + dueCount(k), 0);
-    },
-    [children, now]
-  );
-
-  const pathSans = useCallback(
-    (id: number | null): string[] => {
-      const path: string[] = [];
+  /** Vollständige Knotenfolge von der Grundstellung bis zu diesem Zug. */
+  const pathNodes = useCallback(
+    (id: number | null): RepNode[] => {
+      const path: RepNode[] = [];
       let cur = id;
       while (cur != null && cur !== 0) {
         const n = byId.get(cur);
         if (!n) break;
-        path.push(n.san);
+        path.push(n);
         cur = n.parent_id;
       }
       return path.reverse();
     },
     [byId]
   );
+
+  const pathSans = useCallback(
+    (id: number | null): string[] => pathNodes(id).map((node) => node.san),
+    [pathNodes]
+  );
+
+  const variationLines = useMemo<VariationLine[]>(() => {
+    return nodes
+      // Benannte Zwischenlinien bleiben eigene Varianten (z. B. "Italian
+      // Game" neben den längeren Fortsetzungen); unbenannte Pfade erscheinen
+      // nur an ihrem Endpunkt.
+      .filter((node) => node.name.trim() !== "" || (children.get(`${node.side}:${node.id}`) ?? []).length === 0)
+      .map((endpoint) => {
+        const path = pathNodes(endpoint.id);
+        const ancestorName = [...path.slice(0, -1)].reverse().find((node) => node.name.trim() !== "")?.name.trim();
+        return {
+          key: `${endpoint.side}:${endpoint.id}`,
+          side: endpoint.side,
+          targetId: endpoint.id,
+          name: endpoint.name.trim() || (ancestorName ? `${ancestorName} · ${moveLabel(endpoint)}` : moveLabel(endpoint)),
+          sans: path.map((node) => node.san),
+          nodeIds: path.map((node) => node.id),
+          due: path.filter((node) => node.my_move && (node.reps === 0 || node.due_ts <= now)).length,
+          hasNote: path.some((node) => node.note.trim() !== ""),
+          hasTransposition: path.some((node) => twinsOf(node).length > 0),
+        };
+      });
+  }, [children, nodes, now, pathNodes, twinsOf]);
+
+  const selectedLine = variationLines.find((line) => line.key === selectedLineKey) ?? null;
+  const selectedPly = selectedLine && selectedId != null
+    ? (selectedLine.nodeIds ?? []).indexOf(selectedId)
+    : -1;
+
+  const selectVariation = useCallback((line: VariationLine, ply: number) => {
+    setSelectedLineKey(line.key);
+    setSelectedId(ply >= 0 ? (line.nodeIds?.[ply] ?? null) : null);
+  }, []);
 
   const selected = selectedId != null ? (byId.get(selectedId) ?? null) : null;
   const baseSans = useMemo(() => pathSans(selectedId), [pathSans, selectedId]);
@@ -242,7 +418,10 @@ function LiveRepertoire() {
 
   const remove = async (id: number) => {
     await repDelete(id).catch((e) => setNotice(errorMessage(e)));
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) {
+      setSelectedId(null);
+      setSelectedLineKey(null);
+    }
     reload();
   };
 
@@ -261,29 +440,12 @@ function LiveRepertoire() {
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
-      {/* Der Baum wächst mit dem Repertoire und schöbe sonst alles unter ihm
-          aus dem Bild · deshalb scrollt er in sich, statt die Seite zu dehnen. */}
-      <div className="max-h-[min(58vh,620px)] overflow-y-auto p-2">
-        {(["white", "black"] as const).map((side) => (
-          <div key={side} className="mb-2">
-            <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-              {side === "white" ? t("common.asWhite") : t("common.asBlack")}
-            </div>
-            {(children.get(`${side}:0`) ?? []).map((n) => (
-              <TreeNode
-                key={n.id}
-                node={n}
-                depth={0}
-                selected={selectedId}
-                onSelect={setSelectedId}
-                children_={children}
-                dueCount={dueCount}
-                twins={twinsOf}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      <VariationList
+        lines={variationLines}
+        selectedLineKey={selectedLineKey}
+        selectedPly={selectedPly}
+        onSelect={selectVariation}
+      />
       <div className="border-t border-line p-2">
         {nodes.length === 0 && (
           <button
@@ -841,76 +1003,6 @@ function BookCard({
   );
 }
 
-function TreeNode({
-  node,
-  depth,
-  selected,
-  onSelect,
-  children_,
-  dueCount,
-  twins,
-}: {
-  node: RepNode;
-  depth: number;
-  selected: number | null;
-  onSelect: (id: number) => void;
-  children_: Map<string, RepNode[]>;
-  dueCount: (n: RepNode) => number;
-  twins: (n: RepNode) => RepNode[];
-}) {
-  const [open, setOpen] = useState(depth < 2);
-  const kids = children_.get(`${node.side}:${node.id}`) ?? [];
-  const due = dueCount(node);
-  const hasTwins = twins(node).length > 0;
-
-  return (
-    <div>
-      <div
-        className={`flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 transition-colors ${
-          selected === node.id ? "bg-panel3 text-ink" : "text-ink2 hover:bg-panel2"
-        }`}
-        style={{ paddingLeft: 8 + depth * 18 }}
-        onClick={() => onSelect(node.id)}
-      >
-        {kids.length > 0 ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen((o) => !o);
-            }}
-            className="text-ink3 hover:text-ink"
-          >
-            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        ) : (
-          <span className="w-[14px]" />
-        )}
-        <span className="flex-1 truncate text-[13px]">{moveLabel(node)}</span>
-        {node.note.trim() !== "" && <Lightbulb size={12} className="shrink-0 text-ink3" />}
-        {hasTwins && <Shuffle size={12} className="shrink-0 text-gold" />}
-        {due > 0 && (
-          <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
-            {due}
-          </span>
-        )}
-      </div>
-      {open &&
-        kids.map((c) => (
-          <TreeNode
-            key={c.id}
-            node={c}
-            depth={depth + 1}
-            selected={selected}
-            onSelect={onSelect}
-            children_={children_}
-            dueCount={dueCount}
-            twins={twins}
-          />
-        ))}
-    </div>
-  );
-}
-
 // ── Variante am Brett eingeben ───────────────────────────────────────────────
 
 function AddLine({
@@ -1162,98 +1254,44 @@ const STORE_EN_NODE_LABELS: Record<string, string> = {
   b2a: "Advance Variation (3.e5 Bf5)",
 };
 
-function DemoTreeNode({
-  node,
-  depth,
-  selected,
-  onSelect,
-  englishCapture,
-}: {
-  node: DemoNode;
-  depth: number;
-  selected: string;
-  onSelect: (id: string) => void;
-  englishCapture: boolean;
-}) {
-  const [open, setOpen] = useState(true);
-  const hasChildren = !!node.children?.length;
-
-  return (
-    <div>
-      <div
-        className={`flex cursor-pointer items-center gap-1.5 rounded-lg py-1.5 pr-2 transition-colors ${
-          selected === node.id ? "bg-panel3 text-ink" : "text-ink2 hover:bg-panel2"
-        }`}
-        style={{ paddingLeft: 8 + depth * 18 }}
-        onClick={() => onSelect(node.id)}
-      >
-        {hasChildren ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setOpen((o) => !o);
-            }}
-            className="text-ink3 hover:text-ink"
-          >
-            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        ) : (
-          <span className="w-[14px]" />
-        )}
-        <span className="flex-1 truncate text-[13px]">
-          {englishCapture ? STORE_EN_NODE_LABELS[node.id] ?? node.label : node.label}
-        </span>
-        {node.due > 0 && (
-          <span className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
-            {node.due}
-          </span>
-        )}
-      </div>
-      {open &&
-        node.children?.map((c) => (
-          <DemoTreeNode
-            key={c.id}
-            node={c}
-            depth={depth + 1}
-            selected={selected}
-            onSelect={onSelect}
-            englishCapture={englishCapture}
-          />
-        ))}
-    </div>
-  );
-}
-
 function DemoRepertoire() {
   const { locale, t } = useI18n();
   const compact = useMobileShell();
   const storeCapture = isStoreCapture();
   const englishCapture = storeCapture && locale === "en";
   const [selectedId, setSelectedId] = useState("w1a");
+  const [selectedPly, setSelectedPly] = useState(
+    () => (allDemoNodes.find((candidate) => candidate.id === "w1a")?.moveSeq.length ?? 1) - 1
+  );
   const node = useMemo(() => allDemoNodes.find((n) => n.id === selectedId)!, [selectedId]);
-  const fen = useMemo(() => fenAfter(node.moveSeq), [node]);
+  const demoLines = useMemo<VariationLine[]>(
+    () => demoRepertoire.flatMap((group) =>
+      flatten(group.nodes).map((variation) => ({
+        key: `demo:${variation.id}`,
+        side: group.side === "Weiß" ? "white" : "black",
+        targetId: variation.id,
+        name: englishCapture ? STORE_EN_NODE_LABELS[variation.id] ?? variation.label : variation.label,
+        sans: variation.moveSeq,
+        due: variation.due,
+      }))
+    ),
+    [englishCapture]
+  );
+  const selectDemoVariation = useCallback((line: VariationLine, ply: number) => {
+    setSelectedId(String(line.targetId));
+    setSelectedPly(ply);
+  }, []);
+  const visibleSans = useMemo(() => node.moveSeq.slice(0, selectedPly + 1), [node, selectedPly]);
+  const fen = useMemo(() => fenAfter(visibleSans), [visibleSans]);
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
-      <div className="max-h-[min(58vh,620px)] overflow-y-auto p-2">
-        {demoRepertoire.map((side) => (
-          <div key={side.side} className="mb-2">
-            <div className="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3">
-              {side.side === "Weiß" ? t("common.asWhite") : t("common.asBlack")}
-            </div>
-            {side.nodes.map((n) => (
-              <DemoTreeNode
-                key={n.id}
-                node={n}
-                depth={0}
-                selected={selectedId}
-                onSelect={setSelectedId}
-                englishCapture={englishCapture}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      <VariationList
+        lines={demoLines}
+        selectedLineKey={`demo:${selectedId}`}
+        selectedPly={selectedPly}
+        onSelect={selectDemoVariation}
+      />
     </Panel>
   );
 
@@ -1261,7 +1299,7 @@ function DemoRepertoire() {
     <div>
       <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} />
       <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-        {moveText(node.moveSeq)}
+        {moveText(visibleSans) || t("rep.startPos")}
       </div>
     </div>
   );

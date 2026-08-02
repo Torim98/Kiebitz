@@ -31,7 +31,7 @@ vi.mock("../lib/repertoire", () => ({
   repImportPgnFile: vi.fn(),
   repList: mocks.repList,
   repLookup: vi.fn(() => Promise.resolve([])),
-  repNodeGames: vi.fn(),
+  repNodeGames: vi.fn(() => new Promise(() => {})),
   repReview: mocks.repReview,
   repSetNote: vi.fn(),
   repStats: mocks.repStats,
@@ -74,6 +74,19 @@ function blackTree(): RepNode[] {
     { ...base, id: 2, parent_id: 1, san: "e5", depth: 2, my_move: true, fen_key: "k2" },
     { ...base, id: 3, parent_id: 2, san: "Nf3", depth: 3, my_move: false, fen_key: "k3" },
     { ...base, id: 4, parent_id: 3, san: "Nc6", depth: 4, my_move: true, fen_key: "k4" },
+  ];
+}
+
+/** Zwei vollständige Linien mit gemeinsamem ersten Zug. */
+function variationTree(): RepNode[] {
+  const base = { side: "white" as const, name: "", note: "", reps: 1, lapses: 0, due_ts: 0, stability: 1 };
+  return [
+    { ...base, id: 1, parent_id: 0, san: "e4", depth: 1, my_move: true, fen_key: "v1" },
+    { ...base, id: 2, parent_id: 1, san: "e5", depth: 2, my_move: false, fen_key: "v2" },
+    { ...base, id: 3, parent_id: 2, san: "Nf3", name: "Italian Game", depth: 3, my_move: true, fen_key: "v3" },
+    { ...base, id: 4, parent_id: 1, san: "c5", depth: 2, my_move: false, fen_key: "v4" },
+    { ...base, id: 5, parent_id: 4, san: "Nf3", name: "Sicilian Defense", depth: 3, my_move: true, fen_key: "v5" },
+    { ...base, id: 6, parent_id: 3, san: "Bc4", name: "Italian Main Line", depth: 4, my_move: false, fen_key: "v6" },
   ];
 }
 
@@ -158,6 +171,36 @@ describe("Repertoire training", () => {
     expect(
       await screen.findByText("Wähle unten eine Variante · oder lege mit „Variante hinzufügen“ los.")
     ).toBeTruthy();
+  });
+
+  it("shows named variation lines and navigates lines and positions with the keyboard", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    const italian = await screen.findByRole("option", { name: "Italian Game: 1.e4 e5 2.Nf3" });
+    const sicilian = screen.getByRole("option", { name: "Sicilian Defense: 1.e4 c5 2.Nf3" });
+    expect(screen.getByRole("option", { name: "Italian Main Line: 1.e4 e5 2.Nf3 Bc4" })).toBeTruthy();
+    const board = screen.getByTestId("board-repertoire");
+
+    fireEvent.click(italian);
+    expect(board.dataset.fen).toBe(fenAfter(["e4", "e5", "Nf3"]));
+
+    fireEvent.keyDown(italian, { key: "ArrowLeft" });
+    expect(board.dataset.fen).toBe(fenAfter(["e4", "e5"]));
+
+    fireEvent.keyDown(italian, { key: "ArrowDown" });
+    expect(sicilian.getAttribute("aria-selected")).toBe("true");
+    expect(board.dataset.fen).toBe(fenAfter(["e4", "c5", "Nf3"]));
+
+    fireEvent.keyDown(sicilian, { key: "Home" });
+    expect(board.dataset.fen).toBe(fenAfter([]));
+
+    fireEvent.keyDown(sicilian, { key: "End" });
+    expect(board.dataset.fen).toBe(fenAfter(["e4", "c5", "Nf3"]));
   });
 
   it("navigates previous positions with the left and right arrow keys", async () => {
