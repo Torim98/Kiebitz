@@ -30,22 +30,45 @@ function g(partial: Partial<GameRecord> = {}): GameRecord {
 }
 
 describe("buildDashboard", () => {
-  it("carries the last rating into a new month until a new game is played", () => {
+  it("carries only ratings active in the immediately previous month", () => {
+    const june = Math.floor(new Date(2026, 5, 30, 18).getTime() / 1000);
     const july = Math.floor(new Date(2026, 6, 31, 18).getTime() / 1000);
     const realNow = Date.now;
     Date.now = () => new Date(2026, 7, 1, 9).getTime();
     try {
       const d = buildDashboard(
         [
-          g({ source: "chess.com", played_ts: july, my_elo: 812 }),
+          g({ source: "chess.com", played_ts: june, my_elo: 812 }),
           g({ source: "lichess", played_ts: july, my_elo: 1078 }),
         ],
         { locale: "en", ccUser: "u", liUser: "u" }
       );
-      expect(d.history[d.history.length - 1]).toMatchObject({ month: "Aug", cc: 812, li: 1078 });
+      const byId = new Map(d.historySeries.map((series) => [series.id, series]));
+      const august = d.history[d.history.length - 1];
+      expect(august.month).toBe("Aug");
+      expect(august[byId.get("chess.com-rapid")!.key]).toBeNull();
+      expect(august[byId.get("lichess-rapid")!.key]).toBe(1078);
     } finally {
       Date.now = realNow;
     }
+  });
+
+  it("uses the same four most active modes for cards and rating history", () => {
+    const records = [
+      ...Array.from({ length: 5 }, (_, i) => g({ id: 10 + i, source: "chess.com", time_class: "rapid", played_ts: NOW - i * 60 })),
+      ...Array.from({ length: 4 }, (_, i) => g({ id: 20 + i, source: "lichess", time_class: "blitz", played_ts: NOW - i * 60 })),
+      ...Array.from({ length: 3 }, (_, i) => g({ id: 30 + i, source: "chess.com", time_class: "bullet", played_ts: NOW - i * 60 })),
+      ...Array.from({ length: 2 }, (_, i) => g({ id: 40 + i, source: "lichess", time_class: "rapid", played_ts: NOW - i * 60 })),
+      g({ id: 50, source: "chess.com", time_class: "blitz", played_ts: NOW }),
+    ];
+    const d = buildDashboard(records, { locale: "en", ccUser: "u", liUser: "u" });
+    expect(d.cards.map((card) => card.id)).toEqual([
+      "chess.com-rapid",
+      "lichess-blitz",
+      "chess.com-bullet",
+      "lichess-rapid",
+    ]);
+    expect(d.historySeries.map((series) => series.id)).toEqual(d.cards.map((card) => card.id));
   });
 
   it("takes the latest rating per platform/time-control bucket", () => {

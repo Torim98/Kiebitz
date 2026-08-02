@@ -8,21 +8,28 @@ export interface RatingCard {
   id: string;
   platform: "chess.com" | "lichess";
   tc: string;
+  timeClass: string;
   value: number;
   delta: number;
   spark: number[];
   url: string;
 }
 
-export interface HistoryPoint {
-  month: string;
-  cc: number | null;
-  li: number | null;
+export type HistoryPoint = { month: string } & Record<string, string | number | null>;
+
+export interface RatingHistorySeries {
+  /** Punktfreier Schlüssel für Recharts; Plattformnamen enthalten Punkte. */
+  key: string;
+  id: string;
+  platform: "chess.com" | "lichess";
+  timeClass: string;
+  label: string;
 }
 
 export interface LiveDashboard {
   cards: RatingCard[];
   history: HistoryPoint[];
+  historySeries: RatingHistorySeries[];
   recent: UiGame[];
   unanalyzed: number;
 }
@@ -63,6 +70,7 @@ export function buildDashboard(
         id: `${platform}-${tc}`,
         platform,
         tc: tcLabel(tc, opts.locale),
+        timeClass: tc,
         value,
         delta: value - ref,
         spark,
@@ -86,10 +94,19 @@ export function buildDashboard(
     return B.recent - A.recent || B.last - A.last;
   });
 
-  // Monatsverlauf: letztes Rapid-/Blitz-Rating je Kalendermonat und Quelle.
-  // Der laufende Monat beginnt mit dem letzten bekannten Stand. Sonst ist die
-  // Kurve am Monatsanfang leer, bis die erste neue Partie importiert wurde,
-  // obwohl sich das Rating in der Zwischenzeit nicht geändert hat.
+  const activeCards = cards.slice(0, 4);
+  const historySeries: RatingHistorySeries[] = activeCards.map((card, index) => ({
+    key: `rating${index}`,
+    id: card.id,
+    platform: card.platform,
+    timeClass: card.timeClass,
+    label: `${card.platform} · ${card.tc}`,
+  }));
+
+  // Monatsverlauf für dieselben vier aktiven Plattform-/Modus-Paare wie oben.
+  // Der laufende Monat beginnt nur dann mit dem letzten Stand, wenn exakt dieser
+  // Modus im unmittelbar vorherigen Monat aktiv war. Ein monatelang ruhendes
+  // chess.com-Rating darf dadurch nicht als aktueller August-Wert erscheinen.
   const history: HistoryPoint[] = [];
   const currentMonth = new Date(Date.now());
   currentMonth.setDate(1);
@@ -99,45 +116,44 @@ export function buildDashboard(
     const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset + 1, 1);
     const start = Math.floor(startDate.getTime() / 1000);
     const end = Math.floor(endDate.getTime() / 1000);
-    const inMonth = (src: string) =>
-      asc.filter(
-        (g) =>
-          g.source === src &&
-          g.played_ts >= start &&
-          g.played_ts < end &&
-          g.my_elo > 0 &&
-          (g.time_class === "rapid" || g.time_class === "blitz")
-      );
-    const latestBefore = (src: string) =>
-      asc.filter(
-        (g) =>
-          g.source === src &&
-          g.played_ts < start &&
-          g.my_elo > 0 &&
-          (g.time_class === "rapid" || g.time_class === "blitz")
-      );
-    const cc = inMonth("chess.com");
-    const li = inMonth("lichess");
-    const ccPrevious = offset === 0 ? latestBefore("chess.com") : [];
-    const liPrevious = offset === 0 ? latestBefore("lichess") : [];
-    history.push({
+    const previousStart = Math.floor(
+      new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1).getTime() / 1000
+    );
+    const point: HistoryPoint = {
       month: startDate.toLocaleDateString(opts.locale === "de" ? "de-DE" : "en-US", { month: "short" }),
-      cc: cc.length
-        ? cc[cc.length - 1].my_elo
-        : ccPrevious.length
-          ? ccPrevious[ccPrevious.length - 1].my_elo
-          : null,
-      li: li.length
-        ? li[li.length - 1].my_elo
-        : liPrevious.length
-          ? liPrevious[liPrevious.length - 1].my_elo
-          : null,
-    });
+    };
+    for (const series of historySeries) {
+      const inMonth = asc.filter(
+        (game) =>
+          game.source === series.platform
+          && game.time_class === series.timeClass
+          && game.played_ts >= start
+          && game.played_ts < end
+          && game.my_elo > 0
+      );
+      const previousMonth = offset === 0
+        ? asc.filter(
+            (game) =>
+              game.source === series.platform
+              && game.time_class === series.timeClass
+              && game.played_ts >= previousStart
+              && game.played_ts < start
+              && game.my_elo > 0
+          )
+        : [];
+      point[series.key] = inMonth.length > 0
+        ? inMonth[inMonth.length - 1].my_elo
+        : previousMonth.length > 0
+          ? previousMonth[previousMonth.length - 1].my_elo
+          : null;
+    }
+    history.push(point);
   }
 
   return {
-    cards: cards.slice(0, 4),
+    cards: activeCards,
     history,
+    historySeries,
     recent: libraryRecords.slice(0, 5).map((r) => toUi(r, opts.locale)),
     // Keep this definition identical to the native analysis queue. Imported
     // metadata-only games without SAN moves cannot be analyzed and therefore

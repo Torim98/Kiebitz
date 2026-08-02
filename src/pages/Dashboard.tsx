@@ -86,6 +86,22 @@ export default function Dashboard({
       month: date.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", { month: "short" }),
     };
   });
+  const historySeries = dash?.historySeries ?? [
+    { key: "cc", id: "cc", platform: "chess.com" as const, timeClass: "rapid", label: "chess.com" },
+    { key: "li", id: "li", platform: "lichess" as const, timeClass: "rapid", label: "lichess" },
+  ];
+  const historyColors: Record<string, string> = {
+    "chess.com-rapid": chart.cc,
+    "chess.com-blitz": chart.gold,
+    "chess.com-bullet": chart.mistake,
+    "chess.com-daily": chart.violet,
+    "lichess-rapid": chart.li,
+    "lichess-blitz": chart.accent,
+    "lichess-bullet": chart.loss,
+    "lichess-daily": "#b09bea",
+    cc: chart.cc,
+    li: chart.li,
+  };
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -160,8 +176,18 @@ export default function Dashboard({
                 iconType="plainline"
                 formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
               />
-              <Line type="monotone" dataKey="cc" name="chess.com" stroke={chart.cc} strokeWidth={2} dot={false} connectNulls />
-              <Line type="monotone" dataKey="li" name="lichess" stroke={chart.li} strokeWidth={2} dot={false} connectNulls />
+              {historySeries.map((series) => (
+                <Line
+                  key={series.id}
+                  type="monotone"
+                  dataKey={series.key}
+                  name={series.label}
+                  stroke={historyColors[series.id] ?? chart.draw}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </Card>
