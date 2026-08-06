@@ -20,6 +20,8 @@ export interface Settings {
   display_name: string;
   import_months: number;
   puzzle_goal: number;
+  /** Motiv der laufenden Aufgabe im Puzzle-Training verdecken. */
+  puzzle_hide_theme: boolean;
   /** Fällige Repertoire-Züge je Trainingssitzung (0 = alle). */
   rep_due_limit: number;
   /** Neue Repertoire-Züge je Trainingssitzung (0 = alle). */

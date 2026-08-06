@@ -27,6 +27,62 @@ pub(crate) struct OwnPuzzleCandidate {
     pub best_uci: String,
     pub phase: String,
     pub judgment: String,
+    /// Verlorene Gewinnwahrscheinlichkeit dieses Zuges (0 … 1).
+    pub loss: f64,
+    /// Eigene Gewinnwahrscheinlichkeit vor dem Zug (0 … 1).
+    pub win_prob_before: f64,
+}
+
+/// Höchstzahl eigener Aufgaben je Partie. Wer eine Partie zerlegt, patzt oft
+/// ein Dutzend Mal · daraus ein Dutzend Aufgaben zu machen füllt den Vorrat mit
+/// Varianten desselben verlorenen Spiels. Die teuersten Fehler genügen.
+const MAX_OWN_PUZZLES_PER_GAME: usize = 3;
+
+/// Derselbe beste Zug innerhalb dieses Abstands (Halbzüge) ist dieselbe
+/// verpasste Idee. Wer eine Gabel drei Züge lang übersieht, bekommt sonst drei
+/// fast identische Aufgaben · genau die Wiederholung, die im Training nervt.
+const SAME_IDEA_PLY_WINDOW: u32 = 12;
+
+/// Darunter ist die Partie praktisch entschieden. Der „beste Zug" in einer
+/// hoffnungslosen Stellung ist keine Lektion, sondern nur der am wenigsten
+/// schlechte · als Aufgabe wäre er unlösbar und unlehrreich.
+const HOPELESS_WIN_PROB: f64 = 0.08;
+
+/// Aus allen Fehlern einer Partie die Aufgaben auswählen, die etwas beibringen:
+/// aussichtslose Stellungen raus, Wiederholungen derselben Idee zusammengefasst,
+/// und von dem, was bleibt, die teuersten Fehler.
+fn select_own_candidates(candidates: &[OwnPuzzleCandidate]) -> Vec<&OwnPuzzleCandidate> {
+    let mut ordered: Vec<&OwnPuzzleCandidate> = candidates
+        .iter()
+        .filter(|c| c.best_uci.len() >= 4 && c.win_prob_before >= HOPELESS_WIN_PROB)
+        .collect();
+    ordered.sort_by_key(|c| c.ply);
+
+    let mut kept: Vec<&OwnPuzzleCandidate> = Vec::new();
+    let mut last_seen: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+    for candidate in ordered {
+        let idea = &candidate.best_uci[..4];
+        // Auch eine übersprungene Wiederholung verlängert die Kette: sonst käme
+        // bei einer sechs Züge lang verpassten Idee jede zweite doch wieder mit.
+        if let Some(previous) = last_seen.insert(idea, candidate.ply) {
+            if candidate.ply.saturating_sub(previous) <= SAME_IDEA_PLY_WINDOW {
+                continue;
+            }
+        }
+        kept.push(candidate);
+    }
+
+    if kept.len() > MAX_OWN_PUZZLES_PER_GAME {
+        kept.sort_by(|a, b| {
+            b.loss
+                .partial_cmp(&a.loss)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.ply.cmp(&b.ply))
+        });
+        kept.truncate(MAX_OWN_PUZZLES_PER_GAME);
+        kept.sort_by_key(|c| c.ply);
+    }
+    kept
 }
 
 /// Ersetzt die automatisch erzeugten Aufgaben einer Partie. Eine eigene
@@ -44,10 +100,7 @@ pub(crate) fn replace_own_game_puzzles(
     )
     .map_err(|e| e.to_string())?;
     let mut inserted = 0usize;
-    for candidate in candidates {
-        if candidate.best_uci.len() < 4 {
-            continue;
-        }
+    for candidate in select_own_candidates(candidates) {
         let rating = (player_rating
             + if candidate.judgment == "blunder" {
                 50
@@ -78,8 +131,16 @@ pub(crate) fn replace_own_game_puzzles(
     Ok(inserted)
 }
 
+/// Eine Zeile aus `move_evals`: ply, eval_cp, mate_in, best_uci, phase, judgment.
+type MoveEvalRow = (u32, Option<i32>, Option<i32>, String, String, String);
+
+/// Erzeugt die Aufgaben aus eigenen Partien aus den gespeicherten Zugbewertungen
+/// neu. Die Marke wandert mit den Auswahlregeln mit: `v2` fasst Wiederholungen
+/// derselben verpassten Idee zusammen, lässt aussichtslose Stellungen weg und
+/// begrenzt die Zahl je Partie · ohne erneuten Durchlauf behielten bestehende
+/// Datenbanken ihren alten, deutlich größeren Bestand.
 fn backfill_own_puzzles(conn: &Connection) -> Result<(), String> {
-    if db::meta_get(conn, "own_puzzles_backfilled_v1").is_some() {
+    if db::meta_get(conn, "own_puzzles_backfilled_v2").is_some() {
         return Ok(());
     }
     let games: Vec<(i64, String, String, i64)> = {
@@ -100,35 +161,63 @@ fn backfill_own_puzzles(conn: &Connection) -> Result<(), String> {
     for (game_id, moves, color, rating) in games {
         let walked = crate::chess::walk_sans(&moves);
         let my_white = color == "white";
-        let rows: Vec<(u32, String, String, String)> = {
+        // Alle Züge der Partie, nicht nur die Fehler: die Bewertung *vor* einem
+        // Zug steht in der Zeile davor, und ohne sie ließe sich weder der
+        // Verlust noch eine aussichtslose Stellung erkennen.
+        let rows: Vec<MoveEvalRow> = {
             let mut stmt = conn
                 .prepare(
-                    "SELECT ply, best_uci, phase, judgment FROM move_evals
-                     WHERE game_id = ?1 AND judgment IN ('mistake', 'blunder')",
+                    "SELECT ply, eval_cp, mate_in, best_uci, phase, judgment FROM move_evals
+                     WHERE game_id = ?1 ORDER BY ply",
                 )
                 .map_err(|e| e.to_string())?;
             let rows = stmt
                 .query_map(params![game_id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
                 })
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             rows
         };
+        // Gewinnwahrscheinlichkeit aus Weiß-Sicht nach jedem Halbzug; Index 0
+        // ist die Ausgangsstellung.
+        let mut win_probs: Vec<f64> = vec![0.5; rows.len() + 1];
+        for (ply, eval_cp, mate_in, _, _, _) in &rows {
+            if let Some(slot) = win_probs.get_mut(*ply as usize) {
+                *slot = crate::analysis::win_prob(*eval_cp, *mate_in);
+            }
+        }
         let candidates: Vec<OwnPuzzleCandidate> = rows
             .into_iter()
-            .filter_map(|(ply, best_uci, phase, judgment)| {
+            .filter(|(_, _, _, _, _, judgment)| judgment == "mistake" || judgment == "blunder")
+            .filter_map(|(ply, _, _, best_uci, phase, judgment)| {
                 let walked_move = walked.get(ply.saturating_sub(1) as usize)?;
                 if walked_move.by_white != my_white {
                     return None;
                 }
+                let before = *win_probs.get(ply.saturating_sub(1) as usize)?;
+                let after = *win_probs.get(ply as usize)?;
+                let loss = if walked_move.by_white {
+                    before - after
+                } else {
+                    after - before
+                };
                 Some(OwnPuzzleCandidate {
                     ply,
                     fen: walked_move.fen_before.clone(),
                     best_uci,
                     phase,
                     judgment,
+                    loss: loss.max(0.0),
+                    win_prob_before: if my_white { before } else { 1.0 - before },
                 })
             })
             .collect();
@@ -139,7 +228,15 @@ fn backfill_own_puzzles(conn: &Connection) -> Result<(), String> {
             &candidates,
         )?;
     }
-    db::meta_set(conn, "own_puzzles_backfilled_v1", "1")
+    // Aufgaben aus inzwischen gelöschten oder ausgeschlossenen Partien blieben
+    // sonst als Karteileichen im Vorrat stehen.
+    conn.execute(
+        "DELETE FROM puzzles WHERE source = 'own' AND (source_game_id IS NULL OR source_game_id NOT IN
+           (SELECT id FROM games WHERE analyzed = 1 AND analysis_excluded = 0 AND moves != ''))",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    db::meta_set(conn, "own_puzzles_backfilled_v2", "1")
 }
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -149,6 +246,11 @@ struct ImportProgress {
     imported: u64,
     /// "download" oder "file"
     source: String,
+    /// "download" oder "import" · welcher Abschnitt gerade läuft.
+    phase: String,
+    /// Bereits geladene und erwartete Bytes des Downloads (0 = unbekannt).
+    bytes: u64,
+    bytes_total: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -190,6 +292,142 @@ pub fn import_puzzles(
     Ok(())
 }
 
+/// Zeilen je Transaktion. Der Dump kam vorher als eine einzige Transaktion über
+/// Millionen Zeilen an · das hielt den gesamten Schreibvorgang im WAL und war
+/// beim geringsten Abbruch komplett verloren. Blockweise festgeschrieben
+/// überlebt der Fortschritt auch eine vom System beendete Android-App.
+const IMPORT_CHUNK_ROWS: u64 = 250_000;
+
+/// Lesepuffer für Netz und Datei. Der zstd-Strom liefert sonst in kleinen
+/// Häppchen, was auf dem Handy spürbar bremst.
+const READ_BUFFER: usize = 1 << 20;
+
+/// So oft darf ein abgerissener Download fortgesetzt werden, ohne dass dabei
+/// neue Bytes ankommen. Genau das passiert, wenn sich das Handy sperrt: die
+/// Verbindung stirbt, die Datei bleibt · fortgesetzt wird sie per Range.
+const DOWNLOAD_RETRIES: u32 = 8;
+
+/// Nach so vielen Bytes meldet der Download seinen Stand an die Oberfläche.
+const DOWNLOAD_PROGRESS_STEP: u64 = 4 << 20;
+
+fn emit_progress(
+    app: &tauri::AppHandle,
+    source: &str,
+    phase: &str,
+    imported: u64,
+    bytes: (u64, u64),
+) {
+    let _ = app.emit(
+        "puzzles://progress",
+        ImportProgress {
+            imported,
+            source: source.to_string(),
+            phase: phase.to_string(),
+            bytes: bytes.0,
+            bytes_total: bytes.1,
+        },
+    );
+}
+
+/// Lädt den Dump in den Cache-Ordner und setzt einen Abbruch per HTTP-Range
+/// fort. Rückgabe ist die vollständige lokale Datei.
+fn download_dump(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("Kein Cache-Verzeichnis: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let target = dir.join("lichess_db_puzzle.csv.zst");
+
+    let mut have = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+    let mut attempts = 0u32;
+    loop {
+        match fetch_range(app, &target, have) {
+            Ok(()) => return Ok(target),
+            Err(error) => {
+                let now = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+                // Ein Abbruch, der trotzdem Bytes gebracht hat, zählt nicht als
+                // Fehlversuch · sonst gäbe eine wacklige Leitung nach acht
+                // kurzen Stücken auf, obwohl der Download vorankommt.
+                attempts = if now > have { 0 } else { attempts + 1 };
+                have = now;
+                if attempts > DOWNLOAD_RETRIES {
+                    return Err(error);
+                }
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        }
+    }
+}
+
+fn fetch_range(app: &tauri::AppHandle, target: &std::path::Path, have: u64) -> Result<(), String> {
+    let mut request = ureq::get(DUMP_URL).timeout(std::time::Duration::from_secs(3600));
+    if have > 0 {
+        request = request.set("Range", &format!("bytes={have}-"));
+    }
+    let response = match request.call() {
+        Ok(response) => response,
+        // 416: der Server hat nichts mehr zu liefern · die Datei ist komplett.
+        Err(ureq::Error::Status(416, _)) if have > 0 => return Ok(()),
+        Err(e) => return Err(format!("Download fehlgeschlagen: {e}")),
+    };
+    let resumed = response.status() == 206;
+    let announced = response
+        .header("Content-Length")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let total = if announced == 0 {
+        0
+    } else if resumed {
+        announced + have
+    } else {
+        announced
+    };
+
+    let mut file = if resumed {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(target)
+            .map_err(|e| e.to_string())?
+    } else {
+        // Der Server ignoriert Range (oder es gibt noch nichts): von vorn.
+        std::fs::File::create(target).map_err(|e| e.to_string())?
+    };
+    let mut reader = response.into_reader();
+    let mut buffer = vec![0u8; READ_BUFFER];
+    let mut done = if resumed { have } else { 0 };
+    let mut announced_at = done;
+    emit_progress(app, "download", "download", 0, (done, total));
+    loop {
+        let read = reader.read(&mut buffer).map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        std::io::Write::write_all(&mut file, &buffer[..read]).map_err(|e| e.to_string())?;
+        done += read as u64;
+        if done - announced_at >= DOWNLOAD_PROGRESS_STEP {
+            announced_at = done;
+            emit_progress(app, "download", "download", 0, (done, total));
+        }
+    }
+    std::io::Write::flush(&mut file).map_err(|e| e.to_string())?;
+    // Ein unvollständiger Strom ohne Fehler bleibt ein unvollständiger Strom ·
+    // der nächste Versuch setzt dann per Range fort.
+    if total > 0 && done < total {
+        return Err(format!(
+            "Download unvollständig ({done} von {total} Bytes)."
+        ));
+    }
+    Ok(())
+}
+
+/// Schlüssel, unter dem ein unterbrochener Import fortgesetzt werden darf: nur
+/// exakt dieselbe Quelle in derselben Größe · ein neuerer Dump muss von vorn.
+fn resume_key(path: &std::path::Path) -> String {
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    format!("{}|{size}", path.display())
+}
+
 fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64), String> {
     let db_path = app
         .state::<crate::analysis::DbPath>()
@@ -201,87 +439,26 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
     let _ = conn.pragma_update(None, "synchronous", "NORMAL");
 
-    let (reader, source): (Box<dyn Read>, &str) = match &path {
-        Some(p) => {
-            let file =
-                std::fs::File::open(p).map_err(|e| format!("Datei nicht lesbar ({p}): {e}"))?;
-            if p.to_lowercase().ends_with(".zst") {
-                (
-                    Box::new(zstd::stream::read::Decoder::new(file).map_err(|e| e.to_string())?),
-                    "file",
-                )
-            } else {
-                (Box::new(file), "file")
-            }
-        }
-        None => {
-            let resp = ureq::get(DUMP_URL)
-                .timeout(std::time::Duration::from_secs(3600))
-                .call()
-                .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
-            (
-                Box::new(
-                    zstd::stream::read::Decoder::new(resp.into_reader())
-                        .map_err(|e| e.to_string())?,
-                ),
-                "download",
-            )
-        }
+    let (file_path, source) = match &path {
+        Some(p) => (std::path::PathBuf::from(p), "file"),
+        None => (download_dump(app)?, "download"),
     };
 
-    let mut csv = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(reader);
-    let mut imported = 0u64;
-    let mut batch = 0u32;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    {
-        let mut stmt = tx
-            .prepare(
-                "INSERT OR REPLACE INTO puzzles
-                    (id, fen, moves, rating, rd, popularity, nb_plays, themes, opening_tags,
-                     source, setup_plies)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'lichess', 1)",
-            )
-            .map_err(|e| e.to_string())?;
-        for record in csv.records() {
-            let r = record.map_err(|e| format!("CSV-Fehler: {e}"))?;
-            // PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
-            if r.len() < 8 {
-                continue;
+    let imported = match import_dump(app, &mut conn, &file_path, source) {
+        Ok(imported) => imported,
+        Err(error) => {
+            // Ein halb geladener oder zum Dump nicht passender Cache-Stand darf
+            // den nächsten Versuch nicht dauerhaft blockieren.
+            if source == "download" {
+                let _ = std::fs::remove_file(&file_path);
+                let _ = db::meta_set(&conn, "puzzle_import_key", "");
             }
-            let rating: i64 = r.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
-            if rating == 0 {
-                continue;
-            }
-            stmt.execute(params![
-                r.get(0).unwrap_or(""),
-                r.get(1).unwrap_or(""),
-                r.get(2).unwrap_or(""),
-                rating,
-                r.get(4).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0),
-                r.get(5).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0),
-                r.get(6).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0),
-                r.get(7).unwrap_or(""),
-                r.get(9).unwrap_or(""),
-            ])
-            .map_err(|e| e.to_string())?;
-            imported += 1;
-            batch += 1;
-            if batch >= 25_000 {
-                batch = 0;
-                let _ = app.emit(
-                    "puzzles://progress",
-                    ImportProgress {
-                        imported,
-                        source: source.to_string(),
-                    },
-                );
-            }
+            return Err(error);
         }
+    };
+    if source == "download" {
+        let _ = std::fs::remove_file(&file_path);
     }
-    tx.commit().map_err(|e| e.to_string())?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -309,6 +486,124 @@ fn run_import(app: &tauri::AppHandle, path: Option<String>) -> Result<(u64, i64)
     // jede spätere Puzzle-Abfrage aus.
     db::checkpoint(&conn);
     Ok((imported, total))
+}
+
+/// Liest den CSV-Dump blockweise in die Datenbank. Jeder Block ist eine eigene
+/// Transaktion und hinterlässt seinen Stand in `meta`; ein abgebrochener Import
+/// setzt beim nächsten Anlauf genau dort wieder auf.
+fn import_dump(
+    app: &tauri::AppHandle,
+    conn: &mut Connection,
+    file_path: &std::path::Path,
+    source: &str,
+) -> Result<u64, String> {
+    let file = std::fs::File::open(file_path)
+        .map_err(|e| format!("Datei nicht lesbar ({}): {e}", file_path.display()))?;
+    let buffered = std::io::BufReader::with_capacity(READ_BUFFER, file);
+    let compressed = file_path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"));
+    let reader: Box<dyn Read> = if compressed {
+        Box::new(
+            zstd::stream::read::Decoder::new(buffered)
+                .map_err(|e| format!("Dump nicht entpackbar: {e}"))?,
+        )
+    } else {
+        Box::new(buffered)
+    };
+    let mut csv = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(std::io::BufReader::with_capacity(READ_BUFFER, reader));
+
+    let key = resume_key(file_path);
+    let resumed = db::meta_get(conn, "puzzle_import_key").as_deref() == Some(key.as_str());
+    let already = if resumed {
+        db::meta_get(conn, "puzzle_import_rows")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    db::meta_set(conn, "puzzle_import_key", &key)?;
+    db::meta_set(conn, "puzzle_import_rows", &already.to_string())?;
+
+    let mut record = csv::StringRecord::new();
+    // Bereits verbuchte Zeilen überspringen · das Parsen ist billig, die
+    // Einfügungen sind es nicht.
+    for _ in 0..already {
+        if !csv
+            .read_record(&mut record)
+            .map_err(|e| format!("CSV-Fehler: {e}"))?
+        {
+            break;
+        }
+    }
+
+    let mut imported = already;
+    emit_progress(app, source, "import", imported, (0, 0));
+    loop {
+        let mut in_chunk = 0u64;
+        let mut done = true;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT OR REPLACE INTO puzzles
+                        (id, fen, moves, rating, rd, popularity, nb_plays, themes, opening_tags,
+                         source, setup_plies)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'lichess', 1)",
+                )
+                .map_err(|e| e.to_string())?;
+            while csv
+                .read_record(&mut record)
+                .map_err(|e| format!("CSV-Fehler: {e}"))?
+            {
+                in_chunk += 1;
+                // PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl,OpeningTags
+                let rating: i64 = record.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
+                if record.len() >= 8 && rating > 0 {
+                    stmt.execute(params![
+                        record.get(0).unwrap_or(""),
+                        record.get(1).unwrap_or(""),
+                        record.get(2).unwrap_or(""),
+                        rating,
+                        record
+                            .get(4)
+                            .and_then(|v| v.parse::<i64>().ok())
+                            .unwrap_or(0),
+                        record
+                            .get(5)
+                            .and_then(|v| v.parse::<i64>().ok())
+                            .unwrap_or(0),
+                        record
+                            .get(6)
+                            .and_then(|v| v.parse::<i64>().ok())
+                            .unwrap_or(0),
+                        record.get(7).unwrap_or(""),
+                        record.get(9).unwrap_or(""),
+                    ])
+                    .map_err(|e| e.to_string())?;
+                }
+                if in_chunk >= IMPORT_CHUNK_ROWS {
+                    done = false;
+                    break;
+                }
+            }
+        }
+        imported += in_chunk;
+        // Der Stand gehört in dieselbe Transaktion wie die Zeilen · sonst
+        // stünde nach einem Absturz eine Zahl in `meta`, die es nicht gibt.
+        db::meta_set(&tx, "puzzle_import_rows", &imported.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        emit_progress(app, source, "import", imported, (0, 0));
+        if done {
+            break;
+        }
+    }
+
+    db::meta_set(conn, "puzzle_import_key", "")?;
+    db::meta_set(conn, "puzzle_import_rows", "0")?;
+    Ok(imported)
 }
 
 // ── Trainer ──────────────────────────────────────────────────────────────────
@@ -583,21 +878,33 @@ pub struct PuzzleStats {
     pub importing: bool,
     /// Unix-Sekunden des letzten Dump-Imports (None = nie importiert).
     pub imported_at: Option<i64>,
+    /// Ein abgebrochener Import kann fortgesetzt werden: es liegt entweder ein
+    /// halber Download im Cache oder ein Lesestand in `meta`.
+    pub import_resumable: bool,
 }
 
 #[tauri::command]
 pub async fn puzzle_stats(app: tauri::AppHandle) -> Result<PuzzleStats, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let importing = app.state::<PuzzleImportState>().0.load(Ordering::SeqCst);
+        let partial_download = app
+            .path()
+            .app_cache_dir()
+            .map(|dir| dir.join("lichess_db_puzzle.csv.zst").exists())
+            .unwrap_or(false);
         let db = app.state::<db::Db>();
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        puzzle_stats_from_conn(&conn, importing)
+        puzzle_stats_from_conn(&conn, importing, partial_download)
     })
     .await
     .map_err(|e| format!("Puzzle-Statistik fehlgeschlagen: {e}"))?
 }
 
-fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleStats, String> {
+fn puzzle_stats_from_conn(
+    conn: &Connection,
+    importing: bool,
+    partial_download: bool,
+) -> Result<PuzzleStats, String> {
     backfill_own_puzzles(&conn)?;
     let imported_at = db::meta_get(conn, "puzzle_imported_at").and_then(|v| v.parse().ok());
     let cached_lichess_total =
@@ -731,6 +1038,8 @@ fn puzzle_stats_from_conn(conn: &Connection, importing: bool) -> Result<PuzzleSt
         themes,
         importing,
         imported_at,
+        import_resumable: partial_download
+            || db::meta_get(conn, "puzzle_import_key").is_some_and(|key| !key.is_empty()),
     })
 }
 
@@ -1217,7 +1526,7 @@ mod tests {
         puzzle(&conn, "pin-1", 1550, "pin short");
         db::meta_set(&conn, "puzzle_imported_at", "1234").unwrap();
 
-        let stats = puzzle_stats_from_conn(&conn, false).unwrap();
+        let stats = puzzle_stats_from_conn(&conn, false, false).unwrap();
         assert_eq!(stats.db_total, 2);
         assert_eq!(stats.lichess_total, 2);
         assert_eq!(
@@ -1308,6 +1617,60 @@ mod tests {
         assert_eq!(solved_streak(&[], 10), 0);
     }
 
+    fn candidate(ply: u32, best_uci: &str, loss: f64) -> OwnPuzzleCandidate {
+        OwnPuzzleCandidate {
+            ply,
+            fen: "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1".into(),
+            best_uci: best_uci.into(),
+            phase: "middlegame".into(),
+            judgment: "mistake".into(),
+            loss,
+            win_prob_before: 0.5,
+        }
+    }
+
+    #[test]
+    fn repeated_misses_of_the_same_move_become_one_puzzle() {
+        // Der reale Fall: dieselbe Gabel drei Züge lang übersehen. Das ist eine
+        // verpasste Idee, nicht drei Aufgaben.
+        let candidates = vec![
+            candidate(21, "d2h6", 0.25),
+            candidate(23, "d2h6", 0.24),
+            candidate(25, "d2h6", 0.22),
+            // Weit später wieder derselbe Zug · andere Stellung, eigene Aufgabe.
+            candidate(61, "d2h6", 0.30),
+        ];
+        let picked = select_own_candidates(&candidates);
+        assert_eq!(
+            picked.iter().map(|c| c.ply).collect::<Vec<_>>(),
+            vec![21, 61]
+        );
+    }
+
+    #[test]
+    fn keeps_only_the_costliest_misses_of_a_game() {
+        let candidates = vec![
+            candidate(11, "a1a2", 0.21),
+            candidate(31, "b1b2", 0.44),
+            candidate(51, "c1c2", 0.22),
+            candidate(71, "d1d2", 0.60),
+            candidate(91, "e1e2", 0.31),
+        ];
+        let picked = select_own_candidates(&candidates);
+        // Höchstens drei · und die in Zugreihenfolge, damit die IDs stabil sind.
+        assert_eq!(
+            picked.iter().map(|c| c.ply).collect::<Vec<_>>(),
+            vec![31, 71, 91]
+        );
+    }
+
+    #[test]
+    fn skips_misses_in_already_lost_positions() {
+        let mut hopeless = candidate(41, "a1a2", 0.25);
+        hopeless.win_prob_before = 0.02;
+        assert!(select_own_candidates(&[hopeless]).is_empty());
+    }
+
     #[test]
     fn generates_and_replaces_puzzles_from_own_games() {
         let conn = Connection::open_in_memory().unwrap();
@@ -1318,6 +1681,8 @@ mod tests {
             best_uci: "e1g1".into(),
             phase: "opening".into(),
             judgment: "blunder".into(),
+            loss: 0.35,
+            win_prob_before: 0.6,
         }];
         assert_eq!(
             replace_own_game_puzzles(&conn, 42, 1400, &candidates).unwrap(),

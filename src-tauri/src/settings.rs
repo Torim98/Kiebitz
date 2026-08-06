@@ -42,6 +42,10 @@ pub struct Settings {
     pub import_months: u32,
     /// Puzzle-Tagesziel (Versuche pro Tag) für Dashboard und Lernplan.
     pub puzzle_goal: u32,
+    /// Motiv der laufenden Aufgabe im Puzzle-Training verdecken. Der Hinweis
+    /// („Grundreihenmatt“) nimmt einen Teil der Aufgabe vorweg; wer das nicht
+    /// will, blendet ihn aus. Ab Werk bleibt er sichtbar.
+    pub puzzle_hide_theme: bool,
     /// Höchstzahl fälliger Repertoire-Züge je Trainingssitzung (0 = alle).
     pub rep_due_limit: u32,
     /// Höchstzahl neuer Repertoire-Züge je Trainingssitzung (0 = alle).
@@ -156,6 +160,7 @@ impl Default for Settings {
             display_name: String::new(),
             import_months: 3,
             puzzle_goal: 20,
+            puzzle_hide_theme: false,
             rep_due_limit: 20,
             rep_new_limit: 5,
             sound_enabled: true,

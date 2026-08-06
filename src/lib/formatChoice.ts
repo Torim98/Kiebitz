@@ -63,9 +63,17 @@ export interface FormatRecommendation {
 }
 
 /**
- * Fernschach ist kein Zeitformat in diesem Sinn · man setzt sich nicht hin und
- * „spielt eine Runde Täglich". Es bliebe sonst regelmäßig als Empfehlung
- * stehen, weil dort naturgemäß am wenigsten gepatzt wird.
+ * Verglichen werden alle Formate, in denen man ein eigenes Rating aufbaut ·
+ * Fernschach ("Täglich") gehört dazu, denn wer dort die Hälfte seiner Partien
+ * spielt, will auch darüber eine Auskunft.
+ */
+const COMPARABLE = new Set(["bullet", "blitz", "rapid", "classical", "daily"]);
+
+/**
+ * Auf dem Patzer-Beleg bleibt Fernschach außen vor: mit Tagen Bedenkzeit patzt
+ * dort naturgemäß jeder am wenigsten. Es stünde sonst immer oben, ohne dass
+ * das etwas über Spielstärke sagt · beim Rating- und Ausbeutevergleich zählt
+ * es dagegen ganz normal mit.
  */
 const REAL_TIME = new Set(["bullet", "blitz", "rapid", "classical"]);
 
@@ -97,7 +105,7 @@ function toChoice(format: FormatStat): FormatChoice {
  */
 export function recommendFormat(formats: FormatStat[]): FormatRecommendation | null {
   const candidates = formats.filter(
-    (format) => REAL_TIME.has(format.time_class) && format.games >= MIN_GAMES
+    (format) => COMPARABLE.has(format.time_class) && format.games >= MIN_GAMES
   );
   if (candidates.length < 2) return null;
 
@@ -107,7 +115,10 @@ export function recommendFormat(formats: FormatStat[]): FormatRecommendation | n
       toReference(format.rating, format.source, format.time_class) != null
   );
   const analyzed = candidates.filter(
-    (format) => format.analyzed >= MIN_ANALYZED && format.blunders_per_100 != null
+    (format) =>
+      REAL_TIME.has(format.time_class) &&
+      format.analyzed >= MIN_ANALYZED &&
+      format.blunders_per_100 != null
   );
 
   let ranked: FormatStat[];

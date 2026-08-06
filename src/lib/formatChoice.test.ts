@@ -84,7 +84,7 @@ describe("recommendFormat", () => {
     expect(pick.margin).toBeGreaterThan(0);
   });
 
-  it("lässt Fernschach draußen", () => {
+  it("lässt Fernschach nur beim Patzer-Beleg draußen", () => {
     const pick = recommendFormat([
       format({ time_class: "blitz", analyzed: 20, blunders_per_100: 6 }),
       format({ time_class: "rapid", analyzed: 20, blunders_per_100: 3 }),
@@ -92,6 +92,19 @@ describe("recommendFormat", () => {
       format({ time_class: "daily", analyzed: 20, blunders_per_100: 0.4 }),
     ])!;
     expect(pick.best.timeClass).toBe("rapid");
+    expect(pick.weakest.timeClass).toBe("blitz");
+  });
+
+  it("vergleicht Fernschach über das Rating mit", () => {
+    // Poolbereinigt ist das Täglich-Rating vergleichbar · wer dort spielt,
+    // bekommt es auch als möglichen Trainingsfokus genannt.
+    const pick = recommendFormat([
+      format({ time_class: "blitz", rating: 1700, games: 100 }),
+      format({ time_class: "daily", rating: 1100, games: 100 }),
+    ])!;
+    expect(pick.evidence).toBe("pool");
+    expect(pick.best.timeClass).toBe("blitz");
+    expect(pick.weakest.timeClass).toBe("daily");
   });
 
   it("hält knappe Abstände für nicht empfehlenswert", () => {

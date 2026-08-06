@@ -45,9 +45,17 @@ describe("buildDashboard", () => {
       );
       const byId = new Map(d.historySeries.map((series) => [series.id, series]));
       const august = d.history[d.history.length - 1];
-      expect(august.month).toBe("Aug");
+      expect(august.monthLabel).toBe("Aug");
+      // Der Monatswert im Tooltip und die feineren Stützpunkte der Linie
+      // erzählen dasselbe: chess.com ruht seit Juni.
+      expect(august.monthly[byId.get("chess.com-rapid")!.key]).toBeNull();
+      expect(august.monthly[byId.get("lichess-rapid")!.key]).toBe(1078);
       expect(august[byId.get("chess.com-rapid")!.key]).toBeNull();
       expect(august[byId.get("lichess-rapid")!.key]).toBe(1078);
+      // Sechs Monate, jeder mit mehreren Stützpunkten · die Achse beschriftet
+      // trotzdem nur je den ersten davon.
+      expect(d.history.filter((point) => point.month !== "").length).toBe(6);
+      expect(d.history.length).toBeGreaterThan(6);
     } finally {
       Date.now = realNow;
     }

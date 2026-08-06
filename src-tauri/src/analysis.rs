@@ -37,7 +37,7 @@ pub struct DbPath(pub Mutex<PathBuf>);
 // ── Win-Prob & Judgments ─────────────────────────────────────────────────────
 
 /// Weiß-Gewinnwahrscheinlichkeit (0..1) aus Weiß-Sicht-Bewertung.
-fn win_prob(eval_cp: Option<i32>, mate_in: Option<i32>) -> f64 {
+pub(crate) fn win_prob(eval_cp: Option<i32>, mate_in: Option<i32>) -> f64 {
     if let Some(m) = mate_in {
         return if m > 0 { 1.0 } else { 0.0 };
     }
@@ -429,7 +429,10 @@ fn run_worker(
         let mut opponent_middlegame_losses: Vec<f64> = Vec::new();
         let mut opponent_endgame_losses: Vec<f64> = Vec::new();
         let mut counts = (0u32, 0u32, 0u32); // inaccuracy, mistake, blunder
-        let mut rows: Vec<(u32, &WalkedMove, &PosEval, &'static str)> = Vec::new();
+
+        // Zug, Bewertung, Urteil, Verlust · aus dem Verlust wählen die eigenen
+        // Puzzles unten die teuersten Fehler aus.
+        let mut rows: Vec<(u32, &WalkedMove, &PosEval, &'static str, f64)> = Vec::new();
         for (i, w) in walked.iter().enumerate() {
             let before = &evals[i];
             let after = &evals[i + 1];
@@ -464,7 +467,7 @@ fn run_worker(
                 "blunder" => counts.2 += 1,
                 _ => {}
             }
-            rows.push((w.ply, w, after, judgment));
+            rows.push((w.ply, w, after, judgment, drop));
         }
         let accuracy = accuracy_from_losses(&my_losses);
         let accuracy_opening = accuracy_from_losses(&opening_losses);
@@ -476,15 +479,25 @@ fn run_worker(
         let opponent_accuracy_endgame = accuracy_from_losses(&opponent_endgame_losses);
         let own_puzzles: Vec<crate::puzzles::OwnPuzzleCandidate> = rows
             .iter()
-            .filter(|(_, w, _, judgment)| {
+            .filter(|(_, w, _, judgment, _)| {
                 w.by_white == my_white && matches!(*judgment, "mistake" | "blunder")
             })
-            .map(|(ply, w, _, judgment)| crate::puzzles::OwnPuzzleCandidate {
-                ply: *ply,
-                fen: w.fen_before.clone(),
-                best_uci: evals[*ply as usize - 1].best_uci.clone(),
-                phase: w.phase.to_string(),
-                judgment: (*judgment).to_string(),
+            .map(|(ply, w, _, judgment, drop)| {
+                let before = &evals[*ply as usize - 1];
+                let white_view = win_prob(before.eval_cp, before.mate_in);
+                crate::puzzles::OwnPuzzleCandidate {
+                    ply: *ply,
+                    fen: w.fen_before.clone(),
+                    best_uci: before.best_uci.clone(),
+                    phase: w.phase.to_string(),
+                    judgment: (*judgment).to_string(),
+                    loss: *drop,
+                    win_prob_before: if my_white {
+                        white_view
+                    } else {
+                        1.0 - white_view
+                    },
+                }
             })
             .collect();
 
@@ -502,7 +515,7 @@ fn run_worker(
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )
                 .map_err(|e| e.to_string())?;
-            for (ply, w, after, judgment) in &rows {
+            for (ply, w, after, judgment, _) in &rows {
                 let best = &evals[*ply as usize - 1].best_uci;
                 stmt.execute(params![
                     game_id,

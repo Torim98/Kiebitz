@@ -15,7 +15,22 @@ export interface RatingCard {
   url: string;
 }
 
-export type HistoryPoint = { month: string } & Record<string, string | number | null>;
+export interface HistoryPoint {
+  /**
+   * Beschriftung der X-Achse · nur am ersten Stützpunkt eines Monats gesetzt,
+   * sonst leer. Die Achse trägt dadurch weiterhin sechs Monatsnamen, obwohl
+   * die Linie deutlich feiner aufgelöst ist.
+   */
+  month: string;
+  /** Monatsname an jedem Stützpunkt · Kopfzeile des Tooltips. */
+  monthLabel: string;
+  /**
+   * Monatswert je Serie. Der Tooltip zeigt bewusst nur ihn: der Verlauf darf
+   * fein sein, die abgelesene Zahl bleibt der Monatsstand.
+   */
+  monthly: Record<string, number | null>;
+  [key: string]: string | number | null | Record<string, number | null>;
+}
 
 export interface RatingHistorySeries {
   /** Punktfreier Schlüssel für Recharts; Plattformnamen enthalten Punkte. */
@@ -33,6 +48,20 @@ export interface LiveDashboard {
   recent: UiGame[];
   unanalyzed: number;
 }
+
+/**
+ * Stützpunkte je Monat im Ratingverlauf · rund alle fünf Tage einer. Feiner
+ * gerastert würde die Linie mehr Zufall als Verlauf zeigen, gröber wäre sie
+ * wieder die geglättete Monatskurve von vorher.
+ */
+const HISTORY_STEPS_PER_MONTH = 6;
+
+/**
+ * Ohne Partie in diesem Fenster gilt ein Modus als ruhend und die Linie setzt
+ * aus · sonst zöge ein seit Monaten unbespieltes Rating als waagerechte Linie
+ * bis heute durch.
+ */
+const HISTORY_IDLE_DAYS = 35;
 
 export interface DashboardOptions {
   locale: Locale;
@@ -103,14 +132,30 @@ export function buildDashboard(
     label: `${card.platform} · ${card.tc}`,
   }));
 
-  // Monatsverlauf für dieselben vier aktiven Plattform-/Modus-Paare wie oben.
-  // Der laufende Monat beginnt nur dann mit dem letzten Stand, wenn exakt dieser
-  // Modus im unmittelbar vorherigen Monat aktiv war. Ein monatelang ruhendes
-  // chess.com-Rating darf dadurch nicht als aktueller August-Wert erscheinen.
+  // Verlauf für dieselben vier aktiven Plattform-/Modus-Paare wie oben. Die
+  // Linie wird in Stützpunkten je Monat gezeichnet, damit sie so springt wie
+  // die Sparklines der Karten; abgelesen wird per Tooltip weiterhin nur der
+  // Monatsstand. Der laufende Monat beginnt nur dann mit dem letzten Stand,
+  // wenn exakt dieser Modus im unmittelbar vorherigen Monat aktiv war. Ein
+  // monatelang ruhendes chess.com-Rating darf nicht als aktueller Wert
+  // erscheinen · dieselbe Regel gilt für die Stützpunkte über `HISTORY_IDLE_DAYS`.
   const history: HistoryPoint[] = [];
-  const currentMonth = new Date(Date.now());
+  const nowMs = Date.now();
+  const currentMonth = new Date(nowMs);
   currentMonth.setDate(1);
   currentMonth.setHours(0, 0, 0, 0);
+  const seriesGames = new Map(
+    historySeries.map((series) => [
+      series.key,
+      asc.filter(
+        (game) =>
+          game.source === series.platform
+          && game.time_class === series.timeClass
+          && game.my_elo > 0
+      ),
+    ])
+  );
+  const cursor = new Map<string, number>();
   for (let offset = 5; offset >= 0; offset--) {
     const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset, 1);
     const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset + 1, 1);
@@ -119,35 +164,52 @@ export function buildDashboard(
     const previousStart = Math.floor(
       new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1).getTime() / 1000
     );
-    const point: HistoryPoint = {
-      month: startDate.toLocaleDateString(opts.locale === "de" ? "de-DE" : "en-US", { month: "short" }),
-    };
+    const monthLabel = startDate.toLocaleDateString(
+      opts.locale === "de" ? "de-DE" : "en-US",
+      { month: "short" }
+    );
+
+    const monthly: Record<string, number | null> = {};
     for (const series of historySeries) {
-      const inMonth = asc.filter(
-        (game) =>
-          game.source === series.platform
-          && game.time_class === series.timeClass
-          && game.played_ts >= start
-          && game.played_ts < end
-          && game.my_elo > 0
-      );
+      const games = seriesGames.get(series.key) ?? [];
+      const inMonth = games.filter((game) => game.played_ts >= start && game.played_ts < end);
       const previousMonth = offset === 0
-        ? asc.filter(
-            (game) =>
-              game.source === series.platform
-              && game.time_class === series.timeClass
-              && game.played_ts >= previousStart
-              && game.played_ts < start
-              && game.my_elo > 0
-          )
+        ? games.filter((game) => game.played_ts >= previousStart && game.played_ts < start)
         : [];
-      point[series.key] = inMonth.length > 0
+      monthly[series.key] = inMonth.length > 0
         ? inMonth[inMonth.length - 1].my_elo
         : previousMonth.length > 0
           ? previousMonth[previousMonth.length - 1].my_elo
           : null;
     }
-    history.push(point);
+
+    const stepSeconds = (end - start) / HISTORY_STEPS_PER_MONTH;
+    for (let step = 0; step < HISTORY_STEPS_PER_MONTH; step++) {
+      const stepStart = start + step * stepSeconds;
+      // Der laufende Monat endet beim Heute · eine flache Linie in die Zukunft
+      // hinein wäre eine Behauptung über Partien, die es noch nicht gibt.
+      if (stepStart * 1000 > nowMs) break;
+      const stepEnd = stepStart + stepSeconds;
+      const point: HistoryPoint = {
+        month: step === 0 ? monthLabel : "",
+        monthLabel,
+        monthly,
+      };
+      for (const series of historySeries) {
+        const games = seriesGames.get(series.key) ?? [];
+        // Die Stützpunkte laufen zeitlich vorwärts, also wandert je Serie ein
+        // Zeiger mit, statt für jeden Punkt die ganze Partienliste zu prüfen.
+        let index = cursor.get(series.key) ?? 0;
+        while (index < games.length && games[index].played_ts < stepEnd) index++;
+        cursor.set(series.key, index);
+        const last = index > 0 ? games[index - 1] : null;
+        point[series.key] =
+          last != null && last.played_ts >= stepEnd - HISTORY_IDLE_DAYS * 86400
+            ? last.my_elo
+            : null;
+      }
+      history.push(point);
+    }
   }
 
   return {

@@ -21,6 +21,7 @@ import { puzzles as demoPuzzles, puzzleStats as demoStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, useT } from "../lib/i18n";
 import {
+  importLabel,
   importPuzzles,
   nextPuzzle,
   onPuzzleImportDone,
@@ -30,10 +31,12 @@ import {
   recordAttempt,
   themeLabel,
   type AttemptRow,
+  type PuzzleImportProgress,
   type PuzzleOut,
   type PuzzleStats,
 } from "../lib/puzzles";
 import { getSettings } from "../lib/settings";
+import { keepScreenAwake } from "../lib/wakeLock";
 import { onDataChange } from "../lib/changes";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
@@ -80,20 +83,40 @@ function LivePuzzles({
   // Das Tagesziel steht in den Einstellungen, nicht in den Puzzle-Statistiken ·
   // dasselbe Ziel, das Dashboard und Lernplan anzeigen.
   const [goal, setGoal] = useState(0);
+  const [hideTheme, setHideTheme] = useState(false);
+  // "Trotzdem weiter": nur für diese Sitzung, damit eigene Aufgaben auch ohne
+  // Lichess-Dump erreichbar bleiben.
+  const [skipImport, setSkipImport] = useState(false);
   const reloadStats = () => puzzleStats().then(setStats).catch(() => {});
 
   useEffect(() => {
     reloadStats();
-    getSettings().then((s) => setGoal(s.puzzle_goal)).catch(() => {});
+    getSettings()
+      .then((s) => {
+        setGoal(s.puzzle_goal);
+        setHideTheme(s.puzzle_hide_theme);
+      })
+      .catch(() => {});
     return onDataChange(reloadStats);
   }, []);
 
   if (!stats) return <PuzzleLoading />;
-  if (stats.db_total === 0) return <ImportView stats={stats} onImported={reloadStats} />;
+  // Die Einrichtung hängt am Lichess-Dump, nicht am Gesamtbestand: Aufgaben aus
+  // eigenen Partien entstehen nebenbei bei der Analyse und dürfen den nie
+  // erfolgten Import nicht als erledigt erscheinen lassen.
+  if (stats.lichess_total === 0 && !skipImport)
+    return (
+      <ImportView
+        stats={stats}
+        onImported={reloadStats}
+        onSkip={stats.own_total > 0 ? () => setSkipImport(true) : undefined}
+      />
+    );
   return (
     <TrainerView
       stats={stats}
       goal={goal}
+      hideTheme={hideTheme}
       reloadStats={reloadStats}
       initialTheme={initialTheme}
       initialMinRating={initialMinRating}
@@ -160,23 +183,32 @@ function PuzzleLoading() {
 
 // ── Import-Ansicht ───────────────────────────────────────────────────────────
 
-function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () => void }) {
+function ImportView({
+  stats,
+  onImported,
+  onSkip,
+}: {
+  stats: PuzzleStats;
+  onImported: () => void;
+  /** Nur gesetzt, wenn es schon Aufgaben aus eigenen Partien gibt. */
+  onSkip?: () => void;
+}) {
   const t = useT();
   const [running, setRunning] = useState(stats.importing);
-  const [progress, setProgress] = useState<number>(0);
+  const [progress, setProgress] = useState<PuzzleImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [path, setPath] = useState("");
 
   useEffect(() => {
     const cleanups: (() => void)[] = [];
     let disposed = false;
-    onPuzzleImportProgress((p) => setProgress(p.imported)).then((u) =>
-      disposed ? u() : cleanups.push(u)
-    );
+    onPuzzleImportProgress(setProgress).then((u) => (disposed ? u() : cleanups.push(u)));
     onPuzzleImportDone((p) => {
       setRunning(false);
       if (p.error) setError(p.error);
-      else onImported();
+      // Auch ein Fehlschlag ändert den Stand: teilweise importierte Aufgaben
+      // und der Fortsetzungspunkt gehören in die Ansicht.
+      onImported();
     }).then((u) => (disposed ? u() : cleanups.push(u)));
     return () => {
       disposed = true;
@@ -184,9 +216,14 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
     };
   }, [onImported]);
 
+  // Der Import läuft im Backend weiter, wenn das Handy einschläft · nur
+  // deutlich langsamer und mit abgerissenem Download. Solange der Nutzer die
+  // Seite offen hat, bleibt der Bildschirm deshalb an.
+  useEffect(() => (running ? keepScreenAwake() : undefined), [running]);
+
   const start = (p?: string) => {
     setError(null);
-    setProgress(0);
+    setProgress(null);
     setRunning(true);
     importPuzzles(p).catch((e) => {
       setRunning(false);
@@ -203,21 +240,35 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
 
       <Card title={t("pz.importCard")}>
         {running ? (
-          <div className="flex items-center gap-3 py-4">
-            <Loader2 size={18} className="animate-spin text-accent" />
-            <div>
-              <div className="text-[14px] font-medium">
-                {progress > 0 ? t("pz.importedN", { n: deInt(progress) }) : t("pz.downloading")}
+          <div className="py-4">
+            <div className="flex items-center gap-3">
+              <Loader2 size={18} className="animate-spin text-accent" />
+              <div>
+                <div className="text-[14px] font-medium">{importLabel(progress, t)}</div>
+                <div className="mt-0.5 text-[12px] text-ink3">{t("pz.background")}</div>
               </div>
-              <div className="mt-0.5 text-[12px] text-ink3">{t("pz.background")}</div>
             </div>
+            {progress?.phase === "download" && progress.bytes_total > 0 && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-panel3">
+                <div
+                  className="h-full rounded-full bg-accent transition-[width]"
+                  style={{ width: `${Math.min(100, (progress.bytes / progress.bytes_total) * 100)}%` }}
+                />
+              </div>
+            )}
           </div>
         ) : (
           <>
             <p className="text-[13px] leading-relaxed text-ink2">{t("pz.importIntro")}</p>
+            {stats.import_resumable && (
+              <p className="mt-3 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12px] leading-relaxed text-ink2">
+                {t("pz.resumeNote")}
+              </p>
+            )}
             <div className="mt-4 flex gap-2">
               <Button primary onClick={() => start()}>
-                <Download size={15} /> {t("pz.downloadImport")}
+                <Download size={15} />{" "}
+                {t(stats.import_resumable ? "pz.resumeImport" : "pz.downloadImport")}
               </Button>
             </div>
             <div className="mt-4 border-t border-line pt-4">
@@ -232,6 +283,14 @@ function ImportView({ stats, onImported }: { stats: PuzzleStats; onImported: () 
                 <Button onClick={() => path.trim() && start(path.trim())}>{t("common.import")}</Button>
               </div>
             </div>
+            {onSkip && (
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="mb-2 text-[12px] leading-relaxed text-ink3">
+                  {t("pz.ownOnlyNote", { n: deInt(stats.own_total) })}
+                </p>
+                <Button onClick={onSkip}>{t("pz.ownOnlyStart")}</Button>
+              </div>
+            )}
           </>
         )}
         {error && (
@@ -251,6 +310,7 @@ type Status = "loading" | "playing" | "solved" | "empty";
 function TrainerView({
   stats,
   goal,
+  hideTheme,
   reloadStats,
   initialTheme = "",
   initialMinRating = 0,
@@ -259,6 +319,8 @@ function TrainerView({
   stats: PuzzleStats;
   /** Tagesziel aus den Einstellungen; 0 = noch nicht geladen. */
   goal: number;
+  /** Motiv der laufenden Aufgabe verdecken · verrät sonst das Ziel. */
+  hideTheme: boolean;
   reloadStats: () => void;
 }) {
   const { locale, t } = useI18n();
@@ -270,6 +332,8 @@ function TrainerView({
   const [wrong, setWrong] = useState(false);
   const [shake, setShake] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  /** Verdecktes Motiv für genau diese Aufgabe aufgedeckt. */
+  const [themeRevealed, setThemeRevealed] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
   // Vorbelegt aus dem Trainingsplan ("schwächstes Motiv, Band 1420–1580").
@@ -326,6 +390,7 @@ function TrainerView({
     setStatus("loading");
     setWrong(false);
     setShowHint(false);
+    setThemeRevealed(false);
     setSelected(null);
     setRatingDelta(null);
     historyRef.current = [];
@@ -484,6 +549,9 @@ function TrainerView({
   const mainTheme = puzzle?.themes.find(
     (value) => !["ownGame", "oneMove", "opening", "middlegame", "blunder", "mistake"].includes(value)
   ) ?? "";
+  // Verdeckt bleibt das Motiv nur, solange die Aufgabe offen ist · nach der
+  // Lösung ist es Auswertung, kein Spoiler mehr.
+  const themeHidden = hideTheme && !themeRevealed && status !== "solved";
   const history = stats.history.length >= 2 ? stats.history : [stats.personal_rating, stats.personal_rating];
   const themeStats = stats.themes
     .filter((t) => !["short", "long", "veryLong", "oneMove", "advantage", "crushing", "equality", "mate", "middlegame", "opening", "ownGame", "blunder", "mistake"].includes(t.theme))
@@ -519,9 +587,20 @@ function TrainerView({
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
               <Target size={15} className="text-accent" />
-              <span className="font-medium">
-                {puzzle?.source === "own" ? t("pz.missedMove") : mainTheme ? themeLabel(mainTheme, locale) : "…"}
-              </span>
+              {puzzle?.source !== "own" && mainTheme && themeHidden ? (
+                <button
+                  type="button"
+                  onClick={() => setThemeRevealed(true)}
+                  title={t("pz.themeRevealHint")}
+                  className="rounded-md border border-dashed border-line2 px-2 py-0.5 text-[12px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+                >
+                  {t("pz.themeHidden")}
+                </button>
+              ) : (
+                <span className="font-medium">
+                  {puzzle?.source === "own" ? t("pz.missedMove") : mainTheme ? themeLabel(mainTheme, locale) : "…"}
+                </span>
+              )}
               {puzzle && <span className="text-ink3">· Rating {puzzle.rating}</span>}
               {puzzle?.source === "own" && (
                 <span className="rounded-md border border-accent-dim bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">

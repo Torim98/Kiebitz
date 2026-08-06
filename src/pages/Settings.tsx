@@ -60,6 +60,8 @@ import {
   onPuzzleImportDone,
   onPuzzleImportProgress,
   puzzleStats,
+  importLabel,
+  type PuzzleImportProgress,
   type PuzzleStats,
 } from "../lib/puzzles";
 import {
@@ -413,7 +415,7 @@ export default function SettingsPage({
 
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [pzRunning, setPzRunning] = useState(false);
-  const [pzProgress, setPzProgress] = useState(0);
+  const [pzProgress, setPzProgress] = useState<PuzzleImportProgress | null>(null);
   const [pzMsg, setPzMsg] = useState<string | null>(null);
   const [pzPath, setPzPath] = useState("");
 
@@ -486,7 +488,7 @@ export default function SettingsPage({
     let disposed = false;
     onPuzzleImportProgress((p) => {
       setPzRunning(true);
-      setPzProgress(p.imported);
+      setPzProgress(p);
     }).then((u) => (disposed ? u() : cleanups.push(u)));
     onPuzzleImportDone((p) => {
       setPzRunning(false);
@@ -850,7 +852,7 @@ export default function SettingsPage({
 
   const startPuzzleImport = (path?: string) => {
     setPzMsg(null);
-    setPzProgress(0);
+    setPzProgress(null);
     setPzRunning(true);
     importPuzzles(path).catch((e) => {
       setPzRunning(false);
@@ -1120,6 +1122,20 @@ export default function SettingsPage({
                 {t("set.soundVolumeNote")}
               </p>
             </div>
+            <label className="mt-5 flex cursor-pointer items-start gap-3 border-t border-line pt-4">
+              <input
+                type="checkbox"
+                checked={draft.puzzle_hide_theme}
+                onChange={(e) => patch({ puzzle_hide_theme: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+              />
+              <span>
+                <span className="block text-[13px] text-ink">{t("set.puzzleHideTheme")}</span>
+                <span className="block text-[12px] leading-relaxed text-ink3">
+                  {t("set.puzzleHideThemeNote")}
+                </span>
+              </span>
+            </label>
           </>
         ) : (
           desktopOnly
@@ -1730,15 +1746,17 @@ export default function SettingsPage({
           {pzRunning ? (
             <div className="mt-3 flex items-center gap-2 text-[12.5px] text-ink2">
               <Loader2 size={14} className="animate-spin text-accent" />
-              {pzProgress > 0
-                ? t("set.puzzleImporting", { n: deInt(pzProgress) })
-                : t("pz.downloading")}
+              {importLabel(pzProgress, t)}
             </div>
           ) : (
             <div className="mt-3 flex flex-col gap-3">
+              {pz?.import_resumable && (
+                <p className="text-[12px] leading-relaxed text-ink3">{t("pz.resumeNote")}</p>
+              )}
               <div>
                 <Button onClick={() => startPuzzleImport()}>
-                  <Download size={14} /> {t("set.puzzleReimport")}
+                  <Download size={14} />{" "}
+                  {t(pz?.import_resumable ? "pz.resumeImport" : "set.puzzleReimport")}
                 </Button>
               </div>
               <Field label={t("set.puzzleFromFile")}>

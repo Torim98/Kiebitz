@@ -8,6 +8,7 @@ import {
   YAxis,
   CartesianGrid,
   Legend,
+  type TooltipProps,
 } from "recharts";
 import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-react";
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
@@ -17,14 +18,49 @@ import { listGames, type GameRecord } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
-import { buildDashboard } from "../lib/stats";
+import { buildDashboard, type HistoryPoint, type RatingHistorySeries } from "../lib/stats";
 import type { GamesFilter, UiGame } from "../lib/gameUi";
 import { Card, ExtLink, GameCard, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
-import { chart, DarkTooltip } from "../components/chartTheme";
+import { chart } from "../components/chartTheme";
 import { dateLocale, de, deInt } from "../lib/util";
 import type { PageId } from "../App";
 import { isStoreCapture } from "../lib/storeCapture";
+
+/**
+ * Tooltip des Ratingverlaufs. Die Linie hat mehrere Stützpunkte je Monat,
+ * abgelesen wird aber weiterhin genau ein Wert je Serie und Monat · alles
+ * andere wäre eine Genauigkeit, die die Zahl nicht hergibt.
+ */
+function MonthTooltip({
+  active,
+  payload,
+  series,
+  colors,
+}: TooltipProps<number, string> & {
+  series: RatingHistorySeries[];
+  colors: Record<string, string>;
+}) {
+  const point = payload?.[0]?.payload as HistoryPoint | undefined;
+  if (!active || !point) return null;
+  const rows = series.filter((s) => point.monthly?.[s.key] != null);
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 shadow-xl">
+      <div className="mb-1 text-[11.5px] text-ink3">{point.monthLabel}</div>
+      {rows.map((s) => (
+        <div key={s.key} className="flex items-center gap-2 text-[12.5px] text-ink">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: colors[s.id] ?? chart.draw }}
+          />
+          <span className="text-ink2">{s.label}:</span>
+          <span className="font-medium">{deInt(point.monthly[s.key]!)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard({
   go,
@@ -77,16 +113,19 @@ export default function Dashboard({
 
   const recent: UiGame[] = dash ? dash.recent : demoGames.slice(0, 5);
   const unanalyzed = dash ? dash.unanalyzed : demoGames.filter((g) => !g.analyzed).length;
-  const history = dash ? dash.history : ratingHistory.map((point, index) => {
+  const history: HistoryPoint[] = dash ? dash.history : ratingHistory.map((point, index) => {
     const date = new Date();
     date.setDate(1);
     date.setMonth(date.getMonth() - (ratingHistory.length - 1 - index));
+    const monthLabel = date.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", { month: "short" });
     return {
       ...point,
-      month: date.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", { month: "short" }),
+      month: monthLabel,
+      monthLabel,
+      monthly: { cc: point.cc, li: point.li },
     };
   });
-  const historySeries = dash?.historySeries ?? [
+  const historySeries: RatingHistorySeries[] = dash?.historySeries ?? [
     { key: "cc", id: "cc", platform: "chess.com" as const, timeClass: "rapid", label: "chess.com" },
     { key: "li", id: "li", platform: "lichess" as const, timeClass: "rapid", label: "lichess" },
   ];
@@ -168,7 +207,10 @@ export default function Dashboard({
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={0} />
               <YAxis domain={live ? ["auto", "auto"] : [1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
-              <Tooltip content={<DarkTooltip />} cursor={{ stroke: chart.axis }} />
+              <Tooltip
+                content={<MonthTooltip series={historySeries} colors={historyColors} />}
+                cursor={{ stroke: chart.axis }}
+              />
               <Legend
                 verticalAlign="top"
                 align="right"
@@ -177,9 +219,12 @@ export default function Dashboard({
                 formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
               />
               {historySeries.map((series) => (
+                // Bewusst „linear": der Verlauf soll springen wie die
+                // Sparklines der Karten, statt eine Kurve zu behaupten, die
+                // zwischen zwei Partien niemand gespielt hat.
                 <Line
                   key={series.id}
-                  type="monotone"
+                  type="linear"
                   dataKey={series.key}
                   name={series.label}
                   stroke={historyColors[series.id] ?? chart.draw}
