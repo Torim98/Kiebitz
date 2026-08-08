@@ -3,6 +3,7 @@ param(
     [string]$Keystore,
     [string]$Alias = "kiebitz",
     [string]$OutputDirectory = "artifacts",
+    [Security.SecureString]$KeystorePassword,
     [switch]$SkipVerification
 )
 
@@ -55,13 +56,20 @@ $androidSdk = Find-AndroidSdk
 $jdkHome = Find-JdkHome
 $ndkHome = Join-Path $androidSdk "ndk\28.2.13676358"
 $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
+$keytool = Join-Path $jdkHome "bin\keytool.exe"
+$androidProject = Join-Path $repoRoot "src-tauri\gen\android"
+$gradlew = Join-Path $androidProject "gradlew.bat"
 
 & (Join-Path $PSScriptRoot "build-stockfish-android.ps1") -AndroidSdk $androidSdk
 if ($LASTEXITCODE -ne 0) {
     throw "Der 16-KB-Stockfish-Build ist mit Exitcode $LASTEXITCODE fehlgeschlagen."
 }
 
-$secret = Read-Host "Passwort für kiebitz-release.jks" -AsSecureString
+$secret = if ($KeystorePassword) {
+    $KeystorePassword
+} else {
+    Read-Host "Passwort für kiebitz-release.jks" -AsSecureString
+}
 $secretPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
 $password = $null
 
@@ -77,6 +85,23 @@ $oldEnvironment = @{
 
 try {
     $password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPtr)
+    if ([string]::IsNullOrEmpty($password)) {
+        throw "Das Keystore-Passwort darf nicht leer sein."
+    }
+
+    # Vor dem langen Rust-/Android-Build wirklich auf den privaten Schluessel
+    # zugreifen. So fallen ein falsches Passwort, ein falscher Alias oder die
+    # falsche Keystore-Datei sofort auf, statt am Ende ein unsigniertes AAB zu
+    # hinterlassen. -certreq prueft Store- und Key-Passwort in einem Schritt.
+    & $keytool -certreq `
+        -alias $Alias `
+        -keystore $keystorePath `
+        -storepass $password `
+        -keypass $password *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Keystore-Pruefung fehlgeschlagen: Passwort, Alias '$Alias' oder Keystore-Datei stimmen nicht."
+    }
+
     $env:JAVA_HOME = $jdkHome
     $env:ANDROID_HOME = $androidSdk
     $env:NDK_HOME = $ndkHome
@@ -84,6 +109,29 @@ try {
     $env:ANDROID_KEYSTORE_PASSWORD = $password
     $env:ANDROID_KEY_ALIAS = $Alias
     $env:ANDROID_KEY_PASSWORD = $password
+
+    # Ein bereits laufender Gradle-Daemon kann noch mit der Umgebung eines
+    # vorherigen (unsignierten) Builds konfiguriert sein. Frisch starten und
+    # vorab bestaetigen, dass das Release-Variant den echten Keystore nutzt.
+    & $gradlew --stop *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Der vorhandene Gradle-Daemon konnte nicht beendet werden."
+    }
+    Push-Location $androidProject
+    try {
+        $signingReportOutput = & $gradlew :app:signingReport --console=plain 2>&1
+        $signingReportExitCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    $signingReport = $signingReportOutput -join [Environment]::NewLine
+    $expectedStore = [regex]::Escape($keystorePath)
+    if (
+        $signingReportExitCode -ne 0 -or
+        $signingReport -notmatch "(?s)Variant:\s+universalRelease.*?Config:\s+release.*?Store:\s+$expectedStore"
+    ) {
+        throw "Gradle hat fuer universalRelease nicht den erwarteten Release-Keystore konfiguriert.`n$signingReport"
+    }
 
     Push-Location $repoRoot
     try {
