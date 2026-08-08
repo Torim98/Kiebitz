@@ -1,6 +1,9 @@
 import type { GameRecord } from "./db";
-import type { Locale } from "./i18n";
+import { LOCALE_TAGS, translator, type Locale } from "./i18n";
 import { tcLabel, toUi, type UiGame } from "./gameUi";
+
+/** BCP-47-Tag einer Locale · für `toLocaleDateString` der Achsenbeschriftung. */
+const localeTag = (locale: Locale): string => LOCALE_TAGS[locale];
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -17,19 +20,16 @@ export interface RatingCard {
 
 export interface HistoryPoint {
   /**
-   * Beschriftung der X-Achse · nur am ersten Stützpunkt eines Monats gesetzt,
-   * sonst leer. Die Achse trägt dadurch weiterhin sechs Monatsnamen, obwohl
-   * die Linie deutlich feiner aufgelöst ist.
+   * Beschriftung der X-Achse · nur am ersten Tag eines Monats gesetzt, sonst
+   * leer. Die Achse trägt dadurch weiterhin sechs Monatsnamen, obwohl die
+   * Linie tagesfein aufgelöst ist.
    */
   month: string;
-  /** Monatsname an jedem Stützpunkt · Kopfzeile des Tooltips. */
+  /** Monatsname des Stützpunkts. */
   monthLabel: string;
-  /**
-   * Monatswert je Serie. Der Tooltip zeigt bewusst nur ihn: der Verlauf darf
-   * fein sein, die abgelesene Zahl bleibt der Monatsstand.
-   */
-  monthly: Record<string, number | null>;
-  [key: string]: string | number | null | Record<string, number | null>;
+  /** Ausgeschriebener Tag · Kopfzeile des Tooltips. */
+  dayLabel: string;
+  [key: string]: string | number | null;
 }
 
 export interface RatingHistorySeries {
@@ -49,12 +49,8 @@ export interface LiveDashboard {
   unanalyzed: number;
 }
 
-/**
- * Stützpunkte je Monat im Ratingverlauf · rund alle fünf Tage einer. Feiner
- * gerastert würde die Linie mehr Zufall als Verlauf zeigen, gröber wäre sie
- * wieder die geglättete Monatskurve von vorher.
- */
-const HISTORY_STEPS_PER_MONTH = 6;
+/** Monate, die der Ratingverlauf zurückreicht. */
+const HISTORY_MONTHS = 6;
 
 /**
  * Ohne Partie in diesem Fenster gilt ein Modus als ruhend und die Linie setzt
@@ -132,18 +128,17 @@ export function buildDashboard(
     label: `${card.platform} · ${card.tc}`,
   }));
 
-  // Verlauf für dieselben vier aktiven Plattform-/Modus-Paare wie oben. Die
-  // Linie wird in Stützpunkten je Monat gezeichnet, damit sie so springt wie
-  // die Sparklines der Karten; abgelesen wird per Tooltip weiterhin nur der
-  // Monatsstand. Der laufende Monat beginnt nur dann mit dem letzten Stand,
-  // wenn exakt dieser Modus im unmittelbar vorherigen Monat aktiv war. Ein
-  // monatelang ruhendes chess.com-Rating darf nicht als aktueller Wert
-  // erscheinen · dieselbe Regel gilt für die Stützpunkte über `HISTORY_IDLE_DAYS`.
+  // Verlauf für dieselben vier aktiven Plattform-/Modus-Paare wie oben, mit
+  // einem Stützpunkt je Tag: jede einzelne Partie verschiebt die Linie sichtbar,
+  // statt in einem Fünf-Tage-Mittel unterzugehen. Ein Tag ohne Partie behält den
+  // letzten Stand · das Rating ändert sich ja auch nicht von selbst. Wer über
+  // `HISTORY_IDLE_DAYS` gar nicht gespielt hat, setzt aus, damit ein seit Monaten
+  // ruhendes chess.com-Rating nicht als aktueller Wert bis heute durchzieht.
   const history: HistoryPoint[] = [];
-  const nowMs = Date.now();
-  const currentMonth = new Date(nowMs);
-  currentMonth.setDate(1);
-  currentMonth.setHours(0, 0, 0, 0);
+  const tag = localeTag(opts.locale);
+  const today = new Date(Date.now());
+  today.setHours(0, 0, 0, 0);
+  const firstDay = new Date(today.getFullYear(), today.getMonth() - (HISTORY_MONTHS - 1), 1);
   const seriesGames = new Map(
     historySeries.map((series) => [
       series.key,
@@ -156,60 +151,32 @@ export function buildDashboard(
     ])
   );
   const cursor = new Map<string, number>();
-  for (let offset = 5; offset >= 0; offset--) {
-    const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset, 1);
-    const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - offset + 1, 1);
-    const start = Math.floor(startDate.getTime() / 1000);
-    const end = Math.floor(endDate.getTime() / 1000);
-    const previousStart = Math.floor(
-      new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1).getTime() / 1000
-    );
-    const monthLabel = startDate.toLocaleDateString(
-      opts.locale === "de" ? "de-DE" : "en-US",
-      { month: "short" }
-    );
-
-    const monthly: Record<string, number | null> = {};
+  for (const day = new Date(firstDay); day <= today; day.setDate(day.getDate() + 1)) {
+    // Über die Tagesgrenze statt über 86 400 Sekunden gehen · sonst verrutscht
+    // der Verlauf zweimal im Jahr um eine Stunde in die Sommerzeit hinein.
+    const next = new Date(day);
+    next.setDate(next.getDate() + 1);
+    const dayEnd = Math.floor(next.getTime() / 1000);
+    const monthLabel = day.toLocaleDateString(tag, { month: "short" });
+    const point: HistoryPoint = {
+      month: day.getDate() === 1 ? monthLabel : "",
+      monthLabel,
+      dayLabel: day.toLocaleDateString(tag, { day: "numeric", month: "short", year: "numeric" }),
+    };
     for (const series of historySeries) {
       const games = seriesGames.get(series.key) ?? [];
-      const inMonth = games.filter((game) => game.played_ts >= start && game.played_ts < end);
-      const previousMonth = offset === 0
-        ? games.filter((game) => game.played_ts >= previousStart && game.played_ts < start)
-        : [];
-      monthly[series.key] = inMonth.length > 0
-        ? inMonth[inMonth.length - 1].my_elo
-        : previousMonth.length > 0
-          ? previousMonth[previousMonth.length - 1].my_elo
+      // Die Stützpunkte laufen zeitlich vorwärts, also wandert je Serie ein
+      // Zeiger mit, statt für jeden Punkt die ganze Partienliste zu prüfen.
+      let index = cursor.get(series.key) ?? 0;
+      while (index < games.length && games[index].played_ts < dayEnd) index++;
+      cursor.set(series.key, index);
+      const last = index > 0 ? games[index - 1] : null;
+      point[series.key] =
+        last != null && last.played_ts >= dayEnd - HISTORY_IDLE_DAYS * 86400
+          ? last.my_elo
           : null;
     }
-
-    const stepSeconds = (end - start) / HISTORY_STEPS_PER_MONTH;
-    for (let step = 0; step < HISTORY_STEPS_PER_MONTH; step++) {
-      const stepStart = start + step * stepSeconds;
-      // Der laufende Monat endet beim Heute · eine flache Linie in die Zukunft
-      // hinein wäre eine Behauptung über Partien, die es noch nicht gibt.
-      if (stepStart * 1000 > nowMs) break;
-      const stepEnd = stepStart + stepSeconds;
-      const point: HistoryPoint = {
-        month: step === 0 ? monthLabel : "",
-        monthLabel,
-        monthly,
-      };
-      for (const series of historySeries) {
-        const games = seriesGames.get(series.key) ?? [];
-        // Die Stützpunkte laufen zeitlich vorwärts, also wandert je Serie ein
-        // Zeiger mit, statt für jeden Punkt die ganze Partienliste zu prüfen.
-        let index = cursor.get(series.key) ?? 0;
-        while (index < games.length && games[index].played_ts < stepEnd) index++;
-        cursor.set(series.key, index);
-        const last = index > 0 ? games[index - 1] : null;
-        point[series.key] =
-          last != null && last.played_ts >= stepEnd - HISTORY_IDLE_DAYS * 86400
-            ? last.my_elo
-            : null;
-      }
-      history.push(point);
-    }
+    history.push(point);
   }
 
   return {
@@ -265,22 +232,24 @@ export interface LiveInsights {
   longestLossStreak: number;
 }
 
-const MONTHS: Record<Locale, string[]> = {
-  de: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
-  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-};
-const DAYS: Record<Locale, string[]> = {
-  de: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
-  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-};
+/**
+ * Monats- und Wochentagsnamen kommen aus `Intl`, nicht aus einer Tabelle je
+ * Sprache · so bringt jede neue Sprache ihre Namen selbst mit.
+ */
+function monthNames(locale: Locale): string[] {
+  const format = new Intl.DateTimeFormat(LOCALE_TAGS[locale], { month: "short" });
+  return Array.from({ length: 12 }, (_, month) => format.format(new Date(2021, month, 1)));
+}
+
+/** Wochentage ab Montag · der 1. März 2021 war ein Montag. */
+function weekdayNames(locale: Locale): string[] {
+  const format = new Intl.DateTimeFormat(LOCALE_TAGS[locale], { weekday: "short" });
+  return Array.from({ length: 7 }, (_, index) => format.format(new Date(2021, 2, 1 + index)));
+}
+
 const SLOTS = ["0–4", "4–8", "8–12", "12–16", "16–20", "20–24"];
 
 const TC_ORDER = ["bullet", "blitz", "rapid", "classical", "daily"];
-
-const STRENGTH_LABELS: Record<Locale, [string, string, string]> = {
-  de: ["Gegner ≥ 100 schwächer", "ähnlich stark (±100)", "Gegner ≥ 100 stärker"],
-  en: ["opp. ≥ 100 weaker", "similar (±100)", "opp. ≥ 100 stronger"],
-};
 
 function winPct(games: GameRecord[]): number {
   if (games.length === 0) return 0;
@@ -302,10 +271,11 @@ function averageAccuracy(games: GameRecord[]): number | null {
   return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
 }
 
-export function buildInsights(records: GameRecord[], locale: Locale = "de"): LiveInsights {
+export function buildInsights(records: GameRecord[], locale: Locale = "en"): LiveInsights {
   records = records.filter((game) => !game.analysis_excluded);
-  const months = MONTHS[locale];
-  const dayNames = DAYS[locale];
+  const t = translator(locale);
+  const months = monthNames(locale);
+  const dayNames = weekdayNames(locale);
   const total = records.length;
   const asc = [...records].sort((a, b) => a.played_ts - b.played_ts);
 
@@ -373,7 +343,7 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
   const byColor = (["white", "black"] as const).map((c) => {
     const gs = records.filter((g) => g.color === c);
     return {
-      color: c === "white" ? (locale === "en" ? "White" : "Weiß") : locale === "en" ? "Black" : "Schwarz",
+      color: t(c === "white" ? "common.white" : "common.black"),
       win: gs.filter((g) => g.result === "win").length,
       draw: gs.filter((g) => g.result === "draw").length,
       loss: gs.filter((g) => g.result === "loss").length,
@@ -391,11 +361,10 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
   );
 
   // Gegnerstärke relativ zum eigenen Rating
-  const [weaker, similar, stronger] = STRENGTH_LABELS[locale];
   const strengthBuckets: [string, (d: number) => boolean][] = [
-    [weaker, (d) => d <= -100],
-    [similar, (d) => d > -100 && d < 100],
-    [stronger, (d) => d >= 100],
+    [t("ins.oppWeaker"), (d) => d <= -100],
+    [t("ins.oppSimilar"), (d) => d > -100 && d < 100],
+    [t("ins.oppStronger"), (d) => d >= 100],
   ];
   const byOppStrength = strengthBuckets.map(([bucket, match]) => {
     const gs = rated.filter((g) => g.my_elo > 0 && match(g.opp_elo - g.my_elo));
@@ -454,10 +423,7 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
       if (values[di][si] > max) {
         max = values[di][si];
         topSlot = {
-          label:
-            locale === "en"
-              ? `${dayNames[di]} ${SLOTS[si]}h`
-              : `${dayNames[di]} ${SLOTS[si]} Uhr`,
+          label: t("ins.slotLabel", { d: dayNames[di], s: SLOTS[si] }),
           games: max,
         };
       }
@@ -475,9 +441,7 @@ export function buildInsights(records: GameRecord[], locale: Locale = "de"): Liv
     const games = records.filter((game) => game.played_ts > 0 && Math.floor(new Date(game.played_ts * 1000).getHours() / 4) === index);
     return { slot, games: games.length, scorePct: Math.round(scorePct(games)), accuracy: averageAccuracy(games) };
   });
-  const lengthLabels = locale === "en"
-    ? ["Short (≤20 moves)", "Medium (21–40)", "Long (>40)"]
-    : ["Kurz (≤20 Züge)", "Mittel (21–40)", "Lang (>40)"];
+  const lengthLabels = [t("ins.lenShort"), t("ins.lenMedium"), t("ins.lenLong")];
   const lengthGroups = [
     records.filter((game) => game.moves_count <= 20),
     records.filter((game) => game.moves_count > 20 && game.moves_count <= 40),

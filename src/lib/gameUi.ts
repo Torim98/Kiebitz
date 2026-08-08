@@ -1,5 +1,5 @@
 import type { Game, Result, Source } from "../data/demo";
-import type { Locale } from "./i18n";
+import { translator, type Key, type Locale } from "./i18n";
 import type { GameRecord } from "./db";
 
 /** UI-Form einer Partie: Demo-Partien und DB-Partien teilen diese Struktur. */
@@ -25,27 +25,23 @@ export interface GamesFilter {
   opening?: string;
 }
 
-const TC_LABEL: Record<Locale, Record<string, string>> = {
-  de: {
-    bullet: "Bullet",
-    blitz: "Blitz",
-    rapid: "Rapid",
-    daily: "Täglich",
-    classical: "Klassisch",
-    otb: "Brett",
-  },
-  en: {
-    bullet: "Bullet",
-    blitz: "Blitz",
-    rapid: "Rapid",
-    daily: "Daily",
-    classical: "Classical",
-    otb: "OTB",
-  },
+/**
+ * Bedenkzeit-Klassen kommen aus demselben Wörterbuch wie der Rest der
+ * Oberfläche · eine zweite, je Sprache gepflegte Tabelle hier wäre genau die
+ * Stelle, an der eine neue Sprache vergessen wird.
+ */
+const TC_KEY: Record<string, Key> = {
+  bullet: "common.tc.bullet",
+  blitz: "common.tc.blitz",
+  rapid: "common.tc.rapid",
+  daily: "common.tc.daily",
+  classical: "common.tc.classical",
+  otb: "common.tc.otb",
 };
 
 export function tcLabel(timeClass: string, locale: Locale): string {
-  return TC_LABEL[locale][timeClass] ?? timeClass;
+  const key = TC_KEY[timeClass];
+  return key ? translator(locale)(key) : timeClass;
 }
 
 /**
@@ -61,13 +57,13 @@ function gameDate(r: GameRecord, locale: Locale): string {
     const y = dt.getFullYear();
     const m = String(dt.getMonth() + 1).padStart(2, "0");
     const d = String(dt.getDate()).padStart(2, "0");
-    return locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
+    return locale === "de" ? `${d}.${m}.${y}` : `${y}-${m}-${d}`;
   }
   const [y, m, d] = r.played_at.split("-");
-  return d && m && y ? (locale === "en" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`) : r.played_at;
+  return d && m && y ? (locale === "de" ? `${d}.${m}.${y}` : `${y}-${m}-${d}`) : r.played_at;
 }
 
-export function toUi(r: GameRecord, locale: Locale = "de"): UiGame {
+export function toUi(r: GameRecord, locale: Locale = "en"): UiGame {
   const date = gameDate(r, locale);
   return {
     id: `db-${r.id}`,

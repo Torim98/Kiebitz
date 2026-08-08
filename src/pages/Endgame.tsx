@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   CATEGORY_ORDER,
+  drillText,
   ENDGAME_DRILLS,
   type EndgameCategory,
   type EndgameDrill,
@@ -255,7 +256,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
           <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
               <Crown size={15} className="shrink-0 text-accent" />
-              <span className="font-medium">{drill.name[locale]}</span>
+              <span className="font-medium">{drillText(drill.name, locale)}</span>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10.5px] ${
                   drill.goal === "win" ? "bg-accent-soft text-accent" : "bg-panel3 text-gold"
@@ -337,7 +338,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                   </Button>
                 </div>
                 <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
-                  {drill.hint[locale]}
+                  {drillText(drill.hint, locale)}
                 </p>
               </>
             )}
@@ -388,7 +389,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                               <span className="inline-block h-[15px] w-[15px] shrink-0 rounded-full border border-line2" />
                             )}
                             <span className={active ? "font-medium text-ink" : "text-ink2"}>
-                              {d.name[locale]}
+                              {drillText(d.name, locale)}
                             </span>
                           </span>
                           <span className="shrink-0 pl-3 text-[11.5px] text-ink3">

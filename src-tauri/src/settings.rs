@@ -189,9 +189,13 @@ impl Default for Settings {
 
 pub struct SettingsState(pub Mutex<Settings>);
 
+/// Oberflächensprachen · muss mit LOCALES in src/lib/i18n.tsx übereinstimmen.
+/// Ein unbekannter Wert (alte Datei, fremdes Gerät) fällt auf Englisch zurück.
+pub const LOCALES: [&str; 7] = ["en", "de", "es", "fr", "hi", "ar", "zh"];
+
 fn normalize(mut s: Settings) -> Settings {
-    if s.locale != "en" {
-        s.locale = "de".into();
+    if !LOCALES.contains(&s.locale.as_str()) {
+        s.locale = "en".into();
     }
     // Stockfish can run as batch + live process at the same time. Bounding the
     // batch table prevents a manual "Max" setting from paging out the WebView;
@@ -658,7 +662,17 @@ mod tests {
             engine_path: Some("   ".into()),
             ..Settings::default()
         });
-        assert_eq!(s.locale, "de");
+        // Französisch ist eine der sieben Oberflächensprachen und bleibt stehen.
+        assert_eq!(s.locale, "fr");
+        // Ein unbekanntes Kürzel fällt dagegen auf Englisch zurück.
+        assert_eq!(
+            normalize(Settings {
+                locale: "kl".into(),
+                ..Settings::default()
+            })
+            .locale,
+            "en"
+        );
         assert_eq!(s.engine_hash_mb, 512);
         assert_eq!(s.engine_multipv, 1);
         assert_eq!(

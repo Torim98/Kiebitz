@@ -3,7 +3,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitDataChange } from "./changes";
 import { formatBytes } from "./settings";
 import { deInt } from "./util";
-import type { TFunc } from "./i18n";
+import type { Locale, TFunc } from "./i18n";
+import { PUZZLE_THEMES } from "./locales/themes";
 
 /** Ein Puzzle aus der lokalen Lichess-Datenbank. */
 export interface PuzzleOut {
@@ -180,150 +181,6 @@ export function importLabel(progress: PuzzleImportProgress | null, t: TFunc): st
   return t("pz.downloading");
 }
 
-/** Deutsche Namen für die Lichess-Motive · dazu die eigenen Pseudo-Motive. */
-const THEME_DE: Record<string, string> = {
-  fork: "Gabel",
-  pin: "Fesselung",
-  skewer: "Spieß",
-  discoveredAttack: "Abzug",
-  backRankMate: "Grundreihenmatt",
-  mate: "Matt",
-  mateIn1: "Matt in 1",
-  mateIn2: "Matt in 2",
-  mateIn3: "Matt in 3",
-  mateIn4: "Matt in 4",
-  mateIn5: "Matt in 5",
-  smotheredMate: "Ersticktes Matt",
-  anastasiaMate: "Anastasia-Matt",
-  arabianMate: "Arabisches Matt",
-  bodenMate: "Bodens Matt",
-  doubleBishopMate: "Läuferpaar-Matt",
-  dovetailMate: "Schwalbenschwanz-Matt",
-  hookMate: "Hakenmatt",
-  killBoxMate: "Kill-Box-Matt",
-  vukovicMate: "Vukovic-Matt",
-  advancedPawn: "Vorgerückter Bauer",
-  attackingF2F7: "Angriff auf f2/f7",
-  capturingDefender: "Verteidiger schlagen",
-  queenRookEndgame: "Damen-Turm-Endspiel",
-  healthyMix: "Bunte Mischung",
-  playerGames: "Spielerpartien",
-  endgame: "Endspiel",
-  middlegame: "Mittelspiel",
-  opening: "Eröffnung",
-  rookEndgame: "Turmendspiel",
-  pawnEndgame: "Bauernendspiel",
-  queenEndgame: "Damenendspiel",
-  knightEndgame: "Springerendspiel",
-  bishopEndgame: "Läuferendspiel",
-  zugzwang: "Zugzwang",
-  sacrifice: "Opfer",
-  attraction: "Hinlenkung",
-  deflection: "Ablenkung",
-  clearance: "Räumung",
-  interference: "Unterbrechung",
-  intermezzo: "Zwischenzug",
-  quietMove: "Stiller Zug",
-  xRayAttack: "Röntgenangriff",
-  doubleCheck: "Doppelschach",
-  promotion: "Umwandlung",
-  underPromotion: "Unterverwandlung",
-  enPassant: "En passant",
-  castling: "Rochade",
-  trappedPiece: "Gefangene Figur",
-  hangingPiece: "Hängende Figur",
-  exposedKing: "Offener König",
-  kingsideAttack: "Königsangriff",
-  queensideAttack: "Damenflügelangriff",
-  defensiveMove: "Verteidigungszug",
-  equality: "Ausgleich",
-  advantage: "Vorteil",
-  crushing: "Vernichtend",
-  short: "Kurz",
-  long: "Lang",
-  veryLong: "Sehr lang",
-  oneMove: "Ein Zug",
-  master: "Meisterpartie",
-  masterVsMaster: "Meister gegen Meister",
-  superGM: "Super-GM",
-  // Eigene Aufgaben tragen keine Lichess-Motive, sondern beschreiben, woher
-  // sie kommen · sie stehen genauso im Verlauf und brauchen darum Namen.
-  ownGame: "Eigene Partie",
-  blunder: "Grober Fehler",
-  mistake: "Fehler",
-};
-
-/** Englische Namen (Lichess-Originalbezeichnungen, lesbar formatiert). */
-const THEME_EN: Record<string, string> = {
-  fork: "Fork",
-  pin: "Pin",
-  skewer: "Skewer",
-  discoveredAttack: "Discovered attack",
-  backRankMate: "Back-rank mate",
-  mate: "Mate",
-  mateIn1: "Mate in 1",
-  mateIn2: "Mate in 2",
-  mateIn3: "Mate in 3",
-  mateIn4: "Mate in 4",
-  mateIn5: "Mate in 5",
-  smotheredMate: "Smothered mate",
-  anastasiaMate: "Anastasia's mate",
-  arabianMate: "Arabian mate",
-  bodenMate: "Boden's mate",
-  doubleBishopMate: "Double bishop mate",
-  dovetailMate: "Dovetail mate",
-  hookMate: "Hook mate",
-  killBoxMate: "Kill box mate",
-  vukovicMate: "Vukovic mate",
-  advancedPawn: "Advanced pawn",
-  attackingF2F7: "Attacking f2/f7",
-  capturingDefender: "Capture the defender",
-  queenRookEndgame: "Queen and rook endgame",
-  healthyMix: "Healthy mix",
-  playerGames: "Player games",
-  endgame: "Endgame",
-  middlegame: "Middlegame",
-  opening: "Opening",
-  rookEndgame: "Rook endgame",
-  pawnEndgame: "Pawn endgame",
-  queenEndgame: "Queen endgame",
-  knightEndgame: "Knight endgame",
-  bishopEndgame: "Bishop endgame",
-  zugzwang: "Zugzwang",
-  sacrifice: "Sacrifice",
-  attraction: "Attraction",
-  deflection: "Deflection",
-  clearance: "Clearance",
-  interference: "Interference",
-  intermezzo: "Intermezzo",
-  quietMove: "Quiet move",
-  xRayAttack: "X-ray attack",
-  doubleCheck: "Double check",
-  promotion: "Promotion",
-  underPromotion: "Underpromotion",
-  enPassant: "En passant",
-  castling: "Castling",
-  trappedPiece: "Trapped piece",
-  hangingPiece: "Hanging piece",
-  exposedKing: "Exposed king",
-  kingsideAttack: "Kingside attack",
-  queensideAttack: "Queenside attack",
-  defensiveMove: "Defensive move",
-  equality: "Equality",
-  advantage: "Advantage",
-  crushing: "Crushing",
-  short: "Short",
-  long: "Long",
-  veryLong: "Very long",
-  oneMove: "One move",
-  master: "Master game",
-  masterVsMaster: "Master vs. master",
-  superGM: "Super GM",
-  ownGame: "Own game",
-  blunder: "Blunder",
-  mistake: "Mistake",
-};
-
 /**
  * Unbekannte Motive lesbar machen, statt "hookMate" roh anzuzeigen. Lichess
  * ergänzt den Motivkatalog gelegentlich · ein neues Motiv soll dann wenigstens
@@ -334,7 +191,6 @@ function humanize(theme: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function themeLabel(theme: string, locale: "de" | "en" = "de"): string {
-  const map = locale === "en" ? THEME_EN : THEME_DE;
-  return map[theme] ?? humanize(theme);
+export function themeLabel(theme: string, locale: Locale = "en"): string {
+  return PUZZLE_THEMES[locale][theme] ?? PUZZLE_THEMES.en[theme] ?? humanize(theme);
 }

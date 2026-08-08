@@ -39,10 +39,14 @@ describe("clock stamps", () => {
 
   it("formats remaining time with tenths only under twenty seconds", () => {
     expect(formatClock(59_790)).toBe("9:57");
-    expect(formatClock(1_940)).toBe("0:19,4");
+    // Das Dezimalzeichen kommt aus der Locale · Deutsch und Französisch
+    // schreiben ein Komma, Englisch und Chinesisch einen Punkt.
+    expect(formatClock(1_940, "de")).toBe("0:19,4");
+    expect(formatClock(1_940, "fr")).toBe("0:19,4");
     expect(formatClock(940, "en")).toBe("0:09.4");
+    expect(formatClock(940, "zh")).toBe("0:09.4");
     expect(formatClock(366_000)).toBe("1:01:00");
-    expect(formatClock(-5)).toBe("0:00,0");
+    expect(formatClock(-5, "de")).toBe("0:00,0");
   });
 });
 

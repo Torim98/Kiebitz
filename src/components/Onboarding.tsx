@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Bird, Check, Download, Loader2, SkipForward } from "lucide-react";
-import { useI18n, type Locale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, useI18n, type Locale } from "../lib/i18n";
 import { setSettings, type Settings } from "../lib/settings";
 import { runAutoImport } from "../lib/autoImport";
 import { Button, Card, Chip } from "./ui";
@@ -70,13 +70,15 @@ export default function Onboarding({
 
           {step === 0 ? (
             <Card title={t("onb.languageTitle")}>
-              <div className="flex gap-2">
-                <Chip active={locale === "en"} onClick={() => chooseLocale("en")}>
-                  {t("set.langEn")}
-                </Chip>
-                <Chip active={locale === "de"} onClick={() => chooseLocale("de")}>
-                  {t("set.langDe")}
-                </Chip>
+              {/* Jede Sprache in sich selbst · beim allerersten Start ist die
+                  Oberfläche noch auf Englisch, und "English/Deutsch/العربية"
+                  ist für jeden lesbar, "Arabic" nicht. */}
+              <div className="flex flex-wrap gap-2">
+                {LOCALES.map((l) => (
+                  <Chip key={l} active={locale === l} onClick={() => chooseLocale(l)}>
+                    <span lang={l}>{LOCALE_NAMES[l]}</span>
+                  </Chip>
+                ))}
               </div>
               <p className="mt-3 text-[12.5px] leading-relaxed text-ink3">{t("onb.languageNote")}</p>
               <div className="mt-4 flex justify-end">

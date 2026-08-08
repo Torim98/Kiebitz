@@ -38,7 +38,7 @@ vi.mock("../lib/repertoire", () => ({
 }));
 vi.mock("../lib/settings", () => ({
   chessdbQuery: vi.fn(() => Promise.resolve({ status: "unknown", moves: [], cached: false })),
-  getSettings: vi.fn(() => Promise.resolve({ rep_due_limit: 20, rep_new_limit: 5 })),
+  getSettings: vi.fn(() => Promise.resolve({ locale: "de", rep_due_limit: 20, rep_new_limit: 5 })),
 }));
 vi.mock("../components/LiveEngine", () => ({
   default: ({ onMove }: { onMove?: (uci: string) => void }) =>

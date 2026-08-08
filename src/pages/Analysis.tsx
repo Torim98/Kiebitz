@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
-import { useI18n, type Key, type TFunc } from "../lib/i18n";
+import { useI18n, type Key, type Locale, type TFunc } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
 import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
@@ -142,7 +142,7 @@ function ClockBadge({
   active: boolean;
   /** Verbrauchte Zeit des letzten Zuges dieser Seite (null = unbekannt). */
   spent: number | null;
-  locale: "de" | "en";
+  locale: Locale;
 }) {
   if (centiseconds == null) return null;
   const low = centiseconds < 3000;

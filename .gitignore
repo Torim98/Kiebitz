@@ -35,3 +35,6 @@ src-tauri/binaries/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Python bytecode of the asset scripts
+scripts/__pycache__/

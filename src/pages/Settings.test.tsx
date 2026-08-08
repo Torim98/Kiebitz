@@ -14,9 +14,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/backend", () => ({ useBackendInfo: () => mocks.backend }));
-vi.mock("../lib/i18n", () => ({
+vi.mock("../lib/i18n", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/i18n")>()),
   useI18n: () => ({
-    locale: "en",
+    locale: "en" as const,
     setLocale: vi.fn(),
     t: (key: string) => key,
   }),

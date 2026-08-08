@@ -30,32 +30,40 @@ function g(partial: Partial<GameRecord> = {}): GameRecord {
 }
 
 describe("buildDashboard", () => {
-  it("carries only ratings active in the immediately previous month", () => {
+  it("draws a daily line and drops a mode that has been idle too long", () => {
     const june = Math.floor(new Date(2026, 5, 30, 18).getTime() / 1000);
     const july = Math.floor(new Date(2026, 6, 31, 18).getTime() / 1000);
+    const records = [
+      g({ source: "chess.com", played_ts: june, my_elo: 812 }),
+      g({ source: "lichess", played_ts: july, my_elo: 1078 }),
+    ];
     const realNow = Date.now;
-    Date.now = () => new Date(2026, 7, 1, 9).getTime();
-    try {
-      const d = buildDashboard(
-        [
-          g({ source: "chess.com", played_ts: june, my_elo: 812 }),
-          g({ source: "lichess", played_ts: july, my_elo: 1078 }),
-        ],
-        { locale: "en", ccUser: "u", liUser: "u" }
-      );
+    const at = (day: number) => {
+      Date.now = () => new Date(2026, 7, day, 9).getTime();
+      const d = buildDashboard(records, { locale: "en", ccUser: "u", liUser: "u" });
       const byId = new Map(d.historySeries.map((series) => [series.id, series]));
-      const august = d.history[d.history.length - 1];
-      expect(august.monthLabel).toBe("Aug");
-      // Der Monatswert im Tooltip und die feineren Stützpunkte der Linie
-      // erzählen dasselbe: chess.com ruht seit Juni.
-      expect(august.monthly[byId.get("chess.com-rapid")!.key]).toBeNull();
-      expect(august.monthly[byId.get("lichess-rapid")!.key]).toBe(1078);
-      expect(august[byId.get("chess.com-rapid")!.key]).toBeNull();
-      expect(august[byId.get("lichess-rapid")!.key]).toBe(1078);
-      // Sechs Monate, jeder mit mehreren Stützpunkten · die Achse beschriftet
-      // trotzdem nur je den ersten davon.
-      expect(d.history.filter((point) => point.month !== "").length).toBe(6);
-      expect(d.history.length).toBeGreaterThan(6);
+      const last = d.history[d.history.length - 1];
+      return { d, last, key: (id: string) => byId.get(id)!.key };
+    };
+    try {
+      const first = at(1);
+      expect(first.last.monthLabel).toBe("Aug");
+      // Jeder Stützpunkt trägt seinen Tag · den zeigt der Tooltip.
+      expect(first.last.dayLabel).toBe("Aug 1, 2026");
+      // 1. März bis 1. August: 31 + 30 + 31 + 30 + 31 + 1 Tage.
+      expect(first.d.history.length).toBe(154);
+      // Sechs Monate mit einem Stützpunkt je Tag · beschriftet ist auf der
+      // Achse trotzdem nur der Monatserste.
+      expect(first.d.history.filter((point) => point.month !== "").length).toBe(6);
+      // Am 1. August liegt die letzte chess.com-Partie 32 Tage zurück · das
+      // Rating gilt weiter, die Linie läuft waagerecht mit.
+      expect(first.last[first.key("chess.com-rapid")]).toBe(812);
+      expect(first.last[first.key("lichess-rapid")]).toBe(1078);
+
+      // Am 10. August sind es 41 Tage · der Modus gilt als ruhend und setzt aus.
+      const later = at(10);
+      expect(later.last[later.key("chess.com-rapid")]).toBeNull();
+      expect(later.last[later.key("lichess-rapid")]).toBe(1078);
     } finally {
       Date.now = realNow;
     }

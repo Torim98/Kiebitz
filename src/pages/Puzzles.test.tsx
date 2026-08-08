@@ -73,7 +73,7 @@ beforeEach(() => {
     setup_plies: 0,
   });
   mocks.recordAttempt.mockResolvedValue({ rating_before: 1500, rating_after: 1508, delta: 8 });
-  mocks.getSettings.mockResolvedValue({ puzzle_goal: 10, puzzle_hide_theme: false });
+  mocks.getSettings.mockResolvedValue({ locale: "de", puzzle_goal: 10, puzzle_hide_theme: false });
 });
 
 afterEach(() => {
@@ -137,7 +137,7 @@ describe("Puzzle training", () => {
   });
 
   it("keeps the theme covered until it is tapped", async () => {
-    mocks.getSettings.mockResolvedValue({ puzzle_goal: 10, puzzle_hide_theme: true });
+    mocks.getSettings.mockResolvedValue({ locale: "de", puzzle_goal: 10, puzzle_hide_theme: true });
     mocks.nextPuzzle.mockResolvedValue({
       id: "lichess-puzzle",
       fen: initialFen,

@@ -122,7 +122,7 @@ beforeEach(() => {
   // Die Oberfläche startet ab Werk auf Englisch; diese Tests prüfen die
   // deutschen Texte und stellen die Sprache deshalb explizit ein.
   localStorage.setItem("kiebitz.locale", "de");
-  mocks.getSettings.mockResolvedValue({ chessdb_enabled: false, cc_user: "Torim98", li_user: "Torim98" });
+  mocks.getSettings.mockResolvedValue({ locale: "de", chessdb_enabled: false, cc_user: "Torim98", li_user: "Torim98" });
   mocks.listGames.mockResolvedValue([excludedGame]);
   mocks.gameAnalysis.mockResolvedValue([]);
   mocks.startAnalysis.mockResolvedValue(undefined);
@@ -318,7 +318,7 @@ describe("Analysis page", () => {
 
     /** Eine Archiv-URL ohne Benutzernamen wäre ein Link ins Leere. */
     it("omits the link when neither a URL nor an account handle is known", async () => {
-      mocks.getSettings.mockResolvedValue({ chessdb_enabled: false, cc_user: "", li_user: "" });
+      mocks.getSettings.mockResolvedValue({ locale: "de", chessdb_enabled: false, cc_user: "", li_user: "" });
       mocks.listGames.mockResolvedValue([{ ...onlineGame, url: "" }]);
       render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
       await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));

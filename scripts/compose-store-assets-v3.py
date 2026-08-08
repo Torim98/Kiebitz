@@ -23,6 +23,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
+import storetext
+
 
 TARGETS = {
     "phone": (1080, 1920),
@@ -30,7 +32,36 @@ TARGETS = {
     "tablet-10": (1920, 1080),
     "chromebook": (1920, 1080),
 }
-LOCALES = ("de-DE", "en-US")
+# Play Console locale codes. Chinese, Hindi and Arabic go through the shaping
+# path in storetext.py; the Latin ones keep the original Pillow rendering.
+LOCALES = ("de-DE", "en-US", "es-ES", "fr-FR", "hi-IN", "ar", "zh-CN")
+
+# The renderer walks one locale at a time and every text helper needs to know
+# which script it is setting. Threading it through a dozen signatures would add
+# noise to a single-pass batch script, so the active locale lives here.
+_ACTIVE_LOCALE = "en-US"
+
+
+def set_locale(locale: str) -> None:
+    global _ACTIVE_LOCALE
+    _ACTIVE_LOCALE = locale
+
+
+# Width of the text column of the current slide. Arabic is set flush right
+# inside it; every other locale ignores it and stays flush left.
+_TEXT_COLUMN = 0
+
+
+def set_text_column(width: int) -> None:
+    global _TEXT_COLUMN
+    _TEXT_COLUMN = width
+
+
+def line_x(x: int, width: float) -> float:
+    """Left edge of a line of text · mirrored inside the column for Arabic."""
+    if _ACTIVE_LOCALE in storetext.RTL_LOCALES and _TEXT_COLUMN:
+        return x + max(0.0, _TEXT_COLUMN - width)
+    return x
 
 INK = "#f5f4ef"
 INK_2 = "#b4c1ba"
@@ -105,11 +136,176 @@ COPY = {
             "sub": "Puzzles from curated positions and\nfrom the games you lost.",
         },
     },
+    "es-ES": {
+        "01-dashboard": {
+            "eyebrow": "100 % SIN CONEXIÓN",
+            "head": ("TU AJEDREZ.", "TUS DATOS."),
+            "sub": "Elo, partidas y progreso de\nchess.com y Lichess – en tu dispositivo.",
+        },
+        "02-analysis": {
+            "eyebrow": "STOCKFISH A BORDO",
+            "head": ("ENTIENDE", "CADA JUGADA."),
+            "sub": "Toda la fuerza del motor en el aparato.\nSin nube, sin cuenta, sin esperas.",
+        },
+        "03-insights": {
+            "eyebrow": "ENCUENTRA TUS FALLOS",
+            "head": ("DESCUBRE", "TUS PATRONES."),
+            "sub": "Precisión por fase, balance de\naperturas y errores que se repiten.",
+        },
+        "04-study": {
+            "eyebrow": "PLAN DE ENTRENAMIENTO",
+            "head": ("ENTRENA", "CON PLAN."),
+            "sub": "Sesiones diarias que nacen de\ntus propias partidas.",
+        },
+        "05-repertoire": {
+            "eyebrow": "REPETICIÓN ESPACIADA",
+            "head": ("CONSTRUYE TU", "REPERTORIO."),
+            "sub": "Crea aperturas, repásalas y\nfíjalas para siempre.",
+        },
+        "06-puzzles": {
+            "eyebrow": "TÁCTICA",
+            "head": ("APRENDE DE", "TUS ERRORES."),
+            "sub": "Problemas de posiciones escogidas\ny de tus propias derrotas.",
+        },
+    },
+    "fr-FR": {
+        "01-dashboard": {
+            "eyebrow": "100 % HORS LIGNE",
+            "head": ("TES ÉCHECS.", "TES DONNÉES."),
+            "sub": "Classements, parties et progrès de\nchess.com et Lichess – sur ton appareil.",
+        },
+        "02-analysis": {
+            "eyebrow": "STOCKFISH À BORD",
+            "head": ("COMPRENDS", "CHAQUE COUP."),
+            "sub": "Toute la force du moteur sur l'appareil.\nSans cloud, sans compte, sans attente.",
+        },
+        "03-insights": {
+            "eyebrow": "TROUVE TES FAILLES",
+            "head": ("VOIS TES", "SCHÉMAS."),
+            "sub": "Précision par phase, bilan des\nouvertures et erreurs récurrentes.",
+        },
+        "04-study": {
+            "eyebrow": "PLAN D'ENTRAÎNEMENT",
+            "head": ("ENTRAÎNE-TOI", "AVEC UN PLAN."),
+            "sub": "Des séances quotidiennes nées de\ntes propres parties.",
+        },
+        "05-repertoire": {
+            "eyebrow": "RÉPÉTITION ESPACÉE",
+            "head": ("BÂTIS TON", "RÉPERTOIRE."),
+            "sub": "Crée tes ouvertures, révise-les et\ngarde-les en tête.",
+        },
+        "06-puzzles": {
+            "eyebrow": "TACTIQUE",
+            "head": ("APPRENDS DE", "TES ERREURS."),
+            "sub": "Des problèmes issus de positions choisies\net de tes propres défaites.",
+        },
+    },
+    "hi-IN": {
+        "01-dashboard": {
+            "eyebrow": "100 % ऑफ़लाइन",
+            "head": ("आपका शतरंज।", "आपका डेटा।"),
+            "sub": "chess.com और Lichess से रेटिंग, बाज़ियाँ\nऔर प्रगति – आपके ही डिवाइस पर।",
+        },
+        "02-analysis": {
+            "eyebrow": "इंजन साथ में",
+            "head": ("हर चाल", "समझें।"),
+            "sub": "पूरी इंजन शक्ति सीधे डिवाइस पर।\nन क्लाउड, न खाता, न इंतज़ार।",
+        },
+        "03-insights": {
+            "eyebrow": "कमज़ोरियाँ पहचानें",
+            "head": ("अपने पैटर्न", "देखें।"),
+            "sub": "चरण के अनुसार सटीकता, ओपनिंग का\nहिसाब और बार-बार होती गलतियाँ।",
+        },
+        "04-study": {
+            "eyebrow": "अभ्यास योजना",
+            "head": ("योजना से", "अभ्यास करें।"),
+            "sub": "रोज़ की इकाइयाँ, जो आपकी अपनी\nबाज़ियों से बनती हैं।",
+        },
+        "05-repertoire": {
+            "eyebrow": "अंतराल दोहराव",
+            "head": ("अपना रेपर्टवार", "बनाएँ।"),
+            "sub": "ओपनिंग जोड़ें, दोहराएँ और\nहमेशा के लिए याद रखें।",
+        },
+        "06-puzzles": {
+            "eyebrow": "रणनीति",
+            "head": ("गलतियों से", "सीखें।"),
+            "sub": "चुनी हुई स्थितियों और अपनी हारों से\nबनी पहेलियाँ।",
+        },
+    },
+    "ar": {
+        "01-dashboard": {
+            "eyebrow": "دون اتصال تمامًا",
+            "head": ("شطرنجك.", "بياناتك."),
+            "sub": "التصنيفات والمباريات والتقدّم من\nchess.com وLichess — على جهازك.",
+        },
+        "02-analysis": {
+            "eyebrow": "المحرك على متن الجهاز",
+            "head": ("افهم", "كل نقلة."),
+            "sub": "قوة المحرك كاملةً على الجهاز.\nبلا سحابة، بلا حساب، بلا انتظار.",
+        },
+        "03-insights": {
+            "eyebrow": "اكتشف نقاط ضعفك",
+            "head": ("اعرف", "أنماطك."),
+            "sub": "الدقة حسب المرحلة، وسجل\nالافتتاحيات، والأخطاء المتكررة.",
+        },
+        "04-study": {
+            "eyebrow": "خطة تدريب",
+            "head": ("تدرّب", "بخطة."),
+            "sub": "وحدات يومية تنبع من\nمبارياتك أنت.",
+        },
+        "05-repertoire": {
+            "eyebrow": "تكرار متباعد",
+            "head": ("ابنِ", "ذخيرتك."),
+            "sub": "أضف الافتتاحيات وراجعها\nحتى ترسخ في ذهنك.",
+        },
+        "06-puzzles": {
+            "eyebrow": "تكتيك",
+            "head": ("تعلّم من", "أخطائك."),
+            "sub": "ألغاز من أوضاع مختارة\nومن مبارياتك الخاسرة.",
+        },
+    },
+    "zh-CN": {
+        "01-dashboard": {
+            "eyebrow": "100 % 离线",
+            "head": ("你的棋。", "你的数据。"),
+            "sub": "来自 chess.com 与 Lichess 的等级分、\n对局和进步 —— 全在你的设备上。",
+        },
+        "02-analysis": {
+            "eyebrow": "内置 STOCKFISH",
+            "head": ("读懂", "每一着棋。"),
+            "sub": "完整引擎算力直接在设备上运行。\n不上云、不注册、不用等。",
+        },
+        "03-insights": {
+            "eyebrow": "找出弱点",
+            "head": ("看清你的", "行棋模式。"),
+            "sub": "按阶段的准确率、开局战绩\n和反复出现的错误。",
+        },
+        "04-study": {
+            "eyebrow": "训练计划",
+            "head": ("按计划", "去训练。"),
+            "sub": "每日训练单元，全部源自\n你自己的对局。",
+        },
+        "05-repertoire": {
+            "eyebrow": "间隔重复",
+            "head": ("建立你的", "开局库。"),
+            "sub": "录入开局、反复复习，\n真正记进脑子里。",
+        },
+        "06-puzzles": {
+            "eyebrow": "战术",
+            "head": ("从错误中", "学习。"),
+            "sub": "题目来自精选局面\n和你自己输掉的棋。",
+        },
+    },
 }
 
 FEATURE_COPY = {
     "de-DE": ("VERSTEHE", "DEIN SPIEL.", "Analyse · Insights · Training", "LOKAL · PRIVAT · OHNE KONTO"),
     "en-US": ("UNDERSTAND", "YOUR GAME.", "Analysis · Insights · Training", "LOCAL · PRIVATE · NO ACCOUNT"),
+    "es-ES": ("ENTIENDE", "TU JUEGO.", "Análisis · Estadísticas · Entrenamiento", "LOCAL · PRIVADO · SIN CUENTA"),
+    "fr-FR": ("COMPRENDS", "TON JEU.", "Analyse · Statistiques · Entraînement", "LOCAL · PRIVÉ · SANS COMPTE"),
+    "hi-IN": ("अपना खेल", "समझें।", "विश्लेषण · अंतर्दृष्टि · अभ्यास", "स्थानीय · निजी · बिना खाते"),
+    "ar": ("افهم", "لعبتك.", "تحليل · رؤى · تدريب", "محلي · خاص · بلا حساب"),
+    "zh-CN": ("读懂", "你的棋。", "分析 · 洞察 · 训练", "本地 · 私密 · 无需账号"),
 }
 
 
@@ -222,24 +418,26 @@ def chessboard_overlay(
     return overlay
 
 
-def tracked_width(text: str, typeface: ImageFont.FreeTypeFont, tracking: float) -> float:
-    if not text:
-        return 0.0
-    return sum(typeface.getlength(char) for char in text) + tracking * (len(text) - 1)
+def typeface(repo_root: Path, size: int, weight: int = 400) -> storetext.Typeface:
+    """Type for the active locale · Inter for Latin, a shaped face otherwise."""
+    if storetext.is_shaped(_ACTIVE_LOCALE):
+        return storetext.make(_ACTIVE_LOCALE, None, size)
+    return storetext.PilTypeface(font(repo_root, size, weight), size)
+
+
+def tracked_width(text: str, face: storetext.Typeface, tracking: float) -> float:
+    return face.length(text, tracking)
 
 
 def tracked_text(
-    draw: ImageDraw.ImageDraw,
+    canvas: Image.Image,
     xy: tuple[float, float],
     text: str,
     fill: tuple[int, int, int],
-    typeface: ImageFont.FreeTypeFont,
+    face: storetext.Typeface,
     tracking: float,
 ) -> None:
-    x, y = xy
-    for char in text:
-        draw.text((x, y), char, fill=fill, font=typeface)
-        x += typeface.getlength(char) + tracking
+    face.draw(canvas, xy, text, fill, tracking)
 
 
 def fit_font(
@@ -250,13 +448,13 @@ def fit_font(
     minimum_size: int,
     weight: int,
     tracking_ratio: float,
-) -> ImageFont.FreeTypeFont:
+) -> storetext.Typeface:
     for size in range(start_size, minimum_size - 1, -2):
-        candidate = font(repo_root, size, weight)
+        candidate = typeface(repo_root, size, weight)
         tracking = size * tracking_ratio
         if max(tracked_width(line, candidate, tracking) for line in lines) <= max_width:
             return candidate
-    return font(repo_root, minimum_size, weight)
+    return typeface(repo_root, minimum_size, weight)
 
 
 def paste_rotated(
@@ -566,13 +764,13 @@ def draw_wordmark(
             (icon_size, icon_size), Image.Resampling.LANCZOS
         )
     canvas.alpha_composite(icon, (x, y))
-    draw = ImageDraw.Draw(canvas)
+    # The wordmark is the brand name and stays in Inter in every locale.
     tracked_text(
-        draw,
+        canvas,
         (x + icon_size + round(icon_size * 0.34), y + icon_size * 0.5 - text_size * 0.62),
         "KIEBITZ",
         hex_rgb(INK),
-        font(repo_root, text_size, 800),
+        storetext.PilTypeface(font(repo_root, text_size, 800), text_size),
         text_size * 0.13,
     )
 
@@ -580,9 +778,10 @@ def draw_wordmark(
 def draw_eyebrow(
     canvas: Image.Image, repo_root: Path, x: int, y: int, text: str, size: int
 ) -> int:
-    typeface = font(repo_root, size, 780)
-    tracking = size * 0.14
-    text_width = tracked_width(text, typeface, tracking)
+    face = typeface(repo_root, size, 780)
+    # Letter tracking only exists on the Latin path · see storetext.ShapedTypeface.
+    tracking = size * 0.14 if not storetext.is_shaped(_ACTIVE_LOCALE) else 0.0
+    text_width = tracked_width(text, face, tracking)
     pad_x = round(size * 1.15)
     height = round(size * 2.35)
     pill = Image.new("RGBA", (round(text_width) + 2 * pad_x, height), (0, 0, 0, 0))
@@ -590,14 +789,14 @@ def draw_eyebrow(
         (0, 0, pill.width - 1, height - 1), radius=height // 2, fill=(*hex_rgb(ACCENT), 255)
     )
     tracked_text(
-        ImageDraw.Draw(pill),
+        pill,
         (pad_x, height / 2 - size * 0.68),
         text,
         hex_rgb(ACCENT_DEEP),
-        typeface,
+        face,
         tracking,
     )
-    canvas.alpha_composite(pill, (x, y))
+    canvas.alpha_composite(pill, (round(line_x(x, pill.width)), y))
     return height
 
 
@@ -607,7 +806,7 @@ def shared_headline_font(
     max_width: int,
     start_size: int,
     minimum_size: int,
-) -> ImageFont.FreeTypeFont:
+) -> storetext.Typeface:
     """One size for the whole series, so the carousel headlines stay aligned."""
     lines = tuple(line for headline in headlines for line in headline)
     return fit_font(repo_root, lines, max_width, start_size, minimum_size, 880, -0.012)
@@ -619,30 +818,35 @@ def draw_headline(
     x: int,
     y: int,
     lines: tuple[str, str],
-    typeface: ImageFont.FreeTypeFont,
+    face: storetext.Typeface,
 ) -> int:
-    size = typeface.size
-    tracking = size * -0.012
-    leading = round(size * 0.94)
-    draw = ImageDraw.Draw(canvas)
+    size = face.size
+    tracking = size * -0.012 if not storetext.is_shaped(_ACTIVE_LOCALE) else 0.0
+    # Devanagari and Arabic carry marks above and below the line, so they need
+    # more room between the two headline rows than the all-caps Latin setting.
+    leading = round(size * (1.16 if storetext.is_shaped(_ACTIVE_LOCALE) else 0.94))
     for index, (line, color) in enumerate(zip(lines, (INK, ACCENT))):
+        start = line_x(x, tracked_width(line, face, tracking))
         tracked_text(
-            draw, (x, y + index * leading), line, hex_rgb(color), typeface, tracking
+            canvas, (start, y + index * leading), line, hex_rgb(color), face, tracking
         )
-    return leading * (len(lines) - 1) + round(size * 1.02)
+    # The all-caps Latin setting has no descenders to clear; Devanagari and
+    # Arabic do, so the block below has to start lower.
+    trailing = 1.36 if storetext.is_shaped(_ACTIVE_LOCALE) else 1.02
+    return leading * (len(lines) - 1) + round(size * trailing)
 
 
 def draw_sub(
     canvas: Image.Image, repo_root: Path, x: int, y: int, text: str, size: int
 ) -> int:
-    typeface = font(repo_root, size, 460)
-    draw = ImageDraw.Draw(canvas)
+    face = typeface(repo_root, size, 460)
     spacing = round(size * 0.42)
-    draw.multiline_text(
-        (x, y), text, fill=hex_rgb(INK_2), font=typeface, spacing=spacing
-    )
-    box = draw.multiline_textbbox((x, y), text, font=typeface, spacing=spacing)
-    return box[3] - y
+    line_height = round(size * 1.18) + spacing
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        start = line_x(x, tracked_width(line, face, 0.0))
+        tracked_text(canvas, (start, y + index * line_height), line, hex_rgb(INK_2), face, 0.0)
+    return line_height * (len(lines) - 1) + round(size * 1.18)
 
 
 # --------------------------------------------------------------------------- #
@@ -680,6 +884,7 @@ def render_portrait(
     margin = 84
     draw_wordmark(canvas, repo_root, margin, 66, 60, 27)
 
+    set_text_column(canvas.width - 2 * margin)
     y = 186
     y += draw_eyebrow(canvas, repo_root, margin, y, copy["eyebrow"], 25) + 34
     y += draw_headline(canvas, repo_root, margin, y, copy["head"], headline_font) + 20
@@ -714,6 +919,9 @@ def render_landscape(
     margin = 104
     draw_wordmark(canvas, repo_root, margin, 82, 62, 28)
 
+    # The device sits on the right from roughly x = 950 · the text column stops
+    # short of it so the flush-right Arabic setting cannot collide with it.
+    set_text_column(760)
     y = 322
     y += draw_eyebrow(canvas, repo_root, margin, y, copy["eyebrow"], 26) + 34
     y += draw_headline(canvas, repo_root, margin, y, copy["head"], headline_font) + 20
@@ -745,6 +953,8 @@ def render_feature(
     margin = 56
     draw_wordmark(canvas, repo_root, margin, 40, 48, 22)
 
+    # The two phones start around x = 600 on the 1024 px feature graphic.
+    set_text_column(480)
     y = 128
     y += draw_headline(
         canvas,
@@ -754,11 +964,14 @@ def render_feature(
         (top_line, accent_line),
         shared_headline_font(repo_root, [(top_line, accent_line)], 480, 62, 40),
     ) + 10
-    ImageDraw.Draw(canvas).text(
-        (margin + 2, y),
+    tagline_face = typeface(repo_root, 24, 460)
+    tracked_text(
+        canvas,
+        (line_x(margin + 2, tracked_width(tagline, tagline_face, 0.0)), y),
         tagline,
-        fill=hex_rgb(INK_2),
-        font=font(repo_root, 24, 460),
+        hex_rgb(INK_2),
+        tagline_face,
+        0.0,
     )
     draw_eyebrow(canvas, repo_root, margin, y + 60, trust, 18)
 
@@ -787,7 +1000,9 @@ def render_feature(
 
 
 def render_all(source_root: Path, output_root: Path, repo_root: Path) -> None:
+    storetext.check_available(list(LOCALES))
     for locale in LOCALES:
+        set_locale(locale)
         for device, target in TARGETS.items():
             source_dir = source_root / locale / device
             target_dir = output_root / locale / device

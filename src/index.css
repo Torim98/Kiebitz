@@ -8,7 +8,13 @@ html[data-store-capture="true"] :focus {
 }
 
 @theme {
-  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Inter deckt Latein ab; für Chinesisch, Devanagari und Arabisch greift der
+     Browser glyphenweise auf die nachfolgenden Familien zurück. Die Noto-Namen
+     stehen für Android, die Microsoft-Namen für die WebView2 unter Windows. */
+  --font-sans:
+    "Inter Variable", system-ui, -apple-system, "Segoe UI", "Noto Sans SC",
+    "Noto Sans Devanagari", "Noto Naskh Arabic", "Microsoft YaHei",
+    "Nirmala UI", "Segoe UI Historic", sans-serif;
 
   --color-bg: #0e0e0d;
   --color-panel: #171716;
@@ -183,6 +189,33 @@ html[data-store-capture="true"] .chess-backdrop {
 }
 .kiebitz-board [data-piece] {
   touch-action: none !important;
+}
+
+/* ── Rechts-nach-links (Arabisch) ────────────────────────────────────────────
+   Der LocaleProvider setzt dir="rtl" am <html>. Zwei Bereiche machen die
+   Drehung ausdrücklich nicht mit:
+
+   · das Brett — a bis h laufen von links nach rechts, egal in welcher Sprache
+     die Oberfläche steht; gespiegelt zeigte es eine andere Stellung;
+   · die Diagramme — Recharts setzt Tooltip und Cursor in absoluten Pixeln von
+     links und rechnet nicht mit einem gedrehten Container.
+
+   Züge, FEN und PGN sind ebenfalls ausgenommen: sie sind lateinische Notation
+   in einem arabischen Absatz, und der Bidi-Algorithmus würde "1. e4 e5" sonst
+   als "e5 e4 .1" auseinanderziehen. */
+[dir="rtl"] .kiebitz-board,
+[dir="rtl"] .recharts-wrapper,
+[dir="rtl"] .recharts-tooltip-wrapper,
+[dir="rtl"] .notation {
+  direction: ltr;
+}
+
+/* Zahlen mit Vorzeichen (+12, −0,4) sind in beiden Richtungen dieselbe
+   Einheit · ohne isolate wandert das Vorzeichen im arabischen Fließtext ans
+   falsche Ende. */
+[dir="rtl"] .numeric {
+  unicode-bidi: isolate;
+  direction: ltr;
 }
 
 /* Die Bottom-Navigation reicht bis unter die Systemleiste · ihr Hintergrund

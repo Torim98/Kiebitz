@@ -14,10 +14,13 @@ export function fenAfter(sans: string[] | undefined, count?: number): string {
 }
 
 // Aktive Anzeige-Locale für Zahlen/Daten; der LocaleProvider setzt sie.
-let formatLocale = "de-DE";
+// Der Wert ist ein fertiger BCP-47-Tag (siehe LOCALE_TAGS in i18n.tsx) · das
+// Modul kennt die Sprachliste bewusst nicht, sonst importierten sich util und
+// i18n gegenseitig.
+let formatLocale = "en-US";
 
-export function setFormatLocale(locale: "de" | "en"): void {
-  formatLocale = locale === "en" ? "en-US" : "de-DE";
+export function setFormatLocale(tag: string): void {
+  formatLocale = tag;
 }
 
 export function dateLocale(): string {

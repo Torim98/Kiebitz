@@ -36,7 +36,7 @@ import {
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useBackendInfo } from "../lib/backend";
 import { useMobileShell } from "../components/MobileShell";
-import { useI18n, type Locale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, useI18n, type Locale } from "../lib/i18n";
 import {
   dbInfo,
   backupDatabase,
@@ -919,13 +919,14 @@ export default function SettingsPage({
       summary: t("set.languageSummary"),
       content: (
         <>
-          <div className="flex gap-2">
-            <Chip active={locale === "de"} onClick={() => switchLocale("de")}>
-              {t("set.langDe")}
-            </Chip>
-            <Chip active={locale === "en"} onClick={() => switchLocale("en")}>
-              {t("set.langEn")}
-            </Chip>
+          {/* Jede Sprache steht in sich selbst · wer die App versehentlich auf
+              Hindi gestellt hat, findet „Deutsch" auch dann noch. */}
+          <div className="flex flex-wrap gap-2">
+            {LOCALES.map((l) => (
+              <Chip key={l} active={locale === l} onClick={() => switchLocale(l)}>
+                <span lang={l}>{LOCALE_NAMES[l]}</span>
+              </Chip>
+            ))}
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">
             {t(desktop ? "set.langNoteApp" : "set.langNote")}

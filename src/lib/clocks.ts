@@ -7,6 +7,8 @@
  * Index 0 gehört zum ersten Halbzug (Weiß), Index 1 zum zweiten (Schwarz).
  */
 
+import { LOCALE_TAGS, type Locale } from "./i18n";
+
 /** Bedenkzeit-Vorgabe einer Partie, aus dem PGN-Feld TimeControl. */
 export interface TimeControl {
   /** Grundzeit in Sekunden. */
@@ -110,14 +112,22 @@ export function clocksFromPgn(pgn: string, control: TimeControl | null): number[
   });
 }
 
+/**
+ * Dezimaltrennzeichen der Sprache · Intl weiß es für jede Locale, eine eigene
+ * Liste hier würde bei der nächsten Sprache vergessen.
+ */
+function decimalSeparator(locale: Locale): string {
+  return new Intl.NumberFormat(LOCALE_TAGS[locale]).format(1.1).charAt(1);
+}
+
 /** Restzeit als "1:07", "12:04" oder "0:08,4" · Zehntel erst unter 20 Sekunden. */
-export function formatClock(centiseconds: number, locale: "de" | "en" = "de"): string {
+export function formatClock(centiseconds: number, locale: Locale = "en"): string {
   const total = Math.max(0, centiseconds);
   const seconds = total / 100;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds - hours * 3600 - minutes * 60;
-  const decimal = locale === "de" ? "," : ".";
+  const decimal = decimalSeparator(locale);
   if (total < 2000) {
     const shown = rest.toFixed(1).replace(".", decimal);
     const pad = rest < 10 ? "0" : "";

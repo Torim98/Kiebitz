@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
+// Nur der Typ · zur Laufzeit importiert i18n dieses Modul, nicht umgekehrt.
+import type { Locale } from "./i18n";
 
 /** Spiegelt settings::Settings aus dem Rust-Backend. */
 export interface Settings {
-  locale: "de" | "en";
+  locale: Locale;
   db_path: string | null;
   engine_path: string | null;
   engine_threads: number; // 0 = automatisch

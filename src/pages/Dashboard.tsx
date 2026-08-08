@@ -7,13 +7,12 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Legend,
   type TooltipProps,
 } from "recharts";
 import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-react";
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
-import { useI18n } from "../lib/i18n";
+import { LOCALE_TAGS, useI18n } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
@@ -28,11 +27,12 @@ import type { PageId } from "../App";
 import { isStoreCapture } from "../lib/storeCapture";
 
 /**
- * Tooltip des Ratingverlaufs. Die Linie hat mehrere Stützpunkte je Monat,
- * abgelesen wird aber weiterhin genau ein Wert je Serie und Monat · alles
- * andere wäre eine Genauigkeit, die die Zahl nicht hergibt.
+ * Tooltip des Ratingverlaufs. Die Linie hat einen Stützpunkt je Tag, also
+ * steht im Kopf auch der Tag und darunter der an diesem Tag gültige Stand ·
+ * ein Monatsname über einer Tageszahl wäre eine Auskunft über den falschen
+ * Zeitraum.
  */
-function MonthTooltip({
+function DayTooltip({
   active,
   payload,
   series,
@@ -43,11 +43,11 @@ function MonthTooltip({
 }) {
   const point = payload?.[0]?.payload as HistoryPoint | undefined;
   if (!active || !point) return null;
-  const rows = series.filter((s) => point.monthly?.[s.key] != null);
+  const rows = series.filter((s) => point[s.key] != null);
   if (rows.length === 0) return null;
   return (
     <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 shadow-xl">
-      <div className="mb-1 text-[11.5px] text-ink3">{point.monthLabel}</div>
+      <div className="mb-1 text-[11.5px] text-ink3">{point.dayLabel || point.monthLabel}</div>
       {rows.map((s) => (
         <div key={s.key} className="flex items-center gap-2 text-[12.5px] text-ink">
           <span
@@ -55,10 +55,44 @@ function MonthTooltip({
             style={{ background: colors[s.id] ?? chart.draw }}
           />
           <span className="text-ink2">{s.label}:</span>
-          <span className="font-medium">{deInt(point.monthly[s.key]!)}</span>
+          <span className="font-medium">{deInt(point[s.key] as number)}</span>
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Legende des Ratingverlaufs · bewusst außerhalb des Charts.
+ *
+ * Die eingebaute Recharts-Legende sitzt in der Zeichenfläche und bekommt eine
+ * feste Höhe. Auf Telefonbreite passen die vier Modusnamen dort nicht in eine
+ * Zeile; sie brechen um, laufen aus ihrer Höhe heraus und schieben sich über
+ * die oberste Gitterlinie. Als normaler Textfluss unter dem Diagramm darf sie
+ * dagegen umbrechen, so viele Zeilen belegen wie nötig, und die Zeichenfläche
+ * bleibt unangetastet.
+ */
+function HistoryLegend({
+  series,
+  colors,
+}: {
+  series: RatingHistorySeries[];
+  colors: Record<string, string>;
+}) {
+  if (series.length === 0) return null;
+  return (
+    <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-line pt-3">
+      {series.map((s) => (
+        <li key={s.id} className="flex items-center gap-1.5 text-[11.5px] text-ink2">
+          <span
+            aria-hidden
+            className="inline-block h-0.5 w-4 rounded-full"
+            style={{ background: colors[s.id] ?? chart.draw }}
+          />
+          {s.label}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -117,18 +151,22 @@ export default function Dashboard({
     const date = new Date();
     date.setDate(1);
     date.setMonth(date.getMonth() - (ratingHistory.length - 1 - index));
-    const monthLabel = date.toLocaleDateString(locale === "de" ? "de-DE" : "en-US", { month: "short" });
+    const monthLabel = date.toLocaleDateString(LOCALE_TAGS[locale], { month: "short" });
     return {
       ...point,
       month: monthLabel,
       monthLabel,
-      monthly: { cc: point.cc, li: point.li },
+      dayLabel: monthLabel,
     };
   });
-  const historySeries: RatingHistorySeries[] = dash?.historySeries ?? [
+  const allSeries: RatingHistorySeries[] = dash?.historySeries ?? [
     { key: "cc", id: "cc", platform: "chess.com" as const, timeClass: "rapid", label: "chess.com" },
     { key: "li", id: "li", platform: "lichess" as const, timeClass: "rapid", label: "lichess" },
   ];
+  // Ein Modus, der im gezeigten Halbjahr keinen einzigen Stützpunkt hat, zieht
+  // keine Linie · dann gehört er auch nicht in die Legende. Vorher standen dort
+  // Namen ohne sichtbare Entsprechung im Diagramm.
+  const historySeries = allSeries.filter((s) => history.some((point) => point[s.key] != null));
   const historyColors: Record<string, string> = {
     "chess.com-rapid": chart.cc,
     "chess.com-blitz": chart.gold,
@@ -205,18 +243,13 @@ export default function Dashboard({
           <ResponsiveContainer width="100%" height={230}>
             <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
               <CartesianGrid stroke={chart.grid} vertical={false} />
+              {/* Beschriftet ist nur der Monatserste; alle anderen Tage tragen
+                  einen leeren Namen und bleiben dadurch stumm. */}
               <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={0} />
               <YAxis domain={live ? ["auto", "auto"] : [1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
               <Tooltip
-                content={<MonthTooltip series={historySeries} colors={historyColors} />}
+                content={<DayTooltip series={historySeries} colors={historyColors} />}
                 cursor={{ stroke: chart.axis }}
-              />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                height={28}
-                iconType="plainline"
-                formatter={(v) => <span className="text-[12px] text-ink2">{v}</span>}
               />
               {historySeries.map((series) => (
                 // Bewusst „linear": der Verlauf soll springen wie die
@@ -235,6 +268,7 @@ export default function Dashboard({
               ))}
             </LineChart>
           </ResponsiveContainer>
+          <HistoryLegend series={historySeries} colors={historyColors} />
         </Card>
 
         <div className="flex flex-col gap-4">

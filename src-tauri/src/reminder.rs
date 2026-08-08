@@ -86,32 +86,78 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
 }
 
 /// Kurztexte der Erinnerung. Bewusst dupliziert statt aus dem Frontend geladen:
-/// der Headless-Lauf hat kein WebView.
+/// der Headless-Lauf hat kein WebView. Die Vorlagen tragen `{n}` an derselben
+/// Stelle wie die Wörterbücher unter src/lib/locales · eine unbekannte Sprache
+/// fällt auf Englisch zurück.
 #[cfg(any(desktop, test))]
-fn phrase(locale: &str, key: &str, n: i64) -> String {
-    let english = locale == "en";
-    match (key, english) {
-        ("study", true) => format!("{n} planned units"),
-        ("study", false) => format!("{n} geplante Einheiten"),
-        ("repertoire", true) => format!("{n} reviews due"),
-        ("repertoire", false) => format!("{n} Wiederholungen fällig"),
-        ("puzzles", true) => format!("{n} puzzles to your daily goal"),
-        ("puzzles", false) => format!("{n} Puzzles bis zum Tagesziel"),
-        ("endgame", true) => "Endgame training pending".into(),
-        ("endgame", false) => "Endspiel-Training offen".into(),
-        ("analysis", true) => format!("{n} games unanalyzed"),
-        ("analysis", false) => format!("{n} Partien unanalysiert"),
-        _ => String::new(),
+fn template(locale: &str, key: &str) -> &'static str {
+    match key {
+        "study" => match locale {
+            "de" => "{n} geplante Einheiten",
+            "es" => "{n} unidades planificadas",
+            "fr" => "{n} séances prévues",
+            "hi" => "{n} नियोजित सत्र",
+            "ar" => "{n} وحدات مخططة",
+            "zh" => "{n} 个计划单元",
+            _ => "{n} planned units",
+        },
+        "repertoire" => match locale {
+            "de" => "{n} Wiederholungen fällig",
+            "es" => "{n} repasos pendientes",
+            "fr" => "{n} révisions à faire",
+            "hi" => "{n} दोहराव बाकी",
+            "ar" => "{n} مراجعات مستحقة",
+            "zh" => "{n} 项复习到期",
+            _ => "{n} reviews due",
+        },
+        "puzzles" => match locale {
+            "de" => "{n} Puzzles bis zum Tagesziel",
+            "es" => "{n} problemas para tu meta diaria",
+            "fr" => "{n} problèmes avant ton objectif du jour",
+            "hi" => "दैनिक लक्ष्य तक {n} पहेलियाँ",
+            "ar" => "{n} ألغاز حتى هدفك اليومي",
+            "zh" => "距离每日目标还差 {n} 道题",
+            _ => "{n} puzzles to your daily goal",
+        },
+        "endgame" => match locale {
+            "de" => "Endspiel-Training offen",
+            "es" => "Entrenamiento de finales pendiente",
+            "fr" => "Entraînement de finales en attente",
+            "hi" => "अंत्यखेल अभ्यास बाकी",
+            "ar" => "تدريب النهايات معلّق",
+            "zh" => "残局训练待完成",
+            _ => "Endgame training pending",
+        },
+        "analysis" => match locale {
+            "de" => "{n} Partien unanalysiert",
+            "es" => "{n} partidas sin analizar",
+            "fr" => "{n} parties non analysées",
+            "hi" => "{n} गेम बिना विश्लेषण",
+            "ar" => "{n} مباريات دون تحليل",
+            "zh" => "{n} 局未分析",
+            _ => "{n} games unanalyzed",
+        },
+        _ => "",
     }
 }
 
 #[cfg(any(desktop, test))]
+fn phrase(locale: &str, key: &str, n: i64) -> String {
+    template(locale, key).replace("{n}", &n.to_string())
+}
+
+#[cfg(any(desktop, test))]
 pub fn title(locale: &str) -> String {
-    if locale == "en" {
-        "Kiebitz · training".into()
-    } else {
-        "Kiebitz · Training".into()
+    match locale {
+        "de" => "Kiebitz · Training",
+        "es" => "Kiebitz · entrenamiento",
+        "fr" => "Kiebitz · entraînement",
+        "hi" => "Kiebitz · अभ्यास",
+        "ar" => "Kiebitz · تدريب",
+        "zh" => "Kiebitz · 训练",
+        _ => "Kiebitz · training",
     }
+    .into()
 }
 
 /// Erinnerungstext aus den aktivierten Kategorien; None = nichts zu tun.

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GamesFilter } from "./gameUi";
 import type { EndgameCategory } from "../data/endgames";
+import { capturePage } from "./storeCapture";
 
 export type PageId =
   | "dashboard"
@@ -49,6 +50,29 @@ export type RouteParams = Omit<Route, "page">;
 /** Die Wurzel des Stapels · von hier beendet Zurück die App. */
 const ROOT: Route = { page: "dashboard" };
 
+const PAGES: readonly PageId[] = [
+  "dashboard",
+  "games",
+  "analysis",
+  "repertoire",
+  "endgame",
+  "puzzles",
+  "study",
+  "insights",
+  "settings",
+  "support",
+];
+
+/**
+ * Startstapel. Normalerweise das Dashboard; im Aufnahmemodus für die
+ * Store-Bilder darf `?page=` eine andere Seite vorgeben (siehe storeCapture.ts).
+ */
+function initialStack(): Route[] {
+  const wanted = capturePage();
+  const page = PAGES.find((id) => id === wanted);
+  return page && page !== ROOT.page ? [ROOT, { page }] : [ROOT];
+}
+
 export interface NavStack {
   route: Route;
   /** Tiefe des Stapels; 1 heißt "auf der Wurzel". */
@@ -67,7 +91,7 @@ function depthOf(state: unknown): number {
 }
 
 export function useNavStack(): NavStack {
-  const [stack, setStack] = useState<Route[]>([ROOT]);
+  const [stack, setStack] = useState<Route[]>(initialStack);
   // Der Ref führt den Stapel synchron mit; History-Aufrufe dürfen nicht auf
   // den nächsten Render warten.
   const stackRef = useRef<Route[]>(stack);
@@ -77,7 +101,12 @@ export function useNavStack(): NavStack {
   }, []);
 
   useEffect(() => {
+    // Die History spiegelt die Stapeltiefe · sie ist beim Start nur dann
+    // größer als eins, wenn der Aufnahmemodus eine Seite vorgegeben hat.
     window.history.replaceState({ kd: 1 }, "");
+    for (let depth = 2; depth <= stackRef.current.length; depth++) {
+      window.history.pushState({ kd: depth }, "");
+    }
     const onPop = (e: PopStateEvent) => {
       const kd = depthOf(e.state);
       if (stackRef.current.length > kd) set(stackRef.current.slice(0, kd));

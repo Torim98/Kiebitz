@@ -18,6 +18,17 @@ export function isMobilePreview(): boolean {
   return devFlag("mobile-preview");
 }
 
+/**
+ * Startseite für den Aufnahmelauf (scripts/capture-store-assets.mjs). Ohne sie
+ * müsste das Skript sich durch eine lokalisierte Navigation klicken · und die
+ * Seiten Repertoire und Puzzles liegen mobil ohnehin nur im Überlaufmenü.
+ * Nur im Aufnahmemodus wirksam, Produktions-Builds sehen den Parameter nie.
+ */
+export function capturePage(): string | null {
+  if (!isStoreCapture()) return null;
+  return new URLSearchParams(window.location.search).get("page");
+}
+
 function devFlag(name: string): boolean {
   const localPreview = window.location.hostname === "127.0.0.1"
     || window.location.hostname === "localhost";
