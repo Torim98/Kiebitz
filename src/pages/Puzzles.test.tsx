@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
 import { fenAfter } from "../lib/util";
 import Puzzles from "./Puzzles";
 
@@ -134,6 +135,46 @@ describe("Puzzle training", () => {
     // Sie sperrt aber nicht aus, was schon da ist.
     fireEvent.click(screen.getByRole("button", { name: "Mit eigenen Aufgaben trainieren" }));
     expect(await screen.findByTestId("puzzle-board")).toBeTruthy();
+  });
+
+  it("offers the local dump file on the desktop but not on the phone", async () => {
+    const emptyDb = {
+      personal_rating: 1500,
+      db_total: 0,
+      lichess_total: 0,
+      own_total: 0,
+      attempts: 0,
+      solved: 0,
+      today_solved: 0,
+      today_attempts: 0,
+      streak_days: 0,
+      history: [],
+      themes: [],
+      importing: false,
+      imported_at: null,
+    };
+    mocks.puzzleStats.mockResolvedValue(emptyDb);
+
+    render(<LocaleProvider><Puzzles /></LocaleProvider>);
+    // Auf dem Desktop steht neben dem Download der Weg über eine lokale Datei ·
+    // samt Beispielpfad der laufenden Plattform.
+    await screen.findByText("Puzzle-Datenbank importieren");
+    expect(screen.getByPlaceholderText("C:\\Downloads\\lichess_db_puzzle.csv.zst")).toBeTruthy();
+    cleanup();
+
+    // Auf Handybreite fällt er weg: Dort gibt es keinen Dateimanager im Blick,
+    // und ein absoluter Pfad ist auf einer Bildschirmtastatur eine Zumutung.
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Puzzles />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByText("Puzzle-Datenbank importieren");
+    expect(screen.queryByPlaceholderText(/lichess_db_puzzle/)).toBeNull();
+    // Der Download-Weg bleibt · er ist auf dem Handy ohnehin der richtige.
+    expect(screen.getByRole("button", { name: /Herunterladen/ })).toBeTruthy();
   });
 
   it("keeps the theme covered until it is tapped", async () => {

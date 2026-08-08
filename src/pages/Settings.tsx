@@ -55,6 +55,7 @@ import {
   type EngineTest,
   type Settings,
 } from "../lib/settings";
+import { examplePaths } from "../lib/paths";
 import {
   importPuzzles,
   onPuzzleImportDone,
@@ -120,35 +121,6 @@ const WEEKDAY_KEYS = [
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none";
-
-/** Beispielpfade passend zur Plattform · auf Android sind C:\-Pfade sinnlos. */
-function examplePaths(platform?: string) {
-  if (platform === "android" || platform === "ios") {
-    return {
-      engine: "/data/local/tmp/stockfish",
-      syzygy: "/storage/emulated/0/Kiebitz/syzygy",
-      db: "/storage/emulated/0/Kiebitz/kiebitz.db",
-      backup: "/storage/emulated/0/Kiebitz/kiebitz-backup.db",
-      puzzleDump: "/storage/emulated/0/Download/lichess_db_puzzle.csv.zst",
-    };
-  }
-  if (platform === "linux" || platform === "macos") {
-    return {
-      engine: "/usr/local/bin/stockfish",
-      syzygy: "~/chess/syzygy",
-      db: "~/Kiebitz/kiebitz.db",
-      backup: "~/Kiebitz/kiebitz-backup.db",
-      puzzleDump: "~/Downloads/lichess_db_puzzle.csv.zst",
-    };
-  }
-  return {
-    engine: "C:\\Engines\\stockfish.exe",
-    syzygy: "D:\\Schach\\syzygy",
-    db: "C:\\Kiebitz\\kiebitz.db",
-    backup: "C:\\Kiebitz\\kiebitz-backup.db",
-    puzzleDump: "C:\\Downloads\\lichess_db_puzzle.csv.zst",
-  };
-}
 
 function NumberField({
   label,

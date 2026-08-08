@@ -42,6 +42,8 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
+import { useMobileShell } from "../components/MobileShell";
+import { examplePaths } from "../lib/paths";
 import { dateLocale, deInt } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
 
@@ -194,10 +196,18 @@ function ImportView({
   onSkip?: () => void;
 }) {
   const t = useT();
+  const backend = useBackendInfo();
+  // Auf dem Handy führt der Datei-Weg ins Leere: Es gibt keinen Dateimanager
+  // im Blickfeld, die Tastatur müsste einen absoluten Pfad tippen, und der
+  // Download-Knopf darüber tut dasselbe in einem Schritt. Wer die Datei doch
+  // von Hand legen will, findet das Feld weiterhin in den Einstellungen unter
+  // „Puzzle-Datenbank" · dort steht auch ein Beispielpfad, der zum Gerät passt.
+  const mobile = useMobileShell();
   const [running, setRunning] = useState(stats.importing);
   const [progress, setProgress] = useState<PuzzleImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [path, setPath] = useState("");
+  const examplePath = examplePaths(backend.info?.platform).puzzleDump;
 
   useEffect(() => {
     const cleanups: (() => void)[] = [];
@@ -271,18 +281,20 @@ function ImportView({
                 {t(stats.import_resumable ? "pz.resumeImport" : "pz.downloadImport")}
               </Button>
             </div>
-            <div className="mt-4 border-t border-line pt-4">
-              <div className="mb-2 text-[12px] text-ink3">{t("pz.fromFile")}</div>
-              <div className="flex gap-2">
-                <input
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="C:\Downloads\lichess_db_puzzle.csv.zst"
-                  className="flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-                />
-                <Button onClick={() => path.trim() && start(path.trim())}>{t("common.import")}</Button>
+            {!mobile && (
+              <div className="mt-4 border-t border-line pt-4">
+                <div className="mb-2 text-[12px] text-ink3">{t("pz.fromFile")}</div>
+                <div className="flex gap-2">
+                  <input
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder={examplePath}
+                    className="flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+                  />
+                  <Button onClick={() => path.trim() && start(path.trim())}>{t("common.import")}</Button>
+                </div>
               </div>
-            </div>
+            )}
             {onSkip && (
               <div className="mt-4 border-t border-line pt-4">
                 <p className="mb-2 text-[12px] leading-relaxed text-ink3">
