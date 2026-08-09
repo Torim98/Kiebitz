@@ -53,19 +53,24 @@ sha2 = "0.10"
 # Signierte Desktop-Auto-Updates laufen über den Tauri-Updater. Android-
 # Sideload-Builds prüfen denselben Release-Feed; Play-Builds kompilieren diesen
 # Pfad über das Feature `play-store` vollständig heraus.
+#
+# Dieselbe Bedingung ist Tauris `desktop`-Alias, unter dem in sync.rs der Hub
+# steht. Die drei Sync-Crates gehören deshalb hierher und nicht unter
+# `cfg(windows)`: dort fehlten sie einem macOS- oder Linux-Build, obwohl der
+# Hub-Code dort mitkompiliert wird.
 # qrcode: erzeugt den Pairing-QR (Desktop-Hub zeigt ihn, das Handy scannt).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
-
-# Windows-Toasts direkt ansteuern: das Notification-Plugin verschluckt Fehler,
-# und die Erinnerung soll melden, wenn Windows sie ablehnt.
-[target.'cfg(windows)'.dependencies]
-tauri-winrt-notification = "0.7"
 qrcode = { version = "0.14", default-features = false }
 # Sync-Server (Desktop als Hub) — HTTPS mit dauerhaftem selbstsigniertem Zertifikat.
 tiny_http = { version = "0.12", features = ["ssl-rustls"] }
 rcgen = "0.13.2"
 rustls-pemfile = "2"
+
+# Windows-Toasts direkt ansteuern: das Notification-Plugin verschluckt Fehler,
+# und die Erinnerung soll melden, wenn Windows sie ablehnt.
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
 
 # QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops per Kamera.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

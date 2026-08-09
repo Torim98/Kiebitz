@@ -2,10 +2,11 @@
 
 How to build, package, and distribute Kiebitz. The app is a Tauri 2 project: a
 Rust core plus a Vite/React frontend. The **desktop** build is the primary
-product (a native installer per OS, with auto-update). An **Android** build
-exists too (Phase 4) — a signed, sideloaded APK that CI now builds and attaches
-to each release, plus a separate Google Play AAB flavor; see *Android build*
-below.
+product and CI builds it for **Windows, macOS and Linux**, each with
+auto-update. An **Android** build exists too (Phase 4) — a signed, sideloaded
+APK that CI attaches to each release, plus a separate Google Play AAB flavor;
+see *Android build* below. There is no iOS build; the reason is under *Code
+signing & notarization → iOS*.
 
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
@@ -124,10 +125,16 @@ app, where `resolve_engine` already expects it.
 
 Notes:
 
-- **Cross-platform**: the resource above is Windows-only. For multi-OS releases,
-  ship the correct per-OS/arch binary (`stockfish` vs `stockfish.exe`, avx2/bmi2
-  vs generic) — either with OS-specific `resources`, or via Tauri's `externalBin`
-  sidecar mechanism using target-triple-suffixed names.
+- **Cross-platform**: the filename differs per OS, so the resource list does
+  too. Tauri merges a platform config over the base one automatically, and each
+  of `tauri.macos.conf.json`, `tauri.linux.conf.json` and
+  `tauri.android.conf.json` replaces `bundle.resources` with its own list —
+  `binaries/stockfish` without the `.exe` on macOS and Linux, and no engine
+  resource at all on Android (there Stockfish ships as
+  `jniLibs/<abi>/libstockfish.so`, the only place Android permits execution
+  from). The base `tauri.conf.json` stays the Windows case.
+  The bundler copies resources with their permission bits, so the executable
+  flag survives into the `.app`, the AppImage and the `.deb`/`.rpm`.
 - **Licensing**: Stockfish is **GPL-3.0** and Kiebitz distributes its unmodified
   official binary as a separate UCI process. `resources/stockfish/NOTICE.txt`
   records Stockfish 18, the exact source commit, official binary URLs and their
@@ -281,15 +288,46 @@ overwrites them:
 
 ## Code signing & notarization
 
-Unsigned installers trigger OS warnings (SmartScreen on Windows, Gatekeeper on
-macOS). For distribution:
+Two different signatures are easy to confuse:
 
-- **Windows**: sign the `.msi`/`.exe` with a code-signing certificate. Configure
-  `bundle.windows.certificateThumbprint` (or sign in CI).
-- **macOS**: sign with a Developer ID certificate and notarize with Apple; set the
-  signing identity and notarization credentials in the build environment.
+- The **updater signature** (`TAURI_SIGNING_PRIVATE_KEY`) proves an update comes
+  from this project. It is set up and covers all three desktop platforms — see
+  *Auto-update* below.
+- The **OS code signature** proves the installer to the operating system. It is
+  **not** set up on any platform, so every download triggers a warning.
+
+State per platform, and what it would take:
+
+- **Windows**: SmartScreen shows "unknown publisher". A code-signing
+  certificate (OV, from ~150 €/year; EV clears the reputation hurdle
+  immediately) configured via `bundle.windows.certificateThumbprint` or signed
+  in CI would remove it.
+- **macOS**: the release builds are **unsigned and not notarized**, so Gatekeeper
+  refuses a double-click. Users open the app once via right-click → *Open*, or
+  clear the quarantine flag:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Kiebitz.app
+  ```
+
+  Removing that step needs an Apple Developer Program membership (99 $/year).
+  With it, add `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+  `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` as
+  repository secrets and pass them into the `tauri-action` step of the `desktop`
+  job — tauri-action signs and notarizes on its own once they are present, and
+  no other change is needed.
+- **Linux**: no signing mechanism to speak of; AppImage, `.deb` and `.rpm` are
+  distributed as they are.
 
 For private/personal use you can skip signing and dismiss the warnings.
+
+### iOS
+
+There is no iOS build and none is planned. Kiebitz runs Stockfish as a **child
+process** over UCI (`engine.rs`), which iOS forbids outright — an iOS port would
+have to link the engine in-process behind an FFI layer and reimplement the whole
+engine plumbing alongside the existing one. It also requires an Apple Developer
+Program membership. `ROADMAP.md` records the same conclusion.
 
 ## User data location
 
@@ -311,14 +349,29 @@ need to run locally**: it verifies the working tree and version, runs the test
 suite, updates all version files, commits, creates an annotated tag, and pushes
 `main` plus the tag. Pushing the tag starts the CI workflow.
 
-> **Scope:** pushing a tag now builds **both** the Windows desktop installer and
-> a signed **Android arm64 APK**, and attaches the APK to the same GitHub release
-> (`Kiebitz_<version>_arm64.apk`). The desktop app auto-updates; **Android does
-> not** — the APK is for manual/sideload install, and a newer one installs over
-> the old (keeping the on-device DB) only because CI signs every build with the
-> **same** keystore. The Android job runs only once the keystore secret is set
-> (see *One-time setup*); until then it is skipped and the desktop release is
-> unaffected.
+> **Scope:** pushing a tag builds four platforms and attaches everything to the
+> same GitHub release:
+>
+> | Platform | Artifacts | Auto-update |
+> | --- | --- | --- |
+> | Windows x64 | `.exe` (NSIS), `.msi` | yes |
+> | macOS arm64 | `.dmg`, `.app.tar.gz` | yes |
+> | Linux x64 | `.AppImage`, `.deb`, `.rpm` | AppImage only |
+> | Android arm64 | `Kiebitz_<version>_arm64.apk` | no (sideload) |
+>
+> Where auto-update says no, the reason differs. On Linux the Tauri updater
+> supports only the AppImage; `.deb` and `.rpm` belong to the package manager,
+> which for a manually installed file means updating by hand. Android is for
+> manual/sideload install, and a newer APK installs over the old one (keeping the
+> on-device DB) only because CI signs every build with the **same** keystore. The
+> Android job runs only once the keystore secret is set (see *One-time setup*);
+> until then it is skipped and the desktop release is unaffected.
+>
+> macOS builds are **unsigned and not notarized** — see *Code signing &
+> notarization* for what users have to do on first start, and for the secrets
+> that would remove that step. macOS is Apple Silicon only; Intel Macs would
+> need a second matrix entry on an Intel runner with `ARCH=x86-64-avx2` for
+> Stockfish, or a universal binary built from both slices via `lipo`.
 
 ### One-time setup
 
@@ -455,16 +508,26 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 
 ### What the workflow handles for you
 
-- **Engine**: fetches the pinned official Stockfish 18 Windows AVX2 archive into
-  `src-tauri/binaries/stockfish.exe` before the build (the binary is gitignored,
-  so it never lives in the repo). `bundle.resources` then ships it inside the
-  installer. For older CPUs, change the asset pattern in the workflow.
+- **Engine**: on Windows it fetches the pinned official Stockfish 18 AVX2
+  archive (hash-checked) into `src-tauri/binaries/stockfish.exe`; on macOS and
+  Linux it compiles the pinned Stockfish commit itself into
+  `src-tauri/binaries/stockfish` (`ARCH=apple-silicon` / `x86-64-avx2`), the
+  same way the Android job already does. Either way the binary is gitignored and
+  never lives in the repo, and `bundle.resources` ships it inside the installer.
+  For older CPUs, change the asset pattern resp. the `ARCH` value in the
+  workflow.
 - **Signing**: passes `TAURI_SIGNING_PRIVATE_KEY`, so `.sig` files and
-  `latest.json` are produced and uploaded automatically.
+  `latest.json` are produced and uploaded automatically. This is the *updater*
+  signature, not an OS code signature — see *Code signing & notarization*.
 - **Release orchestration**: `prepare-release` creates (or reuses) a private
-  draft. `desktop`, `android` and `stockfish-source` all depend only on that
-  small setup job, so they run in parallel. `publish` depends on all three and
-  publishes the draft last.
+  draft and writes the release notes. `desktop`, `android` and
+  `stockfish-source` all depend only on that small setup job, so they run in
+  parallel. `publish` depends on all three and publishes the draft last.
+- **Desktop matrix, deliberately serial**: the three desktop legs run with
+  `max-parallel: 1`. tauri-action maintains `latest.json` by downloading the
+  copy already on the release, adding its own platform entry and uploading it
+  again — two concurrent legs would read the same state and the second would
+  drop the first one's platform from the update feed.
 - **GPL source (`stockfish-source` job)**: fetches the pinned Stockfish commit
   with `git` — which validates the tree against the commit hash intrinsically,
   unlike a SHA-256 over GitHub's generated archives, which are not byte-stable —
@@ -481,10 +544,9 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
   (`tauri android build --apk --target aarch64`), and uploads
   `Kiebitz_<version>_arm64.apk` to the draft release. Without the keystore
   secret the job skips cleanly, leaving the desktop release green.
-- **Desktop scope**: Windows only, matching the primary target. To add
-  macOS/Linux, turn the desktop job into a matrix over `windows-latest` /
-  `macos-latest` / `ubuntu-22.04`, add per-OS Stockfish fetch + resources, and
-  (for macOS) signing and notarization credentials.
+- **Linux runner pin**: `ubuntu-22.04`, not `ubuntu-latest`. An AppImage binds
+  the glibc of the machine that built it, so building on the oldest supported
+  runner keeps the result usable on older distributions.
 
 ## Auto-update
 
@@ -524,7 +586,14 @@ The pieces that make it work:
 - **Manifest**: the release workflow (see *Releasing a new version*) generates
   and uploads `latest.json` for you — this is the normal path. The updater only
   offers versions greater than the installed one, so publishing a release is all
-  it takes to roll everyone forward.
+  it takes to roll everyone forward. One `latest.json` serves every platform;
+  each desktop matrix leg adds its own key (`windows-x86_64`, `darwin-aarch64`,
+  `linux-x86_64`), which is why those legs must not run concurrently.
+- **Linux caveat**: the updater installs AppImage updates only. A `.deb` or
+  `.rpm` install finds no matching entry and reports that it is up to date;
+  those users update by downloading the next release. Nothing breaks, but say so
+  on the download page rather than letting people wait for an update that never
+  comes.
 
   <details>
   <summary>Manual manifest (fallback, only if you build without CI)</summary>
@@ -552,9 +621,14 @@ The automated flow (see *Releasing a new version*) is the short version of this:
 
 1. On a clean `main`, run `.\scripts\release.ps1 -Version X.Y.Z`.
 2. Wait for the GitHub Actions run to finish, including the final `publish` job.
+   The three desktop legs run one after another, so this takes longer than a
+   Windows-only release did.
 3. Smoke-test: install the new release (or let an existing copy auto-update),
    import games, run a live analysis, confirm the database is untouched in the
    app-data directory.
+4. Check `latest.json` on the published release: it must list all three desktop
+   platforms (`windows-x86_64`, `darwin-aarch64`, `linux-x86_64`). A missing key
+   means that platform silently stops receiving updates.
 
 Doing it by hand instead (no CI): build with
 `TAURI_SIGNING_PRIVATE_KEY_PATH=~/.tauri/kiebitz.key npm run tauri build`, sign /

@@ -65,6 +65,44 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
+  rust-linux:
+    # Nur übersetzen, nicht testen. Die Tests laufen auf Windows; hier geht es
+    # allein darum, dass der Nicht-Windows-Zweig überhaupt kompiliert —
+    # `cfg(desktop)`-Code (Sync-Hub) und `cfg(not(windows))`-Zweige
+    # (Erinnerungen, Engine) sieht der Windows-Job nie. Ohne diesen Job fiele so
+    # ein Fehler erst im Release-Build für macOS/Linux auf, also nach dem Tag.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust einrichten
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust-Build cachen
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: linux-check
+
+      - name: Systemabhängigkeiten (WebKitGTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev patchelf file build-essential
+
+      # tauri-build prüft die in tauri.linux.conf.json gelisteten Ressourcen auf
+      # Existenz. Für einen reinen Compile-Check reicht eine leere Datei — die
+      # echte Engine holt erst der Release-Build.
+      - name: Stockfish-Platzhalter
+        run: |
+          mkdir -p src-tauri/binaries
+          : > src-tauri/binaries/stockfish
+
+      - name: Übersetzen
+        working-directory: src-tauri
+        run: cargo check --all-targets
+
   licenses:
     # Prüft, dass die gebündelte Lizenzsammlung zu den aktuellen Abhängigkeiten
     # passt. MIT/BSD/ISC verlangen die Weitergabe ihres Textes — eine veraltete

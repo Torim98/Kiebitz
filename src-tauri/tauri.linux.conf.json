@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "bundle": {
+    "resources": [
+      "binaries/stockfish",
+      "resources/stockfish/NOTICE.txt",
+      "resources/stockfish/COPYING.txt",
+      "resources/licenses/THIRD_PARTY_LICENSES.txt"
+    ]
+  }
+}

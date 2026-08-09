@@ -25,9 +25,9 @@ Shipped:
   defaults. (One dark theme by choice.)
 - **Mobile & sync:** Android build (per-ABI native Stockfish), responsive/touch
   UI, LAN device-to-device sync with the desktop as hub.
-- **Release:** auto-update via signed GitHub releases (desktop) and CI that also
-  builds + signs the Android arm64 APK and attaches it to each release. Mechanics
-  in `DEPLOYMENT.md`.
+- **Release:** auto-update via signed GitHub releases for Windows, macOS and
+  Linux, plus CI that builds + signs the Android arm64 APK and attaches it to
+  each release. Mechanics in `DEPLOYMENT.md`.
 
 ## Next up
 
@@ -35,6 +35,21 @@ Current priorities (added 2026-07-21):
 
 - [ ] **Bugfixing pass.** Work through UI/logic bugs, **starting with the Games
   tab** and continuing through the following tabs.
+- [x] **macOS and Linux in the release** (2026-08-09). The `desktop` job became a
+  matrix over `windows-latest`, `macos-latest` and `ubuntu-22.04`; the two new
+  platforms compile Stockfish from the same pinned commit the Android job uses,
+  and `tauri.macos.conf.json` / `tauri.linux.conf.json` swap the bundled engine
+  resource to the extension-less name. Three things had to be fixed for the code
+  to compile off Windows at all: `tiny_http`, `rcgen`, `rustls-pemfile` and
+  `qrcode` were declared under `cfg(windows)` although the sync hub they serve
+  is `cfg(desktop)`. A new `rust-linux` CI job (`cargo check` on Ubuntu) keeps
+  that class of error from reaching a tag again. The matrix runs
+  `max-parallel: 1` because tauri-action merges `latest.json` read-modify-write
+  and parallel legs would drop each other's platform from the update feed.
+  Linux auto-updates only via AppImage; macOS builds are unsigned and
+  Apple-Silicon-only, both documented in `DEPLOYMENT.md`. **iOS stays out** —
+  Stockfish runs as a child process, which iOS forbids, so a port means an
+  in-process FFI engine layer next to the existing one.
 - [x] **Study becomes a training programme** (2026-07-31). The tab no longer
   shows the top of the findings list; it answers what to train, how much, and
   whether it worked.

@@ -7,7 +7,8 @@ name: Release
 # Drei Phasen:
 #   prepare-release  — legt einen privaten Draft-Release an.
 #   desktop/android/ — bauen danach parallel und hängen ihre Artefakte an den
-#   stockfish-source   Draft (Letzterer den GPL-Quellcode der Engine).
+#   stockfish-source   Draft (Letzterer den GPL-Quellcode der Engine). `desktop`
+#                      ist eine Matrix über Windows, macOS und Linux.
 #   publish          — veröffentlicht den Draft erst, wenn alle drei erfolgreich
 #                      waren.
 on:
@@ -36,8 +37,21 @@ jobs:
             [ "$draft" = "true" ] || { echo "::error::Release $TAG ist bereits veröffentlicht."; exit 1; }
             echo "Wiederverwendung des vorhandenen Draft-Releases $TAG"
           else
-            gh release create "$TAG" --draft --title "Kiebitz $TAG" \
-              --notes "Automatically built from $TAG. Desktop installations update after publication; Android offers the signed APK in Settings."
+            # Der Text steht hier und nicht in tauri-action: das Draft entsteht
+            # einmal, die drei Desktop-Läufe würden ihn sonst nacheinander
+            # überschreiben.
+            cat > notes.md <<'NOTES'
+          Automatically built from the tag.
+
+          - **Windows** — `.exe` (NSIS) or `.msi`; installed copies auto-update.
+          - **macOS** — `.dmg` for Apple Silicon. The build is *not* notarized: on
+            first start use right-click → Open, or run
+            `xattr -dr com.apple.quarantine /Applications/Kiebitz.app`.
+          - **Linux** — `.AppImage`, `.deb` and `.rpm` for x86-64. Only the
+            AppImage auto-updates; `.deb`/`.rpm` are updated by hand.
+          - **Android** — the signed APK is offered in Settings.
+          NOTES
+            gh release create "$TAG" --draft --title "Kiebitz $TAG" --notes-file notes.md
           fi
           echo "release_id=$(gh release view "$TAG" --json id --jq .id)" >> "$GITHUB_OUTPUT"
 
@@ -84,7 +98,27 @@ jobs:
 
   desktop:
     needs: prepare-release
-    runs-on: windows-latest
+    name: desktop (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Nacheinander, nicht parallel. tauri-action pflegt die latest.json des
+      # Updaters, indem es die vorhandene vom Release lädt, den eigenen
+      # Plattform-Eintrag ergänzt und sie wieder hochlädt. Zwei gleichzeitige
+      # Jobs lesen denselben Stand und der zweite überschreibt den ersten —
+      # eine Plattform stünde dann nie im Feed.
+      max-parallel: 1
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows x64
+          # macos-latest ist Apple Silicon; der Build ist entsprechend arm64.
+          # Intel-Macs brauchen einen zweiten Lauf (siehe docs/DEPLOYMENT.md).
+          - os: macos-latest
+            label: macOS arm64
+          # Bewusst nicht ubuntu-latest: das AppImage bindet die glibc des
+          # Build-Systems, und 22.04 läuft auch auf älteren Distributionen.
+          - os: ubuntu-22.04
+            label: Linux x64
     steps:
       - uses: actions/checkout@v5
 
@@ -101,6 +135,16 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # WebKitGTK ist unter Linux die Webview; die übrigen Pakete braucht der
+      # Tauri-Bundler für AppImage, deb und rpm.
+      - name: Linux-Systemabhängigkeiten
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev libfuse2 patchelf file build-essential
+
       - name: Frontend-Abhängigkeiten installieren
         run: npm ci
 
@@ -108,6 +152,7 @@ jobs:
       # Bundle in src-tauri/binaries/ liegen. Release und Hash sind bewusst
       # gepinnt, damit der exakte GPL-Quellstand reproduzierbar bleibt.
       - name: Stockfish holen (Windows, AVX2)
+        if: runner.os == 'Windows'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -123,11 +168,45 @@ jobs:
           Copy-Item $exe.FullName src-tauri/binaries/stockfish.exe
           Write-Host "Stockfish 18 gebündelt: stockfish-windows-x86-64-avx2.zip ($actual)"
 
+      # macOS und Linux: aus demselben gepinnten Commit bauen, den der
+      # stockfish-source-Job als Quellarchiv ans Release hängt — so wie es der
+      # Android-Job schon tut. Ein Commit-Pin ist dabei genauer als ein Hash auf
+      # ein fertiges Archiv: Er belegt, dass Binary und mitgelieferter Quellcode
+      # (GPL-3.0 §6) exakt zusammengehören.
+      - name: Stockfish bauen (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          commit="cb3d4ee9b47d0c5aae855b12379378ea1439675c"
+          git clone --filter=blob:none --no-checkout https://github.com/official-stockfish/Stockfish.git sf-src
+          git -C sf-src fetch --depth 1 origin "$commit"
+          git -C sf-src checkout --detach "$commit"
+          test "$(git -C sf-src rev-parse HEAD)" = "$commit"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            arch=apple-silicon
+            comp=clang
+          else
+            arch=x86-64-avx2
+            comp=gcc
+          fi
+          cd sf-src/src
+          # Lädt die eingebetteten NNUE-Netze; ohne sie bricht der Build ab.
+          ../scripts/net.sh
+          make -j2 build ARCH="$arch" COMP="$comp"
+          strip stockfish
+          cd ../..
+          mkdir -p src-tauri/binaries
+          cp sf-src/src/stockfish src-tauri/binaries/stockfish
+          chmod +x src-tauri/binaries/stockfish
+          echo "Stockfish 18 ($arch/$comp) aus $commit gebaut"
+
       - name: Bauen, signieren & Artefakte an Draft-Release anhängen
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signaturschlüssel für den Updater (Repo-Secret, siehe DEPLOYMENT.md).
+          # Er signiert die Update-Pakete aller drei Plattformen; die
+          # Code-Signatur des jeweiligen Betriebssystems ist etwas anderes und
+          # gibt es bisher nur unter Windows (siehe DEPLOYMENT.md → Signing).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
@@ -136,7 +215,6 @@ jobs:
           releaseId: ${{ needs.prepare-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
           releaseName: "Kiebitz ${{ github.ref_name }}"
-          releaseBody: "Automatically built from ${{ github.ref_name }}. Desktop installations update on the next start; Android offers the signed APK in Settings."
           # Der Draft existiert bereits; tauri-action lädt Signaturen und
           # latest.json daran hoch. Veröffentlichung erfolgt im publish-Job.
           releaseDraft: true
@@ -289,6 +367,10 @@ jobs:
     # Bei einem fehlgeschlagenen Build bleibt der Draft als Diagnose-Artefakt
     # erhalten; nur ein vollständiger Release wird öffentlich. stockfish-source
     # gehört bewusst dazu: kein öffentliches Binary ohne seinen Quellcode.
+    #
+    # `desktop` ist eine Matrix — hier wird auf alle drei Betriebssysteme
+    # gewartet. Ein erneuter Lauf des Tags nimmt den Draft wieder auf, statt
+    # einen zweiten Release anzulegen (siehe prepare-release).
     needs: [stockfish-source, desktop, android]
     runs-on: ubuntu-latest
     steps:
