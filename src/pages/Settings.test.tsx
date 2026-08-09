@@ -21,6 +21,9 @@ vi.mock("../lib/i18n", async (importOriginal) => ({
     setLocale: vi.fn(),
     t: (key: string) => key,
   }),
+  // Die Tour hängt an useT statt an useI18n · ohne diesen Zweig stünde sie
+  // als einzige Komponente der Seite mit echten Texten im Test.
+  useT: () => (key: string) => key,
 }));
 vi.mock("../lib/settings", () => ({
   getSettings: mocks.getSettings,
@@ -229,6 +232,7 @@ describe("Settings loading", () => {
       .map((heading) => heading.textContent);
     expect(order).toEqual([
       "set.language",
+      "set.tour",
       "set.accounts",
       "set.sound",
       "set.notify",
@@ -242,5 +246,34 @@ describe("Settings loading", () => {
       "set.about",
       "set.reset",
     ]);
+  });
+
+  it("replays the onboarding tour on demand", async () => {
+    mocks.getSettings.mockResolvedValue(androidSettings);
+    mocks.backend = {
+      mode: "desktop",
+      info: { version: "0.6.0", backend: "tauri", platform: "windows" },
+    };
+
+    await act(async () => {
+      render(<SettingsPage />);
+    });
+
+    // Nichts liegt über der Seite, bis der Bereich es öffnet.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "set.tourOpen" }));
+
+    const tour = screen.getByRole("dialog");
+    expect(tour.textContent).toContain("tour.s1.title");
+    // Die Punkte unter der Folie springen direkt · fünf Stück, einer je Folie.
+    const dots = screen.getAllByRole("button", { name: "tour.step" });
+    expect(dots.length).toBe(5);
+    fireEvent.click(dots[4]);
+    expect(tour.textContent).toContain("tour.s5.title");
+    // Auf der letzten Folie gibt es kein Überspringen mehr, nur noch Abschließen.
+    expect(screen.queryByRole("button", { name: "tour.skip" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "tour.close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

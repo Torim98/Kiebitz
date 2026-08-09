@@ -28,12 +28,36 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/** Schritt 1 (Sprache) überspringen. */
+/** Sprache bestätigen, Tour überspringen · übrig bleibt die Kontoabfrage. */
 function goToAccounts() {
-  fireEvent.click(screen.getByRole("button", { name: /Next/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Skip the tour/i }));
 }
 
 describe("Onboarding", () => {
+  it("explains the app between the language and the accounts step", () => {
+    render(
+      <LocaleProvider>
+        <Onboarding settings={fresh} onDone={vi.fn()} />
+      </LocaleProvider>
+    );
+
+    // Sprache bestätigen · danach steht die Erklärung, nicht die Kontoabfrage.
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
+    expect(screen.getByText(/Your games in one place/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/Lichess/i)).toBeNull();
+
+    // Bis zur letzten Folie durchklicken; dort führt die Tour weiter.
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
+    expect(screen.getByText(/Everything stays with you/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
+    expect(screen.getByLabelText(/Lichess/i)).toBeTruthy();
+
+    // Zurück aus der Kontoabfrage landet wieder in der Tour, nicht bei der Sprache.
+    fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
+    expect(screen.getByText(/Your games in one place/i)).toBeTruthy();
+  });
+
   it("stores a single account and kicks off the first import", async () => {
     render(
       <LocaleProvider>

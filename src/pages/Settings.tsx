@@ -13,6 +13,7 @@ import {
   ArchiveRestore,
   Bell,
   ChevronDown,
+  Compass,
   Cpu,
   Database,
   Download,
@@ -88,6 +89,7 @@ import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
+import AppTour from "../components/AppTour";
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
 
@@ -152,6 +154,7 @@ function NumberField({
 /** Bereichskennung · trägt Sprungmarke, Navigationseintrag und Nachladen. */
 type SectionId =
   | "language"
+  | "tour"
   | "accounts"
   | "sound"
   | "notify"
@@ -381,6 +384,10 @@ export default function SettingsPage({
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+
+  // Die Tour aus der Ersteinrichtung, hier auf Zuruf. Sie hält keinen Zustand
+  // und ändert nichts · deshalb reicht ein Schalter, kein Speichern.
+  const [tourOpen, setTourOpen] = useState(false);
 
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
@@ -903,6 +910,25 @@ export default function SettingsPage({
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">
             {t(desktop ? "set.langNoteApp" : "set.langNote")}
           </p>
+        </>
+      ),
+    },
+    {
+      // Direkt hinter der Sprache: Beides ist "ich bin hier neu" und nicht der
+      // tägliche Griff. Wer die Ersteinrichtung weggeklickt hat, findet die
+      // Erklärung damit an der ersten Stelle, an der er nachsieht.
+      id: "tour",
+      icon: Compass,
+      title: t("set.tour"),
+      summary: t("set.tourSummary"),
+      content: (
+        <>
+          <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.tourNote")}</p>
+          <div className="mt-3">
+            <Button primary onClick={() => setTourOpen(true)}>
+              <Compass size={14} /> {t("set.tourOpen")}
+            </Button>
+          </div>
         </>
       ),
     },
@@ -1952,6 +1978,8 @@ export default function SettingsPage({
           {sectionList}
         </div>
       )}
+
+      {tourOpen && <AppTour overlay onDone={() => setTourOpen(false)} />}
 
       {legalShown && (
         <div

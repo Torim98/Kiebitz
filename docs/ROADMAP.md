@@ -50,6 +50,13 @@ Current priorities (added 2026-07-21):
   Apple-Silicon-only, both documented in `DEPLOYMENT.md`. **iOS stays out** —
   Stockfish runs as a child process, which iOS forbids, so a port means an
   in-process FFI engine layer next to the existing one.
+- [x] **The app explains itself** (2026-08-09). `components/AppTour.tsx` — five
+  slides on what Kiebitz does with your games, how analysis, training and the
+  study plan connect, and what stays on the device. It runs as the middle step
+  of the first-run setup, between language and accounts, so the account question
+  arrives after the reason for it. The same component reopens from Settings →
+  *Kiebitz kurz erklärt* as an overlay. Deliberately stateless: no "already
+  seen" flag anywhere, because replaying it is the point.
 - [x] **Study becomes a training programme** (2026-07-31). The tab no longer
   shows the top of the findings list; it answers what to train, how much, and
   whether it worked.
