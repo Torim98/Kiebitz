@@ -1820,6 +1820,31 @@ export default function SettingsPage({
 
           <div className="mt-4 border-t border-line pt-3">
             <div className="text-[12px] font-medium uppercase tracking-[0.1em] text-ink3">
+              {t("set.aboutSupport")}
+            </div>
+            <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+              {t("set.aboutSupportNote")}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              <button
+                type="button"
+                onClick={() => openExternal("https://github.com/sponsors/Torim98")}
+                className="inline-flex items-center gap-1 text-[12.5px] text-accent transition-colors hover:text-ink"
+              >
+                <ExternalLink size={12} /> {t("set.aboutSupportGithub")}
+              </button>
+              <button
+                type="button"
+                onClick={() => openExternal("https://ko-fi.com/kiebitzchess")}
+                className="inline-flex items-center gap-1 text-[12.5px] text-accent transition-colors hover:text-ink"
+              >
+                <ExternalLink size={12} /> {t("set.aboutSupportKofi")}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-line pt-3">
+            <div className="text-[12px] font-medium uppercase tracking-[0.1em] text-ink3">
               {t("set.legal")}
             </div>
             {legalDocs.length ? (
