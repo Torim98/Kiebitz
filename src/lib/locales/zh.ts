@@ -1260,6 +1260,7 @@ export const zh: Record<Key, string> = {
   "plan.hygieneClock": "从第 {m} 着起你经常陷入时间紧张（占你着法的 {p} %）。",
   "plan.focusStart": "设为重点",
   "plan.focusStop": "结束重点",
+  "plan.focusComplete": "完成周期",
   "plan.cycleDay": "第 {d}/{n} 天",
   "plan.verdictImproved": "有效",
   "plan.verdictWorse": "变差",

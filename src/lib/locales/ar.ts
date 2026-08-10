@@ -1260,6 +1260,7 @@ export const ar: Record<Key, string> = {
   "plan.hygieneClock": "من النقلة {m} فصاعدًا تقع بانتظام في ضيق الوقت ({p} % من نقلاتك).",
   "plan.focusStart": "اجعله محور التركيز",
   "plan.focusStop": "أنهِ التركيز",
+  "plan.focusComplete": "أكمل الدورة",
   "plan.cycleDay": "اليوم {d}/{n}",
   "plan.verdictImproved": "ينجح",
   "plan.verdictWorse": "أسوأ",

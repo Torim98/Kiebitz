@@ -1277,6 +1277,7 @@ export const de = {
   "plan.hygieneClock": "Ab Zug {m} gerätst du regelmäßig in Zeitnot ({p} % deiner Züge).",
   "plan.focusStart": "Als Fokus setzen",
   "plan.focusStop": "Fokus beenden",
+  "plan.focusComplete": "Zyklus abschließen",
   "plan.cycleDay": "Tag {d}/{n}",
   "plan.verdictImproved": "wirkt",
   "plan.verdictWorse": "schlechter",

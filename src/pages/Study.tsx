@@ -49,6 +49,7 @@ import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
 import { de, deInt } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
+import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { DEMO_PLAN_STATE } from "./studyDemo";
 import { ENDGAME_TYPE_CATEGORY, type EndgameCategory } from "../data/endgames";
 import type { PageId } from "../App";
@@ -207,6 +208,18 @@ export default function Study({
     setBusy(true);
     try {
       await closeStudyFocus(focus.id, "dropped");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeFocus = async (focus: StudyFocus) => {
+    if (!desktop) return;
+    setBusy(true);
+    try {
+      await closeStudyFocus(focus.id, "done");
+      void maybeRequestPlayReview(backend.info, { kind: "focus-cycle-complete" });
       await load();
     } finally {
       setBusy(false);
@@ -406,6 +419,7 @@ export default function Study({
                       )
                     }
                     onStop={() => focus && !busy && stopFocus(focus)}
+                    onComplete={() => focus && !busy && completeFocus(focus)}
                     onAction={() => {
                       const action = prescription.action;
                       if (!action) return;

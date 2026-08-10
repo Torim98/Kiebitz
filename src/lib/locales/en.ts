@@ -1262,6 +1262,7 @@ export const en: Record<Key, string> = {
   "plan.hygieneClock": "From move {m} on you regularly run into time trouble ({p} % of your moves).",
   "plan.focusStart": "Make it the focus",
   "plan.focusStop": "End focus",
+  "plan.focusComplete": "Complete cycle",
   "plan.cycleDay": "Day {d}/{n}",
   "plan.verdictImproved": "working",
   "plan.verdictWorse": "worse",

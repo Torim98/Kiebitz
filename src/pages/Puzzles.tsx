@@ -37,6 +37,7 @@ import {
 } from "../lib/puzzles";
 import { getSettings } from "../lib/settings";
 import { keepScreenAwake } from "../lib/wakeLock";
+import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { onDataChange } from "../lib/changes";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
@@ -89,7 +90,13 @@ function LivePuzzles({
   // "Trotzdem weiter": nur für diese Sitzung, damit eigene Aufgaben auch ohne
   // Lichess-Dump erreichbar bleiben.
   const [skipImport, setSkipImport] = useState(false);
-  const reloadStats = () => puzzleStats().then(setStats).catch(() => {});
+  const reloadStats = () =>
+    puzzleStats()
+      .then((next) => {
+        setStats(next);
+        return next;
+      })
+      .catch(() => undefined);
 
   useEffect(() => {
     reloadStats();
@@ -333,8 +340,9 @@ function TrainerView({
   goal: number;
   /** Motiv der laufenden Aufgabe verdecken · verrät sonst das Ziel. */
   hideTheme: boolean;
-  reloadStats: () => void;
+  reloadStats: () => Promise<PuzzleStats | undefined>;
 }) {
+  const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
   const [status, setStatus] = useState<Status>("loading");
@@ -480,7 +488,14 @@ function TrainerView({
     recordAttempt(puzzle.id, solvedFirstTry)
       .then((r) => {
         setRatingDelta(r.delta);
-        reloadStats();
+        void reloadStats().then((nextStats) => {
+          if (solvedFirstTry && nextStats) {
+            void maybeRequestPlayReview(backend.info, {
+              kind: "puzzle-solved",
+              totalSolved: nextStats.solved,
+            });
+          }
+        });
       })
       .catch(() => {});
   };

@@ -21,6 +21,7 @@ import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key, type Locale, type TFunc } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
+import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
@@ -364,7 +365,17 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       onAnalysisDone((p) => {
         setRunning(false);
         setProgress(null);
-        reloadGames();
+        const reloaded = reloadGames();
+        if (!p.error && !p.canceled && p.analyzed > 0) {
+          void reloaded
+            .then((allGames) =>
+              maybeRequestPlayReview(backend.info, {
+                kind: "analysis-complete",
+                totalAnalyzedGames: allGames.filter((game) => game.analyzed).length,
+              })
+            )
+            .catch(() => {});
+        }
         setNotice(
           p.error
             ? t("an.aborted", { e: p.error })
@@ -378,7 +389,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       disposed = true;
       cleanups.forEach((u) => u());
     };
-  }, [desktop, reloadGames, t]);
+  }, [backend.info, desktop, reloadGames, t]);
 
   // ChessDB-Einstellung einmalig lesen.
   useEffect(() => {

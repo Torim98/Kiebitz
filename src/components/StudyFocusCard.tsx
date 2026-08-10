@@ -76,6 +76,7 @@ export default function StudyFocusCard({
   mobile,
   onStart,
   onStop,
+  onComplete,
   onAction,
 }: {
   prescription: Prescription;
@@ -86,6 +87,7 @@ export default function StudyFocusCard({
   mobile: boolean;
   onStart: () => void;
   onStop: () => void;
+  onComplete: () => void;
   onAction: () => void;
 }) {
   const { locale, t } = useI18n();
@@ -122,6 +124,17 @@ export default function StudyFocusCard({
                 n: focus.cycle_days,
               })}
             </span>
+            {progress >= 100 && (
+              <button
+                type="button"
+                onClick={onComplete}
+                title={t("plan.focusComplete")}
+                className="flex items-center gap-1 rounded-md border border-accent-dim bg-accent-soft px-2 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/15"
+              >
+                <Check size={12} />
+                {t("plan.focusComplete")}
+              </button>
+            )}
             <button
               type="button"
               onClick={onStop}

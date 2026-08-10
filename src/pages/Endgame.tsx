@@ -27,6 +27,7 @@ import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { Button, Card } from "../components/ui";
 import { deInt } from "../lib/util";
+import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 
 const CATEGORY_KEY: Record<EndgameCategory, Key> = {
   mates: "eg.catMates",
@@ -70,14 +71,15 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const runRef = useRef(0);
 
   const reloadStats = () => {
-    if (!desktop) return;
-    endgameStats()
+    if (!desktop) return Promise.resolve(null);
+    return endgameStats()
       .then((list) => {
         const map: Record<string, DrillStat> = {};
         for (const s of list) map[s.drill_id] = s;
         setStats(map);
+        return map;
       })
-      .catch(() => {});
+      .catch(() => null);
   };
 
   useEffect(() => {
@@ -108,6 +110,15 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     if (desktop) {
       endgameRecord(d.id, success, c.history().length)
         .then(reloadStats)
+        .then((nextStats) => {
+          if (!success || !nextStats) return;
+          void maybeRequestPlayReview(backend.info, {
+            kind: "endgame-drill-mastered",
+            masteredDrills: ENDGAME_DRILLS.filter(
+              (drill) => (nextStats[drill.id]?.solved ?? 0) > 0
+            ).length,
+          });
+        })
         .catch(() => {});
     }
     return true;

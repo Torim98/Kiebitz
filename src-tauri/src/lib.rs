@@ -12,6 +12,7 @@ mod puzzles;
 mod reminder;
 mod rep_pgn;
 mod repertoire;
+mod review;
 mod settings;
 mod study;
 mod sync;
@@ -340,6 +341,12 @@ pub fn run() {
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
 
+            // Die Play-In-App-Review-API existiert nur im Play-Build. Der
+            // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
+            // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
+            #[cfg(all(target_os = "android", feature = "play-store"))]
+            app.handle().plugin(review::init())?;
+
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             diag::set_log_file(data_dir.join("kiebitz.log"));
@@ -419,6 +426,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            review::request_play_review,
             engine_info,
             analyze_position,
             analyze_live,

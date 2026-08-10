@@ -1260,6 +1260,7 @@ export const es: Record<Key, string> = {
   "plan.hygieneClock": "A partir de la jugada {m} entras con regularidad en apuro de tiempo (el {p} % de tus jugadas).",
   "plan.focusStart": "Convertirlo en el foco",
   "plan.focusStop": "Terminar el foco",
+  "plan.focusComplete": "Completar ciclo",
   "plan.cycleDay": "Día {d}/{n}",
   "plan.verdictImproved": "funciona",
   "plan.verdictWorse": "peor",

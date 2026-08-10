@@ -16,6 +16,8 @@ import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "./ui";
 import { useT } from "../lib/i18n";
 import { fenAfter } from "../lib/util";
+import { useBackendInfo } from "../lib/backend";
+import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 
 /** Wie lange die gelöste Stellung stehen bleibt, bevor die nächste Karte kommt. */
 const ADVANCE_MS = 1000;
@@ -83,6 +85,7 @@ export default function RepertoireTrainer({
   newLimit?: number;
   onExit: () => void;
 }) {
+  const backend = useBackendInfo();
   const t = useT();
   const [items, setItems] = useState<DueItem[] | null>(null);
   const [idx, setIdx] = useState(0);
@@ -102,6 +105,7 @@ export default function RepertoireTrainer({
   const requeuedRef = useRef<Set<number>>(new Set());
   const itemsRef = useRef<DueItem[]>([]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const reviewMomentSentRef = useRef(false);
 
   const later = useCallback((fn: () => void, ms: number) => {
     timersRef.current.push(setTimeout(fn, ms));
@@ -139,6 +143,22 @@ export default function RepertoireTrainer({
   const atLive = viewPly === lineSans.length;
 
   itemsRef.current = items ?? [];
+
+  useEffect(() => {
+    if (
+      items == null ||
+      item != null ||
+      !backend.info ||
+      reviewMomentSentRef.current
+    ) {
+      return;
+    }
+    reviewMomentSentRef.current = true;
+    void maybeRequestPlayReview(backend.info, {
+      kind: "repertoire-session-complete",
+      correctAnswers: doneCount.ok,
+    });
+  }, [backend.info, doneCount.ok, item, items]);
 
   // Neue Karte: Brett auf die Ausgangsstellung, Kette zurücksetzen und die
   // erlaubten Antworten aus dem Baum holen (das Buch darf hier mehrere kennen).

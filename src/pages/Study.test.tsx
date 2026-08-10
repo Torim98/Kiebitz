@@ -312,6 +312,38 @@ describe("Study page", () => {
     expect(screen.getByText("3,4 → 1,9")).toBeTruthy();
   });
 
+  it("completes an elapsed focus cycle as a success instead of dropping it", async () => {
+    const start = Math.floor(Date.now() / 1000) - 15 * DAY;
+    mockBackend({
+      deep: demoDeepInsights(),
+      program: emptyProgram({
+        focuses: [
+          {
+            id: 5,
+            area: "tactics",
+            metric_key: "blunders_middlegame_per100",
+            label_params: "{}",
+            target: 2,
+            cycle_days: 14,
+            start_ts: start,
+            end_ts: 0,
+            status: "active",
+          },
+        ],
+      }),
+      metrics: [window(3.4), window(1.9)],
+    });
+    renderStudy();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Zyklus abschließen" }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("close_study_focus", {
+        focusId: 5,
+        status: "done",
+      });
+    });
+  });
+
   it("marks a fully completed backend plan as done", async () => {
     mockBackend({ study: liveStudy({ due_now: 0, unanalyzed: 0, today_puzzle_attempts: 30 }) });
     renderStudy();

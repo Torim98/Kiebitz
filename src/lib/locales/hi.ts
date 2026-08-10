@@ -1260,6 +1260,7 @@ export const hi: Record<Key, string> = {
   "plan.hygieneClock": "चाल {m} से आप नियमित रूप से समय-संकट में आते हैं (आपकी चालों का {p} %)।",
   "plan.focusStart": "इसे फ़ोकस बनाएँ",
   "plan.focusStop": "फ़ोकस समाप्त करें",
+  "plan.focusComplete": "चक्र पूरा करें",
   "plan.cycleDay": "दिन {d}/{n}",
   "plan.verdictImproved": "काम कर रहा है",
   "plan.verdictWorse": "बदतर",
