@@ -42,23 +42,25 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
-// Ohne Publisher-Konto bleiben Debug- und lokale Release-Builds sicher auf
-// Googles offiziellen Test-IDs. CI bzw. Android Studio können die beiden Werte
-// über Umgebungsvariablen oder Gradle-Properties ersetzen.
+// Debug-Builds verwenden immer Googles offizielle Test-IDs. Release-Builds
+// verwenden Kiebitz' veröffentlichte AdMob-IDs; CI bzw. Android Studio können
+// diese bei Bedarf über Umgebungsvariablen oder Gradle-Properties ersetzen.
 fun advertisingValue(environmentName: String, propertyName: String, fallback: String): String =
     System.getenv(environmentName)?.takeIf { it.isNotBlank() }
         ?: providers.gradleProperty(propertyName).orNull?.takeIf { it.isNotBlank() }
         ?: fallback
 
-val admobAppId = advertisingValue(
+val testAdmobAppId = "ca-app-pub-3940256099942544~3347511713"
+val testAdmobBannerAdUnitId = "ca-app-pub-3940256099942544/6300978111"
+val releaseAdmobAppId = advertisingValue(
     "KIEBITZ_ADMOB_APP_ID",
     "kiebitz.admob.appId",
-    "ca-app-pub-3940256099942544~3347511713",
+    "ca-app-pub-9343669245707846~1360316109",
 )
-val admobBannerAdUnitId = advertisingValue(
+val releaseAdmobBannerAdUnitId = advertisingValue(
     "KIEBITZ_ADMOB_BANNER_ID",
     "kiebitz.admob.bannerId",
-    "ca-app-pub-3940256099942544/6300978111",
+    "ca-app-pub-9343669245707846/3667181173",
 )
 
 android {
@@ -68,8 +70,6 @@ android {
         // Der Geräte-Sync ist ausschließlich HTTPS; Android darf keinen
         // Cleartext-Verkehr für Kiebitz erlauben.
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        manifestPlaceholders["admobAppId"] = admobAppId
-        buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$admobBannerAdUnitId\"")
         applicationId = "de.torim.kiebitz"
         minSdk = 24
         targetSdk = 36
@@ -89,6 +89,8 @@ android {
     buildTypes {
         getByName("debug") {
             manifestPlaceholders["usesCleartextTraffic"] = "false"
+            manifestPlaceholders["admobAppId"] = testAdmobAppId
+            buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$testAdmobBannerAdUnitId\"")
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
@@ -99,6 +101,8 @@ android {
             }
         }
         getByName("release") {
+            manifestPlaceholders["admobAppId"] = releaseAdmobAppId
+            buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$releaseAdmobBannerAdUnitId\"")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

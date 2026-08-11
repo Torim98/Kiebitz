@@ -7,10 +7,17 @@ been configured. No Kiebitz server is required for the Android integration.
 
 ## Android
 
-Debug and unconfigured builds use Google's published sample app ID and fixed
-banner test ID. They do not generate revenue and are safe for development.
+Debug builds always use Google's published sample app ID and fixed banner test
+ID. They do not generate revenue and are safe for development.
 
-Production IDs can be supplied either as environment variables:
+Release builds use Kiebitz' production IDs:
+
+```text
+App:    ca-app-pub-9343669245707846~1360316109
+Banner: ca-app-pub-9343669245707846/3667181173
+```
+
+The release IDs can be overridden as environment variables:
 
 ```text
 KIEBITZ_ADMOB_APP_ID=ca-app-pub-…~…
@@ -64,4 +71,3 @@ Production builds collapse the slot completely in that case.
 frame and tells Android to hide and stop the native banner. The entitlement
 source is intentionally not implemented here; it will be connected when
 Kiebitz Plus billing is added.
-
