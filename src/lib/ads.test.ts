@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { desktopAdFrameUrl } from "./ads";
+import { DESKTOP_AD_FRAME_URL, desktopAdFrameUrl } from "./ads";
 
 describe("desktopAdFrameUrl", () => {
   it("accepts only an explicit HTTPS provider endpoint", () => {
@@ -12,5 +12,9 @@ describe("desktopAdFrameUrl", () => {
 
   it("stays disabled when no desktop provider is configured", () => {
     expect(desktopAdFrameUrl("")).toBeNull();
+  });
+
+  it("uses the static Kiebitz advertising surface by default", () => {
+    expect(desktopAdFrameUrl()).toBe(DESKTOP_AD_FRAME_URL);
   });
 });

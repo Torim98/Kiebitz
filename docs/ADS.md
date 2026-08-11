@@ -1,9 +1,9 @@
 # Advertising
 
 Kiebitz has one shared banner position in the Free UI. Android renders a native
-Google Mobile Ads banner over that position. Desktop embeds an HTTPS frame only
-when a provider that explicitly permits ads in installed desktop software has
-been configured. No Kiebitz server is required for the Android integration.
+Google Mobile Ads banner over that position. Desktop embeds a static campaign
+surface served from the Kiebitz website. No Kiebitz application server is
+required for either integration.
 
 ## Android
 
@@ -47,23 +47,36 @@ Google reports that a privacy-options entry point is required.
 
 ## Desktop
 
-Google AdSense may not be embedded in desktop software. Consequently Kiebitz
-does not ship an AdSense snippet or silently reuse the Android provider. A
-release stays ad-free until an approved provider supplies an HTTPS creative or
-publisher-frame endpoint:
+Google AdSense may not be embedded in desktop software. Kiebitz therefore uses
+neither AdSense nor the Android SDK on desktop. A sandboxed frame loads the
+static campaign surface from:
 
 ```text
-VITE_DESKTOP_AD_FRAME_URL=https://approved-provider.example/kiebitz-banner
+https://torim98.github.io/kiebitz-site/desktop-ad/
 ```
 
-The frame is sandboxed, receives no referrer, and is not passed chess data or a
-Kiebitz user identifier. The provider endpoint must handle any consent UI it
-requires and must contractually permit use inside Windows, macOS, and Linux
-desktop applications. A static hosted frame can be deployed with the existing
-website; it does not require a continuously running custom backend.
+The frame is sandboxed, receives no referrer, and is not passed chess data, a
+Kiebitz user identifier, cookies, or an advertising ID. Campaign creatives are
+served from the same website origin. External destinations open in the system
+browser only after an explicit click. If the page is unavailable or reports no
+active campaign, Kiebitz collapses the slot.
 
-In development, the desktop UI shows a labelled placeholder when no URL is set.
-Production builds collapse the slot completely in that case.
+Campaigns are maintained in the website repository under
+`src/desktop-ad/campaigns.json`. They support activation, start and end dates,
+relative weights, localized copy, and a same-origin image. Updating or rotating
+a campaign requires only a website deployment, not a new Kiebitz release.
+
+The frame URL can be overridden or explicitly disabled for special builds:
+
+```text
+VITE_DESKTOP_AD_FRAME_URL=https://example.invalid/custom-surface/
+VITE_DESKTOP_AD_FRAME_URL=
+```
+
+The static surface intentionally has no cookies, browser storage, analytics,
+remote scripts, or passive third-party resources. GitHub Pages still receives
+technically necessary connection data when serving the files; this is disclosed
+in the public privacy policy.
 
 ## Free and Plus
 

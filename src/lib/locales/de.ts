@@ -866,7 +866,7 @@ export const de = {
   "set.adsPrivacy": "Werbung & Datenschutz",
   "set.adsPrivacySummary": "Einwilligung für Anzeigen verwalten",
   "set.adsPrivacyNote": "Kiebitz Free zeigt Werbung. Deine Schachdaten und Analysen bleiben auf deinem Gerät; der Anzeigenanbieter kann jedoch Geräte- und Nutzungsdaten für die Auslieferung und Messung von Anzeigen verarbeiten.",
-  "set.adsPrivacyDesktopNote": "Desktop-Werbung bleibt deaktiviert, bis ein für installierte Programme zugelassener Anbieter eingerichtet ist. Dessen Datenschutzoptionen werden vor der Aktivierung hier ergänzt; Schachdaten erhält er nicht.",
+  "set.adsPrivacyDesktopNote": "Die Desktop-Version lädt eine statische Werbefläche von der Kiebitz-Website. Dabei werden keine Schachdaten, Kiebitz-Nutzerkennung, Cookies oder Werbe-ID übertragen. Ist keine Kampagne aktiv, bleibt die Fläche verborgen.",
   "set.adsPrivacyOpen": "Datenschutzoptionen öffnen",
   "set.adsPrivacyOpened": "Die Datenschutzoptionen wurden geöffnet.",
   "set.adsPrivacyUnavailable": "Für dieses Gerät ist derzeit kein zusätzlicher Datenschutzdialog erforderlich.",

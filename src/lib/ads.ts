@@ -16,6 +16,11 @@ export interface PrivacyOptionsResult {
   shown: boolean;
 }
 
+export const DESKTOP_AD_FRAME_URL =
+  "https://torim98.github.io/kiebitz-site/desktop-ad/";
+
+export const DESKTOP_AD_MESSAGE_SOURCE = "kiebitz-desktop-ad";
+
 /** Native Android-Anzeige über dem vom Frontend reservierten Rechteck. */
 export function setAdBanner(rect: AdBannerRect): Promise<AdBannerResult> {
   return invoke<AdBannerResult>("set_ad_banner", { rect });
@@ -27,11 +32,12 @@ export function showAdPrivacyOptions(): Promise<PrivacyOptionsResult> {
 }
 
 /**
- * Ein Desktop-Provider muss die Einbettung in installierter Software
- * ausdrücklich erlauben. Deshalb kommt die freigegebene Frame-URL nur aus dem
- * Release-Build und niemals als fest verdrahteter AdSense-Schnipsel ins Repo.
+ * Standardmäßig wird nur die statische, selbst kontrollierte Kiebitz-Fläche
+ * geladen. Ein explizit leerer Build-Wert deaktiviert Desktop-Werbung.
  */
-export function desktopAdFrameUrl(raw = import.meta.env.VITE_DESKTOP_AD_FRAME_URL): string | null {
+export function desktopAdFrameUrl(
+  raw = import.meta.env.VITE_DESKTOP_AD_FRAME_URL ?? DESKTOP_AD_FRAME_URL
+): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);

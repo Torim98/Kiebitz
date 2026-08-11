@@ -851,7 +851,7 @@ export const en: Record<Key, string> = {
   "set.adsPrivacy": "Ads & privacy",
   "set.adsPrivacySummary": "Manage consent for advertisements",
   "set.adsPrivacyNote": "Kiebitz Free displays advertisements. Your chess data and analyses stay on your device; the ad provider may, however, process device and usage data to deliver and measure ads.",
-  "set.adsPrivacyDesktopNote": "Desktop ads stay disabled until a provider approved for installed software is configured. Its privacy controls will be added here before activation; it will not receive chess data.",
+  "set.adsPrivacyDesktopNote": "The desktop version loads a static advertising surface from the Kiebitz website. No chess data, Kiebitz user identifier, cookies or advertising ID are transmitted. If no campaign is active, the surface remains hidden.",
   "set.adsPrivacyOpen": "Open privacy options",
   "set.adsPrivacyOpened": "The privacy options were opened.",
   "set.adsPrivacyUnavailable": "No additional privacy dialog is currently required for this device.",

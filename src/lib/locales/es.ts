@@ -851,7 +851,7 @@ export const es: Record<Key, string> = {
   "set.adsPrivacy": "Anuncios y privacidad",
   "set.adsPrivacySummary": "Gestionar el consentimiento para anuncios",
   "set.adsPrivacyNote": "Kiebitz Free muestra anuncios. Tus datos y análisis de ajedrez permanecen en tu dispositivo; el proveedor de anuncios puede procesar datos del dispositivo y de uso para mostrar y medir anuncios.",
-  "set.adsPrivacyDesktopNote": "Los anuncios de escritorio permanecen desactivados hasta configurar un proveedor autorizado para programas instalados. Sus opciones de privacidad se añadirán aquí antes de activarlo; no recibirá datos de ajedrez.",
+  "set.adsPrivacyDesktopNote": "La versión de escritorio carga un espacio publicitario estático desde el sitio de Kiebitz. No se transmiten datos de ajedrez, identificadores de usuario de Kiebitz, cookies ni identificadores publicitarios. Sin una campaña activa, el espacio permanece oculto.",
   "set.adsPrivacyOpen": "Abrir opciones de privacidad",
   "set.adsPrivacyOpened": "Se abrieron las opciones de privacidad.",
   "set.adsPrivacyUnavailable": "Actualmente no se requiere ningún diálogo de privacidad adicional para este dispositivo.",

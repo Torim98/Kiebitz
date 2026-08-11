@@ -851,7 +851,7 @@ export const zh: Record<Key, string> = {
   "set.adsPrivacy": "广告与隐私",
   "set.adsPrivacySummary": "管理广告同意设置",
   "set.adsPrivacyNote": "Kiebitz Free 会显示广告。你的棋局数据和分析仍保存在设备上；但广告提供商可能会处理设备和使用数据，用于投放和衡量广告。",
-  "set.adsPrivacyDesktopNote": "在配置获准用于已安装软件的提供商之前，桌面广告会保持关闭。启用前会在此加入其隐私选项；提供商不会收到棋局数据。",
+  "set.adsPrivacyDesktopNote": "桌面版从 Kiebitz 网站加载静态广告位。不会传输棋局数据、Kiebitz 用户标识符、Cookie 或广告 ID。没有活动中的广告系列时，广告位将保持隐藏。",
   "set.adsPrivacyOpen": "打开隐私选项",
   "set.adsPrivacyOpened": "隐私选项已打开。",
   "set.adsPrivacyUnavailable": "此设备目前无需显示额外的隐私对话框。",

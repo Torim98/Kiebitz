@@ -1,5 +1,10 @@
-import { useEffect, useRef } from "react";
-import { desktopAdFrameUrl, setAdBanner } from "../lib/ads";
+import { useEffect, useRef, useState } from "react";
+import {
+  DESKTOP_AD_MESSAGE_SOURCE,
+  desktopAdFrameUrl,
+  setAdBanner,
+} from "../lib/ads";
+import { openExternal } from "../lib/ext";
 import { useT } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
 
@@ -13,6 +18,8 @@ export default function AdBanner({
 }) {
   const t = useT();
   const slotRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [desktopVisible, setDesktopVisible] = useState(false);
   const hidden = !free || isStoreCapture();
   const frameUrl = desktopAdFrameUrl();
 
@@ -66,6 +73,39 @@ export default function AdBanner({
     };
   }, [android, hidden]);
 
+  useEffect(() => {
+    setDesktopVisible(false);
+    if (android || hidden || !frameUrl) return;
+
+    const expectedOrigin = new URL(frameUrl).origin;
+    const onMessage = (event: MessageEvent) => {
+      if (
+        event.source !== frameRef.current?.contentWindow ||
+        event.origin !== expectedOrigin ||
+        event.data?.source !== DESKTOP_AD_MESSAGE_SOURCE
+      ) {
+        return;
+      }
+
+      if (event.data.type === "status") {
+        setDesktopVisible(event.data.visible === true);
+        return;
+      }
+
+      if (event.data.type === "open" && typeof event.data.href === "string") {
+        try {
+          const target = new URL(event.data.href);
+          if (target.protocol === "https:") openExternal(target.toString());
+        } catch {
+          // Invalid campaign targets are never opened.
+        }
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [android, frameUrl, hidden]);
+
   if (hidden) return null;
 
   // Android legt die native AdView auf dieses Rechteck. Ein eigener Text im
@@ -81,9 +121,8 @@ export default function AdBanner({
     );
   }
 
-  // Ohne einen schriftlich für Desktopsoftware freigegebenen Provider bleibt
-  // der Release-Build leer. Im Dev-Build zeigt die Fläche ihre vorgesehene
-  // Position, ohne eine echte Anzeigenanfrage auszulösen.
+  // Ein explizit leerer Build-Wert deaktiviert Desktop-Werbung. In der
+  // Entwicklung bleibt ein Platzhalter sichtbar, damit das Layout prüfbar ist.
   if (!frameUrl) {
     if (!import.meta.env.DEV) return null;
     return (
@@ -96,18 +135,20 @@ export default function AdBanner({
   return (
     <aside
       aria-label={t("ads.label")}
-      className="relative h-[64px] shrink-0 overflow-hidden border-t border-line bg-panel"
+      aria-hidden={!desktopVisible}
+      className={`relative shrink-0 overflow-hidden bg-panel ${
+        desktopVisible ? "h-[64px] border-t border-line" : "h-0 border-0"
+      }`}
     >
-      <span className="absolute left-2 top-1 z-10 rounded bg-black/70 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-white/80">
-        {t("ads.label")}
-      </span>
       <iframe
+        ref={frameRef}
         title={t("ads.label")}
         src={frameUrl}
-        className="h-full w-full border-0"
-        sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts"
+        className="h-[64px] w-full border-0"
+        sandbox="allow-same-origin allow-scripts"
         referrerPolicy="no-referrer"
         scrolling="no"
+        tabIndex={desktopVisible ? 0 : -1}
       />
     </aside>
   );

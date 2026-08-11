@@ -851,7 +851,7 @@ export const fr: Record<Key, string> = {
   "set.adsPrivacy": "Publicités et confidentialité",
   "set.adsPrivacySummary": "Gérer le consentement aux publicités",
   "set.adsPrivacyNote": "Kiebitz Free affiche des publicités. Tes données et analyses d'échecs restent sur ton appareil ; le fournisseur publicitaire peut toutefois traiter des données sur l'appareil et son utilisation pour diffuser et mesurer les publicités.",
-  "set.adsPrivacyDesktopNote": "Les publicités desktop restent désactivées jusqu'à la configuration d'un fournisseur autorisé pour les logiciels installés. Ses options de confidentialité seront ajoutées ici avant l'activation ; il ne recevra aucune donnée d'échecs.",
+  "set.adsPrivacyDesktopNote": "La version desktop charge un espace publicitaire statique depuis le site Kiebitz. Aucune donnée d'échecs, aucun identifiant utilisateur Kiebitz, cookie ou identifiant publicitaire n'est transmis. Sans campagne active, l'espace reste masqué.",
   "set.adsPrivacyOpen": "Ouvrir les options de confidentialité",
   "set.adsPrivacyOpened": "Les options de confidentialité ont été ouvertes.",
   "set.adsPrivacyUnavailable": "Aucune boîte de dialogue de confidentialité supplémentaire n'est actuellement requise pour cet appareil.",
