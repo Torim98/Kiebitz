@@ -45,6 +45,11 @@ Before publishing a build with production IDs:
 Users can reopen UMP's privacy choices in **Settings → Ads & privacy** whenever
 Google reports that a privacy-options entry point is required.
 
+The shared UI slot starts at zero height. The native container stays hidden
+while consent and the ad request are pending; only `AdListener.onAdLoaded`
+expands the slot to 50 px. `onAdFailedToLoad` (including no-fill responses)
+keeps it collapsed, so unavailable inventory never leaves an empty strip.
+
 ## Desktop
 
 Google AdSense may not be embedded in desktop software. Kiebitz therefore uses

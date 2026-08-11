@@ -28,6 +28,7 @@ pub struct AdBannerRect {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdBannerResult {
     pub available: bool,
+    pub loaded: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -71,7 +72,10 @@ pub async fn set_ad_banner(
     #[cfg(not(target_os = "android"))]
     {
         let _ = (app, rect);
-        Ok(AdBannerResult { available: false })
+        Ok(AdBannerResult {
+            available: false,
+            loaded: false,
+        })
     }
 }
 

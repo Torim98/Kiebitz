@@ -10,6 +10,8 @@ export interface AdBannerRect {
 
 export interface AdBannerResult {
   available: boolean;
+  /** True only after the native Android SDK has rendered an advertisement. */
+  loaded: boolean;
 }
 
 export interface PrivacyOptionsResult {

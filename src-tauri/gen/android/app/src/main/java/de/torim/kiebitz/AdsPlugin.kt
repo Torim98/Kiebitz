@@ -12,9 +12,11 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
@@ -36,6 +38,12 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
   private lateinit var consentInformation: ConsentInformation
   private val consentRequested = AtomicBoolean(false)
   private val mobileAdsStarted = AtomicBoolean(false)
+  private var consentFinished = false
+  private var mobileAdsInitialized = false
+  private var bannerRequestedVisible = false
+  private var bannerLoading = false
+  private var bannerLoaded = false
+  private val pendingBannerInvokes = mutableListOf<Invoke>()
 
   @Command
   fun setBanner(invoke: Invoke) {
@@ -45,8 +53,9 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
     activity.runOnUiThread {
       try {
         if (!visible) {
+          bannerRequestedVisible = false
           container?.visibility = View.GONE
-          invoke.resolve(JSObject().put("available", true))
+          resolveBannerInvoke(invoke, false)
           return@runOnUiThread
         }
 
@@ -54,9 +63,15 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
         val top = args.getInteger("top", 0).coerceAtLeast(0)
         val width = args.getInteger("width", 0).coerceAtLeast(1)
         val height = args.getInteger("height", 0).coerceAtLeast(1)
+        bannerRequestedVisible = true
         positionContainer(left, top, width, height)
+        if (bannerLoaded) {
+          container?.visibility = View.VISIBLE
+          resolveBannerInvoke(invoke, true)
+          return@runOnUiThread
+        }
+        pendingBannerInvokes += invoke
         requestConsentAndStartAds()
-        invoke.resolve(JSObject().put("available", true))
       } catch (error: Exception) {
         invoke.reject("Banner konnte nicht vorbereitet werden", error)
       }
@@ -104,11 +119,19 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
       leftMargin = left
       topMargin = top
     }
-    frame.visibility = View.VISIBLE
+    // Erst onAdLoaded macht den Container sichtbar. So liegt weder ein leerer
+    // nativer View noch ein reservierter Web-Slot über der App.
+    frame.visibility = if (bannerLoaded && bannerRequestedVisible) View.VISIBLE else View.GONE
   }
 
   private fun requestConsentAndStartAds() {
-    if (!consentRequested.compareAndSet(false, true)) return
+    if (!consentRequested.compareAndSet(false, true)) {
+      if (consentFinished) {
+        if (consentInformation.canRequestAds()) startMobileAdsOnce()
+        else resolvePendingBannerInvokes(false)
+      }
+      return
+    }
     if (!::consentInformation.isInitialized) {
       consentInformation = UserMessagingPlatform.getConsentInformation(activity)
     }
@@ -120,26 +143,38 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
       ConsentRequestParameters.Builder().build(),
       {
         UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {
+          consentFinished = true
           if (consentInformation.canRequestAds()) startMobileAdsOnce()
+          else resolvePendingBannerInvokes(false)
         }
       },
       {
         // Ein voriger, weiterhin gültiger Status darf auch bei einem
         // vorübergehenden Netzwerkfehler genutzt werden.
+        consentFinished = true
         if (consentInformation.canRequestAds()) startMobileAdsOnce()
+        else resolvePendingBannerInvokes(false)
       },
     )
   }
 
   private fun startMobileAdsOnce() {
-    if (!mobileAdsStarted.compareAndSet(false, true)) return
+    if (!mobileAdsStarted.compareAndSet(false, true)) {
+      if (mobileAdsInitialized) loadBanner()
+      return
+    }
     MobileAds.initialize(activity) {
-      activity.runOnUiThread { loadBanner() }
+      activity.runOnUiThread {
+        mobileAdsInitialized = true
+        loadBanner()
+      }
     }
   }
 
   private fun loadBanner() {
+    if (bannerLoaded || bannerLoading) return
     val frame = container ?: return
+    bannerLoading = true
     val density = activity.resources.displayMetrics.density
     val availableWidthDp = (frame.layoutParams.width / density).toInt()
     // Das kleine 320×50-Banner ist absichtlich vorhersehbar und nimmt auf
@@ -148,6 +183,24 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
     val view = AdView(activity).apply {
       adUnitId = BuildConfig.ADMOB_BANNER_AD_UNIT_ID
       setAdSize(size)
+      adListener = object : AdListener() {
+        override fun onAdLoaded() {
+          bannerLoading = false
+          bannerLoaded = true
+          frame.visibility = if (bannerRequestedVisible) View.VISIBLE else View.GONE
+          resolvePendingBannerInvokes(true)
+        }
+
+        override fun onAdFailedToLoad(error: LoadAdError) {
+          bannerLoading = false
+          bannerLoaded = false
+          frame.visibility = View.GONE
+          frame.removeAllViews()
+          adView?.destroy()
+          adView = null
+          resolvePendingBannerInvokes(false)
+        }
+      }
     }
     adView?.destroy()
     frame.removeAllViews()
@@ -163,6 +216,20 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
     view.loadAd(AdRequest.Builder().build())
   }
 
+  private fun resolveBannerInvoke(invoke: Invoke, loaded: Boolean) {
+    invoke.resolve(
+      JSObject()
+        .put("available", true)
+        .put("loaded", loaded),
+    )
+  }
+
+  private fun resolvePendingBannerInvokes(loaded: Boolean) {
+    val pending = pendingBannerInvokes.toList()
+    pendingBannerInvokes.clear()
+    pending.forEach { resolveBannerInvoke(it, loaded) }
+  }
+
   override fun onPause() {
     adView?.pause()
   }
@@ -172,6 +239,7 @@ class AdsPlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   override fun onDestroy(activity: AppCompatActivity) {
+    resolvePendingBannerInvokes(false)
     adView?.destroy()
     adView = null
     container?.let { (it.parent as? ViewGroup)?.removeView(it) }

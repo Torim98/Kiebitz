@@ -19,6 +19,8 @@ export default function AdBanner({
   const t = useT();
   const slotRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const androidVisibleRef = useRef(false);
+  const [androidVisible, setAndroidVisible] = useState(false);
   const [desktopVisible, setDesktopVisible] = useState(false);
   const hidden = !free || isStoreCapture();
   const frameUrl = desktopAdFrameUrl();
@@ -35,22 +37,35 @@ export default function AdBanner({
 
     let frame = 0;
     let last = "";
+    const bannerHeight = 50;
     const place = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = slot.getBoundingClientRect();
         const scale = window.devicePixelRatio || 1;
+        const loaded = androidVisibleRef.current;
         const payload = {
           left: Math.round(rect.left * scale),
-          top: Math.round(rect.top * scale),
+          // Solange die Anzeige lädt, ist der DOM-Slot 0 px hoch. Das native
+          // Banner wird schon an seiner späteren Position vorbereitet, ohne
+          // Inhalt oder Navigation zu überdecken.
+          top: Math.round((rect.top - (loaded ? 0 : bannerHeight)) * scale),
           width: Math.max(1, Math.round(rect.width * scale)),
-          height: Math.max(1, Math.round(rect.height * scale)),
-          visible: rect.width > 0 && rect.height > 0,
+          height: Math.round(bannerHeight * scale),
+          visible: rect.width > 0,
         };
         const signature = JSON.stringify(payload);
         if (signature === last) return;
         last = signature;
-        void setAdBanner(payload).catch(() => {});
+        void setAdBanner(payload)
+          .then((result) => {
+            androidVisibleRef.current = result.loaded === true;
+            setAndroidVisible(result.loaded === true);
+          })
+          .catch(() => {
+            androidVisibleRef.current = false;
+            setAndroidVisible(false);
+          });
       });
     };
 
@@ -71,6 +86,12 @@ export default function AdBanner({
         () => {}
       );
     };
+  }, [android, hidden]);
+
+  useEffect(() => {
+    if (android && !hidden) return;
+    androidVisibleRef.current = false;
+    setAndroidVisible(false);
   }, [android, hidden]);
 
   useEffect(() => {
@@ -115,7 +136,9 @@ export default function AdBanner({
       <div
         ref={slotRef}
         aria-hidden="true"
-        className="h-[50px] shrink-0 border-t border-line bg-panel"
+        className={`shrink-0 overflow-hidden bg-panel transition-[height] duration-150 ${
+          androidVisible ? "h-[50px] border-t border-line" : "h-0 border-0"
+        }`}
         data-ad-slot="android-banner"
       />
     );
@@ -137,14 +160,14 @@ export default function AdBanner({
       aria-label={t("ads.label")}
       aria-hidden={!desktopVisible}
       className={`relative shrink-0 overflow-hidden bg-panel ${
-        desktopVisible ? "h-[64px] border-t border-line" : "h-0 border-0"
+        desktopVisible ? "h-[72px] border-t border-line" : "h-0 border-0"
       }`}
     >
       <iframe
         ref={frameRef}
         title={t("ads.label")}
         src={frameUrl}
-        className="h-[64px] w-full border-0"
+        className="h-[72px] w-full border-0"
         sandbox="allow-same-origin allow-scripts"
         referrerPolicy="no-referrer"
         scrolling="no"
