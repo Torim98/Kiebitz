@@ -43,9 +43,9 @@ Current priorities (added 2026-07-21):
   to compile off Windows at all: `tiny_http`, `rcgen`, `rustls-pemfile` and
   `qrcode` were declared under `cfg(windows)` although the sync hub they serve
   is `cfg(desktop)`. A new `rust-linux` CI job (`cargo check` on Ubuntu) keeps
-  that class of error from reaching a tag again. The matrix runs
-  `max-parallel: 1` because tauri-action merges `latest.json` read-modify-write
-  and parallel legs would drop each other's platform from the update feed.
+  that class of error from reaching a tag again. The three matrix legs now run
+  in parallel without letting tauri-action upload `latest.json`; a separate
+  `updater-manifest` job assembles the complete manifest once all builds finish.
   Linux auto-updates only via AppImage; macOS builds are unsigned and
   Apple-Silicon-only, both documented in `DEPLOYMENT.md`. **iOS stays out** —
   Stockfish runs as a child process, which iOS forbids, so a port means an

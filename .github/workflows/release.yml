@@ -4,13 +4,13 @@ name: Release
 # bauen → signieren → GitHub-Release anlegen → latest.json hochladen.
 # Installierte Apps holen sich das Update dann beim nächsten Start.
 #
-# Drei Phasen:
+# Vier Phasen:
 #   prepare-release  — legt einen privaten Draft-Release an.
 #   desktop/android/ — bauen danach parallel und hängen ihre Artefakte an den
-#   stockfish-source   Draft (Letzterer den GPL-Quellcode der Engine). `desktop`
-#                      ist eine Matrix über Windows, macOS und Linux.
-#   publish          — veröffentlicht den Draft erst, wenn alle drei erfolgreich
-#                      waren.
+#   stockfish-source   Draft (Letzterer den GPL-Quellcode der Engine). Auch die
+#                      drei Legs der Desktop-Matrix laufen parallel.
+#   updater-manifest — erzeugt danach einmalig die gemeinsame `latest.json`.
+#   publish          — veröffentlicht den Draft erst, wenn alles erfolgreich war.
 on:
   push:
     tags:
@@ -37,9 +37,8 @@ jobs:
             [ "$draft" = "true" ] || { echo "::error::Release $TAG ist bereits veröffentlicht."; exit 1; }
             echo "Wiederverwendung des vorhandenen Draft-Releases $TAG"
           else
-            # Der Text steht hier und nicht in tauri-action: das Draft entsteht
-            # einmal, die drei Desktop-Läufe würden ihn sonst nacheinander
-            # überschreiben.
+            # Der Text steht zentral am einmalig angelegten Draft; die parallelen
+            # Desktop-Läufe laden anschließend nur ihre eigenen Artefakte hoch.
             cat > notes.md <<'NOTES'
           Automatically built from the tag.
 
@@ -101,12 +100,6 @@ jobs:
     name: desktop (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
     strategy:
-      # Nacheinander, nicht parallel. tauri-action pflegt die latest.json des
-      # Updaters, indem es die vorhandene vom Release lädt, den eigenen
-      # Plattform-Eintrag ergänzt und sie wieder hochlädt. Zwei gleichzeitige
-      # Jobs lesen denselben Stand und der zweite überschreibt den ersten —
-      # eine Plattform stünde dann nie im Feed.
-      max-parallel: 1
       matrix:
         include:
           - os: windows-latest
@@ -216,9 +209,110 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Kiebitz ${{ github.ref_name }}"
           # Der Draft existiert bereits; tauri-action lädt Signaturen und
-          # latest.json daran hoch. Veröffentlichung erfolgt im publish-Job.
+          # Installer daran hoch. Die gemeinsame latest.json entsteht erst nach
+          # allen parallelen Matrix-Legs, damit es keinen Schreibkonflikt gibt.
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: false
+
+  updater-manifest:
+    # Alle Desktop-Artefakte und Signaturen sind jetzt am Draft. Das Manifest
+    # wird genau einmal aus diesem vollständigen Satz erzeugt; dadurch können die
+    # drei teuren Builds parallel laufen, ohne Einträge in latest.json zu verlieren.
+    needs: [prepare-release, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Gemeinsames Desktop-Update-Manifest erzeugen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare-release.outputs.release_id }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const { RELEASE_ID, REPOSITORY, SERVER_URL, TAG } = process.env;
+          if (!RELEASE_ID || !REPOSITORY || !SERVER_URL || !TAG) {
+            throw new Error('Release-Metadaten fehlen.');
+          }
+
+          const ghJson = (endpoint) => JSON.parse(execFileSync(
+            'gh', ['api', endpoint], { encoding: 'utf8' },
+          ));
+          const release = ghJson(`repos/${REPOSITORY}/releases/${RELEASE_ID}`);
+          const assets = ghJson(
+            `repos/${REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100`,
+          );
+
+          function findSignature(label, suffixes) {
+            for (const suffix of suffixes) {
+              const matches = assets.filter((asset) => asset.name.endsWith(suffix));
+              if (matches.length > 1) {
+                throw new Error(`${label}: mehrere Signaturen mit Endung ${suffix}`);
+              }
+              if (matches.length === 1) return matches[0];
+            }
+            throw new Error(`${label}: keine Signatur (${suffixes.join(' oder ')}) gefunden`);
+          }
+
+          function updaterEntry(label, suffixes) {
+            const signatureAsset = findSignature(label, suffixes);
+            const bundleName = signatureAsset.name.slice(0, -'.sig'.length);
+            const bundleAsset = assets.find((asset) => asset.name === bundleName);
+            if (!bundleAsset) {
+              throw new Error(`${label}: Bundle ${bundleName} zur Signatur fehlt`);
+            }
+
+            const signature = execFileSync(
+              'gh',
+              [
+                'api',
+                `repos/${REPOSITORY}/releases/assets/${signatureAsset.id}`,
+                '-H',
+                'Accept: application/octet-stream',
+              ],
+              { encoding: 'utf8' },
+            );
+            const url = `${SERVER_URL}/${REPOSITORY}/releases/download/` +
+              `${encodeURIComponent(TAG)}/${encodeURIComponent(bundleAsset.name)}`;
+            return { signature, url };
+          }
+
+          const windowsMsi = updaterEntry('Windows MSI', ['.msi.sig', '.msi.zip.sig']);
+          const windowsNsis = updaterEntry('Windows NSIS', ['.exe.sig', '.nsis.zip.sig']);
+          const macos = updaterEntry('macOS', ['.app.tar.gz.sig']);
+          const linux = updaterEntry(
+            'Linux AppImage',
+            ['.AppImage.sig', '.AppImage.tar.gz.sig'],
+          );
+          const version = JSON.parse(
+            readFileSync('src-tauri/tauri.conf.json', 'utf8'),
+          ).version;
+
+          const manifest = {
+            version,
+            notes: release.body ?? '',
+            pub_date: new Date().toISOString(),
+            platforms: {
+              'windows-x86_64': windowsMsi,
+              'windows-x86_64-msi': windowsMsi,
+              'windows-x86_64-nsis': windowsNsis,
+              'darwin-aarch64': macos,
+              'darwin-aarch64-app': macos,
+              'linux-x86_64': linux,
+              'linux-x86_64-appimage': linux,
+            },
+          };
+          writeFileSync('latest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+          console.log(`latest.json für ${Object.keys(manifest.platforms).join(', ')}`);
+          NODE
+
+          gh release upload "$TAG" latest.json --clobber
 
   android:
     # Startet parallel zum Desktop-Build; der Draft-Release existiert bereits.
@@ -368,10 +462,10 @@ jobs:
     # erhalten; nur ein vollständiger Release wird öffentlich. stockfish-source
     # gehört bewusst dazu: kein öffentliches Binary ohne seinen Quellcode.
     #
-    # `desktop` ist eine Matrix — hier wird auf alle drei Betriebssysteme
-    # gewartet. Ein erneuter Lauf des Tags nimmt den Draft wieder auf, statt
-    # einen zweiten Release anzulegen (siehe prepare-release).
-    needs: [stockfish-source, desktop, android]
+    # `updater-manifest` wartet bereits auf alle drei Desktop-Betriebssysteme.
+    # Ein erneuter Lauf des Tags nimmt den Draft wieder auf, statt einen zweiten
+    # Release anzulegen (siehe prepare-release).
+    needs: [stockfish-source, updater-manifest, android]
     runs-on: ubuntu-latest
     steps:
       - name: Draft-Release veröffentlichen

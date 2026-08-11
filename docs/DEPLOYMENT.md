@@ -522,12 +522,10 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 - **Release orchestration**: `prepare-release` creates (or reuses) a private
   draft and writes the release notes. `desktop`, `android` and
   `stockfish-source` all depend only on that small setup job, so they run in
-  parallel. `publish` depends on all three and publishes the draft last.
-- **Desktop matrix, deliberately serial**: the three desktop legs run with
-  `max-parallel: 1`. tauri-action maintains `latest.json` by downloading the
-  copy already on the release, adding its own platform entry and uploading it
-  again — two concurrent legs would read the same state and the second would
-  drop the first one's platform from the update feed.
+  parallel. The three legs inside the desktop matrix run in parallel as well.
+  `updater-manifest` waits for all desktop legs and creates their shared
+  `latest.json` once; `publish` publishes the draft only after that and the
+  Android/source jobs have succeeded.
 - **GPL source (`stockfish-source` job)**: fetches the pinned Stockfish commit
   with `git` — which validates the tree against the commit hash intrinsically,
   unlike a SHA-256 over GitHub's generated archives, which are not byte-stable —
@@ -587,8 +585,8 @@ The pieces that make it work:
   and uploads `latest.json` for you — this is the normal path. The updater only
   offers versions greater than the installed one, so publishing a release is all
   it takes to roll everyone forward. One `latest.json` serves every platform;
-  each desktop matrix leg adds its own key (`windows-x86_64`, `darwin-aarch64`,
-  `linux-x86_64`), which is why those legs must not run concurrently.
+  after all three parallel desktop builds, `updater-manifest` writes their keys
+  (`windows-x86_64`, `darwin-aarch64`, `linux-x86_64`) in one step.
 - **Linux caveat**: the updater installs AppImage updates only. A `.deb` or
   `.rpm` install finds no matching entry and reports that it is up to date;
   those users update by downloading the next release. Nothing breaks, but say so
@@ -621,8 +619,8 @@ The automated flow (see *Releasing a new version*) is the short version of this:
 
 1. On a clean `main`, run `.\scripts\release.ps1 -Version X.Y.Z`.
 2. Wait for the GitHub Actions run to finish, including the final `publish` job.
-   The three desktop legs run one after another, so this takes longer than a
-   Windows-only release did.
+   The three desktop legs run at the same time when GitHub-hosted runners are
+   available; the final manifest job starts after all three have finished.
 3. Smoke-test: install the new release (or let an existing copy auto-update),
    import games, run a live analysis, confirm the database is untouched in the
    app-data directory.
