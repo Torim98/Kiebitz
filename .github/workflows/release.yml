@@ -52,7 +52,10 @@ jobs:
           NOTES
             gh release create "$TAG" --draft --title "Kiebitz $TAG" --notes-file notes.md
           fi
-          echo "release_id=$(gh release view "$TAG" --json id --jq .id)" >> "$GITHUB_OUTPUT"
+          # REST endpoints and tauri-action both need the numeric databaseId.
+          # `--json id` would return a GraphQL node ID (RE_kw...), which causes
+          # /repos/{owner}/{repo}/releases/{release_id} to return HTTP 404.
+          echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
 
   stockfish-source:
     # GPL-3.0 §6: Wer ein Binary ausliefert, muss den exakt korrespondierenden
