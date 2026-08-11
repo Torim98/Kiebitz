@@ -12,7 +12,8 @@ Kiebitz looks over your shoulder.
 
 A Kiebitz is a bird, and in German, the onlooker who watches your game over your shoulder. That is what this app does: it pulls your games from chess.com and Lichess, runs a native Stockfish across your whole history, and tells you where you actually play badly. Not "well played", but: which phase, which opening, which time control is where it falls apart.
 
-Everything stays on your own devices. Kiebitz has no server.
+Your chess data stays on your own devices. Kiebitz has no account or chess-data
+server; analysis runs locally.
 
 IMPORT, ANALYZE, UNDERSTAND
 • Enter your username, that's it. Kiebitz pulls your whole history, duplicate-safe. Over-the-board games come in as PGN.
@@ -53,9 +54,11 @@ ALSO IN THE APP
 
 LOCAL-FIRST, NOT JUST AS A SLOGAN
 • No account: no sign-up, no email, no login
-• No cloud: games, analyses and progress live in a database on your device
-• No telemetry: no tracking, no ads, no crash reports
-• Kiebitz only talks to the network when you ask it to: to chess.com or Lichess on import, to Lichess for the puzzle download, and, if you switch it on, to chessdb.cn for the opening book
+• No chess-data cloud: games, analyses and progress live in a database on your device
+• No Kiebitz backend: Kiebitz does not upload your games or analyses and does not send automatic crash reports
+• Kiebitz Free includes advertising. Google Mobile Ads may process technical device and usage data to deliver and measure ads and prevent fraud; your games, analyses, notes and training data are not sent to the ad provider
+• Where required, privacy choices are requested before ads load and can be changed under Settings → Ads & privacy
+• Other network connections are limited to the functions you use: chess.com or Lichess for imports, Lichess for the puzzle download, GitHub for updates, and, if enabled, chessdb.cn for the opening book
 
 DEVICE SYNC WITH NOTHING IN BETWEEN
 • Kiebitz is also available as a desktop app for Windows. Phone and desktop sync encrypted, directly over your home network or VPN

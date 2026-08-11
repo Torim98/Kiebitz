@@ -28,6 +28,7 @@ import {
   RefreshCw,
   ScanLine,
   Scale,
+  ShieldCheck,
   Smartphone,
   Trash2,
   UserRound,
@@ -92,6 +93,7 @@ import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../li
 import AppTour from "../components/AppTour";
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
+import { showAdPrivacyOptions } from "../lib/ads";
 
 function Field({
   label,
@@ -160,6 +162,7 @@ type SectionId =
   | "notify"
   | "sync"
   | "updates"
+  | "privacy"
   | "support"
   | "engine"
   | "database"
@@ -376,6 +379,7 @@ export default function SettingsPage({
   const syncStatus = useSyncStatus();
   /** Mobile = Sync-Client; Desktop = Sync-Hub. */
   const mobile = backend.info?.platform === "android" || backend.info?.platform === "ios";
+  const android = backend.info?.platform === "android";
   // Für das Layout zählt die Shell, nicht die Plattform · so lässt sich die
   // Android-Oberfläche in der Browser-Vorschau (?mobile-preview) ansehen.
   const compact = useMobileShell();
@@ -391,6 +395,9 @@ export default function SettingsPage({
 
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
+
+  const [adPrivacyBusy, setAdPrivacyBusy] = useState(false);
+  const [adPrivacyMsg, setAdPrivacyMsg] = useState<string | null>(null);
 
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   const [pzRunning, setPzRunning] = useState(false);
@@ -826,6 +833,22 @@ export default function SettingsPage({
       );
     } finally {
       setNotifyBusy(false);
+    }
+  };
+
+  /** Android: den von Google UMP bereitgestellten Datenschutzdialog erneut öffnen. */
+  const runAdPrivacyOptions = async () => {
+    setAdPrivacyBusy(true);
+    setAdPrivacyMsg(null);
+    try {
+      const result = await showAdPrivacyOptions();
+      setAdPrivacyMsg(
+        t(result.shown ? "set.adsPrivacyOpened" : "set.adsPrivacyUnavailable")
+      );
+    } catch (e) {
+      setAdPrivacyMsg(errorMessage(e));
+    } finally {
+      setAdPrivacyBusy(false);
     }
   };
 
@@ -1485,6 +1508,34 @@ export default function SettingsPage({
         ) : (
           desktopOnly
         ),
+    },
+    {
+      id: "privacy",
+      icon: ShieldCheck,
+      title: t("set.adsPrivacy"),
+      summary: t("set.adsPrivacySummary"),
+      content: (
+        <>
+          <p className="text-[12.5px] leading-relaxed text-ink2">
+            {t(android ? "set.adsPrivacyNote" : "set.adsPrivacyDesktopNote")}
+          </p>
+          {android && (
+            <div className="mt-3">
+              <Button onClick={() => !adPrivacyBusy && runAdPrivacyOptions()}>
+                {adPrivacyBusy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <ShieldCheck size={14} />
+                )}
+                {t("set.adsPrivacyOpen")}
+              </Button>
+              {adPrivacyMsg && (
+                <p className="mt-2 text-[12px] leading-relaxed text-ink3">{adPrivacyMsg}</p>
+              )}
+            </div>
+          )}
+        </>
+      ),
     },
     {
       // Rückmeldung · eigene Seite, hier nur der Einstieg.

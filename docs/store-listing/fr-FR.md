@@ -56,7 +56,7 @@ AUSSI DANS L'APPLICATION
 LOCAL-FIRST, PAS SEULEMENT COMME SLOGAN
 • Pas de compte : pas d'inscription, pas d'e-mail, pas de connexion
 • Pas de cloud : parties, analyses et progression vivent dans une base sur ton appareil
-• Pas de télémétrie : pas de pistage, pas de publicité, pas de rapports de plantage
+• Tes données d'échecs restent locales ; Kiebitz Free contient des publicités et des options de consentement si nécessaire
 • Kiebitz ne parle au réseau que sur ta demande : chess.com ou Lichess à l'import, Lichess pour les problèmes et, si tu l'actives, chessdb.cn pour la bibliothèque
 
 SYNCHRONISATION D'APPAREILS SANS INTERMÉDIAIRE

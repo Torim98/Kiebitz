@@ -53,6 +53,7 @@ import Insights from "./pages/InsightsV2";
 import SettingsPage from "./pages/Settings";
 import Support from "./pages/Support";
 import Onboarding from "./components/Onboarding";
+import AdBanner from "./components/AdBanner";
 import { dateLocale, deInt } from "./lib/util";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
@@ -497,6 +498,7 @@ export default function App() {
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
             {mainContent}
           </main>
+          <AdBanner android={backend.info?.platform === "android"} />
         </div>
         {!rail && (
           <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={false} />
@@ -514,6 +516,7 @@ export default function App() {
         {sidebarContent}
       </aside>
 
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Topbar im schmalen Fenster (unter md) */}
       <header
         className="flex shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2 md:hidden"
@@ -553,6 +556,9 @@ export default function App() {
       >
         {mainContent}
       </main>
+
+      <AdBanner android={false} />
+      </div>
 
       {overlays}
     </div>

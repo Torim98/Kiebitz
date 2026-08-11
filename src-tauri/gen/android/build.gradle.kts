@@ -5,7 +5,9 @@ buildscript {
     }
     dependencies {
         classpath("com.android.tools.build:gradle:8.11.0")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
+        // GMA 24.9 setzt Kotlin 2.1 voraus. Die 2.1-Linie bleibt zugleich mit
+        // den Gradle-Skripten der aktuellen Tauri-Version kompatibel.
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.21")
     }
 }
 

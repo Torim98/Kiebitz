@@ -1,4 +1,5 @@
 mod analysis;
+mod ads;
 mod chess;
 mod chessdb;
 mod db;
@@ -341,6 +342,12 @@ pub fn run() {
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
 
+            // Android rendert Werbung als native Google-AdView über dem vom
+            // React-Layout reservierten Platz. Desktop verwendet keinen
+            // Google-Code, weil AdSense in Desktopsoftware nicht zulässig ist.
+            #[cfg(target_os = "android")]
+            app.handle().plugin(ads::init())?;
+
             // Die Play-In-App-Review-API existiert nur im Play-Build. Der
             // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
             // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
@@ -426,6 +433,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            ads::set_ad_banner,
+            ads::show_ad_privacy_options,
             review::request_play_review,
             engine_info,
             analyze_position,

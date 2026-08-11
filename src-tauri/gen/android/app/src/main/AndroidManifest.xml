@@ -11,6 +11,11 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.kiebitz"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- Google Mobile Ads; lokale Builds verwenden die offizielle Test-ID,
+             Produktions-Builds KIEBITZ_ADMOB_APP_ID aus dem Release-Secret. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"

@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -41,6 +42,25 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
+// Ohne Publisher-Konto bleiben Debug- und lokale Release-Builds sicher auf
+// Googles offiziellen Test-IDs. CI bzw. Android Studio können die beiden Werte
+// über Umgebungsvariablen oder Gradle-Properties ersetzen.
+fun advertisingValue(environmentName: String, propertyName: String, fallback: String): String =
+    System.getenv(environmentName)?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(propertyName).orNull?.takeIf { it.isNotBlank() }
+        ?: fallback
+
+val admobAppId = advertisingValue(
+    "KIEBITZ_ADMOB_APP_ID",
+    "kiebitz.admob.appId",
+    "ca-app-pub-3940256099942544~3347511713",
+)
+val admobBannerAdUnitId = advertisingValue(
+    "KIEBITZ_ADMOB_BANNER_ID",
+    "kiebitz.admob.bannerId",
+    "ca-app-pub-3940256099942544/6300978111",
+)
+
 android {
     compileSdk = 36
     namespace = "de.torim.kiebitz"
@@ -48,6 +68,8 @@ android {
         // Der Geräte-Sync ist ausschließlich HTTPS; Android darf keinen
         // Cleartext-Verkehr für Kiebitz erlauben.
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["admobAppId"] = admobAppId
+        buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$admobBannerAdUnitId\"")
         applicationId = "de.torim.kiebitz"
         minSdk = 24
         targetSdk = 36
@@ -90,9 +112,6 @@ android {
             }
         }
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
     buildFeatures {
         buildConfig = true
     }
@@ -119,9 +138,19 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
+    // Aktuelle, unterstützte SDK-Linien; UMP wird vor der ersten Anzeigenanfrage
+    // ausgeführt und stellt den nachträglichen Datenschutzdialog bereit.
+    implementation("com.google.android.gms:play-services-ads:24.9.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
+    }
 }
 
 apply(from = "tauri.build.gradle.kts")

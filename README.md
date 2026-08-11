@@ -5,8 +5,8 @@ Lichess games, analyze them with a native Stockfish, build an opening repertoire
 train tactics and endgames — all from a single dashboard, with your data staying
 on your own devices.
 
-No account, no cloud, no telemetry. Devices sync directly with each other over
-the local network.
+No Kiebitz account and no chess-data cloud. Games, analyses, and settings stay
+on your device. Devices sync directly with each other over the local network.
 
 **Website:** <https://torim98.github.io/kiebitz-site/> · **Downloads:**
 [latest release](https://github.com/Torim98/Kiebitz/releases/latest)

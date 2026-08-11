@@ -56,7 +56,7 @@ TAMBIÉN EN LA APLICACIÓN
 LOCAL-FIRST, NO SOLO COMO ESLOGAN
 • Sin cuenta: sin registro, sin correo, sin inicio de sesión
 • Sin nube: partidas, análisis y progreso viven en una base de datos de tu dispositivo
-• Sin telemetría: sin rastreo, sin anuncios, sin informes de fallos
+• Tus datos de ajedrez permanecen locales; Kiebitz Free incluye anuncios y opciones de consentimiento cuando son necesarias
 • Kiebitz solo habla con la red cuando tú se lo pides: chess.com o Lichess al importar, Lichess para descargar los problemas y, si lo activas, chessdb.cn para el libro de aperturas
 
 SINCRONIZACIÓN ENTRE DISPOSITIVOS SIN NADA EN MEDIO

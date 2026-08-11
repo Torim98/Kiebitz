@@ -238,6 +238,7 @@ describe("Settings loading", () => {
       "set.notify",
       "set.sync",
       "set.updates",
+      "set.adsPrivacy",
       "set.support",
       "set.engine",
       "set.database",
