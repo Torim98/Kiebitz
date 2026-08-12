@@ -15,12 +15,6 @@ set is summarized in the [README](../README.md).
 
 ## Performance and maintainability
 
-- [ ] Split the universal game payload into lightweight overview rows, a
-  backend-paginated game list and an on-demand game detail record. This should
-  reduce SQLite work and IPC volume for large libraries without changing the UI.
-- [ ] Load pages and language packs on demand, then enforce a measured frontend
-  bundle budget. Preserve the existing browser preview and preload likely next
-  pages only when the browser is idle.
 - [ ] Centralize Stockfish version, archive hashes, Android API and NDK pins so
   CI, release workflows, local scripts and notices consume one source of truth.
 - [ ] Move the updater-manifest implementation out of the release workflow into

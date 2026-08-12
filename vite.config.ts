@@ -7,10 +7,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173, strictPort: true },
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
         // Große, selten geänderte Bibliotheken erhalten eigene Cache- und
-        // Download-Chunks; die Seiten selbst bleiben synchron geladen.
+        // Download-Chunks; Seiten und optionale Sprachen werden dynamisch geladen.
         manualChunks(id) {
           const path = id.replaceAll("\\", "/");
           if (!path.includes("/node_modules/")) return;

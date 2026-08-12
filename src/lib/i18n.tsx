@@ -7,16 +7,11 @@
  * Die Locale kommt aus den App-Einstellungen (Desktop) bzw. localStorage
  * (Web-Preview); Zahl- und Datumsformatierung folgt über setFormatLocale.
  */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { getSettings } from "./settings";
-import { setFormatLocale } from "./util";
+import { setFormatLocale } from "./format";
 import { de, type Key } from "./locales/de";
 import { en } from "./locales/en";
-import { fr } from "./locales/fr";
-import { es } from "./locales/es";
-import { zh } from "./locales/zh";
-import { hi } from "./locales/hi";
-import { ar } from "./locales/ar";
 
 export type { Key };
 
@@ -71,12 +66,43 @@ export function isLocale(value: unknown): value is Locale {
   return typeof value === "string" && (LOCALES as readonly string[]).includes(value);
 }
 
-const dicts: Record<Locale, Record<Key, string>> = { de, en, es, fr, hi, ar, zh };
+type Dictionary = Record<Key, string>;
+
+// English and German cover the initial install and the source-language
+// fallback. The much larger optional language packs are separate Vite chunks
+// and are fetched only when the user actually selects them.
+const dicts: Partial<Record<Locale, Dictionary>> = { de, en };
+const localeLoaders: Partial<Record<Locale, () => Promise<Dictionary>>> = {
+  es: () => import("./locales/es").then((module) => module.es),
+  fr: () => import("./locales/fr").then((module) => module.fr),
+  hi: () => import("./locales/hi").then((module) => module.hi),
+  ar: () => import("./locales/ar").then((module) => module.ar),
+  zh: () => import("./locales/zh").then((module) => module.zh),
+};
+const localeRequests = new Map<Locale, Promise<Dictionary>>();
+
+/** Loads and memoizes an optional language pack. */
+export function loadLocale(locale: Locale): Promise<Dictionary> {
+  const loaded = dicts[locale];
+  if (loaded) return Promise.resolve(loaded);
+  let request = localeRequests.get(locale);
+  if (!request) {
+    const loader = localeLoaders[locale];
+    if (!loader) return Promise.resolve(en);
+    request = loader().then((dictionary) => {
+      dicts[locale] = dictionary;
+      return dictionary;
+    });
+    localeRequests.set(locale, request);
+    void request.catch(() => localeRequests.delete(locale));
+  }
+  return request;
+}
 
 export type TFunc = (key: Key, params?: Record<string, string | number>) => string;
 
 function translate(locale: Locale, key: Key, params?: Record<string, string | number>): string {
-  let text: string = dicts[locale][key] ?? en[key] ?? de[key] ?? key;
+  let text: string = dicts[locale]?.[key] ?? en[key] ?? de[key] ?? key;
   if (params) {
     for (const [name, value] of Object.entries(params)) {
       text = text.split(`{${name}}`).join(String(value));
@@ -88,6 +114,12 @@ function translate(locale: Locale, key: Key, params?: Record<string, string | nu
 /** Übersetzer außerhalb von React (z. B. für Benachrichtigungstexte). */
 export function translator(locale: Locale): TFunc {
   return (key, params) => translate(locale, key, params);
+}
+
+/** Loads a language first for non-React callers such as notifications. */
+export async function loadTranslator(locale: Locale): Promise<TFunc> {
+  await loadLocale(locale);
+  return translator(locale);
 }
 
 interface I18nContext {
@@ -120,15 +152,30 @@ function applyDocumentLocale(locale: Locale): void {
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  // Neuinstallationen starten auf Englisch; die gespeicherte Wahl gewinnt.
-  const [locale, setLocaleState] = useState<Locale>(() => {
+  const initialLocale = useRef<Locale | null>(null);
+  if (initialLocale.current == null) {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      return isLocale(stored) ? stored : "en";
+      initialLocale.current = isLocale(stored) ? stored : "en";
     } catch {
-      return "en";
+      initialLocale.current = "en";
     }
-  });
+  }
+  // Optional packs render the English fallback only until their small dynamic
+  // import resolves; setting the locale afterwards causes one coherent render.
+  const [locale, setLocaleState] = useState<Locale>(() =>
+    dicts[initialLocale.current!] ? initialLocale.current! : "en"
+  );
+  const localeRequest = useRef(0);
+
+  const activateLocale = useCallback((next: Locale) => {
+    const requestId = ++localeRequest.current;
+    void loadLocale(next)
+      .then(() => {
+        if (localeRequest.current === requestId) setLocaleState(next);
+      })
+      .catch(() => {});
+  }, []);
 
   // Zahlformatierung synchron zur Locale halten (auch beim ersten Render).
   setFormatLocale(LOCALE_TAGS[locale]);
@@ -136,9 +183,12 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   // Desktop: die in den Einstellungen gespeicherte Sprache gewinnt.
   useEffect(() => {
     getSettings()
-      .then((s) => setLocaleState(isLocale(s.locale) ? s.locale : "en"))
+      .then((s) => activateLocale(isLocale(s.locale) ? s.locale : "en"))
       .catch(() => {});
-  }, []);
+  }, [activateLocale]);
+
+  // A locale restored from localStorage may live in an optional chunk.
+  useEffect(() => activateLocale(initialLocale.current!), [activateLocale]);
 
   useEffect(() => {
     applyDocumentLocale(locale);
@@ -149,7 +199,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     }
   }, [locale]);
 
-  const setLocale = useCallback((l: Locale) => setLocaleState(l), []);
+  const setLocale = useCallback((l: Locale) => activateLocale(l), [activateLocale]);
   const t = useCallback<TFunc>((key, params) => translate(locale, key, params), [locale]);
 
   return <Ctx.Provider value={{ locale, setLocale, t }}>{children}</Ctx.Provider>;

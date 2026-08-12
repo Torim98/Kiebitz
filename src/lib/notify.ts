@@ -16,7 +16,7 @@ import {
   cancel,
   Schedule,
 } from "@tauri-apps/plugin-notification";
-import { translator, type TFunc } from "./i18n";
+import { loadTranslator, type TFunc } from "./i18n";
 import { getSettings, type Settings } from "./settings";
 import { getStudyCalendar, studyData } from "./study";
 import type { BackendInfo } from "./backend";
@@ -184,7 +184,7 @@ export async function applyReminderSchedule(): Promise<void> {
     await cancel([SCHEDULED_ID]).catch(() => {});
     if (!settings.notify_enabled) return;
     if (!(await ensurePermission())) return;
-    const t = translator(settings.locale);
+    const t = await loadTranslator(settings.locale);
     const due = await collectDue().catch(() => null);
     const [hour, minute] = settings.notify_time.split(":").map(Number);
     await nativeScheduledNotification({
@@ -205,7 +205,7 @@ export async function applyReminderSchedule(): Promise<void> {
   // kann (WAL-Zustand, Sperren).
   await invoke<string>("sync_reminder_schedule").catch(() => "");
   if (!settings.notify_enabled) return;
-  const t = translator(settings.locale);
+  const t = await loadTranslator(settings.locale);
   const due = await collectDue().catch(() => null);
   const body = due && reminderBody(t, settings, due);
   if (body) {
@@ -216,7 +216,7 @@ export async function applyReminderSchedule(): Promise<void> {
 /** Sofort-Erinnerung für den Testknopf in den Einstellungen. */
 export async function sendTestReminder(): Promise<void> {
   const settings = await getSettings();
-  const t = translator(settings.locale);
+  const t = await loadTranslator(settings.locale);
   const body = reminderBody(t, settings, await collectDue()) ?? t("notify.allDone");
   await notify(t("notify.title"), body);
 }
@@ -231,7 +231,7 @@ async function runCheck(): Promise<void> {
   // Android erledigt die Erinnerung über den geplanten Alarm · hier nur der
   // Fall „App läuft gerade“ auf dem Desktop.
   if (await isMobile()) return;
-  const t = translator(settings.locale);
+  const t = await loadTranslator(settings.locale);
   const body = reminderBody(t, settings, await collectDue());
   // Auch ein stiller Tag gilt als erledigt · höchstens eine Erinnerung pro Tag.
   localStorage.setItem(LAST_SENT_KEY, today);

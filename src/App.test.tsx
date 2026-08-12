@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { LocaleProvider } from "./lib/i18n";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { loadLocale, LocaleProvider } from "./lib/i18n";
 import App from "./App";
 
 vi.mock("./lib/backend", () => ({
@@ -46,9 +46,10 @@ vi.mock("./pages/Settings", () => ({ default: () => <div>Settings</div> }));
 
 const realMatchMedia = window.matchMedia;
 
-beforeEach(() => {
+beforeEach(async () => {
   // Ab Werk startet die App auf Englisch; hier werden deutsche Labels geprüft.
   localStorage.setItem("kiebitz.locale", "de");
+  await loadLocale("de");
   window.matchMedia = realMatchMedia;
 });
 
@@ -81,8 +82,13 @@ function pageTitle() {
 }
 
 describe("mobile navigation", () => {
-  it("replaces the drawer with an app bar carrying title, back and settings", () => {
-    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+  it("replaces the drawer with an app bar carrying title, back and settings", async () => {
+    let container = document.createElement("div");
+    await act(async () => {
+      container = render(<LocaleProvider><App /></LocaleProvider>).container;
+    });
+    await screen.findByText("Dashboard", { selector: "div" });
+    await screen.findByRole("button", { name: "Partien" });
     // Weder Hamburger noch Sidebar · die Leiste trägt die Ziele.
     expect(screen.queryByRole("button", { name: "Menü" })).toBeNull();
     expect(container.querySelector("aside")).toBeNull();
@@ -104,7 +110,7 @@ describe("mobile navigation", () => {
     const bar = within(container.querySelector("header") as HTMLElement);
 
     fireEvent.click(bar.getByRole("button", { name: "Einstellungen" }));
-    expect(pageTitle()).toBe("Settings");
+    await waitFor(() => expect(pageTitle()).toBe("Settings"));
     // Einstellungen sind kein Tab · von dort führt der Pfeil zurück.
     expect(activeTab()).toBeUndefined();
 
@@ -112,7 +118,7 @@ describe("mobile navigation", () => {
     await waitFor(() => expect(pageTitle()).toBe("Dashboard"));
   });
 
-  it("shows the five main destinations in the bottom bar and marks the active one", () => {
+  it("shows the five main destinations in the bottom bar and marks the active one", async () => {
     const { container } = render(<LocaleProvider><App /></LocaleProvider>);
     const labels = bottomBar()
       .getAllByRole("button")
@@ -121,13 +127,13 @@ describe("mobile navigation", () => {
     expect(activeTab()).toBe("Dashboard");
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Insights" }));
-    expect(pageTitle()).toBe("Insights");
+    await waitFor(() => expect(pageTitle()).toBe("Insights"));
     expect(activeTab()).toBe("Insights");
 
     const main = container.querySelector("main") as HTMLElement;
     main.scrollTop = 640;
     fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
-    expect(pageTitle()).toBe("Study");
+    await waitFor(() => expect(pageTitle()).toBe("Study"));
     expect(main.scrollTop).toBe(0);
   });
 
@@ -136,9 +142,9 @@ describe("mobile navigation", () => {
     const bar = within(container.querySelector("header") as HTMLElement);
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
-    fireEvent.click(screen.getByRole("button", { name: "Zu den Endspielen" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zu den Endspielen" }));
 
-    expect(pageTitle()).toBe("Endgame");
+    await waitFor(() => expect(pageTitle()).toBe("Endgame"));
     // Der Tab bleibt markiert, der Pfeil führt eine Ebene zurück ins Training.
     expect(activeTab()).toBe("Training");
     expect(window.history.state).toEqual({ kd: 3 });
@@ -150,9 +156,9 @@ describe("mobile navigation", () => {
   it("keeps the puzzle theme deep link under Training as well", async () => {
     render(<LocaleProvider><App /></LocaleProvider>);
     fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
-    fireEvent.click(screen.getByRole("button", { name: "Zu den Puzzles" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zu den Puzzles" }));
 
-    expect(pageTitle()).toBe("Puzzles");
+    await waitFor(() => expect(pageTitle()).toBe("Puzzles"));
     expect(activeTab()).toBe("Training");
 
     window.history.back();

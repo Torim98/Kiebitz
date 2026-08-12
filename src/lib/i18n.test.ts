@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LOCALES, LOCALE_NAMES, LOCALE_TAGS, isLocale, isRtl, translator } from "./i18n";
+import { LOCALES, LOCALE_NAMES, LOCALE_TAGS, isLocale, isRtl, loadLocale, translator } from "./i18n";
 import { de } from "./locales/de";
 import { PUZZLE_THEMES } from "./locales/themes";
 
@@ -25,8 +25,9 @@ describe("locales", () => {
     expect(isLocale(null)).toBe(false);
   });
 
-  it("translates every key in every language and keeps the placeholders", () => {
+  it("loads every language pack and keeps all placeholders", async () => {
     for (const locale of LOCALES) {
+      await loadLocale(locale);
       const t = translator(locale);
       for (const key of KEYS) {
         const text = t(key);

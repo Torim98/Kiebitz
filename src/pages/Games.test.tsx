@@ -86,7 +86,7 @@ describe("Games page", () => {
     expect(invokeMock).toHaveBeenCalledWith("list_games_page", {
       request: expect.objectContaining({ offset: 0, limit: 10 }),
     });
-    expect(invokeMock).toHaveBeenCalledWith("game_detail", { id: 1 });
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("game_detail", { id: 1 }));
     expect(invokeMock).not.toHaveBeenCalledWith("list_games_for_export");
   });
 

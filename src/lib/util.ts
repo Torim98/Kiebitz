@@ -1,5 +1,8 @@
 import { Chess } from "chess.js";
 import type { Result } from "../data/demo";
+import { de } from "./format";
+
+export { dateLocale, de, deInt, setFormatLocale } from "./format";
 
 export function fenAfter(sans: string[] | undefined, count?: number): string {
   const chess = new Chess();
@@ -17,29 +20,6 @@ export function fenAfter(sans: string[] | undefined, count?: number): string {
 // Der Wert ist ein fertiger BCP-47-Tag (siehe LOCALE_TAGS in i18n.tsx) · das
 // Modul kennt die Sprachliste bewusst nicht, sonst importierten sich util und
 // i18n gegenseitig.
-let formatLocale = "en-US";
-
-export function setFormatLocale(tag: string): void {
-  formatLocale = tag;
-}
-
-export function dateLocale(): string {
-  return formatLocale;
-}
-
-/** Zahl mit fester Nachkommastellen-Zahl in der aktiven Locale. */
-export function de(n: number, digits = 1): string {
-  return n.toLocaleString(formatLocale, {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
-}
-
-/** Ganzzahl mit Tausendertrennung in der aktiven Locale. */
-export function deInt(n: number): string {
-  return n.toLocaleString(formatLocale);
-}
-
 /** Extracts a readable message from native/Tauri errors as well as JS errors. */
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;

@@ -32,6 +32,12 @@ jobs:
       - name: Tests
         run: npm run test:run
 
+      - name: Produktionsbundle bauen
+        run: npm run build
+
+      - name: Bundle-Budget prüfen
+        run: npm run bundle:check
+
   rust:
     # Windows already provides the native Tauri/WebView dependencies, avoiding
     # the extra GTK/WebKit system packages needed by Linux runners.

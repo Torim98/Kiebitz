@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
 import {
   Activity,
   BarChart3,
@@ -42,24 +42,64 @@ import {
   ShellProvider,
   useLandscapePhone,
 } from "./components/MobileShell";
-import Dashboard from "./pages/Dashboard";
-import Games from "./pages/Games";
-import Analysis from "./pages/Analysis";
-import Repertoire from "./pages/Repertoire";
-import Endgame from "./pages/Endgame";
 import type { EndgameCategory } from "./data/endgames";
-import Puzzles from "./pages/Puzzles";
-import Study from "./pages/Study";
-import Insights from "./pages/InsightsV2";
-import SettingsPage from "./pages/Settings";
-import Support from "./pages/Support";
 import Onboarding from "./components/Onboarding";
 import AdBanner from "./components/AdBanner";
-import { dateLocale, deInt } from "./lib/util";
+import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
 
 export type { PageId };
+
+const pageLoaders = {
+  dashboard: () => import("./pages/Dashboard"),
+  games: () => import("./pages/Games"),
+  analysis: () => import("./pages/Analysis"),
+  repertoire: () => import("./pages/Repertoire"),
+  endgame: () => import("./pages/Endgame"),
+  puzzles: () => import("./pages/Puzzles"),
+  study: () => import("./pages/Study"),
+  insights: () => import("./pages/InsightsV2"),
+  settings: () => import("./pages/Settings"),
+  support: () => import("./pages/Support"),
+} satisfies Record<PageId, () => Promise<{ default: ComponentType<any> }>>;
+
+const Dashboard = lazy(pageLoaders.dashboard);
+const Games = lazy(pageLoaders.games);
+const Analysis = lazy(pageLoaders.analysis);
+const Repertoire = lazy(pageLoaders.repertoire);
+const Endgame = lazy(pageLoaders.endgame);
+const Puzzles = lazy(pageLoaders.puzzles);
+const Study = lazy(pageLoaders.study);
+const Insights = lazy(pageLoaders.insights);
+const SettingsPage = lazy(pageLoaders.settings);
+const Support = lazy(pageLoaders.support);
+
+const LIKELY_NEXT_PAGES: Record<PageId, PageId[]> = {
+  dashboard: ["games", "study"],
+  games: ["analysis", "dashboard"],
+  analysis: ["games", "insights"],
+  repertoire: ["study", "games"],
+  endgame: ["study", "puzzles"],
+  puzzles: ["study", "analysis"],
+  study: ["puzzles", "endgame"],
+  insights: ["study", "analysis"],
+  settings: ["support", "dashboard"],
+  support: ["settings", "dashboard"],
+};
+
+function preloadLikelyPages(page: PageId): () => void {
+  // Unit tests exercise lazy navigation itself; speculative imports would keep
+  // resolving after assertions and create unrelated React act warnings.
+  if (import.meta.env.MODE === "test") return () => {};
+  const preload = () => LIKELY_NEXT_PAGES[page].forEach((target) => void pageLoaders[target]());
+  if ("requestIdleCallback" in window) {
+    const id = window.requestIdleCallback(preload, { timeout: 2_000 });
+    return () => window.cancelIdleCallback(id);
+  }
+  const id = globalThis.setTimeout(preload, 500);
+  return () => globalThis.clearTimeout(id);
+}
 
 const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
@@ -96,6 +136,8 @@ export default function App() {
   const t = useT();
   const storeCapture = isStoreCapture();
   const [gameCount, setGameCount] = useState<number | null>(null);
+
+  useEffect(() => preloadLikelyPages(page), [page]);
 
   // Partie öffnen ist eine Detailebene: Zurück führt in die Partienliste
   // zurück, nicht aus der App heraus.
@@ -395,7 +437,11 @@ export default function App() {
   );
 
   const mainContent = (
-    <>
+    <Suspense fallback={
+      <div className="flex min-h-[40vh] items-center justify-center text-ink3" aria-busy="true">
+        <Loader2 size={22} className="animate-spin text-accent" />
+      </div>
+    }>
       {page === "dashboard" && (
         <Dashboard go={navigate} openAnalysis={openAnalysis} openGames={openGames} />
       )}
@@ -420,7 +466,7 @@ export default function App() {
       )}
       {page === "settings" && <SettingsPage openSupport={openSupport} />}
       {page === "support" && <Support initialType={route.reportType ?? "feedback"} />}
-    </>
+    </Suspense>
   );
 
   const overlays = (
