@@ -59,8 +59,8 @@ beforeEach(() => {
           display_name: "Tori",
           puzzle_goal: 12,
         });
-      case "list_games":
-        return Promise.resolve([game]);
+      case "list_game_summaries":
+        return Promise.resolve([{ ...game, has_moves: true, has_note: false }]);
       case "rep_stats":
         return Promise.resolve({ my_positions: 20, due_now: 5, coverage_pct: 42, games_checked: 1 });
       case "puzzle_stats":
@@ -94,7 +94,7 @@ describe("Dashboard page", () => {
     expect(screen.getByText("5")).toBeTruthy();
     expect(screen.getByText("4")).toBeTruthy();
     expect(screen.getByText("87,4 %").closest("td")?.className).toContain("whitespace-nowrap");
-    expect(invokeMock).toHaveBeenCalledWith("list_games");
+    expect(invokeMock).toHaveBeenCalledWith("list_game_summaries");
   });
 
   it("turns a live game field into a precise Games filter", async () => {

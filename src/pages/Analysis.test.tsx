@@ -17,7 +17,12 @@ vi.mock("../lib/backend", () => ({
   useBackendInfo: () => ({ mode: "desktop", info: { platform: "windows" } }),
 }));
 vi.mock("../lib/db", () => ({
-  listGames: mocks.listGames,
+  listGameSummaries: () => mocks.listGames().then((games: typeof excludedGame[]) =>
+    games.map((game) => ({ ...game, has_moves: Boolean(game.moves), has_note: Boolean(game.note) }))
+  ),
+  getGame: (id: number) => mocks.listGames().then((games: typeof excludedGame[]) =>
+    games.find((game) => game.id === id)
+  ),
   setGameNote: mocks.setGameNote,
   setGameTags: mocks.setGameTags,
 }));

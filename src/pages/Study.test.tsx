@@ -102,7 +102,7 @@ function mockBackend(options: BackendOptions = {}) {
         return Promise.resolve(study);
       case "training_program":
         return Promise.resolve(program);
-      case "list_games":
+      case "list_game_summaries":
         return Promise.resolve([]);
       case "puzzle_insights":
         return Promise.resolve(puzzles);

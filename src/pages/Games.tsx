@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -25,11 +25,11 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { games as demoGames, profile, type Result, type Source } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
-import { deleteGame, listGames, readPgnFile, setGameNote, setGameTags, upsertGames, writePgnFile, type GameRecord } from "../lib/db";
+import { deleteGame, getGame, listGamesForExport, listGamesPage, readPgnFile, setGameNote, setGameTags, upsertGames, writePgnFile, type GameRecord } from "../lib/db";
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
-import { toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
+import { tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
@@ -63,7 +63,9 @@ export default function Games({
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
-  const [records, setRecords] = useState<GameRecord[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<GameRecord | null>(null);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [libraryTotal, setLibraryTotal] = useState(0);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importTone, setImportTone] = useState<ImportTone>("info");
@@ -93,6 +95,7 @@ export default function Games({
   const [page, setPage] = useState(1);
   // Inline-Eingabe zum direkten Springen auf eine bestimmte Seite.
   const [pageInput, setPageInput] = useState<string | null>(null);
+  const reloadSequence = useRef(0);
 
   // Gewählte Seitengröße merken (nur UI-Präferenz → localStorage).
   useEffect(() => {
@@ -103,30 +106,50 @@ export default function Games({
     }
   }, [pageSize]);
 
-  const reload = () =>
-    listGames()
-      .then((rs) => {
-        setRecords(rs);
-        setDbGames(rs.map((r) => toUi(r, locale)));
+  const reload = () => {
+    const day = dateKey ? new Date(`${dateKey}T00:00:00`) : null;
+    const nextDay = day ? new Date(day) : null;
+    nextDay?.setDate(nextDay.getDate() + 1);
+    const sequence = ++reloadSequence.current;
+    return listGamesPage({
+      offset: (page - 1) * pageSize,
+      limit: pageSize,
+      source: source === "alle" ? "" : source,
+      result: result === "alle" ? "" : result,
+      time_class: tc,
+      played_day: dateKey,
+      played_from: day ? Math.floor(day.getTime() / 1000) : 0,
+      played_to: nextDay ? Math.floor(nextDay.getTime() / 1000) : 0,
+      opponent,
+      opening,
+      query,
+    })
+      .then((resultPage) => {
+        if (sequence !== reloadSequence.current) return;
+        setDbGames(resultPage.items.map((r) => toUi(r, locale)));
+        setFilteredTotal(resultPage.total);
+        setLibraryTotal(resultPage.library_total);
       })
       .catch(() => setDbGames(null));
+  };
 
   useEffect(() => {
     if (backend.mode === "desktop") reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend.mode, locale]);
+  }, [backend.mode, locale, source, result, query, pageSize, page, tc, dateKey, opponent, opening]);
 
   const databaseLoaded = dbGames !== null;
   const allGames: UiGame[] = databaseLoaded ? dbGames : demoGames;
 
   const filtered = useMemo(
-    () =>
-      allGames.filter(
+    () => databaseLoaded
+      ? allGames
+      : allGames.filter(
         (g) =>
           (source === "alle" || g.source === source) &&
           (result === "alle" || g.result === result) &&
-          (tc === "" || g.tc === tc) &&
-          (dateKey === "" || g.date === dateKey) &&
+          (tc === "" || g.timeClass === tc || g.tc === tc) &&
+          (dateKey === "" || g.dateKey === dateKey || g.date === dateKey) &&
           (opponent === "" || g.opponent === opponent) &&
           (opening === "" || g.opening === opening) &&
           (query === "" ||
@@ -134,19 +157,40 @@ export default function Games({
             g.opening.toLowerCase().includes(query.toLowerCase()) ||
             g.tags.some((tag) => tag.toLowerCase().includes(query.toLowerCase())))
       ),
-    [allGames, source, result, tc, dateKey, opponent, opening, query]
+    [allGames, databaseLoaded, source, result, tc, dateKey, opponent, opening, query]
   );
 
-  const selected: UiGame | undefined =
-    filtered.find((g) => g.id === selectedId) ?? filtered[0];
+  const selectedSummary = filtered.find((g) => g.id === selectedId) ?? filtered[0];
+  const selected: UiGame | undefined = selectedRecord && selectedRecord.id === selectedSummary?.dbId
+    ? toUi(selectedRecord, locale)
+    : selectedSummary;
+
+  useEffect(() => {
+    if (!selectedSummary?.dbId) {
+      setSelectedRecord(null);
+      return;
+    }
+    let current = true;
+    getGame(selectedSummary.dbId)
+      .then((record) => { if (current) setSelectedRecord(record); })
+      .catch(() => { if (current) setSelectedRecord(null); });
+    return () => { current = false; };
+  }, [selectedSummary?.dbId]);
 
   // Paginierung: bei Filter-/Seitengröße-Wechsel zurück auf Seite 1.
   useEffect(() => setPage(1), [source, result, query, pageSize, tc, dateKey, opponent, opening]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalResults = databaseLoaded ? filteredTotal : filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const safePage = Math.min(page, totalPages);
-  const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const rangeFrom = filtered.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const rangeTo = Math.min(safePage * pageSize, filtered.length);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const paged = databaseLoaded ? filtered : filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const rangeFrom = totalResults === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const rangeTo = Math.min(safePage * pageSize, totalResults);
+  const dateFilterLabel = locale === "de" && dateKey
+    ? dateKey.split("-").reverse().join(".")
+    : dateKey;
 
   // Eingetippte Zielseite übernehmen (auf gültigen Bereich begrenzt).
   const commitPageJump = () => {
@@ -201,6 +245,7 @@ export default function Games({
     setDbGames((gs) =>
       gs ? gs.map((g) => (g.id === selected.id ? { ...g, note: noteDraft || undefined } : g)) : gs
     );
+    setSelectedRecord((record) => record ? { ...record, note: noteDraft } : record);
     setNoteSaved(true);
     setTimeout(() => setNoteSaved(false), 1500);
   };
@@ -209,7 +254,7 @@ export default function Games({
     if (!selected?.dbId) return;
     const saved = await setGameTags(selected.dbId, next);
     setDbGames((gs) => gs?.map((g) => (g.id === selected.id ? { ...g, tags: saved } : g)) ?? gs);
-    setRecords((rs) => rs.map((g) => (g.id === selected.dbId ? { ...g, tags: saved } : g)));
+    setSelectedRecord((record) => record ? { ...record, tags: saved } : record);
   };
 
   const addTags = async () => {
@@ -228,9 +273,9 @@ export default function Games({
     try {
       const deleted = await deleteGame(selected.dbId);
       if (!deleted) throw new Error(t("games.deleteMissing"));
-      setRecords((games) => games.filter((game) => game.id !== selected.dbId));
-      setDbGames((games) => games?.filter((game) => game.id !== selected.id) ?? games);
+      await reload();
       setSelectedId(null);
+      setSelectedRecord(null);
       setNoteDraft(null);
       setTagDraft("");
     } catch (e) {
@@ -286,10 +331,12 @@ export default function Games({
 
   const runPgnExport = async (onlySelected: boolean) => {
     if (!pgnExportPath.trim()) return;
-    const chosen = onlySelected && selected?.dbId ? records.filter((g) => g.id === selected.dbId) : records;
-    if (!chosen.length) return;
     setPgnBusy(true);
     try {
+      const chosen = onlySelected && selected?.dbId
+        ? [selectedRecord?.id === selected.dbId ? selectedRecord : await getGame(selected.dbId)]
+        : await listGamesForExport();
+      if (!chosen.length) return;
       await writePgnFile(pgnExportPath.trim(), exportPgn(chosen, pgnPlayer));
       setImportTone("success");
       setImportMsg(t("games.pgnExported", { n: chosen.length, path: pgnExportPath.trim() }));
@@ -325,7 +372,7 @@ export default function Games({
             {databaseLoaded ? (
               <>
                 <Database size={13} className="text-accent" />
-                {t("games.dbCount", { n: deInt(allGames.length) })}
+                {t("games.dbCount", { n: deInt(libraryTotal) })}
               </>
             ) : (
               t("games.demoHint")
@@ -448,8 +495,8 @@ export default function Games({
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {(
             [
-              [dateKey, t("games.filterDate", { v: dateKey }), () => setDateKey("")],
-              [tc, t("games.filterMode", { v: tc }), () => setTc("")],
+              [dateKey, t("games.filterDate", { v: dateFilterLabel }), () => setDateKey("")],
+              [tc, t("games.filterMode", { v: tcLabel(tc, locale) }), () => setTc("")],
               [opponent, t("games.filterOpponent", { v: opponent }), () => setOpponent("")],
               [opening, t("games.filterOpening", { v: opening }), () => setOpening("")],
             ] as const
@@ -557,7 +604,7 @@ export default function Games({
                 >
                   <td className="py-2.5 pl-4 pr-2">
                     <button
-                      onClick={(e) => filterTo(e, () => setDateKey(g.date))}
+                      onClick={(e) => filterTo(e, () => setDateKey(g.dateKey ?? g.date))}
                       className="text-ink3 transition-colors hover:text-accent"
                     >
                       {g.date}
@@ -573,7 +620,7 @@ export default function Games({
                   </td>
                   <td className="px-2">
                     <button
-                      onClick={(e) => filterTo(e, () => setTc(g.tc))}
+                      onClick={(e) => filterTo(e, () => setTc(g.timeClass ?? g.tc))}
                       className="text-ink3 transition-colors hover:text-accent"
                     >
                       {g.tc}
@@ -644,7 +691,7 @@ export default function Games({
                 {t("games.rangeInfo", {
                   from: deInt(rangeFrom),
                   to: deInt(rangeTo),
-                  total: deInt(filtered.length),
+                  total: deInt(totalResults),
                 })}
               </span>
             </div>

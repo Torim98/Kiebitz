@@ -3,7 +3,7 @@ import { BarChart3, BookOpen, CalendarClock, Clock, Gauge, GraduationCap } from 
 import { useMobileShell } from "../components/MobileShell";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
-import { listGames, type GameRecord } from "../lib/db";
+import { listGameSummaries, type GameSummary } from "../lib/db";
 import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import { buildInsights } from "../lib/stats";
@@ -51,7 +51,7 @@ export default function InsightsV2({
   const desktop = backend.mode === "desktop";
 
   const [tab, setTab] = useState<InsightTab>("overview");
-  const [records, setRecords] = useState<GameRecord[]>([]);
+  const [records, setRecords] = useState<GameSummary[]>([]);
   const [errors, setErrors] = useState<PhaseErrors[]>([]);
   const [deep, setDeep] = useState<DeepInsights | null>(null);
   const [puzzles, setPuzzles] = useState<PuzzleInsights | null>(null);
@@ -65,7 +65,7 @@ export default function InsightsV2({
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      listGames().catch(() => [] as GameRecord[]),
+      listGameSummaries().catch(() => [] as GameSummary[]),
       errorStats().catch(() => [] as PhaseErrors[]),
       // Die Tiefenanalyse läuft über die Zugebene · sie darf ruhig eine Sekunde
       // brauchen, aber sie darf die Seite nicht blockieren.

@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n } from "../lib/i18n";
-import { listGames, type GameRecord } from "../lib/db";
+import { listGameSummaries, type GameSummary } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import {
   closeStudyFocus,
@@ -99,7 +99,7 @@ export default function Study({
     const [data, program, records, deep, puzzles, settings] = await Promise.all([
       studyData().catch(() => null),
       trainingProgram().catch(() => null),
-      listGames().catch(() => [] as GameRecord[]),
+      listGameSummaries().catch(() => [] as GameSummary[]),
       deepInsights().catch(() => null),
       puzzleInsights().catch(() => null as PuzzleInsights | null),
       getSettings().catch(() => null),

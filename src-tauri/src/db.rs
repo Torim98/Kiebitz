@@ -169,6 +169,71 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     }
 }
 
+/// Lightweight representation used by lists, dashboards and statistics. The
+/// potentially large move, clock and note payloads are loaded only on demand.
+#[derive(Serialize, Clone, Debug)]
+pub struct GameSummary {
+    pub id: i64,
+    pub source: String,
+    pub url: String,
+    pub played_at: String,
+    pub played_ts: i64,
+    pub time_class: String,
+    pub color: String,
+    pub my_name: String,
+    pub opponent: String,
+    pub opp_elo: i64,
+    pub my_elo: i64,
+    pub result: String,
+    pub opening: String,
+    pub eco: String,
+    pub moves_count: i64,
+    pub accuracy: Option<f64>,
+    pub accuracy_opening: Option<f64>,
+    pub accuracy_middlegame: Option<f64>,
+    pub accuracy_endgame: Option<f64>,
+    pub opponent_accuracy: Option<f64>,
+    pub opponent_accuracy_opening: Option<f64>,
+    pub opponent_accuracy_middlegame: Option<f64>,
+    pub opponent_accuracy_endgame: Option<f64>,
+    pub tags: Vec<String>,
+    pub analyzed: bool,
+    pub analysis_excluded: bool,
+    pub has_moves: bool,
+    pub has_note: bool,
+}
+
+#[derive(Deserialize, Default)]
+pub struct GamePageRequest {
+    pub offset: i64,
+    pub limit: i64,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub result: String,
+    #[serde(default)]
+    pub time_class: String,
+    #[serde(default)]
+    pub played_day: String,
+    #[serde(default)]
+    pub played_from: i64,
+    #[serde(default)]
+    pub played_to: i64,
+    #[serde(default)]
+    pub opponent: String,
+    #[serde(default)]
+    pub opening: String,
+    #[serde(default)]
+    pub query: String,
+}
+
+#[derive(Serialize)]
+pub struct GamePage {
+    pub items: Vec<GameSummary>,
+    pub total: i64,
+    pub library_total: i64,
+}
+
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
     let mut stmt = conn
         .prepare(&format!("PRAGMA table_info({table})"))
@@ -892,6 +957,156 @@ pub fn delete_game(conn: &mut Connection, id: i64) -> Result<bool, String> {
     Ok(true)
 }
 
+const GAME_SUMMARY_COLUMNS: &str =
+    "id, source, url, played_at, played_ts, time_class, color, my_name, opponent,
+     opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+     accuracy_opening, accuracy_middlegame, accuracy_endgame,
+     opponent_accuracy, opponent_accuracy_opening, opponent_accuracy_middlegame,
+     opponent_accuracy_endgame, tags, analyzed, analysis_excluded,
+     CASE WHEN TRIM(moves) != '' THEN 1 ELSE 0 END,
+     CASE WHEN TRIM(note) != '' THEN 1 ELSE 0 END";
+
+fn game_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameSummary> {
+    Ok(GameSummary {
+        id: row.get(0)?,
+        source: row.get(1)?,
+        url: row.get(2)?,
+        played_at: row.get(3)?,
+        played_ts: row.get(4)?,
+        time_class: row.get(5)?,
+        color: row.get(6)?,
+        my_name: row.get(7)?,
+        opponent: row.get(8)?,
+        opp_elo: row.get(9)?,
+        my_elo: row.get(10)?,
+        result: row.get(11)?,
+        opening: row.get(12)?,
+        eco: row.get(13)?,
+        moves_count: row.get(14)?,
+        accuracy: row.get(15)?,
+        accuracy_opening: row.get(16)?,
+        accuracy_middlegame: row.get(17)?,
+        accuracy_endgame: row.get(18)?,
+        opponent_accuracy: row.get(19)?,
+        opponent_accuracy_opening: row.get(20)?,
+        opponent_accuracy_middlegame: row.get(21)?,
+        opponent_accuracy_endgame: row.get(22)?,
+        tags: serde_json::from_str(&row.get::<_, String>(23)?).unwrap_or_default(),
+        analyzed: row.get::<_, i64>(24)? != 0,
+        analysis_excluded: row.get::<_, i64>(25)? != 0,
+        has_moves: row.get::<_, i64>(26)? != 0,
+        has_note: row.get::<_, i64>(27)? != 0,
+    })
+}
+
+pub fn list_game_summaries(conn: &Connection) -> Result<Vec<GameSummary>, String> {
+    let sql = format!(
+        "SELECT {GAME_SUMMARY_COLUMNS}
+         FROM games ORDER BY played_ts DESC, played_at DESC, id DESC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], game_summary_from_row)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_game(conn: &Connection, id: i64) -> Result<GameRecord, String> {
+    conn.query_row(
+        "SELECT id, source, source_id, url, played_at, played_ts, time_class, color, my_name, opponent,
+                opp_elo, my_elo, result, opening, eco, moves_count, accuracy,
+                accuracy_opening, accuracy_middlegame, accuracy_endgame,
+                opponent_accuracy, opponent_accuracy_opening,
+                opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
+                note, tags, analyzed, analysis_excluded, clocks, time_control
+         FROM games WHERE id = ?1",
+        params![id],
+        |r| {
+            Ok(GameRecord {
+                id: r.get(0)?, source: r.get(1)?, source_id: r.get(2)?, url: r.get(3)?,
+                played_at: r.get(4)?, played_ts: r.get(5)?, time_class: r.get(6)?,
+                color: r.get(7)?, my_name: r.get(8)?, opponent: r.get(9)?, opp_elo: r.get(10)?,
+                my_elo: r.get(11)?, result: r.get(12)?, opening: r.get(13)?, eco: r.get(14)?,
+                moves_count: r.get(15)?, accuracy: r.get(16)?, accuracy_opening: r.get(17)?,
+                accuracy_middlegame: r.get(18)?, accuracy_endgame: r.get(19)?,
+                opponent_accuracy: r.get(20)?, opponent_accuracy_opening: r.get(21)?,
+                opponent_accuracy_middlegame: r.get(22)?, opponent_accuracy_endgame: r.get(23)?,
+                moves: r.get(24)?, note: r.get(25)?,
+                tags: serde_json::from_str(&r.get::<_, String>(26)?).unwrap_or_default(),
+                analyzed: r.get::<_, i64>(27)? != 0,
+                analysis_excluded: r.get::<_, i64>(28)? != 0,
+                clocks: r.get(29)?, time_control: r.get(30)?,
+            })
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub fn list_games_page(conn: &Connection, request: &GamePageRequest) -> Result<GamePage, String> {
+    const WHERE: &str = "WHERE (?1 = '' OR source = ?1)
+           AND (?2 = '' OR result = ?2)
+           AND (?3 = '' OR time_class = ?3)
+           AND (?4 = '' OR (played_ts > 0 AND played_ts >= ?5 AND played_ts < ?6)
+                OR (played_ts <= 0 AND played_at = ?4))
+           AND (?7 = '' OR opponent = ?7)
+           AND (?8 = '' OR opening = ?8 OR (?8 = char(8212) AND opening = ''))
+           AND (?9 = '' OR instr(lower(opponent), lower(?9)) > 0
+                OR instr(lower(opening), lower(?9)) > 0
+                OR instr(lower(tags), lower(?9)) > 0)";
+    let total = conn
+        .query_row(
+            &format!("SELECT COUNT(*) FROM games {WHERE}"),
+            params![
+                request.source,
+                request.result,
+                request.time_class,
+                request.played_day,
+                request.played_from,
+                request.played_to,
+                request.opponent,
+                request.opening,
+                request.query
+            ],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let library_total = conn
+        .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let sql = format!(
+        "SELECT {GAME_SUMMARY_COLUMNS} FROM games {WHERE}
+         ORDER BY played_ts DESC, played_at DESC, id DESC LIMIT ?10 OFFSET ?11"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(
+            params![
+                request.source,
+                request.result,
+                request.time_class,
+                request.played_day,
+                request.played_from,
+                request.played_to,
+                request.opponent,
+                request.opening,
+                request.query,
+                request.limit.clamp(1, 100),
+                request.offset.max(0)
+            ],
+            game_summary_from_row,
+        )
+        .map_err(|e| e.to_string())?;
+    let items = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(GamePage {
+        items,
+        total,
+        library_total,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1076,6 +1291,88 @@ mod tests {
                 .unwrap();
             assert!(exists, "missing performance index {index}");
         }
+    }
+
+    #[test]
+    fn read_heavy_queries_keep_using_their_performance_indexes() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+
+        let cases = [
+            (
+                "idx_games_played_ts",
+                "SELECT id FROM games ORDER BY played_ts DESC, played_at DESC, id DESC LIMIT 25",
+            ),
+            (
+                "idx_games_analysis_queue",
+                "SELECT id FROM games WHERE analysis_excluded = 0 AND analyzed = 0 ORDER BY played_ts",
+            ),
+            (
+                "idx_puzzle_attempts_ts",
+                "SELECT id FROM puzzle_attempts WHERE ts >= 1 ORDER BY ts",
+            ),
+            (
+                "idx_endgame_attempts_ts",
+                "SELECT id FROM endgame_attempts WHERE ts >= 1 ORDER BY ts",
+            ),
+            (
+                "idx_rep_nodes_due",
+                "SELECT id FROM rep_nodes WHERE due_ts <= 1 ORDER BY due_ts",
+            ),
+            (
+                "idx_study_events_completed",
+                "SELECT id FROM study_events WHERE completed = 1 AND deleted = 0 AND completed_ts >= 1 ORDER BY completed_ts",
+            ),
+        ];
+        for (index, query) in cases {
+            let mut stmt = conn
+                .prepare(&format!("EXPLAIN QUERY PLAN {query}"))
+                .unwrap();
+            let plan = stmt
+                .query_map([], |row| row.get::<_, String>(3))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+                .join("\n");
+            assert!(plan.contains(index), "{index} is no longer used:\n{plan}");
+        }
+    }
+
+    #[test]
+    fn game_lists_are_lightweight_paginated_and_details_stay_complete() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        let first = sample("first");
+        let mut second = sample("second");
+        second.time_class = "blitz".into();
+        second.opponent = "Other player".into();
+        second.played_ts -= 60;
+        upsert_games(&mut conn, &[first, second]).unwrap();
+        let first_id = list_games(&conn).unwrap()[0].id.unwrap();
+        set_note(&conn, first_id, "Remember this position").unwrap();
+
+        let summaries = list_game_summaries(&conn).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert!(summaries[0].has_moves);
+        assert!(summaries[0].has_note);
+
+        let page = list_games_page(
+            &conn,
+            &GamePageRequest {
+                limit: 25,
+                time_class: "rapid".into(),
+                ..GamePageRequest::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.library_total, 2);
+        assert_eq!(page.items[0].id, first_id);
+
+        let detail = get_game(&conn, first_id).unwrap();
+        assert_eq!(detail.moves, "e4 c6 Qf3 e5");
+        assert_eq!(detail.note, "Remember this position");
+        assert_eq!(detail.clocks, "59500 59300 58800 58100");
     }
 
     #[test]

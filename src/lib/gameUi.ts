@@ -1,10 +1,12 @@
 import type { Game, Result, Source } from "../data/demo";
 import { translator, type Key, type Locale } from "./i18n";
-import type { GameRecord } from "./db";
+import type { GameSummary } from "./db";
 
 /** UI-Form einer Partie: Demo-Partien und DB-Partien teilen diese Struktur. */
 export interface UiGame extends Omit<Game, "tc"> {
   tc: string;
+  timeClass?: string;
+  dateKey?: string;
   dbId?: number;
   url?: string;
   analysisExcluded?: boolean;
@@ -51,27 +53,35 @@ export function tcLabel(timeClass: string, locale: Locale): string {
  * (Start-Datum aus dem PGN) sonst von der Sortierung ab. Fallback auf
  * `played_at` für Alt-Datensätze ohne Zeitstempel.
  */
-function gameDate(r: GameRecord, locale: Locale): string {
+function gameDateKey(r: GameSummary): string {
   if (r.played_ts > 0) {
     const dt = new Date(r.played_ts * 1000);
     const y = dt.getFullYear();
     const m = String(dt.getMonth() + 1).padStart(2, "0");
     const d = String(dt.getDate()).padStart(2, "0");
-    return locale === "de" ? `${d}.${m}.${y}` : `${y}-${m}-${d}`;
+    return `${y}-${m}-${d}`;
   }
-  const [y, m, d] = r.played_at.split("-");
-  return d && m && y ? (locale === "de" ? `${d}.${m}.${y}` : `${y}-${m}-${d}`) : r.played_at;
+  return r.played_at;
 }
 
-export function toUi(r: GameRecord, locale: Locale = "en"): UiGame {
+function gameDate(r: GameSummary, locale: Locale): string {
+  const canonical = gameDateKey(r);
+  if (locale !== "de") return canonical;
+  const [y, m, d] = canonical.split("-");
+  return d && m && y ? `${d}.${m}.${y}` : canonical;
+}
+
+export function toUi(r: GameSummary, locale: Locale = "en"): UiGame {
   const date = gameDate(r, locale);
   return {
     id: `db-${r.id}`,
     dbId: r.id ?? undefined,
     url: r.url,
     date,
+    dateKey: gameDateKey(r),
     source: r.source,
     tc: tcLabel(r.time_class, locale),
+    timeClass: r.time_class,
     color: r.color,
     opponent: r.opponent,
     oppElo: r.opp_elo,
@@ -87,7 +97,7 @@ export function toUi(r: GameRecord, locale: Locale = "en"): UiGame {
     analyzed: r.analyzed,
     analysisExcluded: r.analysis_excluded,
     tags: r.tags ?? [],
-    note: r.note || undefined,
+    note: r.note || (r.has_note ? " " : undefined),
     sans: r.moves ? r.moves.split(" ") : undefined,
   };
 }

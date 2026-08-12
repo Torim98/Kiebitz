@@ -2,10 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitDataChange, onDataChange } from "./changes";
 
 /** Spiegelt db::GameRecord aus dem Rust-Backend (snake_case wie serialisiert). */
-export interface GameRecord {
+export interface GameSummary {
   id: number | null;
   source: "chess.com" | "lichess" | "manual";
-  source_id: string;
   url: string;
   played_at: string; // ISO-Datum
   played_ts: number; // Unix-Sekunden (Partie-Ende)
@@ -29,16 +28,44 @@ export interface GameRecord {
   opponent_accuracy_opening?: number | null;
   opponent_accuracy_middlegame?: number | null;
   opponent_accuracy_endgame?: number | null;
-  moves: string; // SAN-Züge, leerzeichengetrennt
+  has_moves?: boolean;
+  has_note?: boolean;
+  moves?: string; // Volltext ist nur im Detaildatensatz vorhanden.
   /** Restzeit nach jedem Halbzug in Hundertstelsekunden, leerzeichengetrennt. */
   clocks?: string;
   /** PGN-TimeControl der Partie ("600+5"); leer, wenn unbekannt. */
   time_control?: string;
-  note: string;
+  note?: string;
   tags?: string[];
   analyzed: boolean;
   /** In Bibliothek behalten, aber aus Engine- und Statistik-Analysen auslassen. */
   analysis_excluded?: boolean;
+}
+
+export interface GameRecord extends GameSummary {
+  source_id: string;
+  moves: string;
+  note: string;
+}
+
+export interface GamePageRequest {
+  offset: number;
+  limit: number;
+  source?: string;
+  result?: string;
+  time_class?: string;
+  played_day?: string;
+  played_from?: number;
+  played_to?: number;
+  opponent?: string;
+  opening?: string;
+  query?: string;
+}
+
+export interface GamePage {
+  items: GameSummary[];
+  total: number;
+  library_total: number;
 }
 
 export interface UpsertResult {
@@ -47,22 +74,53 @@ export interface UpsertResult {
 }
 
 let gamesRequest: Promise<GameRecord[]> | null = null;
+let summariesRequest: Promise<GameSummary[]> | null = null;
+const detailRequests = new Map<number, Promise<GameRecord>>();
 let statsRequest: Promise<{ total: number }> | null = null;
 
 onDataChange(() => {
   gamesRequest = null;
+  summariesRequest = null;
+  detailRequests.clear();
   statsRequest = null;
 });
 
-export function listGames(): Promise<GameRecord[]> {
+export function listGamesForExport(): Promise<GameRecord[]> {
   if (!gamesRequest) {
-    const request = invoke<GameRecord[]>("list_games");
+    const request = invoke<GameRecord[]>("list_games_for_export");
     gamesRequest = request;
     void request.catch(() => {
       if (gamesRequest === request) gamesRequest = null;
     });
   }
   return gamesRequest;
+}
+
+export function listGameSummaries(): Promise<GameSummary[]> {
+  if (!summariesRequest) {
+    const request = invoke<GameSummary[]>("list_game_summaries");
+    summariesRequest = request;
+    void request.catch(() => {
+      if (summariesRequest === request) summariesRequest = null;
+    });
+  }
+  return summariesRequest;
+}
+
+export function getGame(id: number): Promise<GameRecord> {
+  let request = detailRequests.get(id);
+  if (!request) {
+    request = invoke<GameRecord>("game_detail", { id });
+    detailRequests.set(id, request);
+    void request.catch(() => {
+      if (detailRequests.get(id) === request) detailRequests.delete(id);
+    });
+  }
+  return request;
+}
+
+export function listGamesPage(request: GamePageRequest): Promise<GamePage> {
+  return invoke<GamePage>("list_games_page", { request });
 }
 
 export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {

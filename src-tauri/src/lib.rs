@@ -157,9 +157,30 @@ fn engine_info(app: tauri::AppHandle) -> EngineInfo {
 }
 
 #[tauri::command]
-fn list_games(db: tauri::State<db::Db>) -> Result<Vec<db::GameRecord>, String> {
+fn list_games_for_export(db: tauri::State<db::Db>) -> Result<Vec<db::GameRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::list_games(&conn)
+}
+
+#[tauri::command]
+fn list_game_summaries(db: tauri::State<db::Db>) -> Result<Vec<db::GameSummary>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::list_game_summaries(&conn)
+}
+
+#[tauri::command]
+fn game_detail(db: tauri::State<db::Db>, id: i64) -> Result<db::GameRecord, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::get_game(&conn, id)
+}
+
+#[tauri::command]
+fn list_games_page(
+    db: tauri::State<db::Db>,
+    request: db::GamePageRequest,
+) -> Result<db::GamePage, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::list_games_page(&conn, &request)
 }
 
 #[tauri::command]
@@ -440,7 +461,10 @@ pub fn run() {
             analyze_position,
             analyze_live,
             stop_live,
-            list_games,
+            list_games_for_export,
+            list_game_summaries,
+            game_detail,
+            list_games_page,
             upsert_games,
             set_game_note,
             set_game_tags,

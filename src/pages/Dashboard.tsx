@@ -13,7 +13,7 @@ import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-reac
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { LOCALE_TAGS, useI18n } from "../lib/i18n";
-import { listGames, type GameRecord } from "../lib/db";
+import { listGameSummaries, type GameSummary } from "../lib/db";
 import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
@@ -109,7 +109,7 @@ export default function Dashboard({
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
   const mobile = useMobileShell();
-  const [records, setRecords] = useState<GameRecord[] | null>(null);
+  const [records, setRecords] = useState<GameSummary[] | null>(null);
   const [rep, setRep] = useState<RepStats | null>(null);
   const [pz, setPz] = useState<PuzzleStats | null>(null);
   // Desktop startet ohne Demo-Konto; die echten Werte kommen aus den Settings.
@@ -122,7 +122,7 @@ export default function Dashboard({
 
   useEffect(() => {
     if (backend.mode === "desktop") {
-      listGames().then(setRecords).catch(() => setRecords(null));
+      listGameSummaries().then(setRecords).catch(() => setRecords(null));
       repStats().then(setRep).catch(() => {});
       fetchPuzzleStats().then(setPz).catch(() => {});
       getSettings()
@@ -369,7 +369,7 @@ export default function Dashboard({
                 >
                   <td className="py-2.5 pl-4 pr-2">
                     <button
-                      onClick={(e) => filterTo(e, { date: g.date })}
+                      onClick={(e) => filterTo(e, { date: g.dateKey })}
                       className="text-ink3 transition-colors hover:text-accent"
                     >
                       {g.date}
@@ -385,7 +385,7 @@ export default function Dashboard({
                   </td>
                   <td className="px-2">
                     <button
-                      onClick={(e) => filterTo(e, { tc: g.tc })}
+                      onClick={(e) => filterTo(e, { tc: g.timeClass })}
                       className="text-ink3 transition-colors hover:text-accent"
                     >
                       {g.tc}

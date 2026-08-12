@@ -22,7 +22,7 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key, type Locale, type TFunc } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
-import { listGames, setGameNote, setGameTags, type GameRecord } from "../lib/db";
+import { getGame, listGameSummaries, setGameNote, setGameTags, type GameRecord, type GameSummary } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
 import {
   cancelAnalysis,
@@ -299,7 +299,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const storeCapture = isStoreCapture();
   const desktop = backend.mode === "desktop";
 
-  const [games, setGames] = useState<GameRecord[]>([]);
+  const [games, setGames] = useState<GameSummary[]>([]);
+  const [game, setGame] = useState<GameRecord | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [scratchSans, setScratchSans] = useState<string[]>([]);
   const [scratchSelected, setScratchSelected] = useState<string | null>(null);
@@ -325,8 +326,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   selectedRef.current = selectedId;
 
   const reloadGames = useCallback(() => {
-    return listGames().then((gs) => {
-      setGames(gs.filter((g) => g.moves));
+    return listGameSummaries().then((gs) => {
+      setGames(gs.filter((g) => g.has_moves));
       return gs;
     });
   }, []);
@@ -335,7 +336,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   useEffect(() => {
     if (!desktop) return;
     reloadGames().then((gs) => {
-      const withMoves = gs.filter((g) => g.moves);
+      const withMoves = gs.filter((g) => g.has_moves);
       const pick = targetGameId != null ? withMoves.find((g) => g.id === targetGameId) : null;
       setSelectedId(pick?.id ?? null);
     });
@@ -402,11 +403,20 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       .catch(() => {});
   }, [desktop]);
 
-  const game = useMemo(
-    () => games.find((g) => g.id === selectedId) ?? null,
-    [games, selectedId]
-  );
-  const scratch = desktop && game == null;
+  useEffect(() => {
+    if (!desktop || selectedId == null) {
+      setGame(null);
+      return;
+    }
+    setGame(null);
+    let current = true;
+    getGame(selectedId)
+      .then((record) => { if (current) setGame(record); })
+      .catch(() => { if (current) setGame(null); });
+    return () => { current = false; };
+  }, [desktop, selectedId]);
+
+  const scratch = desktop && selectedId == null;
 
   // Gespeicherte Analyse der gewählten Partie laden.
   useEffect(() => {
@@ -450,8 +460,14 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   }, [game?.id, game?.note]);
 
   /** Aktualisiert die Partie lokal, damit Liste und Panel sofort stimmen. */
-  const patchGame = (patch: Partial<GameRecord>) =>
-    setGames((current) => current.map((g) => (g.id === selectedId ? { ...g, ...patch } : g)));
+  const patchGame = (patch: Partial<GameRecord>) => {
+    setGame((current) => current ? { ...current, ...patch } : current);
+    setGames((current) => current.map((g) =>
+      g.id === selectedId
+        ? { ...g, ...patch, has_note: patch.note == null ? g.has_note : Boolean(patch.note.trim()) }
+        : g
+    ));
+  };
 
   const saveNote = async () => {
     if (!game?.id) return;

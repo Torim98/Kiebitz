@@ -11,7 +11,8 @@ beforeEach(() => {
 describe("read caches", () => {
   it("coalesces expensive reads and invalidates them after a data change", async () => {
     invokeMock.mockImplementation((command: string) => {
-      if (command === "list_games") return Promise.resolve([{ id: 1 }]);
+      if (command === "list_games_for_export") return Promise.resolve([{ id: 1 }]);
+      if (command === "list_game_summaries") return Promise.resolve([{ id: 1 }]);
       if (command === "db_stats") return Promise.resolve({ total: 1 });
       if (command === "deep_insights") return Promise.resolve({ coverage: { games: 1 } });
       throw new Error(`unexpected command: ${command}`);
@@ -21,26 +22,28 @@ describe("read caches", () => {
     const { emitDataChange } = await import("./changes");
 
     await Promise.all([
-      db.listGames(),
-      db.listGames(),
+      db.listGamesForExport(),
+      db.listGamesForExport(),
+      db.listGameSummaries(),
+      db.listGameSummaries(),
       db.dbStats(),
       db.dbStats(),
       insights.deepInsights(),
       insights.deepInsights(),
     ]);
-    expect(invokeMock).toHaveBeenCalledTimes(3);
+    expect(invokeMock).toHaveBeenCalledTimes(4);
 
     emitDataChange();
-    await Promise.all([db.listGames(), db.dbStats(), insights.deepInsights()]);
-    expect(invokeMock).toHaveBeenCalledTimes(6);
+    await Promise.all([db.listGamesForExport(), db.listGameSummaries(), db.dbStats(), insights.deepInsights()]);
+    expect(invokeMock).toHaveBeenCalledTimes(8);
   });
 
   it("retries a failed cached read", async () => {
     invokeMock.mockRejectedValueOnce(new Error("temporary")).mockResolvedValueOnce([]);
-    const { listGames } = await import("./db");
+    const { listGamesForExport } = await import("./db");
 
-    await expect(listGames()).rejects.toThrow("temporary");
-    await expect(listGames()).resolves.toEqual([]);
+    await expect(listGamesForExport()).rejects.toThrow("temporary");
+    await expect(listGamesForExport()).resolves.toEqual([]);
     expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 });

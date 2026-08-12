@@ -1,4 +1,4 @@
-import type { GameRecord } from "./db";
+import type { GameSummary } from "./db";
 import { LOCALE_TAGS, translator, type Locale } from "./i18n";
 import { tcLabel, toUi, type UiGame } from "./gameUi";
 
@@ -66,7 +66,7 @@ export interface DashboardOptions {
 }
 
 export function buildDashboard(
-  records: GameRecord[],
+  records: GameSummary[],
   opts: DashboardOptions = { locale: "de", ccUser: "Torim98", liUser: "Torim98" }
 ): LiveDashboard {
   const libraryRecords = records;
@@ -187,7 +187,7 @@ export function buildDashboard(
     // Keep this definition identical to the native analysis queue. Imported
     // metadata-only games without SAN moves cannot be analyzed and therefore
     // must not appear as a phantom backlog on the dashboard.
-    unanalyzed: records.filter((g) => !g.analyzed && g.moves.trim().length > 0).length,
+    unanalyzed: records.filter((g) => !g.analyzed && (g.has_moves ?? Boolean(g.moves?.trim()))).length,
   };
 }
 
@@ -251,12 +251,12 @@ const SLOTS = ["0–4", "4–8", "8–12", "12–16", "16–20", "20–24"];
 
 const TC_ORDER = ["bullet", "blitz", "rapid", "classical", "daily"];
 
-function winPct(games: GameRecord[]): number {
+function winPct(games: GameSummary[]): number {
   if (games.length === 0) return 0;
   return (games.filter((g) => g.result === "win").length / games.length) * 100;
 }
 
-function scorePct(games: GameRecord[]): number {
+function scorePct(games: GameSummary[]): number {
   if (games.length === 0) return 0;
   const points = games.reduce(
     (sum, game) => sum + (game.result === "win" ? 1 : game.result === "draw" ? 0.5 : 0),
@@ -265,13 +265,13 @@ function scorePct(games: GameRecord[]): number {
   return (points / games.length) * 100;
 }
 
-function averageAccuracy(games: GameRecord[]): number | null {
+function averageAccuracy(games: GameSummary[]): number | null {
   const values = games.map((game) => game.accuracy).filter((value): value is number => value != null);
   if (values.length === 0) return null;
   return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
 }
 
-export function buildInsights(records: GameRecord[], locale: Locale = "en"): LiveInsights {
+export function buildInsights(records: GameSummary[], locale: Locale = "en"): LiveInsights {
   records = records.filter((game) => !game.analysis_excluded);
   const t = translator(locale);
   const months = monthNames(locale);
@@ -308,7 +308,7 @@ export function buildInsights(records: GameRecord[], locale: Locale = "en"): Liv
     rated.length > 0 ? Math.round(rated.reduce((s, g) => s + g.opp_elo, 0) / rated.length) : 0;
 
   // Eröffnungen: Top 6 nach Häufigkeit
-  const byOpening = new Map<string, GameRecord[]>();
+  const byOpening = new Map<string, GameSummary[]>();
   for (const g of records) {
     const key = g.opening || "Unbekannt";
     byOpening.set(key, [...(byOpening.get(key) ?? []), g]);

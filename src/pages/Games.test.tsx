@@ -38,11 +38,13 @@ const game = {
   analyzed: true,
 };
 let listedGame: typeof game & { analysis_excluded?: boolean } = { ...game };
+let deleted = false;
 
 beforeEach(() => {
   localStorage.clear();
   emitDataChange();
   listedGame = { ...game };
+  deleted = false;
   invokeMock.mockReset();
   vi.mocked(openDialog).mockReset();
   invokeMock.mockImplementation((command: string) => {
@@ -58,8 +60,14 @@ beforeEach(() => {
         import_months: 3,
       });
     }
-    if (command === "list_games") return Promise.resolve([listedGame]);
-    if (command === "delete_game") return Promise.resolve(true);
+    if (command === "list_games_page") return Promise.resolve({
+      items: deleted ? [] : [{ ...listedGame, has_moves: true, has_note: Boolean(listedGame.note) }],
+      total: deleted ? 0 : 1,
+      library_total: deleted ? 0 : 1,
+    });
+    if (command === "game_detail") return Promise.resolve(listedGame);
+    if (command === "list_games_for_export") return Promise.resolve(deleted ? [] : [listedGame]);
+    if (command === "delete_game") { deleted = true; return Promise.resolve(true); }
     if (command === "read_pgn_file") return Promise.resolve(`[Event "Friend"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0`);
     return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
   });
@@ -71,6 +79,17 @@ afterEach(() => {
 });
 
 describe("Games page", () => {
+  it("loads only a paginated summary and the selected detail", async () => {
+    render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+    await screen.findByText("Testgegner");
+
+    expect(invokeMock).toHaveBeenCalledWith("list_games_page", {
+      request: expect.objectContaining({ offset: 0, limit: 10 }),
+    });
+    expect(invokeMock).toHaveBeenCalledWith("game_detail", { id: 1 });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_games_for_export");
+  });
+
   it("deletes the selected database game after confirmation", async () => {
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
     expect(await screen.findByText("Testgegner")).toBeTruthy();

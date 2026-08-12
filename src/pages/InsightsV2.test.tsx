@@ -66,7 +66,9 @@ beforeEach(() => {
     if (command === "app_info")
       return Promise.resolve({ version: "0.4.4", backend: "tauri", platform: "windows" });
     if (command === "get_settings") return Promise.resolve({ locale: "de" });
-    if (command === "list_games") return Promise.resolve(games);
+    if (command === "list_game_summaries") return Promise.resolve(games.map((game) => ({
+      ...game, has_moves: true, has_note: false,
+    })));
     if (command === "error_stats")
       return Promise.resolve([
         { phase: "opening", inaccuracy: 2, mistake: 1, blunder: 0 },
