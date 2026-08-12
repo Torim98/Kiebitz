@@ -15,7 +15,7 @@ import { BOARD_WIDTH } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "./ui";
 import { useT } from "../lib/i18n";
-import { fenAfter } from "../lib/util";
+import { fenAfter } from "../lib/position";
 import { useBackendInfo } from "../lib/backend";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 

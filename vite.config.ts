@@ -10,21 +10,14 @@ export default defineConfig({
     manifest: true,
     rollupOptions: {
       output: {
-        // Große, selten geänderte Bibliotheken erhalten eigene Cache- und
-        // Download-Chunks; Seiten und optionale Sprachen werden dynamisch geladen.
+        // Nur Abhängigkeiten trennen, die sowohl groß als auch fachlich klar
+        // abgegrenzt sind. Ein allgemeiner `vendor`-Chunk würde Abhängigkeiten
+        // lazy geladener Seiten wieder in den App-Start ziehen.
         manualChunks(id) {
           const path = id.replaceAll("\\", "/");
           if (!path.includes("/node_modules/")) return;
-          if (
-            path.includes("/recharts/") ||
-            path.includes("/victory-vendor/") ||
-            /\/d3-[^/]+\//.test(path)
-          ) {
-            return "charts";
-          }
-          if (path.includes("/react-chessboard/") || path.includes("/chess.js/")) {
-            return "chess";
-          }
+          if (path.includes("/react-chessboard/")) return "chessboard";
+          if (path.includes("/chess.js/")) return "chess-core";
           if (
             path.includes("/react/") ||
             path.includes("/react-dom/") ||
@@ -33,7 +26,6 @@ export default defineConfig({
             return "react";
           }
           if (path.includes("/@tauri-apps/")) return "tauri";
-          return "vendor";
         },
       },
     },

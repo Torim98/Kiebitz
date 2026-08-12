@@ -10,7 +10,7 @@ import { ChevronDown, TrendingDown, TrendingUp, Sparkles } from "lucide-react";
 import { useI18n, type Key } from "../../lib/i18n";
 import { useMobileShell } from "../../components/MobileShell";
 import { chart } from "../../components/chartTheme";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import { localizeFindingParams, type Finding, type Tone } from "../../lib/findings";
 
 export function Kpi({

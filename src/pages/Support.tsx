@@ -26,7 +26,8 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { Button, Card, Chip } from "../components/ui";
 import { openExternal } from "../lib/ext";
-import { dateLocale, errorMessage } from "../lib/util";
+import { dateLocale } from "../lib/format";
+import { errorMessage } from "../lib/errors";
 import {
   FEEDBACK_ADDRESS,
   diagClear,

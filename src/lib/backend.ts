@@ -10,14 +10,6 @@ export interface BackendInfo {
   distribution?: string;
 }
 
-export interface AnalysisResult {
-  bestmove: string;
-  eval_cp: number | null;
-  mate_in: number | null;
-  depth: number;
-  pv: string[];
-}
-
 export interface EngineInfo {
   available: boolean;
   name: string;
@@ -67,13 +59,4 @@ export function useBackendInfo(): BackendState {
 /** Fragt die gebündelte Stockfish-Engine ab (nur Desktop). */
 export function engineInfo(): Promise<EngineInfo> {
   return invoke<EngineInfo>("engine_info");
-}
-
-/**
- * Stockfish-Analyse über das Rust-Backend (nur Desktop).
- * Die Engine wird vom Backend selbst aufgelöst (gebündelte stockfish.exe
- * oder die Umgebungsvariable KIEBITZ_ENGINE).
- */
-export function analyzePosition(fen: string, depth = 18): Promise<AnalysisResult> {
-  return invoke<AnalysisResult>("analyze_position", { fen, depth });
 }

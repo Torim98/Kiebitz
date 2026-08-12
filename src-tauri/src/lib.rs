@@ -256,23 +256,6 @@ fn db_stats(db: tauri::State<db::Db>) -> Result<db::DbStats, String> {
     db::stats(&conn)
 }
 
-/// Einmalige Analyse: startet die Engine, analysiert die Stellung, beendet sie.
-/// (Bleibt als Fallback; die Live-Analyse läuft über `analyze_live`.)
-#[tauri::command]
-async fn analyze_position(
-    app: tauri::AppHandle,
-    fen: String,
-    depth: u32,
-) -> Result<engine::AnalysisResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let path = resolve_engine(&app).ok_or("Keine Engine gefunden")?;
-        let mut uci = engine::UciEngine::spawn(&path.to_string_lossy())?;
-        uci.analyze(&fen, depth.clamp(1, 40))
-    })
-    .await
-    .map_err(|e| format!("Engine-Analyse fehlgeschlagen: {e}"))?
-}
-
 /// Dauer-Analyse über die persistente Engine: `info`-Zeilen kommen als
 /// `engine://info-batch`-Events. Liefert die Generation dieser Anfrage.
 #[tauri::command]
@@ -458,7 +441,6 @@ pub fn run() {
             ads::show_ad_privacy_options,
             review::request_play_review,
             engine_info,
-            analyze_position,
             analyze_live,
             stop_live,
             list_games_for_export,
@@ -474,7 +456,6 @@ pub fn run() {
             db_stats,
             analysis::start_analysis,
             analysis::cancel_analysis,
-            analysis::analysis_running,
             analysis::index_positions,
             analysis::game_analysis,
             analysis::error_stats,
@@ -492,7 +473,6 @@ pub fn run() {
             repertoire::rep_lookup,
             repertoire::rep_gaps,
             repertoire::rep_import_pgn,
-            repertoire::rep_export_pgn,
             repertoire::rep_import_pgn_file,
             repertoire::rep_export_pgn_file,
             puzzles::import_puzzles,
@@ -528,7 +508,6 @@ pub fn run() {
             study::delete_study_unit,
             study::set_study_focus,
             study::close_study_focus,
-            study::delete_study_focus,
             study::training_program,
             sync::sync_info,
             sync::sync_server_start,

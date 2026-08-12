@@ -10,7 +10,7 @@ import { buildInsights } from "../lib/stats";
 import { deepInsights, type DeepInsights } from "../lib/insights";
 import { buildDna } from "../lib/dna";
 import { buildFindings, findingsFor, type Finding, type FindingTab } from "../lib/findings";
-import { deInt } from "../lib/util";
+import { deInt } from "../lib/format";
 import type { PageId } from "../App";
 import Overview from "./insights/Overview";
 import Strength from "./insights/Strength";

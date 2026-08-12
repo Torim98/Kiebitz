@@ -89,9 +89,9 @@ import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
 import AppTour from "../components/AppTour";
 import { Button, Chip } from "../components/ui";
-import { dateLocale, deInt, errorMessage } from "../lib/util";
+import { dateLocale, deInt } from "../lib/format";
+import { errorMessage } from "../lib/errors";
 import { showAdPrivacyOptions } from "../lib/ads";
-
 import {
   Field,
   NumberField,

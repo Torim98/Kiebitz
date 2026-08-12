@@ -34,7 +34,8 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
-import { de, deInt, fenAfter } from "../lib/util";
+import { de, deInt } from "../lib/format";
+import { fenAfter } from "../lib/position";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
@@ -135,7 +136,6 @@ export default function Games({
 
   useEffect(() => {
     if (backend.mode === "desktop") reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend.mode, locale, source, result, query, pageSize, page, tc, dateKey, opponent, opening]);
 
   const databaseLoaded = dbGames !== null;

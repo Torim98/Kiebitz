@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
-import { fenAfter } from "../lib/util";
+import { fenAfter } from "../lib/position";
 import type { RepNode } from "../lib/repertoire";
 import Repertoire from "./Repertoire";
 

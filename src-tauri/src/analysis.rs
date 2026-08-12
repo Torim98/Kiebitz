@@ -255,11 +255,6 @@ pub fn cancel_analysis(state: State<AnalysisState>) {
     state.cancel.store(true, Ordering::SeqCst);
 }
 
-#[tauri::command]
-pub fn analysis_running(state: State<AnalysisState>) -> bool {
-    state.running.load(Ordering::SeqCst)
-}
-
 fn run_worker(
     app: &tauri::AppHandle,
     engine_path: &std::path::Path,

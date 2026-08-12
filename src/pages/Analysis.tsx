@@ -40,7 +40,9 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import LiveEngine from "../components/LiveEngine";
 import { Button, Card, ExtLink, ResultBadge, Tag } from "../components/ui";
-import { de, evalLabel, fenAfter, winProb } from "../lib/util";
+import { de } from "../lib/format";
+import { evalLabel, winProb } from "../lib/evaluation";
+import { fenAfter } from "../lib/position";
 import { selectionStyles } from "../lib/boardMoves";
 import {
   clocksAtPly,

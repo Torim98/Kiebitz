@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
   Check,
@@ -232,21 +232,30 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const visibleCalendar = desktop ? calendar : previewCalendar;
   const today = isoDay(new Date());
 
-  const refresh = async () => {
-    if (!desktop) return;
-    const data = await getStudyCalendar(isoDay(days[0]), isoDay(days[6]));
-    setCalendar(data);
-  };
+  const refreshRef = useRef<{ key: string; request: Promise<void> } | null>(null);
+  const refresh = useCallback(() => {
+    if (!desktop) return Promise.resolve();
+    const from = isoDay(days[0]);
+    const to = isoDay(days[6]);
+    const key = `${from}:${to}`;
+    if (refreshRef.current?.key === key) return refreshRef.current.request;
+    const request = getStudyCalendar(from, to)
+      .then(setCalendar)
+      .finally(() => {
+        if (refreshRef.current?.request === request) refreshRef.current = null;
+      });
+    refreshRef.current = { key, request };
+    return request;
+  }, [days, desktop]);
 
   useEffect(() => {
     if (!desktop) return;
     refresh().catch((reason) => setError(String(reason)));
     const unsubscribe = onDataChange(() => {
       refresh().catch((reason) => setError(String(reason)));
-    });
+    }, ["study", "database"]);
     return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktop, weekStart]);
+  }, [desktop, refresh]);
 
   const mutate = async (operation: () => Promise<unknown>) => {
     setBusy(true);

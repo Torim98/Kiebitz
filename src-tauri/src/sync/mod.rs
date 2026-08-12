@@ -3,7 +3,9 @@
 //! Das Handy stößt den Sync an (ein POST-Roundtrip): es schickt seine lokalen
 //! Änderungen und bekommt die Desktop-Änderungen seit dem letzten Sync zurück.
 //! Kein Server, keine Cloud · der Desktop lauscht nur solange die App läuft
-//! auf Port 47323, abgesichert über einen Pairing-Code aus den Einstellungen.
+//! auf Port 47323. TLS verschlüsselt die Verbindung; der beim Pairing geprüfte
+//! Zertifikat-Fingerprint bindet den Client an diesen Hub, zusätzlich
+//! authentifiziert der Pairing-Code die Anfrage.
 //!
 //! Merge-Regeln (idempotent, wiederholbar):
 //! - Partien: Upsert per Natural Key (source, source_id); `analyzed` wird nie
@@ -12,7 +14,7 @@
 //! - Notizen: Last-Write-Wins über `note_ts`.
 //! - Repertoire: Knoten werden per Pfad (side + SAN-Kette) additiv vereinigt;
 //!   der FSRS-Zustand pro Knoten gewinnt nach `last_ts` (die frischere Review).
-//!   Löschungen propagieren in v1 nicht.
+//!   Tombstones übertragen Löschungen zwischen den Geräten.
 //! - Puzzle-/Endspiel-Versuche: append-only-Union, Duplikate über
 //!   (puzzle_id|drill_id, ts) erkannt.
 //! - Study: Vorlagen und Kalendereinträge per stabiler Sync-ID; der neuere
@@ -20,7 +22,8 @@
 //! - Eigene Puzzles: vollständiger Desktop-Snapshot; die lokale Game-ID wird
 //!   über den stabilen Partie-Schlüssel (source, source_id) neu zugeordnet.
 //! - Nicht gesynct: Lichess-Puzzle-DB, positions-Index (wird lokal neu
-//!   aufgebaut), Caches. Puzzle-Ratings bleiben Geräte-lokal (v1).
+//!   aufgebaut), Caches. Puzzle-Ratings werden auf jedem Gerät deterministisch
+//!   aus der vereinigten Versuchshistorie neu berechnet.
 //!
 //! Cursor: der Client merkt sich die Serverzeit des letzten Syncs (meta
 //! `sync_last_ts`) und beide Seiten filtern veränderliche Datensätze mit einem

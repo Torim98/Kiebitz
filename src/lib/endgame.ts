@@ -15,7 +15,7 @@ export function endgameMove(fen: string): Promise<string> {
 }
 
 export function endgameRecord(drillId: string, solved: boolean, moves: number): Promise<void> {
-  return invoke<void>("endgame_record", { drillId, solved, moves }).then(() => emitDataChange());
+  return invoke<void>("endgame_record", { drillId, solved, moves }).then(() => emitDataChange("endgame"));
 }
 
 export function endgameStats(): Promise<DrillStat[]> {

@@ -24,7 +24,7 @@ import {
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
-import { dateLocale, de, deInt } from "../../lib/util";
+import { dateLocale, de, deInt } from "../../lib/format";
 import { themeLabel, type PuzzleInsights } from "../../lib/puzzles";
 import { studyMetrics, type DeepInsights, type MetricWindow } from "../../lib/insights";
 import { trainingProgram, type StudyFocus, type TrainingProgram } from "../../lib/study";

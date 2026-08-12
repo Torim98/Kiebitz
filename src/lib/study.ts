@@ -90,13 +90,13 @@ export function getStudyCalendar(startDay: string, endDay: string): Promise<Stud
 
 export function saveStudyTemplate(template: StudyTemplateInput): Promise<StudyTemplate> {
   return invoke<StudyTemplate>("save_study_template", { template }).then((result) => {
-    emitDataChange();
+    emitDataChange("study");
     return result;
   });
 }
 
 export function deleteStudyTemplate(templateId: number): Promise<void> {
-  return invoke<void>("delete_study_template", { templateId }).then(() => emitDataChange());
+  return invoke<void>("delete_study_template", { templateId }).then(() => emitDataChange("study"));
 }
 
 /**
@@ -116,7 +116,7 @@ export function scheduleStudyUnit(
     repeatRule: repeatRule || null,
     until: until || null,
   }).then((created) => {
-    emitDataChange();
+    emitDataChange("study");
     return created;
   });
 }
@@ -132,17 +132,17 @@ export function repeatStudyUnit(
     repeatRule,
     until: until || null,
   }).then((created) => {
-    emitDataChange();
+    emitDataChange("study");
     return created;
   });
 }
 
 export function moveStudyUnit(eventId: number, day: string, position: number): Promise<void> {
-  return invoke<void>("move_study_unit", { eventId, day, position }).then(() => emitDataChange());
+  return invoke<void>("move_study_unit", { eventId, day, position }).then(() => emitDataChange("study"));
 }
 
 export function completeStudyUnit(eventId: number, completed: boolean): Promise<void> {
-  return invoke<void>("complete_study_unit", { eventId, completed }).then(() => emitDataChange());
+  return invoke<void>("complete_study_unit", { eventId, completed }).then(() => emitDataChange("study"));
 }
 
 /**
@@ -155,7 +155,7 @@ export function deleteStudyUnit(
   scope: "one" | "series" = "one"
 ): Promise<number> {
   return invoke<number>("delete_study_unit", { eventId, scope }).then((deleted) => {
-    emitDataChange();
+    emitDataChange("study");
     return deleted;
   });
 }
@@ -169,7 +169,6 @@ export const AREAS: Area[] = ["play", "tactics", "openings", "endgames", "analys
 
 /** Wählbare Zykluslängen in Tagen. */
 export const CYCLE_DAYS = [7, 14, 28] as const;
-export type CycleDays = (typeof CYCLE_DAYS)[number];
 
 /**
  * Ein Fokus-Zyklus. Gespeichert wird nur die Absicht · Baseline und Wirkung
@@ -230,32 +229,16 @@ export function trainingProgram(days?: number): Promise<TrainingProgram> {
 
 export function setStudyFocus(focus: StudyFocusInput): Promise<StudyFocus> {
   return invoke<StudyFocus>("set_study_focus", { focus }).then((result) => {
-    emitDataChange();
+    emitDataChange("study");
     return result;
   });
 }
 
 export function closeStudyFocus(focusId: number, status: "done" | "dropped"): Promise<void> {
-  return invoke<void>("close_study_focus", { focusId, status }).then(() => emitDataChange());
-}
-
-export function deleteStudyFocus(focusId: number): Promise<void> {
-  return invoke<void>("delete_study_focus", { focusId }).then(() => emitDataChange());
+  return invoke<void>("close_study_focus", { focusId, status }).then(() => emitDataChange("study"));
 }
 
 /** Minuten eines Tages über alle Bereiche. */
 export function dayMinutes(day: LoadDay): number {
   return day.play + day.tactics + day.openings + day.endgames + day.analysis;
-}
-
-/** Beschriftungsparameter eines Fokus · defekte Werte werden ignoriert. */
-export function focusParams(focus: StudyFocus): Record<string, string | number> {
-  try {
-    const parsed: unknown = JSON.parse(focus.label_params || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, string | number>)
-      : {};
-  } catch {
-    return {};
-  }
 }

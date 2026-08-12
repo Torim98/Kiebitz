@@ -23,9 +23,6 @@ jobs:
       - name: Abhängigkeiten installieren
         run: npm ci
 
-      - name: Typecheck
-        run: npx tsc --noEmit
-
       - name: Lokalisierungen prüfen
         run: npm run locales:check
 
@@ -38,7 +35,8 @@ jobs:
       - name: Toolchain-Pins prüfen
         run: npm run pins:check
 
-      - name: Produktionsbundle bauen
+      # npm run build führt TypeScript und Vite genau einmal aus.
+      - name: Typecheck und Produktionsbundle bauen
         run: npm run build
 
       - name: Bundle-Budget prüfen

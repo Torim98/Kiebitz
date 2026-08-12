@@ -13,7 +13,7 @@ import {
 import { keepScreenAwake } from "../../lib/wakeLock";
 import { useMobileShell } from "../../components/MobileShell";
 import { examplePaths } from "../../lib/paths";
-import { deInt } from "../../lib/util";
+import { deInt } from "../../lib/format";
 import { Button, Card } from "../../components/ui";
 
 export function DailyGoal({

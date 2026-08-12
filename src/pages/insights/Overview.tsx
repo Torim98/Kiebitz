@@ -10,7 +10,7 @@ import { Compass, Crosshair, Sparkles } from "lucide-react";
 import { Card } from "../../components/ui";
 import { chart } from "../../components/chartTheme";
 import { useI18n, type Key } from "../../lib/i18n";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import type { DeepInsights } from "../../lib/insights";
 import type { LiveInsights } from "../../lib/stats";
 import type { DnaAxis } from "../../lib/dna";

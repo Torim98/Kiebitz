@@ -7,7 +7,7 @@
  * schlechte Woche ihn nicht kippt.
  */
 import { useI18n, type Key } from "../lib/i18n";
-import { deInt } from "../lib/util";
+import { deInt } from "../lib/format";
 import type { AreaNeed } from "../lib/plan";
 import type { Area } from "../lib/study";
 

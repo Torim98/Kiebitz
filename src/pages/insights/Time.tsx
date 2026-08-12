@@ -22,7 +22,7 @@ import {
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import { tcLabel } from "../../lib/gameUi";
 import type { DeepInsights, FormatStat } from "../../lib/insights";
 import { toReference, REFERENCE_LABEL, REFERENCE_SOURCE } from "../../lib/formatScale";

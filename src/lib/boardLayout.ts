@@ -14,9 +14,3 @@
 
 /** Maximale Kantenlänge eines spielbaren Bretts in px. */
 export const BOARD_WIDTH = 528;
-
-/**
- * Kleines Vorschaubrett (Partienliste): kein Spielbrett, sondern ein Blick auf
- * die Endstellung neben der Partie-Zusammenfassung.
- */
-export const BOARD_PREVIEW_WIDTH = 300;

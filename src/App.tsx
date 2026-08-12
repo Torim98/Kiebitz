@@ -26,7 +26,6 @@ import { startReminders, stopReminders } from "./lib/notify";
 import { setBoardSoundEnabled, setBoardSoundVolume } from "./lib/sound";
 import { installCrashReporter, logEvent } from "./lib/diag";
 import { onDeviceShake } from "./lib/shake";
-import { startAutoImport, stopAutoImport } from "./lib/autoImport";
 import {
   installUpdate,
   onUpdateAvailable,
@@ -43,7 +42,6 @@ import {
   useLandscapePhone,
 } from "./components/MobileShell";
 import type { EndgameCategory } from "./data/endgames";
-import Onboarding from "./components/Onboarding";
 import AdBanner from "./components/AdBanner";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
@@ -74,6 +72,7 @@ const Study = lazy(pageLoaders.study);
 const Insights = lazy(pageLoaders.insights);
 const SettingsPage = lazy(pageLoaders.settings);
 const Support = lazy(pageLoaders.support);
+const Onboarding = lazy(() => import("./components/Onboarding"));
 
 const LIKELY_NEXT_PAGES: Record<PageId, PageId[]> = {
   dashboard: ["games", "study"],
@@ -174,7 +173,7 @@ export default function App() {
       dbStats().then((s) => setGameCount(s.total)).catch(() => {});
     };
     refresh();
-    return onDataChange(refresh);
+    return onDataChange(refresh, ["games", "database"]);
   }, [backend.mode]);
 
   // Brettklänge nach den gespeicherten Einstellungen scharfschalten. Ohne
@@ -276,11 +275,20 @@ export default function App() {
   // Durchlauf selbst, Änderungen greifen also ohne Neustart.
   useEffect(() => {
     if (backend.mode !== "desktop") return;
+    let disposed = false;
+    let stopImport = () => {};
     startReminders();
-    startAutoImport();
+    import("./lib/autoImport")
+      .then(({ startAutoImport, stopAutoImport }) => {
+        if (disposed) return;
+        startAutoImport();
+        stopImport = stopAutoImport;
+      })
+      .catch(() => {});
     return () => {
+      disposed = true;
       stopReminders();
-      stopAutoImport();
+      stopImport();
     };
   }, [backend.mode]);
 
@@ -472,14 +480,16 @@ export default function App() {
   const overlays = (
     <>
       {onboarding && (
-        <Onboarding
-          settings={onboarding}
-          onDone={(applied) => {
-            setOnboarding(null);
-            // Neue Konten sofort nutzen (Sprache steckt schon im Provider).
-            void applied;
-          }}
-        />
+        <Suspense fallback={null}>
+          <Onboarding
+            settings={onboarding}
+            onDone={(applied) => {
+              setOnboarding(null);
+              // Neue Konten sofort nutzen (Sprache steckt schon im Provider).
+              void applied;
+            }}
+          />
+        </Suspense>
       )}
       {update ? (
         <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">

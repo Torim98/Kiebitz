@@ -10,7 +10,7 @@
 import { Check, Minus, TrendingDown, TrendingUp, X } from "lucide-react";
 import { Button } from "./ui";
 import { useI18n, type Key } from "../lib/i18n";
-import { de, deInt } from "../lib/util";
+import { de, deInt } from "../lib/format";
 import { localizeFindingParams } from "../lib/findings";
 import type { Prescription } from "../lib/plan";
 import type { EffectResult } from "../lib/effect";

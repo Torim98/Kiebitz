@@ -4,11 +4,8 @@
  * ist. Bewusst leise: Fehler (offline, Rate-Limit) landen nicht in der
  * Oberfläche, der nächste Lauf holt die Partien nach.
  */
-import { upsertGames, type GameRecord } from "./db";
-import { fetchAll } from "./importer";
-import { indexPositions } from "./analysis";
+import type { GameRecord } from "./db";
 import { getSettings } from "./settings";
-import { emitDataChange } from "./changes";
 
 const INTERVAL_MS = 60 * 60 * 1000;
 const LAST_RUN_KEY = "kiebitz.autoImport.lastRun";
@@ -32,6 +29,13 @@ export async function runAutoImport(force = false): Promise<number> {
   if (!force && Date.now() - lastRun() < MIN_GAP_MS) return 0;
 
   localStorage.setItem(LAST_RUN_KEY, String(Date.now()));
+  // Parser und chess.js erst laden, wenn wirklich ein Import ansteht. Der
+  // stündliche Timer selbst bleibt dadurch ein kleiner Start-Helfer.
+  const [{ fetchAll }, { upsertGames }, { indexPositions }] = await Promise.all([
+    import("./importer"),
+    import("./db"),
+    import("./analysis"),
+  ]);
   const { games } = await fetchAll(settings.cc_user.trim(), settings.li_user.trim(), {
     months: settings.import_months,
   });
@@ -40,7 +44,6 @@ export async function runAutoImport(force = false): Promise<number> {
   if (result.inserted > 0) {
     // Stellungsindex nachziehen, damit die Suche die neuen Partien kennt.
     indexPositions().catch(() => {});
-    emitDataChange();
   }
   return result.inserted;
 }

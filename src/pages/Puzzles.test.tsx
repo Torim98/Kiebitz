@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
-import { fenAfter } from "../lib/util";
+import { fenAfter } from "../lib/position";
 import Puzzles from "./Puzzles";
 
 const mocks = vi.hoisted(() => ({

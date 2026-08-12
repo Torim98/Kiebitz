@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitDataChange } from "./changes";
 import { formatBytes } from "./settings";
-import { deInt } from "./util";
+import { deInt } from "./format";
 import type { Locale, TFunc } from "./i18n";
 import { PUZZLE_THEMES } from "./locales/themes";
 
@@ -89,7 +89,7 @@ export function nextPuzzle(opts: {
 
 export function recordAttempt(puzzleId: string, solved: boolean): Promise<AttemptResult> {
   return invoke<AttemptResult>("record_attempt", { puzzleId, solved }).then((r) => {
-    emitDataChange();
+    emitDataChange("puzzles");
     return r;
   });
 }
@@ -147,9 +147,6 @@ export interface AttemptRow {
 export function puzzleHistory(limit = 25): Promise<AttemptRow[]> {
   return invoke<AttemptRow[]>("puzzle_history", { limit });
 }
-
-/** Sperrfrist, nach der eine gelöste Aufgabe wieder auftauchen darf. */
-export const SOLVED_COOLDOWN_DAYS = 30;
 
 export function onPuzzleImportProgress(
   cb: (p: PuzzleImportProgress) => void

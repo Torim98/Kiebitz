@@ -1,9 +1,9 @@
 import { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import type { Result, Source } from "../data/demo";
-import type { UiGame } from "../lib/gameUi";
+import { resultColor, type UiGame } from "../lib/gameUi";
 import { useT } from "../lib/i18n";
-import { de, resultColor } from "../lib/util";
+import { de } from "../lib/format";
 import { openExternal } from "../lib/ext";
 
 export function Card({

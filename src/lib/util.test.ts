@@ -2,12 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   de,
   deInt,
-  errorMessage,
-  evalLabel,
-  fenAfter,
   setFormatLocale,
-  winProb,
-} from "./util";
+} from "./format";
+import { errorMessage } from "./errors";
+import { evalLabel, winProb } from "./evaluation";
+import { fenAfter } from "./position";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 

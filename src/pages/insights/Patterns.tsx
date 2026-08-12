@@ -19,7 +19,7 @@ import {
 } from "recharts";
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useI18n } from "../../lib/i18n";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import type { DeepInsights } from "../../lib/insights";
 import type { LiveInsights } from "../../lib/stats";
 import type { Finding } from "../../lib/findings";

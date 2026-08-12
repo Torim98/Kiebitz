@@ -163,7 +163,7 @@ export function dbInfo(): Promise<DbInfo> {
 export function moveDatabase(target: string): Promise<DbInfo> {
   return invoke<DbInfo>("move_database", { target }).then((info) => {
     invalidateSettingsCache();
-    emitDataChange();
+    emitDataChange("database");
     return info;
   });
 }
@@ -171,7 +171,7 @@ export function moveDatabase(target: string): Promise<DbInfo> {
 export function useDatabase(path: string): Promise<DbInfo> {
   return invoke<DbInfo>("use_database", { path }).then((info) => {
     invalidateSettingsCache();
-    emitDataChange();
+    emitDataChange("database");
     return info;
   });
 }
@@ -182,7 +182,7 @@ export function backupDatabase(target: string): Promise<string> {
 
 export function restoreDatabase(source: string): Promise<DbInfo> {
   return invoke<DbInfo>("restore_database", { source }).then((info) => {
-    emitDataChange();
+    emitDataChange("database");
     return info;
   });
 }
@@ -195,7 +195,7 @@ export function chessdbQuery(fen: string): Promise<ChessDbResult> {
 export function factoryReset(): Promise<void> {
   return invoke("factory_reset").then(() => {
     invalidateSettingsCache();
-    emitDataChange();
+    emitDataChange("database");
   });
 }
 

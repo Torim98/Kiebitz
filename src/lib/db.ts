@@ -83,7 +83,7 @@ onDataChange(() => {
   summariesRequest = null;
   detailRequests.clear();
   statsRequest = null;
-});
+}, ["games", "analysis", "database"]);
 
 export function listGamesForExport(): Promise<GameRecord[]> {
   if (!gamesRequest) {
@@ -125,25 +125,25 @@ export function listGamesPage(request: GamePageRequest): Promise<GamePage> {
 
 export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {
   return invoke<UpsertResult>("upsert_games", { games }).then((r) => {
-    emitDataChange();
+    emitDataChange("games");
     return r;
   });
 }
 
 export function setGameNote(id: number, note: string): Promise<void> {
-  return invoke<void>("set_game_note", { id, note }).then(() => emitDataChange());
+  return invoke<void>("set_game_note", { id, note }).then(() => emitDataChange("games"));
 }
 
 export function setGameTags(id: number, tags: string[]): Promise<string[]> {
   return invoke<string[]>("set_game_tags", { id, tags }).then((saved) => {
-    emitDataChange();
+    emitDataChange("games");
     return saved;
   });
 }
 
 export function deleteGame(id: number): Promise<boolean> {
   return invoke<boolean>("delete_game", { id }).then((deleted) => {
-    if (deleted) emitDataChange();
+    if (deleted) emitDataChange("games");
     return deleted;
   });
 }

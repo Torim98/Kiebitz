@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import {
   Check,
@@ -35,7 +35,7 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
-import { dateLocale, deInt } from "../lib/util";
+import { dateLocale, deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 import { DailyGoal, ImportView, PuzzleLoading } from "./puzzles/PuzzleSetup";
 
@@ -81,13 +81,21 @@ function LivePuzzles({
   // "Trotzdem weiter": nur für diese Sitzung, damit eigene Aufgaben auch ohne
   // Lichess-Dump erreichbar bleiben.
   const [skipImport, setSkipImport] = useState(false);
-  const reloadStats = () =>
-    puzzleStats()
+  const reloadRef = useRef<Promise<PuzzleStats | undefined> | null>(null);
+  const reloadStats = useCallback(() => {
+    if (reloadRef.current) return reloadRef.current;
+    const request = puzzleStats()
       .then((next) => {
         setStats(next);
         return next;
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (reloadRef.current === request) reloadRef.current = null;
+      });
+    reloadRef.current = request;
+    return request;
+  }, []);
 
   useEffect(() => {
     reloadStats();
@@ -97,8 +105,8 @@ function LivePuzzles({
         setHideTheme(s.puzzle_hide_theme);
       })
       .catch(() => {});
-    return onDataChange(reloadStats);
-  }, []);
+    return onDataChange(reloadStats, ["puzzles", "database"]);
+  }, [reloadStats]);
 
   if (!stats) return <PuzzleLoading />;
   // Die Einrichtung hängt am Lichess-Dump, nicht am Gesamtbestand: Aufgaben aus
@@ -261,7 +269,6 @@ function TrainerView({
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const orientation: "white" | "black" = useMemo(() => {
@@ -651,7 +658,7 @@ function PuzzleHistory() {
   // Lokale Versuche und ein abgeschlossener Geräte-Sync laufen beide durch
   // denselben Datenänderungs-Kanal. Den Cache verwerfen, damit eine bereits
   // geöffnete History den gemergten Stand ohne Seitenwechsel anzeigt.
-  useEffect(() => onDataChange(() => setRows(null)), []);
+  useEffect(() => onDataChange(() => setRows(null), ["puzzles", "database"]), []);
 
   useEffect(() => {
     if (!open || rows) return;

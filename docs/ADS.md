@@ -82,10 +82,3 @@ The static surface intentionally has no cookies, browser storage, analytics,
 remote scripts, or passive third-party resources. GitHub Pages still receives
 technically necessary connection data when serving the files; this is disclosed
 in the public privacy policy.
-
-## Free and Plus
-
-`AdBanner` accepts a `free` flag. Setting it to `false` removes the desktop
-frame and tells Android to hide and stop the native banner. The entitlement
-source is intentionally not implemented here; it will be connected when
-Kiebitz Plus billing is added.

@@ -3,7 +3,7 @@ import { ChevronDown, Plus } from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { type RepGap, type RepStats } from "../../lib/repertoire";
 import { Button, Card, Chip } from "../../components/ui";
-import { de } from "../../lib/util";
+import { de } from "../../lib/format";
 
 const COVERAGE_PLIES = [6, 8, 12, 16];
 

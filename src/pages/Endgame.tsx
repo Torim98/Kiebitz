@@ -26,7 +26,7 @@ import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { Button, Card } from "../components/ui";
-import { deInt } from "../lib/util";
+import { deInt } from "../lib/format";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 
 const CATEGORY_KEY: Record<EndgameCategory, Key> = {
@@ -84,7 +84,6 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
 
   useEffect(() => {
     reloadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desktop]);
 
   const userColor = drill.side === "white" ? "w" : "b";

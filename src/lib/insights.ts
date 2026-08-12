@@ -411,7 +411,7 @@ let deepInsightsRequest: Promise<DeepInsights> | null = null;
 
 onDataChange(() => {
   deepInsightsRequest = null;
-});
+}, ["games", "analysis", "puzzles", "endgame", "repertoire", "database"]);
 
 export function deepInsights(): Promise<DeepInsights> {
   if (!deepInsightsRequest) {
@@ -460,16 +460,4 @@ export function studyMetrics(
   windows: { from_ts: number; to_ts: number }[]
 ): Promise<MetricWindow[]> {
   return invoke<MetricWindow[]>("study_metrics", { windows });
-}
-
-// ── Kleine Ableitungen fürs Rendern ─────────────────────────────────────────
-
-/** Genug Daten, damit eine Aussage nicht bloß Rauschen ist? */
-export function enough(n: number, min: number): boolean {
-  return n >= min;
-}
-
-/** Prozentpunkte-Differenz, gerundet auf eine Stelle. */
-export function delta(a: number, b: number): number {
-  return Math.round((a - b) * 10) / 10;
 }

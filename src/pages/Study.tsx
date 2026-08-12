@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CalendarPlus,
@@ -46,8 +46,8 @@ import StudyPlanner from "../components/StudyPlanner";
 import StudyFocusCard from "../components/StudyFocusCard";
 import AllocationBars from "../components/AllocationBars";
 import { useMobileShell } from "../components/MobileShell";
-import { onDataChange } from "../lib/changes";
-import { deInt } from "../lib/util";
+import { batchDataChanges, onDataChange } from "../lib/changes";
+import { deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { DEMO_PLAN_STATE } from "./studyDemo";
@@ -90,7 +90,8 @@ export default function Study({
   const [planning, setPlanning] = useState<PlannedUnit[] | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const loadRef = useRef<Promise<void> | null>(null);
+  const loadFresh = useCallback(async () => {
     // Bewusst hier und nicht aus dem Render-Scope: `load` hängt an einem
     // Änderungs-Abo und läuft womöglich Stunden später erneut. Mit einem
     // eingefrorenen Zeitpunkt endete das Nachher-Fenster beim Öffnen der Seite,
@@ -152,6 +153,15 @@ export default function Study({
     });
   }, [locale]);
 
+  const load = useCallback(() => {
+    if (loadRef.current) return loadRef.current;
+    const request = loadFresh().finally(() => {
+      if (loadRef.current === request) loadRef.current = null;
+    });
+    loadRef.current = request;
+    return request;
+  }, [loadFresh]);
+
   useEffect(() => {
     if (!desktop) {
       setState(DEMO_PLAN_STATE(locale));
@@ -160,11 +170,8 @@ export default function Study({
     load().catch(() => setState(null));
     return onDataChange(() => {
       load().catch(() => {});
-    });
-    // `now` ändert sich bei jedem Render · als Abhängigkeit würde es eine
-    // Endlosschleife bauen. Neu geladen wird über `onDataChange`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktop, locale]);
+    }, ["games", "analysis", "puzzles", "endgame", "repertoire", "study", "database"]);
+  }, [desktop, load, locale]);
 
   const plan = state?.plan ?? null;
   const data = state?.data ?? null;
@@ -249,9 +256,11 @@ export default function Study({
     try {
       // Nacheinander, nicht parallel: die Positionen innerhalb eines Tages
       // werden beim Anlegen fortlaufend vergeben.
-      for (const unit of planning) {
-        await scheduleStudyUnit(unit.templateId, unit.day);
-      }
+      await batchDataChanges(async () => {
+        for (const unit of planning) {
+          await scheduleStudyUnit(unit.templateId, unit.day);
+        }
+      });
       setPlanning(null);
       await load();
     } finally {

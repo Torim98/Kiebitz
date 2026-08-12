@@ -90,13 +90,13 @@ export function repList(): Promise<RepNode[]> {
 
 export function repAddLine(side: "white" | "black", name: string, sans: string[]): Promise<number> {
   return invoke<number>("rep_add_line", { side, name, sans }).then((r) => {
-    emitDataChange();
+    emitDataChange("repertoire");
     return r;
   });
 }
 
 export function repDelete(id: number): Promise<void> {
-  return invoke<void>("rep_delete", { id }).then(() => emitDataChange());
+  return invoke<void>("rep_delete", { id }).then(() => emitDataChange("repertoire"));
 }
 
 /** Fällige Karten einer Sitzung · 0 oder undefined heißt "ohne Grenze". */
@@ -110,7 +110,7 @@ export function repDue(dueLimit?: number, newLimit?: number): Promise<DueItem[]>
 /** Grade: 1 = falsch, 2 = schwer, 3 = gut, 4 = leicht. */
 export function repReview(nodeId: number, grade: 1 | 2 | 3 | 4): Promise<ReviewResult> {
   return invoke<ReviewResult>("rep_review", { nodeId, grade }).then((r) => {
-    emitDataChange();
+    emitDataChange("repertoire");
     return r;
   });
 }
@@ -133,7 +133,7 @@ export function repGaps(plies?: number, games?: number, limit?: number): Promise
 }
 
 export function repSetNote(nodeId: number, note: string): Promise<void> {
-  return invoke<void>("rep_set_note", { nodeId, note }).then(() => emitDataChange());
+  return invoke<void>("rep_set_note", { nodeId, note }).then(() => emitDataChange("repertoire"));
 }
 
 /** Knoten derselben Seite, die dieselbe Stellung erreichen (Transpositionen). */
@@ -147,13 +147,9 @@ export function repImportPgn(
   pgn: string
 ): Promise<PgnImportResult> {
   return invoke<PgnImportResult>("rep_import_pgn", { side, name, pgn }).then((r) => {
-    emitDataChange();
+    emitDataChange("repertoire");
     return r;
   });
-}
-
-export function repExportPgn(side: "white" | "black"): Promise<string> {
-  return invoke<string>("rep_export_pgn", { side });
 }
 
 /** Import aus einer Datei · das Frontend kennt nur den Pfad, nicht den Inhalt. */
@@ -163,7 +159,7 @@ export function repImportPgnFile(
   path: string
 ): Promise<PgnImportResult> {
   return invoke<PgnImportResult>("rep_import_pgn_file", { side, name, path }).then((r) => {
-    emitDataChange();
+    emitDataChange("repertoire");
     return r;
   });
 }

@@ -2,6 +2,12 @@ import type { Game, Result, Source } from "../data/demo";
 import { translator, type Key, type Locale } from "./i18n";
 import type { GameSummary } from "./db";
 
+export const resultColor: Record<Result, string> = {
+  win: "var(--color-win)",
+  loss: "var(--color-loss)",
+  draw: "var(--color-draw)",
+};
+
 /** UI-Form einer Partie: Demo-Partien und DB-Partien teilen diese Struktur. */
 export interface UiGame extends Omit<Game, "tc"> {
   tc: string;

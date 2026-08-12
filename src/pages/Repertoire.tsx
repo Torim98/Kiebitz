@@ -45,8 +45,11 @@ import { useMobileShell } from "../components/MobileShell";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card, Chip } from "../components/ui";
-import { de, errorMessage, fenAfter } from "../lib/util";
+import { de } from "../lib/format";
+import { errorMessage } from "../lib/errors";
+import { fenAfter } from "../lib/position";
 import { isStoreCapture } from "../lib/storeCapture";
+import { batchDataChanges } from "../lib/changes";
 import { CoverageCard, GapsCard } from "./repertoire/RepertoireStats";
 
 export default function Repertoire() {
@@ -407,7 +410,9 @@ function LiveRepertoire() {
     };
     for (const grp of demoRepertoire) collect(grp.side === "Weiß" ? "white" : "black", grp.nodes);
     try {
-      for (const line of flat) await repAddLine(line.side, line.name, line.sans);
+      await batchDataChanges(async () => {
+        for (const line of flat) await repAddLine(line.side, line.name, line.sans);
+      });
       reload();
     } catch (e) {
       setNotice(errorMessage(e));

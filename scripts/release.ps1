@@ -3,7 +3,7 @@
   Validiert, versioniert, baut das Play-AAB, committet und veröffentlicht einen Kiebitz-Release.
 
 .EXAMPLE
-  .\scripts\release.ps1 -Version 0.6.1
+  .\scripts\release.ps1 -Version X.Y.Z
 #>
 [CmdletBinding()]
 param(

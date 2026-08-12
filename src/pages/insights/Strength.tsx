@@ -17,7 +17,7 @@ import {
 } from "recharts";
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useI18n, type Key } from "../../lib/i18n";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import type { PhaseErrors } from "../../lib/analysis";
 import type { DeepInsights } from "../../lib/insights";
 import type { LiveInsights } from "../../lib/stats";

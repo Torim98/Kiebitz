@@ -8,21 +8,14 @@ import { openExternal } from "../lib/ext";
 import { useT } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
 
-export default function AdBanner({
-  android,
-  free = true,
-}: {
-  android: boolean;
-  /** Plus setzt dies später auf false und startet dadurch kein Werbe-SDK. */
-  free?: boolean;
-}) {
+export default function AdBanner({ android }: { android: boolean }) {
   const t = useT();
   const slotRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const androidVisibleRef = useRef(false);
   const [androidVisible, setAndroidVisible] = useState(false);
   const [desktopVisible, setDesktopVisible] = useState(false);
-  const hidden = !free || isStoreCapture();
+  const hidden = isStoreCapture();
   const frameUrl = desktopAdFrameUrl();
 
   useEffect(() => {

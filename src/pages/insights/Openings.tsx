@@ -18,7 +18,7 @@ import {
 import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n } from "../../lib/i18n";
-import { de, deInt } from "../../lib/util";
+import { de, deInt } from "../../lib/format";
 import { repGaps, type RepGap } from "../../lib/repertoire";
 import type { DeepInsights } from "../../lib/insights";
 import type { LiveInsights } from "../../lib/stats";

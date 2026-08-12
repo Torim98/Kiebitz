@@ -155,14 +155,3 @@ pub fn close_study_focus(db: State<db::Db>, focus_id: i64, status: String) -> Re
     }
     Ok(())
 }
-
-#[tauri::command]
-pub fn delete_study_focus(db: State<db::Db>, focus_id: i64) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    conn.execute(
-        "UPDATE study_focus SET deleted = 1, updated_ts = ?2 WHERE id = ?1",
-        params![focus_id, now_ts()],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}

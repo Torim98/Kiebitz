@@ -3,7 +3,7 @@
 How to build, package, and distribute Kiebitz. The app is a Tauri 2 project: a
 Rust core plus a Vite/React frontend. The **desktop** build is the primary
 product and CI builds it for **Windows, macOS and Linux**, each with
-auto-update. An **Android** build exists too (Phase 4) — a signed, sideloaded
+auto-update. An **Android** build exists too — a signed, sideloaded
 APK that CI attaches to each release, plus a separate Google Play AAB flavor;
 see *Android build* below. There is no iOS build; the reason is under *Code
 signing & notarization → iOS*.
@@ -100,10 +100,12 @@ in `tauri.conf.json` to build only what you ship.
 
 ## Bundling the Stockfish engine (required for a real release)
 
-> **This is the most important deployment step.** In development the engine is
-> resolved from `src-tauri/binaries/stockfish.exe`, which is **gitignored and not
-> part of a production bundle**. A `tauri build` today ships **without** an engine,
-> so live analysis would be unavailable on an installed copy.
+The platform-specific engine binary is deliberately gitignored. The Tauri
+resource configuration already bundles it, so a local production build must
+stage the matching binary under `src-tauri/binaries/` first; if the configured
+resource is absent, the build fails instead of silently shipping without live
+analysis. Release CI downloads or compiles the centrally pinned Stockfish build
+and verifies its checksum before invoking Tauri.
 
 The backend (`src-tauri/src/lib.rs` → `resolve_engine`) looks for the engine in
 this order:
@@ -112,20 +114,9 @@ this order:
 2. `<manifest>/binaries/stockfish[.exe]` (development),
 3. `<resource_dir>/binaries/stockfish[.exe]` (installed app).
 
-To make step 3 work, bundle the binary as a resource. In `tauri.conf.json`:
-
-```json
-"bundle": {
-  "resources": [
-    "binaries/stockfish.exe",
-    "resources/stockfish/NOTICE.txt",
-    "resources/stockfish/COPYING.txt"
-  ]
-}
-```
-
-This copies the file to `<resource_dir>/binaries/stockfish.exe` in the installed
-app, where `resolve_engine` already expects it.
+`bundle.resources` in the base and platform-specific Tauri configurations copies
+the staged file to the installed resource directory, where `resolve_engine`
+expects it.
 
 Notes:
 
@@ -225,7 +216,9 @@ every native ELF file. Output:
 
 The Play flavor deliberately has no external APK update path and no exact-alarm
 permission. Updates are handled by Google Play; reminders use inexact scheduling.
-Still open: multi-ABI packaging — see `ROADMAP.md`, Phase 4.
+The published Android artifacts currently target arm64 only. Adding further
+ABIs requires matching Rust and Stockfish builds plus a multi-ABI packaging and
+verification pass.
 
 ## Third-party license notices
 
@@ -343,8 +336,10 @@ first launch, **separate from the installed program** so updates never touch it:
 - macOS: `~/Library/Application Support/de.torim.kiebitz/kiebitz.db`
 - Linux: `~/.local/share/de.torim.kiebitz/kiebitz.db`
 
-A configurable location is planned (see `ROADMAP.md`, Settings). Backing up the
-app means backing up this file.
+Settings can move the active database to another location, select an existing
+database, and create or restore backups. The paths above therefore describe the
+default location; **Settings → Database** shows the active path. Backing up the
+app means backing up that active SQLite file or using the built-in backup.
 
 ## Releasing a new version (the comfortable way)
 
@@ -489,7 +484,7 @@ From a clean, current `main` branch run (use the desired, strictly higher
 semantic version):
 
 ```powershell
-.\scripts\release.ps1 -Version 0.6.1
+.\scripts\release.ps1 -Version X.Y.Z
 ```
 
 The command runs the frontend build, frontend tests, and Rust tests first. Only

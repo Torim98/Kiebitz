@@ -344,8 +344,7 @@ pub fn rep_export_pgn_file(
 }
 
 /// Schreibt den Baum einer Seite als PGN mit Klammervarianten.
-#[tauri::command]
-pub fn rep_export_pgn(db: State<db::Db>, side: String) -> Result<String, String> {
+fn rep_export_pgn(db: State<db::Db>, side: String) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let nodes = load_nodes(&conn)?;
     let mut children: HashMap<i64, Vec<&RepNodeOut>> = HashMap::new();

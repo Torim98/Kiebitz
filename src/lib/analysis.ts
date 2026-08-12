@@ -96,10 +96,6 @@ export function cancelAnalysis(): Promise<void> {
   return invoke("cancel_analysis");
 }
 
-export function analysisRunning(): Promise<boolean> {
-  return invoke<boolean>("analysis_running");
-}
-
 export function gameAnalysis(gameId: number): Promise<MoveEvalRow[]> {
   return invoke<MoveEvalRow[]>("game_analysis", { gameId });
 }
@@ -114,7 +110,7 @@ export function onAnalysisGameDone(cb: (p: AnalysisGameDone) => void): Promise<U
 
 export function onAnalysisDone(cb: (p: AnalysisAllDone) => void): Promise<UnlistenFn> {
   return listen<AnalysisAllDone>("analysis://done", (e) => {
-    if (e.payload.analyzed > 0) emitDataChange();
+    if (e.payload.analyzed > 0) emitDataChange("analysis", "games", "puzzles");
     cb(e.payload);
   });
 }

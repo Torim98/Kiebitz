@@ -22,7 +22,7 @@ import type { GamesFilter, UiGame } from "../lib/gameUi";
 import { Card, ExtLink, GameCard, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
 import { chart } from "../components/chartTheme";
-import { dateLocale, de, deInt } from "../lib/util";
+import { dateLocale, de, deInt } from "../lib/format";
 import type { PageId } from "../App";
 import { isStoreCapture } from "../lib/storeCapture";
 
