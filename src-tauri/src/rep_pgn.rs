@@ -227,7 +227,7 @@ pub fn parse_lines(text: &str) -> Vec<Line> {
     }
     // Linien, die vollständig in einer längeren stecken, sind redundant: der
     // Baum entsteht ohnehin aus den längeren.
-    lines.sort_by(|a, b| b.len().cmp(&a.len()));
+    lines.sort_by_key(|line| std::cmp::Reverse(line.len()));
     let mut kept: Vec<Line> = Vec::new();
     for line in lines {
         if line.is_empty() {
@@ -309,12 +309,7 @@ mod tests {
     fn reads_a_variation_as_its_own_line() {
         let lines = parse_lines("1. e4 e5 (1... c5 2. Nf3 d6) 2. Nf3 *");
         assert!(lines.contains(&vec!["e4".into(), "e5".into(), "Nf3".into()]));
-        assert!(lines.contains(&vec![
-            "e4".into(),
-            "c5".into(),
-            "Nf3".into(),
-            "d6".into()
-        ]));
+        assert!(lines.contains(&vec!["e4".into(), "c5".into(), "Nf3".into(), "d6".into()]));
     }
 
     #[test]
@@ -357,7 +352,10 @@ mod tests {
     #[test]
     fn drops_lines_that_are_prefixes_of_longer_ones() {
         let lines = parse_lines("1. e4 e5 (1... e5 2. Nf3) *");
-        assert_eq!(lines, vec![vec!["e4".to_string(), "e5".into(), "Nf3".into()]]);
+        assert_eq!(
+            lines,
+            vec![vec!["e4".to_string(), "e5".into(), "Nf3".into()]]
+        );
     }
 
     #[test]

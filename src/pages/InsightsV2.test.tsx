@@ -125,6 +125,7 @@ describe("deep Insights", () => {
     fireEvent.click(screen.getByRole("button", { name: /Eröffnungen/ }));
     expect(screen.getByText("Wer verlässt das Buch zuerst")).toBeTruthy();
     expect(screen.getByText("Wackelige Linien")).toBeTruthy();
+    expect(await screen.findByText(/0 Stellen, an denen dein Buch/)).toBeTruthy();
   });
 
   it("shows the session curve under patterns", async () => {
@@ -173,6 +174,7 @@ describe("deep Insights", () => {
     );
     await screen.findByText(/Tiefenanalyse über 6 Partien/);
     fireEvent.click(screen.getByRole("button", { name: /Eröffnungen/ }));
+    expect(await screen.findByText(/0 Stellen, an denen dein Buch/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Alle Eröffnungen nach Farbe getrennt/ }));
 
     expect(container.querySelector("table")).toBeNull();

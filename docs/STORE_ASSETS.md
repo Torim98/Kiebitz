@@ -4,7 +4,6 @@ Kiebitz keeps the in-app captures and their marketing presentation separate:
 
 - `artifacts/store-assets/` contains the reproducible source captures.
 - `artifacts/store-assets-v3/` contains the current branded Google Play assets.
-- `artifacts/store-assets-v2/` is the previous flat layout, kept for comparison.
 
 Seven locales ship: `de-DE`, `en-US`, `es-ES`, `fr-FR`, `hi-IN`, `ar` and
 `zh-CN`. The listing texts for them live in
@@ -92,6 +91,3 @@ The demo data in `src/data/demo.ts` — the sample engine lines and move comment
 — is German in every locale, so it shows up untranslated in the Analysis
 screenshot. That has been true for the English assets all along; translating the
 demo content would fix it for all seven locales at once.
-
-To re-render the old v2 look for comparison, run
-`npm run store-assets:marketing-v2`.

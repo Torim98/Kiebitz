@@ -325,8 +325,8 @@ pub fn rep_import_pgn_file(
     name: String,
     path: String,
 ) -> Result<ImportResult, String> {
-    let text = std::fs::read_to_string(path.trim())
-        .map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+    let text =
+        std::fs::read_to_string(path.trim()).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
     rep_import_pgn(db, side, name, text)
 }
 
@@ -723,10 +723,7 @@ pub(crate) fn walk_book(
     None
 }
 
-fn recent_games(
-    conn: &Connection,
-    limit: i64,
-) -> Result<Vec<(String, String, String)>, String> {
+fn recent_games(conn: &Connection, limit: i64) -> Result<Vec<(String, String, String)>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT color, moves, result FROM games
@@ -813,7 +810,7 @@ pub fn rep_stats(
             })
         })
         .collect();
-    by_side.sort_by(|a, b| b.games.cmp(&a.games));
+    by_side.sort_by_key(|side| std::cmp::Reverse(side.games));
 
     Ok(RepStats {
         my_positions,
@@ -843,7 +840,9 @@ pub fn rep_gaps(
     let games = recent_games(&conn, clamp_games(games))?;
 
     // (node_id, side, san) → (Anzahl, Punkte, Pfad, mein Zug?)
-    let mut found: HashMap<(i64, String, String), (i64, f64, Vec<String>, bool)> = HashMap::new();
+    type GapKey = (i64, String, String);
+    type GapAggregate = (i64, f64, Vec<String>, bool);
+    let mut found: HashMap<GapKey, GapAggregate> = HashMap::new();
     for (color, moves, result) in &games {
         let Some(d) = walk_book(&children, color, moves, depth as usize) else {
             continue;
@@ -862,20 +861,22 @@ pub fn rep_gaps(
 
     let mut out: Vec<RepGap> = found
         .into_iter()
-        .map(|((node_id, side, san), (count, score, path, mine))| RepGap {
-            book_sans: children
-                .get(&(side.clone(), node_id))
-                .map(|k| k.iter().map(|(s, _)| s.clone()).collect())
-                .unwrap_or_default(),
-            line: line_name(&by_id, node_id),
-            node_id,
-            side,
-            path_sans: path,
-            san,
-            count,
-            mine,
-            score_pct: pct(score, count as f64),
-        })
+        .map(
+            |((node_id, side, san), (count, score, path, mine))| RepGap {
+                book_sans: children
+                    .get(&(side.clone(), node_id))
+                    .map(|k| k.iter().map(|(s, _)| s.clone()).collect())
+                    .unwrap_or_default(),
+                line: line_name(&by_id, node_id),
+                node_id,
+                side,
+                path_sans: path,
+                san,
+                count,
+                mine,
+                score_pct: pct(score, count as f64),
+            },
+        )
         .collect();
     out.sort_by(|a, b| b.count.cmp(&a.count).then(a.san.cmp(&b.san)));
     out.truncate(limit.unwrap_or(12).clamp(1, 100) as usize);
@@ -962,7 +963,7 @@ pub fn rep_node_games(db: State<db::Db>, node_id: i64) -> Result<NodeGameStats, 
             }
         }
     }
-    dev.sort_by(|a, b| b.count.cmp(&a.count));
+    dev.sort_by_key(|deviation| std::cmp::Reverse(deviation.count));
     dev.truncate(4);
 
     let games = rows.len() as i64;
@@ -1027,10 +1028,12 @@ mod tests {
     #[test]
     fn insert_line_reuses_existing_nodes() {
         let conn = memory_db();
-        let (_, first) = insert_line(&conn, "white", "Italienisch", &line(&["e4", "e5", "Nf3"])).unwrap();
+        let (_, first) =
+            insert_line(&conn, "white", "Italienisch", &line(&["e4", "e5", "Nf3"])).unwrap();
         assert_eq!(first, 3);
         // Dieselbe Linie noch einmal legt nichts Neues an, der Ast danach schon.
-        let (_, again) = insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3", "Nc6"])).unwrap();
+        let (_, again) =
+            insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3", "Nc6"])).unwrap();
         assert_eq!(again, 1);
     }
 
@@ -1113,7 +1116,10 @@ mod tests {
         for n in nodes.iter().filter(|n| n.side == "white") {
             children.entry(n.parent_id).or_default().push(n);
         }
-        fn build(children: &HashMap<i64, Vec<&RepNodeOut>>, parent: i64) -> Vec<rep_pgn::ExportNode> {
+        fn build(
+            children: &HashMap<i64, Vec<&RepNodeOut>>,
+            parent: i64,
+        ) -> Vec<rep_pgn::ExportNode> {
             children
                 .get(&parent)
                 .map(|kids| {

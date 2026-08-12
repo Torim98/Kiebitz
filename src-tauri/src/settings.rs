@@ -416,7 +416,6 @@ fn switch_to(app: &tauri::AppHandle, path: PathBuf) -> Result<DbInfo, String> {
     };
     save(app, &settings)?;
     *settings_state.0.lock().map_err(|e| e.to_string())? = settings;
-    drop(settings_state);
     collect_db_info(app)
 }
 
@@ -636,7 +635,7 @@ fn collect_db_info(app: &tauri::AppHandle) -> Result<DbInfo, String> {
         .query_row("SELECT COUNT(*) FROM puzzles", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
     let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-    let is_default = default_db_file(&app).map(|d| d == path).unwrap_or(false);
+    let is_default = default_db_file(app).map(|d| d == path).unwrap_or(false);
     Ok(DbInfo {
         path: path.to_string_lossy().to_string(),
         size_bytes,

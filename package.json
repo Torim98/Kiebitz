@@ -16,7 +16,6 @@
     "test": "vitest",
     "test:run": "vitest run",
     "store-assets:marketing": "python scripts/compose-store-assets-v3.py artifacts/store-assets artifacts/store-assets-v3 artifacts/Kiebitz-Play-Store-Assets-v3.zip",
-    "store-assets:marketing-v2": "python scripts/compose-store-assets.py artifacts/store-assets artifacts/store-assets-v2 artifacts/Kiebitz-Play-Store-Assets-v2.zip",
     "locales:check": "node scripts/check-locales.mjs",
     "licenses": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",

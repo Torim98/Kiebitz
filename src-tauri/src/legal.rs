@@ -147,7 +147,11 @@ mod tests {
             let path = manifest.join(relative);
             assert!(path.is_file(), "{id}: {} fehlt", path.display());
             let len = path.metadata().expect("metadata").len();
-            assert!(len > 500, "{id}: {} ist verdächtig klein ({len} B)", path.display());
+            assert!(
+                len > 500,
+                "{id}: {} ist verdächtig klein ({len} B)",
+                path.display()
+            );
         }
     }
 
@@ -166,7 +170,10 @@ mod tests {
     #[test]
     fn falls_back_to_the_development_tree() {
         for (_, _, relative) in DOCS {
-            assert!(locate(None, relative).is_some(), "{relative}: kein Dev-Fallback");
+            assert!(
+                locate(None, relative).is_some(),
+                "{relative}: kein Dev-Fallback"
+            );
             assert!(
                 locate(Some(Path::new("does-not-exist")), relative).is_some(),
                 "{relative}: Fallback greift nicht bei leerem Ressourcenverzeichnis",
@@ -187,7 +194,11 @@ mod tests {
                 "stockfish-gpl" => "GNU GENERAL PUBLIC LICENSE",
                 other => panic!("Test kennt {other} nicht · Marker ergänzen"),
             };
-            assert!(text.contains(marker), "{id}: erwartet \"{marker}\" in {}", path.display());
+            assert!(
+                text.contains(marker),
+                "{id}: erwartet \"{marker}\" in {}",
+                path.display()
+            );
         }
     }
 }

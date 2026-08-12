@@ -76,7 +76,11 @@ fn append_to_file(entry: &LogEntry) {
     if std::fs::metadata(path).map(|m| m.len()).unwrap_or(0) > MAX_LOG_BYTES {
         let _ = std::fs::rename(path, path.with_extension("log.1"));
     }
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(
             file,
             "{} [{}] {}: {}",
@@ -156,7 +160,11 @@ pub fn diag_logs(limit: Option<usize>) -> Vec<LogEntry> {
     let Ok(buffer) = BUFFER.lock() else {
         return Vec::new();
     };
-    buffer.iter().skip(buffer.len().saturating_sub(take)).cloned().collect()
+    buffer
+        .iter()
+        .skip(buffer.len().saturating_sub(take))
+        .cloned()
+        .collect()
 }
 
 #[tauri::command]
@@ -206,7 +214,11 @@ pub fn diag_report(app: tauri::AppHandle, db: tauri::State<crate::db::Db>) -> St
     out.push_str(&format!("Vertriebskanal: {distribution}\n"));
     out.push_str(&format!(
         "Build: {}\n",
-        if cfg!(debug_assertions) { "debug" } else { "release" }
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
     ));
 
     match crate::resolve_engine(&app) {
@@ -242,9 +254,7 @@ pub fn diag_report(app: tauri::AppHandle, db: tauri::State<crate::db::Db>) -> St
     }
 
     if let Ok(conn) = db.0.lock() {
-        let count = |sql: &str| -> i64 {
-            conn.query_row(sql, [], |r| r.get(0)).unwrap_or(-1)
-        };
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap_or(-1) };
         out.push_str(&format!(
             "Datenbank: {} Partien, {} Puzzles, {} Puzzle-Versuche, {} Repertoire-Knoten, \
              {} Zug-Bewertungen, {} Kalendereinträge\n",

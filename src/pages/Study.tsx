@@ -12,7 +12,7 @@ import {
   Timer,
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
-import { useI18n, type Key } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { listGames, type GameRecord } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import {
@@ -30,7 +30,7 @@ import {
 } from "../lib/study";
 import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
-import { deepInsights, studyMetrics, type DeepInsights, type MetricWindow } from "../lib/insights";
+import { deepInsights, studyMetrics, type MetricWindow } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
 import { buildPlan, buildWeekPlan, type PlannedUnit, type TrainingPlan } from "../lib/plan";
 import {
@@ -47,7 +47,7 @@ import StudyFocusCard from "../components/StudyFocusCard";
 import AllocationBars from "../components/AllocationBars";
 import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
-import { de, deInt } from "../lib/util";
+import { deInt } from "../lib/util";
 import { isStoreCapture } from "../lib/storeCapture";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { DEMO_PLAN_STATE } from "./studyDemo";

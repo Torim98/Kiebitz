@@ -154,10 +154,11 @@ impl LiveEngine {
             if let Some(proc) = guard.as_mut() {
                 if let (Ok(mut search), Ok(mut stdin)) = (proc.search.lock(), proc.stdin.lock()) {
                     search.pending = None;
-                    if search.active_generation.is_some() && !search.stopping {
-                        if stdin.write_all(b"stop\n").is_ok() {
-                            search.stopping = true;
-                        }
+                    if search.active_generation.is_some()
+                        && !search.stopping
+                        && stdin.write_all(b"stop\n").is_ok()
+                    {
+                        search.stopping = true;
                     }
                 }
             }

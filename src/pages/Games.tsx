@@ -455,7 +455,7 @@ export default function Games({
             ] as const
           )
             .filter(([val]) => val)
-            .map(([val, label, clear]) => (
+            .map(([, label, clear]) => (
               <span
                 key={label}
                 className="flex items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft py-1 pl-3 pr-1.5 text-[12px] text-accent"

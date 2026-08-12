@@ -94,9 +94,7 @@ pub fn normalize_fen(fen: &str) -> Result<String, String> {
 pub fn phase_of(pos: &Position, ply: u32) -> &'static str {
     let pieces = [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen]
         .into_iter()
-        .map(|piece| {
-            (pos.piece2(Color::White, piece) | pos.piece2(Color::Black, piece)).len()
-        })
+        .map(|piece| (pos.piece2(Color::White, piece) | pos.piece2(Color::Black, piece)).len())
         .sum::<u32>();
     if pieces <= 6 {
         "endgame"
@@ -174,7 +172,10 @@ pub fn uci_traits(fen: &str, uci: &str) -> Option<MoveTraits> {
 /// Linie unabhängig von der Eingabeschreibweise denselben Knoten trifft.
 pub fn canonical_san(pos: &Position, mv: owlchess::Move) -> Result<String, String> {
     owlchess::moves::san::Move::from_move(mv, pos)
-        .map(|san| san.styled(owlchess::moves::san::Style::Algebraic).to_string())
+        .map(|san| {
+            san.styled(owlchess::moves::san::Style::Algebraic)
+                .to_string()
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -184,7 +185,8 @@ pub fn parse_san(pos: &Position, san_str: &str) -> Result<owlchess::Move, String
     let san: owlchess::moves::san::Move = san_str
         .parse()
         .map_err(|_| format!("nicht lesbar: {san_str}"))?;
-    san.into_move(pos).map_err(|_| format!("illegal: {san_str}"))
+    san.into_move(pos)
+        .map_err(|_| format!("illegal: {san_str}"))
 }
 
 /// fen_key der Grundstellung.
@@ -318,7 +320,10 @@ pub(crate) mod tests {
         assert!(uci_traits(ep, "e5f6").unwrap().capture);
 
         // Unlesbare oder zur Stellung unpassende Eingaben liefern None.
-        assert!(uci_traits(fen, "e2e4").is_none(), "in dieser Stellung illegal");
+        assert!(
+            uci_traits(fen, "e2e4").is_none(),
+            "in dieser Stellung illegal"
+        );
         assert!(uci_traits(fen, "quatsch").is_none());
         assert!(uci_traits("keine fen", "e2e4").is_none());
     }
@@ -330,8 +335,9 @@ pub(crate) mod tests {
         assert_eq!(canonical_san(&pos, mv).unwrap(), "e4");
 
         // Mattzug: das Zeichen gehört in die kanonische Form.
-        let pos = Position::from_fen("rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2")
-            .unwrap();
+        let pos =
+            Position::from_fen("rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2")
+                .unwrap();
         let mv = parse_san(&pos, "Qh4").unwrap();
         assert_eq!(canonical_san(&pos, mv).unwrap(), "Qh4#");
     }
@@ -383,8 +389,14 @@ pub(crate) mod tests {
         let mut actual = String::new();
         for line in LINES {
             let walked = walk_sans(line);
-            let key = walked.last().map(|w| w.key_after.clone()).unwrap_or_else(start_key);
-            let fen = walked.last().map(|w| w.fen_after.clone()).unwrap_or_else(|| full_fen(&Position::initial()));
+            let key = walked
+                .last()
+                .map(|w| w.key_after.clone())
+                .unwrap_or_else(start_key);
+            let fen = walked
+                .last()
+                .map(|w| w.fen_after.clone())
+                .unwrap_or_else(|| full_fen(&Position::initial()));
             actual.push_str(&format!("{key}\n{fen}\n"));
         }
         for fen in FENS {

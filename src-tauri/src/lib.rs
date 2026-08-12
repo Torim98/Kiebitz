@@ -1,12 +1,12 @@
-mod analysis;
 mod ads;
+mod analysis;
 mod chess;
 mod chessdb;
 mod db;
 mod diag;
 mod endgame;
-mod insights;
 mod engine;
+mod insights;
 mod legal;
 mod live;
 mod puzzles;

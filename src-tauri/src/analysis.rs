@@ -693,6 +693,8 @@ pub struct PositionSearch {
     pub sample: Vec<PositionHit>,
 }
 
+type PositionRow = (i64, u32, String, String, String, String, String, String);
+
 #[tauri::command]
 pub fn search_position(db: State<db::Db>, fen: String) -> Result<PositionSearch, String> {
     let key = chess::normalize_fen(&fen)?;
@@ -705,7 +707,7 @@ pub fn search_position(db: State<db::Db>, fen: String) -> Result<PositionSearch,
              ORDER BY g.played_ts DESC, p.ply ASC LIMIT 800",
         )
         .map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, u32, String, String, String, String, String, String)> = stmt
+    let rows: Vec<PositionRow> = stmt
         .query_map(params![key], |r| {
             Ok((
                 r.get(0)?,
@@ -764,7 +766,7 @@ pub fn search_position(db: State<db::Db>, fen: String) -> Result<PositionSearch,
         }
     }
 
-    agg.sort_by(|a, b| b.1.cmp(&a.1));
+    agg.sort_by_key(|row| std::cmp::Reverse(row.1));
     let next_moves = agg
         .into_iter()
         .take(6)

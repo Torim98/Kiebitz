@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Lokalisierungen prüfen
+        run: npm run locales:check
+
       - name: Tests
         run: npm run test:run
 
@@ -38,6 +41,12 @@ jobs:
 
       - name: Rust einrichten
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Formatierung prüfen
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
 
       - name: Rust-Build cachen
         uses: Swatinem/rust-cache@v2
@@ -64,6 +73,10 @@ jobs:
       - name: Tests
         working-directory: src-tauri
         run: cargo test
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
 
   rust-linux:
     # Nur übersetzen, nicht testen. Die Tests laufen auf Windows; hier geht es

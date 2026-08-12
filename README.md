@@ -32,7 +32,8 @@ on your device. Devices sync directly with each other over the local network.
 - **Mobile** — Android build with native per-ABI Stockfish and encrypted
   device-to-device LAN sync (QR pairing) with the desktop as hub.
 
-German and English, one carefully made dark theme.
+German, English, Spanish, French, Hindi, Arabic and Chinese, with one carefully
+made dark theme.
 
 ## Development
 

@@ -905,7 +905,7 @@ fn puzzle_stats_from_conn(
     importing: bool,
     partial_download: bool,
 ) -> Result<PuzzleStats, String> {
-    backfill_own_puzzles(&conn)?;
+    backfill_own_puzzles(conn)?;
     let imported_at = db::meta_get(conn, "puzzle_imported_at").and_then(|v| v.parse().ok());
     let cached_lichess_total =
         db::meta_get(conn, "puzzle_lichess_total").and_then(|value| value.parse::<i64>().ok());
@@ -1021,11 +1021,11 @@ fn puzzle_stats_from_conn(
             solved,
         })
         .collect();
-    themes.sort_by(|a, b| b.attempts.cmp(&a.attempts));
+    themes.sort_by_key(|theme| std::cmp::Reverse(theme.attempts));
     themes.truncate(10);
 
     Ok(PuzzleStats {
-        personal_rating: personal_rating(&conn),
+        personal_rating: personal_rating(conn),
         db_total,
         lichess_total,
         own_total,
@@ -1510,7 +1510,8 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for i in 0..30 {
             if let Some(p) =
-                next_puzzle_at(&conn, None, None, Some(1500), Some(1500), 1_800_000_000 + i).unwrap()
+                next_puzzle_at(&conn, None, None, Some(1500), Some(1500), 1_800_000_000 + i)
+                    .unwrap()
             {
                 seen.insert(p.id);
             }

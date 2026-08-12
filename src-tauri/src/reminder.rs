@@ -260,7 +260,7 @@ pub fn notify_now(app: tauri::AppHandle, title: String, body: String) -> Result<
     #[cfg(windows)]
     {
         let _ = &app;
-        return show(&app.config().identifier, &title, &body);
+        show(&app.config().identifier, &title, &body)
     }
     #[cfg(not(windows))]
     {
@@ -355,7 +355,7 @@ pub fn sync_reminder_schedule(app: tauri::AppHandle) -> Result<String, String> {
         .clone();
     #[cfg(windows)]
     {
-        return apply_windows_schedule(settings.notify_enabled, &settings.notify_time);
+        apply_windows_schedule(settings.notify_enabled, &settings.notify_time)
     }
     #[cfg(not(windows))]
     {

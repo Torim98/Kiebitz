@@ -1019,10 +1019,10 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
         let key = format!("{}\n{}", n.side, n.path);
         match local_ids.get(&key) {
             None => {
-                let parent_key = match n.path.rsplit_once(' ') {
-                    Some((prefix, _)) => Some(format!("{}\n{}", n.side, prefix)),
-                    None => None,
-                };
+                let parent_key = n
+                    .path
+                    .rsplit_once(' ')
+                    .map(|(prefix, _)| format!("{}\n{}", n.side, prefix));
                 let parent_id = match &parent_key {
                     None => 0,
                     Some(k) => match local_ids.get(k) {
@@ -1665,7 +1665,7 @@ fn ensure_code(app: &tauri::AppHandle) -> Result<String, String> {
             .unwrap_or(0);
         s.sync_code = format!(
             "{:06}",
-            (nanos ^ (std::process::id() as u64) * 2654435761) % 1_000_000
+            (nanos ^ ((std::process::id() as u64) * 2654435761)) % 1_000_000
         );
         settings::save(app, &s)?;
     }
@@ -2167,7 +2167,7 @@ mod tests {
     fn game_tombstone_deletes_remote_copy_and_blocks_stale_recreation() {
         let mut conn = mem_db();
         let old = sample_game("deleted-game");
-        apply_games(&mut conn, &[old.clone()]).unwrap();
+        apply_games(&mut conn, std::slice::from_ref(&old)).unwrap();
 
         let tombstone = SyncGameTombstone {
             source: old.source.clone(),
@@ -2175,7 +2175,10 @@ mod tests {
             deleted_ts: 200,
         };
         assert_eq!(apply_game_tombstones(&mut conn, &[tombstone]).unwrap(), 1);
-        assert_eq!(apply_games(&mut conn, &[old.clone()]).unwrap(), 0);
+        assert_eq!(
+            apply_games(&mut conn, std::slice::from_ref(&old)).unwrap(),
+            0
+        );
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
             .unwrap();
@@ -2497,7 +2500,10 @@ mod tests {
             themes: "fork".into(),
             puzzle_rating: 1480,
         };
-        assert_eq!(apply_puzzle_attempts(&conn, &[a.clone()]).unwrap(), 1);
+        assert_eq!(
+            apply_puzzle_attempts(&conn, std::slice::from_ref(&a)).unwrap(),
+            1
+        );
         assert_eq!(apply_puzzle_attempts(&conn, &[a]).unwrap(), 0);
 
         let e = SyncEndgameAttempt {
@@ -2506,7 +2512,10 @@ mod tests {
             solved: true,
             moves: 14,
         };
-        assert_eq!(apply_endgame_attempts(&conn, &[e.clone()]).unwrap(), 1);
+        assert_eq!(
+            apply_endgame_attempts(&conn, std::slice::from_ref(&e)).unwrap(),
+            1
+        );
         assert_eq!(apply_endgame_attempts(&conn, &[e]).unwrap(), 0);
     }
 
@@ -2605,7 +2614,7 @@ mod tests {
         };
 
         assert_eq!(
-            apply_study_templates(&conn, &[template.clone()]).unwrap(),
+            apply_study_templates(&conn, std::slice::from_ref(&template)).unwrap(),
             1
         );
         assert_eq!(apply_study_events(&conn, &[event.clone()]).unwrap(), 1);
@@ -2733,7 +2742,7 @@ mod tests {
             path: "e4 e5".into(),
             deleted_ts: 50,
         };
-        let deleted = apply_tombstones(&mut conn, &[tomb.clone()]).unwrap();
+        let deleted = apply_tombstones(&mut conn, std::slice::from_ref(&tomb)).unwrap();
         assert_eq!(deleted, 2);
         let left: i64 = conn
             .query_row("SELECT COUNT(*) FROM rep_nodes", [], |r| r.get(0))

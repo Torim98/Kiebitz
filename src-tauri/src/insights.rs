@@ -2661,9 +2661,7 @@ fn opening_insights(views: &[GameView]) -> OpeningInsights {
         total_games += 1;
         total_points += raw.score();
 
-        let entry = by_key
-            .entry((raw.color.clone(), key))
-            .or_insert_with(Acc::default);
+        let entry = by_key.entry((raw.color.clone(), key)).or_default();
         if entry.label.is_empty() {
             entry.label = label;
             entry.root = root;

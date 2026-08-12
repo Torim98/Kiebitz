@@ -66,6 +66,8 @@ fn set(hwnd: *mut c_void, attr: u32, value: u32) {
         )
     };
     if hr < 0 {
-        log::debug!("Titelleiste: Attribut {attr} abgelehnt (HRESULT {hr:#010x}) · vor Windows 11?");
+        log::debug!(
+            "Titelleiste: Attribut {attr} abgelehnt (HRESULT {hr:#010x}) · vor Windows 11?"
+        );
     }
 }
