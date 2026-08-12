@@ -16,7 +16,7 @@ shipped alongside this one.
 Where a library offers a choice of licenses, one has been selected; the
 full set it was offered under is shown as "offered".
 
-Components: 65 npm packages, 589 Rust crates.
+Components: 65 npm packages, 578 Rust crates.
 
 
 ============================================================================
@@ -26,7 +26,7 @@ INDEX
 npm packages (65)
 ----------------------------------------------------------------------------
   @babel/runtime 7.29.7 — MIT
-  @fontsource-variable/inter 5.2.8 — OFL-1.1
+  @fontsource-variable/inter 5.3.0 — OFL-1.1
   @react-dnd/asap 5.0.2 — MIT
   @react-dnd/invariant 4.0.2 — MIT
   @react-dnd/shallowequal 4.0.2 — MIT
@@ -91,17 +91,16 @@ npm packages (65)
   tiny-invariant 1.3.3 — MIT
   victory-vendor 36.9.2 — MIT AND ISC
 
-Rust crates (589)
+Rust crates (578)
 ----------------------------------------------------------------------------
   adler2 2.0.1 — 0BSD OR MIT OR Apache-2.0
-  ahash 0.7.8 — MIT OR Apache-2.0
-  aho-corasick 1.1.4 — Unlicense OR MIT
+  aho-corasick 1.1.5 — Unlicense OR MIT
   alloc-no-stdlib 2.0.4 — BSD-3-Clause
   alloc-stdlib 0.2.4 — BSD-3-Clause
   android_log-sys 0.3.2 — MIT OR Apache-2.0
   android_logger 0.15.1 — MIT OR Apache-2.0
-  android_system_properties 0.1.5 — MIT/Apache-2.0
-  anyhow 1.0.103 — MIT OR Apache-2.0
+  android_system_properties 0.1.6 — MIT OR Apache-2.0
+  anyhow 1.0.104 — MIT OR Apache-2.0
   arbitrary 1.4.2 — MIT OR Apache-2.0
   arrayvec 0.7.8 — MIT OR Apache-2.0
   ascii 1.1.0 — Apache-2.0 OR MIT
@@ -114,46 +113,39 @@ Rust crates (589)
   async-recursion 1.1.1 — MIT OR Apache-2.0
   async-signal 0.2.14 — Apache-2.0 OR MIT
   async-task 4.7.1 — Apache-2.0 OR MIT
-  async-trait 0.1.89 — MIT OR Apache-2.0
+  async-trait 0.1.92 — MIT OR Apache-2.0
   atk 0.18.2 — MIT
   atk-sys 0.18.2 — MIT
   atomic-waker 1.1.2 — Apache-2.0 OR MIT
   autocfg 1.5.1 — Apache-2.0 OR MIT
-  aws-lc-rs 1.17.3 — ISC AND (Apache-2.0 OR ISC)
-  aws-lc-sys 0.43.0 — ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
+  aws-lc-rs 1.18.0 — ISC AND (Apache-2.0 OR ISC)
+  aws-lc-sys 0.44.0 — ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)
   base64 0.13.1 — MIT/Apache-2.0
   base64 0.21.7 — MIT OR Apache-2.0
   base64 0.22.1 — MIT OR Apache-2.0
   bit-set 0.8.0 — Apache-2.0 OR MIT
   bit-vec 0.8.0 — Apache-2.0 OR MIT
   bitflags 1.3.2 — MIT/Apache-2.0
-  bitflags 2.13.0 — MIT OR Apache-2.0
-  bitvec 1.1.1 — MIT
+  bitflags 2.13.1 — MIT OR Apache-2.0
   block-buffer 0.10.4 — MIT OR Apache-2.0
   block2 0.6.2 — MIT
   blocking 1.6.2 — Apache-2.0 OR MIT
-  borsh 1.7.0 — MIT OR Apache-2.0
-  borsh-derive 1.7.0 — Apache-2.0
   brotli 8.0.4 — BSD-3-Clause AND MIT
   brotli-decompressor 5.0.3 — BSD-3-Clause/MIT
   bs58 0.5.1 — MIT/Apache-2.0
   bumpalo 3.20.3 — MIT OR Apache-2.0
-  byte-unit 5.2.5 — MIT
-  bytecheck 0.6.12 — MIT
-  bytecheck_derive 0.6.12 — MIT
-  bytemuck 1.25.1 — Zlib OR Apache-2.0 OR MIT
+  bytemuck 1.25.2 — Zlib OR Apache-2.0 OR MIT
   byteorder 1.5.0 — Unlicense OR MIT
   bytes 1.12.1 — MIT
   cairo-rs 0.18.5 — MIT
   cairo-sys-rs 0.18.2 — MIT
-  camino 1.2.4 — MIT OR Apache-2.0
+  camino 1.2.5 — MIT OR Apache-2.0
   cargo_metadata 0.19.2 — MIT
   cargo_toml 0.22.3 — Apache-2.0 OR MIT
   cargo-platform 0.1.9 — MIT OR Apache-2.0
-  cc 1.2.67 — MIT OR Apache-2.0
+  cc 1.4.2 — MIT OR Apache-2.0
   cesu8 1.1.0 — Apache-2.0/MIT
   cfb 0.7.3 — MIT
-  cfg_aliases 0.2.1 — MIT
   cfg-expr 0.15.8 — MIT OR Apache-2.0
   cfg-if 1.0.4 — MIT OR Apache-2.0
   chrono 0.4.45 — MIT OR Apache-2.0
@@ -162,7 +154,7 @@ Rust crates (589)
   combine 4.6.7 — MIT
   concurrent-queue 2.5.0 — Apache-2.0 OR MIT
   convert_case 0.4.0 — MIT
-  cookie 0.18.1 — MIT OR Apache-2.0
+  cookie 0.18.2 — MIT OR Apache-2.0
   core-foundation 0.10.1 — MIT OR Apache-2.0
   core-foundation-sys 0.8.7 — MIT OR Apache-2.0
   core-graphics 0.25.0 — MIT OR Apache-2.0
@@ -182,6 +174,9 @@ Rust crates (589)
   darling_core 0.23.0 — MIT
   darling_macro 0.23.0 — MIT
   dbus 0.9.12 — Apache-2.0/MIT
+  defmt 1.1.1 — MIT OR Apache-2.0
+  defmt-macros 1.1.1 — MIT OR Apache-2.0
+  defmt-parser 1.0.0 — MIT OR Apache-2.0
   deranged 0.5.8 — MIT OR Apache-2.0
   derive_arbitrary 1.4.2 — MIT OR Apache-2.0
   derive_more 0.99.20 — MIT
@@ -191,7 +186,7 @@ Rust crates (589)
   dirs 6.0.0 — MIT OR Apache-2.0
   dirs-sys 0.5.0 — MIT OR Apache-2.0
   dispatch2 0.3.1 — Zlib OR Apache-2.0 OR MIT
-  displaydoc 0.2.6 — MIT OR Apache-2.0
+  displaydoc 0.2.7 — MIT OR Apache-2.0
   dlopen2 0.8.2 — MIT
   dlopen2_derive 0.4.3 — MIT
   dom_query 0.27.0 — MIT
@@ -211,35 +206,34 @@ Rust crates (589)
   equivalent 1.0.2 — Apache-2.0 OR MIT
   erased-serde 0.4.10 — MIT OR Apache-2.0
   errno 0.3.14 — MIT OR Apache-2.0
-  event-listener 5.4.1 — Apache-2.0 OR MIT
+  event-listener 5.4.2 — Apache-2.0 OR MIT
   event-listener-strategy 0.5.4 — Apache-2.0 OR MIT
   fallible-iterator 0.3.0 — MIT/Apache-2.0
   fallible-streaming-iterator 0.1.9 — MIT/Apache-2.0
-  fastrand 2.4.1 — Apache-2.0 OR MIT
+  fastrand 2.5.0 — Apache-2.0 OR MIT
   fdeflate 0.3.7 — MIT OR Apache-2.0
   fern 0.7.1 — MIT
   field-offset 0.3.6 — MIT OR Apache-2.0
   filetime 0.2.29 — MIT/Apache-2.0
-  find-msvc-tools 0.1.9 — MIT OR Apache-2.0
+  find-msvc-tools 0.1.10 — MIT OR Apache-2.0
   flate2 1.1.9 — MIT OR Apache-2.0
   fnv 1.0.7 — Apache-2.0 / MIT
   foldhash 0.1.5 — Zlib
   foldhash 0.2.0 — Zlib
   foreign-types 0.5.0 — MIT/Apache-2.0
-  foreign-types-macros 0.2.3 — MIT/Apache-2.0
+  foreign-types-macros 0.2.4 — MIT/Apache-2.0
   foreign-types-shared 0.3.1 — MIT/Apache-2.0
   form_urlencoded 1.2.2 — MIT OR Apache-2.0
   fs_extra 1.3.0 — MIT
-  funty 2.0.0 — MIT
-  futures-channel 0.3.32 — MIT OR Apache-2.0
-  futures-core 0.3.32 — MIT OR Apache-2.0
-  futures-executor 0.3.32 — MIT OR Apache-2.0
-  futures-io 0.3.32 — MIT OR Apache-2.0
+  futures-channel 0.3.34 — MIT OR Apache-2.0
+  futures-core 0.3.34 — MIT OR Apache-2.0
+  futures-executor 0.3.34 — MIT OR Apache-2.0
+  futures-io 0.3.34 — MIT OR Apache-2.0
   futures-lite 2.6.1 — Apache-2.0 OR MIT
-  futures-macro 0.3.32 — MIT OR Apache-2.0
-  futures-sink 0.3.32 — MIT OR Apache-2.0
-  futures-task 0.3.32 — MIT OR Apache-2.0
-  futures-util 0.3.32 — MIT OR Apache-2.0
+  futures-macro 0.3.34 — MIT OR Apache-2.0
+  futures-sink 0.3.34 — MIT OR Apache-2.0
+  futures-task 0.3.34 — MIT OR Apache-2.0
+  futures-util 0.3.34 — MIT OR Apache-2.0
   gdk 0.18.2 — MIT
   gdk-pixbuf 0.18.5 — MIT
   gdk-pixbuf-sys 0.18.0 — MIT
@@ -256,7 +250,7 @@ Rust crates (589)
   glib 0.18.5 — MIT
   glib-macros 0.18.5 — MIT
   glib-sys 0.18.1 — MIT
-  glob 0.3.3 — MIT OR Apache-2.0
+  glob 0.3.4 — MIT OR Apache-2.0
   gobject-sys 0.18.0 — MIT
   gtk 0.18.2 — MIT
   gtk-sys 0.18.2 — MIT
@@ -270,12 +264,12 @@ Rust crates (589)
   hermit-abi 0.5.2 — MIT OR Apache-2.0
   hex 0.4.3 — MIT OR Apache-2.0
   html5ever 0.38.0 — MIT OR Apache-2.0
-  http 1.4.2 — MIT OR Apache-2.0
-  http-body 1.0.1 — MIT
-  http-body-util 0.1.3 — MIT
+  http 1.5.0 — MIT OR Apache-2.0
+  http-body 1.1.0 — MIT
+  http-body-util 0.1.4 — MIT
   httparse 1.10.1 — MIT OR Apache-2.0
   httpdate 1.0.3 — MIT OR Apache-2.0
-  hyper 1.10.1 — MIT
+  hyper 1.11.0 — MIT
   hyper-rustls 0.27.9 — Apache-2.0 OR ISC OR MIT
   hyper-util 0.1.20 — MIT
   iana-time-zone 0.1.65 — MIT OR Apache-2.0
@@ -294,12 +288,17 @@ Rust crates (589)
   indexmap 1.9.3 — Apache-2.0 OR MIT
   indexmap 2.14.0 — Apache-2.0 OR MIT
   infer 0.19.0 — MIT
-  ipnet 2.12.0 — MIT OR Apache-2.0
+  ipnet 2.12.1 — MIT OR Apache-2.0
   is-docker 0.2.0 — MIT
   is-wsl 0.4.0 — MIT
   itoa 1.0.18 — MIT OR Apache-2.0
   javascriptcore-rs 1.1.2 — MIT
   javascriptcore-rs-sys 1.1.1 — MIT
+  jiff 0.2.35 — Unlicense OR MIT
+  jiff-core 0.1.0 — Unlicense OR MIT
+  jiff-static 0.2.35 — Unlicense OR MIT
+  jiff-tzdb 0.1.8 — Unlicense OR MIT
+  jiff-tzdb-platform 0.1.3 — Unlicense OR MIT
   jni 0.21.1 — MIT/Apache-2.0
   jni 0.22.4 — MIT OR Apache-2.0
   jni-macros 0.22.4 — MIT OR Apache-2.0
@@ -307,16 +306,16 @@ Rust crates (589)
   jni-sys 0.4.1 — MIT OR Apache-2.0
   jni-sys-macros 0.4.1 — MIT OR Apache-2.0
   jobserver 0.1.35 — MIT OR Apache-2.0
-  js-sys 0.3.103 — MIT OR Apache-2.0
+  js-sys 0.3.104 — MIT OR Apache-2.0
   json-patch 3.0.1 — MIT/Apache-2.0
   jsonptr 0.6.3 — MIT OR Apache-2.0
   keyboard-types 0.7.0 — MIT OR Apache-2.0
   libappindicator 0.9.0 — Apache-2.0 OR MIT
   libappindicator-sys 0.9.0 — Apache-2.0 OR MIT
-  libc 0.2.186 — MIT OR Apache-2.0
+  libc 0.2.189 — MIT OR Apache-2.0
   libdbus-sys 0.2.7 — Apache-2.0/MIT
   libloading 0.7.4 — ISC
-  libredox 0.1.18 — MIT
+  libredox 0.1.19 — MIT
   libsqlite3-sys 0.31.0 — MIT
   linux-raw-sys 0.12.1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   litemap 0.8.2 — Unicode-3.0
@@ -329,7 +328,7 @@ Rust crates (589)
   mime 0.3.17 — MIT OR Apache-2.0
   minisign-verify 0.2.5 — MIT
   miniz_oxide 0.8.9 — MIT OR Zlib OR Apache-2.0
-  mio 1.2.1 — MIT
+  mio 1.2.2 — MIT
   muda 0.19.3 — Apache-2.0 OR MIT
   ndk 0.9.0 — MIT OR Apache-2.0
   ndk-sys 0.6.0+11769913 — MIT OR Apache-2.0
@@ -359,7 +358,7 @@ Rust crates (589)
   objc2-user-notifications 0.3.2 — Zlib OR Apache-2.0 OR MIT
   objc2-web-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
   once_cell 1.21.4 — MIT OR Apache-2.0
-  open 5.4.0 — MIT
+  open 5.4.1 — MIT
   openssl-probe 0.2.1 — MIT OR Apache-2.0
   option-ext 0.2.0 — MPL-2.0
   ordered-stream 0.2.0 — MIT OR Apache-2.0
@@ -385,6 +384,8 @@ Rust crates (589)
   png 0.17.16 — MIT OR Apache-2.0
   png 0.18.1 — MIT OR Apache-2.0
   polling 3.11.0 — Apache-2.0 OR MIT
+  portable-atomic 1.15.0 — Apache-2.0 OR MIT
+  portable-atomic-util 0.2.7 — Apache-2.0 OR MIT
   potential_utf 0.1.5 — Unicode-3.0
   powerfmt 0.2.0 — MIT OR Apache-2.0
   ppv-lite86 0.2.21 — MIT OR Apache-2.0
@@ -394,18 +395,13 @@ Rust crates (589)
   proc-macro-crate 3.5.0 — MIT OR Apache-2.0
   proc-macro-error 1.0.4 — MIT OR Apache-2.0
   proc-macro-error-attr 1.0.4 — MIT OR Apache-2.0
-  proc-macro2 1.0.106 — MIT OR Apache-2.0
-  ptr_meta 0.1.4 — MIT
-  ptr_meta_derive 0.1.4 — MIT
+  proc-macro2 1.0.107 — MIT OR Apache-2.0
   qrcode 0.14.1 — MIT OR Apache-2.0
   quick-xml 0.41.0 — MIT
-  quote 1.0.46 — MIT OR Apache-2.0
+  quote 1.0.47 — MIT OR Apache-2.0
   r-efi 5.3.0 — MIT OR Apache-2.0 OR LGPL-2.1-or-later
   r-efi 6.0.0 — MIT OR Apache-2.0 OR LGPL-2.1-or-later
-  radium 0.7.0 — MIT
-  rand 0.8.7 — MIT OR Apache-2.0
   rand 0.9.5 — MIT OR Apache-2.0
-  rand_chacha 0.3.1 — MIT OR Apache-2.0
   rand_chacha 0.9.0 — MIT OR Apache-2.0
   rand_core 0.6.4 — MIT OR Apache-2.0
   rand_core 0.9.5 — MIT OR Apache-2.0
@@ -414,57 +410,52 @@ Rust crates (589)
   rcgen 0.13.2 — MIT OR Apache-2.0
   redox_syscall 0.5.18 — MIT
   redox_users 0.5.2 — MIT
-  ref-cast 1.0.25 — MIT OR Apache-2.0
-  ref-cast-impl 1.0.25 — MIT OR Apache-2.0
-  regex 1.13.0 — MIT OR Apache-2.0
-  regex-automata 0.4.15 — MIT OR Apache-2.0
+  ref-cast 1.0.26 — MIT OR Apache-2.0
+  ref-cast-impl 1.0.26 — MIT OR Apache-2.0
+  regex 1.13.1 — MIT OR Apache-2.0
+  regex-automata 0.4.18 — MIT OR Apache-2.0
   regex-syntax 0.8.11 — MIT OR Apache-2.0
-  rend 0.4.2 — MIT
   reqwest 0.13.4 — MIT OR Apache-2.0
   rfd 0.16.0 — MIT
   ring 0.16.20 — see below
   ring 0.17.14 — Apache-2.0 AND ISC
-  rkyv 0.7.46 — MIT
-  rkyv_derive 0.7.46 — MIT
   rusqlite 0.33.0 — MIT
-  rust_decimal 1.42.1 — MIT
   rustc_version 0.4.1 — MIT OR Apache-2.0
   rustc-hash 2.1.3 — Apache-2.0 OR MIT
   rustix 1.1.4 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   rustls 0.20.9 — Apache-2.0/ISC/MIT
-  rustls 0.23.41 — Apache-2.0 OR ISC OR MIT
+  rustls 0.23.43 — Apache-2.0 OR ISC OR MIT
   rustls-native-certs 0.8.4 — Apache-2.0 OR ISC OR MIT
   rustls-pemfile 0.2.1 — Apache-2.0/ISC/MIT
   rustls-pemfile 2.2.0 — Apache-2.0 OR ISC OR MIT
-  rustls-pki-types 1.15.0 — MIT OR Apache-2.0
+  rustls-pki-types 1.15.1 — MIT OR Apache-2.0
   rustls-platform-verifier 0.7.0 — MIT OR Apache-2.0
   rustls-platform-verifier-android 0.1.1 — MIT OR Apache-2.0
-  rustls-webpki 0.103.13 — ISC
+  rustls-webpki 0.103.14 — ISC
   rustversion 1.0.23 — MIT OR Apache-2.0
   ryu 1.0.23 — Apache-2.0 OR BSL-1.0
   same-file 1.0.6 — Unlicense/MIT
   schannel 0.1.29 — MIT
   schemars 0.8.22 — MIT
   schemars 0.9.0 — MIT
-  schemars 1.2.1 — MIT
+  schemars 1.2.2 — MIT
   schemars_derive 0.8.22 — MIT
   scopeguard 1.2.0 — MIT OR Apache-2.0
   sct 0.7.1 — Apache-2.0 OR ISC OR MIT
-  seahash 4.1.0 — MIT
   security-framework 3.7.0 — MIT OR Apache-2.0
   security-framework-sys 2.17.0 — MIT OR Apache-2.0
   selectors 0.36.1 — MPL-2.0
   semver 1.0.28 — MIT OR Apache-2.0
-  serde 1.0.228 — MIT OR Apache-2.0
-  serde_core 1.0.228 — MIT OR Apache-2.0
-  serde_derive 1.0.228 — MIT OR Apache-2.0
+  serde 1.0.229 — MIT OR Apache-2.0
+  serde_core 1.0.229 — MIT OR Apache-2.0
+  serde_derive 1.0.229 — MIT OR Apache-2.0
   serde_derive_internals 0.29.1 — MIT OR Apache-2.0
-  serde_json 1.0.150 — MIT OR Apache-2.0
-  serde_repr 0.1.20 — MIT OR Apache-2.0
+  serde_json 1.0.151 — MIT OR Apache-2.0
+  serde_repr 0.1.21 — MIT OR Apache-2.0
   serde_spanned 0.6.9 — MIT OR Apache-2.0
   serde_spanned 1.1.1 — MIT OR Apache-2.0
-  serde_with 3.21.0 — MIT OR Apache-2.0
-  serde_with_macros 3.21.0 — MIT OR Apache-2.0
+  serde_with 3.22.0 — MIT OR Apache-2.0
+  serde_with_macros 3.22.0 — MIT OR Apache-2.0
   serde-untagged 0.1.9 — MIT OR Apache-2.0
   serialize-to-javascript 0.1.2 — MIT OR Apache-2.0
   serialize-to-javascript-impl 0.1.2 — MIT OR Apache-2.0
@@ -473,12 +464,12 @@ Rust crates (589)
   shlex 2.0.1 — MIT OR Apache-2.0
   signal-hook-registry 1.4.8 — MIT OR Apache-2.0
   simd_cesu8 1.2.0 — Apache-2.0 OR MIT
-  simd-adler32 0.3.9 — MIT
+  simd-adler32 0.3.10 — MIT
   simdutf8 0.1.5 — MIT OR Apache-2.0
   siphasher 1.0.3 — MIT/Apache-2.0
   slab 0.4.12 — MIT
   smallvec 1.15.2 — MIT OR Apache-2.0
-  socket2 0.6.4 — MIT OR Apache-2.0
+  socket2 0.6.5 — MIT OR Apache-2.0
   softbuffer 0.4.8 — MIT OR Apache-2.0
   soup3 0.5.0 — MIT
   soup3-sys 0.5.0 — MIT
@@ -490,13 +481,13 @@ Rust crates (589)
   subtle 2.6.1 — BSD-3-Clause
   swift-rs 1.0.7 — MIT OR Apache-2.0
   syn 1.0.109 — MIT OR Apache-2.0
-  syn 2.0.118 — MIT OR Apache-2.0
+  syn 2.0.119 — MIT OR Apache-2.0
+  syn 3.0.3 — MIT OR Apache-2.0
   sync_wrapper 1.0.2 — Apache-2.0
   synstructure 0.13.2 — MIT
   system-deps 6.2.2 — MIT OR Apache-2.0
   tao 0.35.3 — Apache-2.0
-  tao-macros 0.1.3 — MIT OR Apache-2.0
-  tap 1.0.1 — MIT
+  tao-macros 0.1.4 — MIT OR Apache-2.0
   tar 0.4.46 — MIT OR Apache-2.0
   target-lexicon 0.12.16 — Apache-2.0 WITH LLVM-exception
   tauri 2.11.5 — Apache-2.0 OR MIT
@@ -507,7 +498,7 @@ Rust crates (589)
   tauri-plugin-barcode-scanner 2.4.5 — Apache-2.0 OR MIT
   tauri-plugin-dialog 2.7.2 — Apache-2.0 OR MIT
   tauri-plugin-fs 2.5.1 — Apache-2.0 OR MIT
-  tauri-plugin-log 2.8.0 — Apache-2.0 OR MIT
+  tauri-plugin-log 2.9.0 — Apache-2.0 OR MIT
   tauri-plugin-notification 2.3.3 — Apache-2.0 OR MIT
   tauri-plugin-opener 2.5.4 — Apache-2.0 OR MIT
   tauri-plugin-updater 2.10.1 — Apache-2.0 OR MIT
@@ -519,30 +510,30 @@ Rust crates (589)
   tempfile 3.27.0 — MIT OR Apache-2.0
   tendril 0.5.1 — MIT OR Apache-2.0
   thiserror 1.0.69 — MIT OR Apache-2.0
-  thiserror 2.0.18 — MIT OR Apache-2.0
+  thiserror 2.0.20 — MIT OR Apache-2.0
   thiserror-impl 1.0.69 — MIT OR Apache-2.0
-  thiserror-impl 2.0.18 — MIT OR Apache-2.0
-  time 0.3.53 — MIT OR Apache-2.0
+  thiserror-impl 2.0.20 — MIT OR Apache-2.0
+  time 0.3.55 — MIT OR Apache-2.0
   time-core 0.1.9 — MIT OR Apache-2.0
-  time-macros 0.2.31 — MIT OR Apache-2.0
+  time-macros 0.2.32 — MIT OR Apache-2.0
   tiny_http 0.12.0 — MIT OR Apache-2.0
   tinystr 0.8.3 — Unicode-3.0
   tinyvec 1.12.0 — Zlib OR Apache-2.0 OR MIT
   tinyvec_macros 0.1.1 — MIT OR Apache-2.0 OR Zlib
-  tokio 1.52.3 — MIT
+  tokio 1.53.1 — MIT
   tokio-rustls 0.26.4 — MIT OR Apache-2.0
-  tokio-util 0.7.18 — MIT
+  tokio-util 0.7.19 — MIT
   toml 0.8.2 — MIT OR Apache-2.0
   toml 0.9.12+spec-1.1.0 — MIT OR Apache-2.0
-  toml 1.1.2+spec-1.1.0 — MIT OR Apache-2.0
+  toml 1.1.4+spec-1.1.0 — MIT OR Apache-2.0
   toml_datetime 0.6.3 — MIT OR Apache-2.0
   toml_datetime 0.7.5+spec-1.1.0 — MIT OR Apache-2.0
   toml_datetime 1.1.1+spec-1.1.0 — MIT OR Apache-2.0
   toml_edit 0.19.15 — MIT OR Apache-2.0
   toml_edit 0.20.2 — MIT OR Apache-2.0
-  toml_edit 0.25.12+spec-1.1.0 — MIT OR Apache-2.0
-  toml_parser 1.1.2+spec-1.1.0 — MIT OR Apache-2.0
-  toml_writer 1.1.1+spec-1.1.0 — MIT OR Apache-2.0
+  toml_edit 0.25.13+spec-1.1.0 — MIT OR Apache-2.0
+  toml_parser 1.1.3+spec-1.1.0 — MIT OR Apache-2.0
+  toml_writer 1.1.2+spec-1.1.0 — MIT OR Apache-2.0
   tower 0.5.3 — MIT
   tower-http 0.6.11 — MIT
   tower-layer 0.3.3 — MIT
@@ -550,7 +541,7 @@ Rust crates (589)
   tracing 0.1.44 — MIT
   tracing-attributes 0.1.31 — MIT
   tracing-core 0.1.36 — MIT
-  tray-icon 0.24.1 — MIT OR Apache-2.0
+  tray-icon 0.24.2 — MIT OR Apache-2.0
   try-lock 0.2.5 — MIT
   typeid 1.0.3 — MIT OR Apache-2.0
   typenum 1.20.1 — MIT OR Apache-2.0
@@ -568,9 +559,7 @@ Rust crates (589)
   url 2.5.8 — MIT OR Apache-2.0
   urlpattern 0.3.0 — MIT
   utf8_iter 1.0.4 — Apache-2.0 OR MIT
-  utf8-width 0.1.9 — MIT
-  uuid 1.23.4 — Apache-2.0 OR MIT
-  value-bag 1.12.0 — Apache-2.0 OR MIT
+  uuid 1.24.0 — Apache-2.0 OR MIT
   vcpkg 0.2.15 — MIT/Apache-2.0
   version_check 0.9.5 — MIT/Apache-2.0
   version-compare 0.2.1 — MIT
@@ -580,20 +569,20 @@ Rust crates (589)
   want 0.3.1 — MIT
   wasi 0.11.1+wasi-snapshot-preview1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   wasip2 1.0.4+wasi-0.2.12 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
-  wasm-bindgen 0.2.126 — MIT OR Apache-2.0
-  wasm-bindgen-futures 0.4.76 — MIT OR Apache-2.0
-  wasm-bindgen-macro 0.2.126 — MIT OR Apache-2.0
-  wasm-bindgen-macro-support 0.2.126 — MIT OR Apache-2.0
-  wasm-bindgen-shared 0.2.126 — MIT OR Apache-2.0
+  wasm-bindgen 0.2.127 — MIT OR Apache-2.0
+  wasm-bindgen-futures 0.4.77 — MIT OR Apache-2.0
+  wasm-bindgen-macro 0.2.127 — MIT OR Apache-2.0
+  wasm-bindgen-macro-support 0.2.127 — MIT OR Apache-2.0
+  wasm-bindgen-shared 0.2.127 — MIT OR Apache-2.0
   wasm-streams 0.5.0 — MIT OR Apache-2.0
-  web_atoms 0.2.5 — MIT OR Apache-2.0
-  web-sys 0.3.103 — MIT OR Apache-2.0
+  web_atoms 0.2.6 — MIT OR Apache-2.0
+  web-sys 0.3.104 — MIT OR Apache-2.0
   webkit2gtk 2.0.2 — MIT
   webkit2gtk-sys 2.0.2 — MIT
   webpki 0.22.4 — see below
-  webpki-root-certs 1.0.8 — CDLA-Permissive-2.0
+  webpki-root-certs 1.0.9 — CDLA-Permissive-2.0
   webpki-roots 0.26.11 — CDLA-Permissive-2.0
-  webpki-roots 1.0.8 — CDLA-Permissive-2.0
+  webpki-roots 1.0.9 — CDLA-Permissive-2.0
   webview2-com 0.38.2 — MIT
   webview2-com-macros 0.8.1 — MIT
   webview2-com-sys 0.38.2 — MIT
@@ -651,23 +640,23 @@ Rust crates (589)
   windows-version 0.1.7 — MIT OR Apache-2.0
   winnow 0.5.40 — MIT
   winnow 0.7.15 — MIT
-  winnow 1.0.3 — MIT
+  winnow 1.0.4 — MIT
   winreg 0.55.0 — MIT
   wit-bindgen 0.57.1 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
   writeable 0.6.3 — Unicode-3.0
   wry 0.55.1 — Apache-2.0 OR MIT
-  wyz 0.5.1 — MIT
   x11 2.21.0 — MIT
   x11-dl 2.21.0 — MIT
   xattr 1.6.1 — MIT OR Apache-2.0
   yasna 0.5.2 — MIT OR Apache-2.0
   yoke 0.8.3 — Unicode-3.0
   yoke-derive 0.8.2 — Unicode-3.0
-  zbus 5.17.0 — MIT
-  zbus_macros 5.17.0 — MIT
-  zbus_names 4.3.3 — MIT
-  zerocopy 0.8.54 — BSD-2-Clause OR Apache-2.0 OR MIT
-  zerocopy-derive 0.8.54 — BSD-2-Clause OR Apache-2.0 OR MIT
+  zbus 5.19.0 — MIT
+  zbus_macros 5.19.0 — MIT
+  zbus_names 4.3.4 — MIT
+  zcheapstr 1.1.0 — MIT
+  zerocopy 0.8.56 — BSD-2-Clause OR Apache-2.0 OR MIT
+  zerocopy-derive 0.8.56 — BSD-2-Clause OR Apache-2.0 OR MIT
   zerofrom 0.1.8 — Unicode-3.0
   zerofrom-derive 0.1.7 — Unicode-3.0
   zeroize 1.9.0 — Apache-2.0 OR MIT
@@ -675,13 +664,13 @@ Rust crates (589)
   zerovec 0.11.6 — Unicode-3.0
   zerovec-derive 0.11.3 — Unicode-3.0
   zip 4.6.1 — MIT
-  zmij 1.0.21 — MIT
+  zmij 1.0.23 — MIT
   zstd 0.13.3 — MIT
   zstd-safe 7.2.4 — MIT OR Apache-2.0
   zstd-sys 2.0.16+zstd.1.5.7 — MIT/Apache-2.0
-  zvariant 5.13.0 — MIT
-  zvariant_derive 5.13.0 — MIT
-  zvariant_utils 3.5.0 — MIT
+  zvariant 5.14.0 — MIT
+  zvariant_derive 5.14.0 — MIT
+  zvariant_utils 4.0.0 — MIT
 
 
 ============================================================================
@@ -1095,7 +1084,7 @@ Apache-2.0
 ----------------------------------------------------------------------------
 
 Applies to:
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
 
@@ -1415,217 +1404,6 @@ MIT No Attribution (MIT-0)
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
-----------------------------------------------------------------------------
-Apache-2.0
-----------------------------------------------------------------------------
-
-Applies to:
-  borsh-derive 1.7.0 (cargo)
-      Copyright (c) Near Inc
-      https://github.com/near/borsh-rs
-
-Version 2.0, January 2004
-                        http://www.apache.org/licenses/
-
-   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-   1. Definitions.
-
-      "License" shall mean the terms and conditions for use, reproduction,
-      and distribution as defined by Sections 1 through 9 of this document.
-
-      "Licensor" shall mean the copyright owner or entity authorized by
-      the copyright owner that is granting the License.
-
-      "Legal Entity" shall mean the union of the acting entity and all
-      other entities that control, are controlled by, or are under common
-      control with that entity. For the purposes of this definition,
-      "control" means (i) the power, direct or indirect, to cause the
-      direction or management of such entity, whether by contract or
-      otherwise, or (ii) ownership of fifty percent (50%) or more of the
-      outstanding shares, or (iii) beneficial ownership of such entity.
-
-      "You" (or "Your") shall mean an individual or Legal Entity
-      exercising permissions granted by this License.
-
-      "Source" form shall mean the preferred form for making modifications,
-      including but not limited to software source code, documentation
-      source, and configuration files.
-
-      "Object" form shall mean any form resulting from mechanical
-      transformation or translation of a Source form, including but
-      not limited to compiled object code, generated documentation,
-      and conversions to other media types.
-
-      "Work" shall mean the work of authorship, whether in Source or
-      Object form, made available under the License, as indicated by a
-      copyright notice that is included in or attached to the work
-      (an example is provided in the Appendix below).
-
-      "Derivative Works" shall mean any work, whether in Source or Object
-      form, that is based on (or derived from) the Work and for which the
-      editorial revisions, annotations, elaborations, or other modifications
-      represent, as a whole, an original work of authorship. For the purposes
-      of this License, Derivative Works shall not include works that remain
-      separable from, or merely link (or bind by name) to the interfaces of,
-      the Work and Derivative Works thereof.
-
-      "Contribution" shall mean any work of authorship, including
-      the original version of the Work and any modifications or additions
-      to that Work or Derivative Works thereof, that is intentionally
-      submitted to Licensor for inclusion in the Work by the copyright owner
-      or by an individual or Legal Entity authorized to submit on behalf of
-      the copyright owner. For the purposes of this definition, "submitted"
-      means any form of electronic, verbal, or written communication sent
-      to the Licensor or its representatives, including but not limited to
-      communication on electronic mailing lists, source code control systems,
-      and issue tracking systems that are managed by, or on behalf of, the
-      Licensor for the purpose of discussing and improving the Work, but
-      excluding communication that is conspicuously marked or otherwise
-      designated in writing by the copyright owner as "Not a Contribution."
-
-      "Contributor" shall mean Licensor and any individual or Legal Entity
-      on behalf of whom a Contribution has been received by Licensor and
-      subsequently incorporated within the Work.
-
-   2. Grant of Copyright License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      copyright license to reproduce, prepare Derivative Works of,
-      publicly display, publicly perform, sublicense, and distribute the
-      Work and such Derivative Works in Source or Object form.
-
-   3. Grant of Patent License. Subject to the terms and conditions of
-      this License, each Contributor hereby grants to You a perpetual,
-      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-      (except as stated in this section) patent license to make, have made,
-      use, offer to sell, sell, import, and otherwise transfer the Work,
-      where such license applies only to those patent claims licensable
-      by such Contributor that are necessarily infringed by their
-      Contribution(s) alone or by combination of their Contribution(s)
-      with the Work to which such Contribution(s) was submitted. If You
-      institute patent litigation against any entity (including a
-      cross-claim or counterclaim in a lawsuit) alleging that the Work
-      or a Contribution incorporated within the Work constitutes direct
-      or contributory patent infringement, then any patent licenses
-      granted to You under this License for that Work shall terminate
-      as of the date such litigation is filed.
-
-   4. Redistribution. You may reproduce and distribute copies of the
-      Work or Derivative Works thereof in any medium, with or without
-      modifications, and in Source or Object form, provided that You
-      meet the following conditions:
-
-      (a) You must give any other recipients of the Work or
-          Derivative Works a copy of this License; and
-
-      (b) You must cause any modified files to carry prominent notices
-          stating that You changed the files; and
-
-      (c) You must retain, in the Source form of any Derivative Works
-          that You distribute, all copyright, patent, trademark, and
-          attribution notices from the Source form of the Work,
-          excluding those notices that do not pertain to any part of
-          the Derivative Works; and
-
-      (d) If the Work includes a "NOTICE" text file as part of its
-          distribution, then any Derivative Works that You distribute must
-          include a readable copy of the attribution notices contained
-          within such NOTICE file, excluding those notices that do not
-          pertain to any part of the Derivative Works, in at least one
-          of the following places: within a NOTICE text file distributed
-          as part of the Derivative Works; within the Source form or
-          documentation, if provided along with the Derivative Works; or,
-          within a display generated by the Derivative Works, if and
-          wherever such third-party notices normally appear. The contents
-          of the NOTICE file are for informational purposes only and
-          do not modify the License. You may add Your own attribution
-          notices within Derivative Works that You distribute, alongside
-          or as an addendum to the NOTICE text from the Work, provided
-          that such additional attribution notices cannot be construed
-          as modifying the License.
-
-      You may add Your own copyright statement to Your modifications and
-      may provide additional or different license terms and conditions
-      for use, reproduction, or distribution of Your modifications, or
-      for any such Derivative Works as a whole, provided Your use,
-      reproduction, and distribution of the Work otherwise complies with
-      the conditions stated in this License.
-
-   5. Submission of Contributions. Unless You explicitly state otherwise,
-      any Contribution intentionally submitted for inclusion in the Work
-      by You to the Licensor shall be under the terms and conditions of
-      this License, without any additional terms or conditions.
-      Notwithstanding the above, nothing herein shall supersede or modify
-      the terms of any separate license agreement you may have executed
-      with Licensor regarding such Contributions.
-
-   6. Trademarks. This License does not grant permission to use the trade
-      names, trademarks, service marks, or product names of the Licensor,
-      except as required for reasonable and customary use in describing the
-      origin of the Work and reproducing the content of the NOTICE file.
-
-   7. Disclaimer of Warranty. Unless required by applicable law or
-      agreed to in writing, Licensor provides the Work (and each
-      Contributor provides its Contributions) on an "AS IS" BASIS,
-      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-      implied, including, without limitation, any warranties or conditions
-      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-      PARTICULAR PURPOSE. You are solely responsible for determining the
-      appropriateness of using or redistributing the Work and assume any
-      risks associated with Your exercise of permissions under this License.
-
-   8. Limitation of Liability. In no event and under no legal theory,
-      whether in tort (including negligence), contract, or otherwise,
-      unless required by applicable law (such as deliberate and grossly
-      negligent acts) or agreed to in writing, shall any Contributor be
-      liable to You for damages, including any direct, indirect, special,
-      incidental, or consequential damages of any character arising as a
-      result of this License or out of the use or inability to use the
-      Work (including but not limited to damages for loss of goodwill,
-      work stoppage, computer failure or malfunction, or any and all
-      other commercial damages or losses), even if such Contributor
-      has been advised of the possibility of such damages.
-
-   9. Accepting Warranty or Additional Liability. While redistributing
-      the Work or Derivative Works thereof, You may choose to offer,
-      and charge a fee for, acceptance of support, warranty, indemnity,
-      or other liability obligations and/or rights consistent with this
-      License. However, in accepting such obligations, You may act only
-      on Your own behalf and on Your sole responsibility, not on behalf
-      of any other Contributor, and only if You agree to indemnify,
-      defend, and hold each Contributor harmless for any liability
-      incurred by, or claims asserted against, such Contributor by reason
-      of your accepting any such warranty or additional liability.
-
-   END OF TERMS AND CONDITIONS
-
-   APPENDIX: How to apply the Apache License to your work.
-
-      To apply the Apache License to your work, attach the following
-      boilerplate notice, with the fields enclosed by brackets "[]"
-      replaced with your own identifying information. (Don't include
-      the brackets!)  The text should be enclosed in the appropriate
-      comment syntax for the file format. We also recommend that a
-      file or class name and description of purpose be included on the
-      same "printed page" as the copyright notice for easier
-      identification within third-party archives.
-
-   Copyright 2019 Near
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
 
 
 ----------------------------------------------------------------------------
@@ -2073,7 +1851,7 @@ BSD-3-Clause
 ----------------------------------------------------------------------------
 
 Applies to:
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
 
@@ -2514,11 +2292,11 @@ CDLA-Permissive-2.0
 ----------------------------------------------------------------------------
 
 Applies to:
-  webpki-root-certs 1.0.8 (cargo)
+  webpki-root-certs 1.0.9 (cargo)
       https://github.com/rustls/webpki-roots
   webpki-roots 0.26.11 (cargo)
       https://github.com/rustls/webpki-roots
-  webpki-roots 1.0.8 (cargo)
+  webpki-roots 1.0.9 (cargo)
       https://github.com/rustls/webpki-roots
 
 # Community Data License Agreement - Permissive - Version 2.0
@@ -2894,13 +2672,13 @@ ISC
 ----------------------------------------------------------------------------
 
 Applies to:
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
 
@@ -3227,10 +3005,10 @@ ISC
 ----------------------------------------------------------------------------
 
 Applies to:
-  aws-lc-rs 1.17.3 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC)]
+  aws-lc-rs 1.18.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC)]
       Copyright (c) AWS-LibCrypto
       https://github.com/aws/aws-lc-rs
-  aws-lc-rs 1.17.3 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC)]
+  aws-lc-rs 1.18.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC)]
       Copyright (c) AWS-LibCrypto
       https://github.com/aws/aws-lc-rs
 
@@ -3489,7 +3267,7 @@ ISC
 ----------------------------------------------------------------------------
 
 Applies to:
-  rustls-webpki 0.103.13 (cargo)
+  rustls-webpki 0.103.14 (cargo)
       https://github.com/rustls/webpki
 
 Except as otherwise noted, this project is licensed under the following
@@ -3521,10 +3299,7 @@ Applies to:
   adler2 2.0.1 (cargo)  [offered: 0BSD OR MIT OR Apache-2.0]
       Copyright (c) Jonas Schievink
       https://github.com/oyvindln/adler2
-  ahash 0.7.8 (cargo)  [offered: MIT OR Apache-2.0]
-      Copyright (c) 2016 Amanieu d'Antras
-      https://github.com/tkaitchuck/ahash
-  aho-corasick 1.1.4 (cargo)  [offered: Unlicense OR MIT]
+  aho-corasick 1.1.5 (cargo)  [offered: Unlicense OR MIT]
       Copyright (c) 2015 Andrew Gallant
       https://github.com/BurntSushi/aho-corasick
   android_log-sys 0.3.2 (cargo)  [offered: MIT OR Apache-2.0]
@@ -3533,10 +3308,10 @@ Applies to:
   android_logger 0.15.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 The android_logger Developers
       https://github.com/rust-mobile/android_logger-rs
-  android_system_properties 0.1.5 (cargo)  [offered: MIT/Apache-2.0]
+  android_system_properties 0.1.6 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2013 Nicolas Silva
       https://github.com/nical/android_system_properties
-  anyhow 1.0.103 (cargo)  [offered: MIT OR Apache-2.0]
+  anyhow 1.0.104 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/anyhow
   arbitrary 1.4.2 (cargo)  [offered: MIT OR Apache-2.0]
@@ -3576,7 +3351,7 @@ Applies to:
   async-task 4.7.1 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/async-task
-  async-trait 0.1.89 (cargo)  [offered: MIT OR Apache-2.0]
+  async-trait 0.1.92 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/async-trait
   atk 0.18.2 (cargo)
@@ -3609,12 +3384,9 @@ Applies to:
   bitflags 1.3.2 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/bitflags/bitflags
-  bitflags 2.13.0 (cargo)  [offered: MIT OR Apache-2.0]
+  bitflags 2.13.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/bitflags/bitflags
-  bitvec 1.1.1 (cargo)
-      Copyright (c) 2018 myrrlyn (Alexander Payne)
-      https://github.com/bitvecto-rs/bitvec
   block-buffer 0.10.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2018-2019 The RustCrypto Project Developers
       https://github.com/RustCrypto/utils
@@ -3624,9 +3396,6 @@ Applies to:
   blocking 1.6.2 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/blocking
-  borsh 1.7.0 (cargo)  [offered: MIT OR Apache-2.0]
-      Copyright (c) Near Inc
-      https://github.com/near/borsh-rs
   brotli 8.0.4 (cargo)  [offered: BSD-3-Clause AND MIT]
       Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors
       https://github.com/dropbox/rust-brotli
@@ -3636,15 +3405,6 @@ Applies to:
   bumpalo 3.20.3 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2019 Nick Fitzgerald
       https://github.com/fitzgen/bumpalo
-  byte-unit 5.2.5 (cargo)
-      Copyright (c) 2023 magiclen.org (Ron Li)
-      https://github.com/magiclen/byte-unit
-  bytecheck 0.6.12 (cargo)
-      Copyright 2020 David Koloski
-      https://github.com/djkoloski/bytecheck
-  bytecheck_derive 0.6.12 (cargo)
-      Copyright 2020 David Koloski
-      https://github.com/djkoloski/bytecheck
   byteorder 1.5.0 (cargo)  [offered: Unlicense OR MIT]
       Copyright (c) 2015 Andrew Gallant
       https://github.com/BurntSushi/byteorder
@@ -3657,7 +3417,7 @@ Applies to:
   cairo-sys-rs 0.18.2 (cargo)
       Copyright (c) The gtk-rs Project Developers
       https://github.com/gtk-rs/gtk-rs-core
-  camino 1.2.4 (cargo)  [offered: MIT OR Apache-2.0]
+  camino 1.2.5 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Without Boats
       https://github.com/camino-rs/camino
   cargo_metadata 0.19.2 (cargo)
@@ -3665,7 +3425,7 @@ Applies to:
       https://github.com/oli-obk/cargo_metadata
   cargo-platform 0.1.9 (cargo)  [offered: MIT OR Apache-2.0]
       https://github.com/rust-lang/cargo
-  cc 1.2.67 (cargo)  [offered: MIT OR Apache-2.0]
+  cc 1.4.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/cc-rs
   cesu8 1.1.0 (cargo)  [offered: Apache-2.0/MIT]
@@ -3674,9 +3434,6 @@ Applies to:
   cfb 0.7.3 (cargo)
       Copyright (c) 2017 Matthew D. Steele
       https://github.com/mdsteele/rust-cfb
-  cfg_aliases 0.2.1 (cargo)
-      Copyright (c) 2020 Katharos Technology
-      https://github.com/katharostech/cfg_aliases
   cfg-expr 0.15.8 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2019 Embark Studios
       https://github.com/EmbarkStudios/cfg-expr
@@ -3699,7 +3456,7 @@ Applies to:
   convert_case 0.4.0 (cargo)
       Copyright (c) David Purdum
       https://github.com/rutrum/convert-case
-  cookie 0.18.1 (cargo)  [offered: MIT OR Apache-2.0]
+  cookie 0.18.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 Sergio Benitez
       Copyright (c) 2014 Alex Crichton
       https://github.com/SergioBenitez/cookie-rs
@@ -3754,6 +3511,15 @@ Applies to:
   dbus 0.9.12 (cargo)  [offered: Apache-2.0/MIT]
       Copyright (c) 2014-2018 David Henningsson <diwic@ubuntu.com> and other contributors
       https://github.com/diwic/dbus-rs
+  defmt 1.1.1 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) Ferrous Systems
+      https://github.com/knurling-rs/defmt
+  defmt-macros 1.1.1 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) Ferrous Systems
+      https://github.com/knurling-rs/defmt
+  defmt-parser 1.0.0 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) The Knurling-rs developers
+      https://github.com/knurling-rs/defmt
   deranged 0.5.8 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2024 Jacob Pratt et al
       https://github.com/jhpratt/deranged
@@ -3781,7 +3547,7 @@ Applies to:
   dispatch2 0.3.1 (cargo)  [offered: Zlib OR Apache-2.0 OR MIT]
       Copyright (c) Mads Marquart
       https://github.com/madsmtm/objc2
-  displaydoc 0.2.6 (cargo)  [offered: MIT OR Apache-2.0]
+  displaydoc 0.2.7 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Jane Lusby
       https://github.com/yaahc/displaydoc
   dlopen2 0.8.2 (cargo)
@@ -3829,7 +3595,7 @@ Applies to:
   errno 0.3.14 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Chris Wong
       https://github.com/lambda-fairy/rust-errno
-  event-listener 5.4.1 (cargo)  [offered: Apache-2.0 OR MIT]
+  event-listener 5.4.2 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/event-listener
   event-listener-strategy 0.5.4 (cargo)  [offered: Apache-2.0 OR MIT]
@@ -3841,7 +3607,7 @@ Applies to:
   fallible-streaming-iterator 0.1.9 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2016 The fallible-streaming-iterator Developers
       https://github.com/sfackler/fallible-streaming-iterator
-  fastrand 2.4.1 (cargo)  [offered: Apache-2.0 OR MIT]
+  fastrand 2.5.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/fastrand
   fdeflate 0.3.7 (cargo)  [offered: MIT OR Apache-2.0]
@@ -3856,7 +3622,7 @@ Applies to:
   filetime 0.2.29 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/alexcrichton/filetime
-  find-msvc-tools 0.1.9 (cargo)  [offered: MIT OR Apache-2.0]
+  find-msvc-tools 0.1.10 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/cc-rs
   flate2 1.1.9 (cargo)  [offered: MIT OR Apache-2.0]
@@ -3868,7 +3634,7 @@ Applies to:
   foreign-types 0.5.0 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2017 The foreign-types Developers
       https://github.com/sfackler/foreign-types
-  foreign-types-macros 0.2.3 (cargo)  [offered: MIT/Apache-2.0]
+  foreign-types-macros 0.2.4 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2017 The foreign-types Developers
       https://github.com/sfackler/foreign-types
   foreign-types-shared 0.3.1 (cargo)  [offered: MIT/Apache-2.0]
@@ -3880,41 +3646,38 @@ Applies to:
   fs_extra 1.3.0 (cargo)
       Copyright (c) 2017 Denis Kurilenko
       https://github.com/webdesus/fs_extra
-  funty 2.0.0 (cargo)
-      Copyright (c) 2020 myrrlyn (Alexander Payne)
-      https://github.com/myrrlyn/funty
-  futures-channel 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-channel 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-core 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-core 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-executor 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-executor 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-io 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-io 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
   futures-lite 2.6.1 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/futures-lite
-  futures-macro 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-macro 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-sink 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-sink 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-task 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-task 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
-  futures-util 0.3.32 (cargo)  [offered: MIT OR Apache-2.0]
+  futures-util 0.3.34 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Alex Crichton
       Copyright (c) 2017 The Tokio Authors
       https://github.com/rust-lang/futures-rs
@@ -3969,7 +3732,7 @@ Applies to:
   glib-sys 0.18.1 (cargo)
       Copyright (c) The gtk-rs Project Developers
       https://github.com/gtk-rs/gtk-rs-core
-  glob 0.3.3 (cargo)  [offered: MIT OR Apache-2.0]
+  glob 0.3.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-lang/glob
   gobject-sys 0.18.0 (cargo)
@@ -4009,14 +3772,14 @@ Applies to:
   html5ever 0.38.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The html5ever Project Developers
       https://github.com/servo/html5ever
-  http 1.4.2 (cargo)  [offered: MIT OR Apache-2.0]
+  http 1.5.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 http-rs authors
       https://github.com/hyperium/http
-  http-body 1.0.1 (cargo)
-      Copyright (c) 2019-2024 Sean McArthur & Hyper Contributors
+  http-body 1.1.0 (cargo)
+      Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
       https://github.com/hyperium/http-body
-  http-body-util 0.1.3 (cargo)
-      Copyright (c) 2019-2025 Sean McArthur & Hyper Contributors
+  http-body-util 0.1.4 (cargo)
+      Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
       https://github.com/hyperium/http-body
   httparse 1.10.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015-2025 Sean McArthur
@@ -4024,7 +3787,7 @@ Applies to:
   httpdate 1.0.3 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Pyfisch
       https://github.com/pyfisch/httpdate
-  hyper 1.10.1 (cargo)
+  hyper 1.11.0 (cargo)
       Copyright (c) 2014-2026 Sean McArthur
       https://github.com/hyperium/hyper
   hyper-rustls 0.27.9 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
@@ -4060,7 +3823,7 @@ Applies to:
   infer 0.19.0 (cargo)
       Copyright (c) 2019 Bojan
       https://github.com/bojand/infer
-  ipnet 2.12.0 (cargo)  [offered: MIT OR Apache-2.0]
+  ipnet 2.12.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright 2017 Juniper Networks, Inc
       https://github.com/krisprice/ipnet
   is-docker 0.2.0 (cargo)
@@ -4079,6 +3842,21 @@ Applies to:
   javascriptcore-rs-sys 1.1.1 (cargo)
       Copyright (c) 2013-2017, The Gtk-rs Project Developers
       https://github.com/tauri-apps/javascriptcore-rs
+  jiff 0.2.35 (cargo)  [offered: Unlicense OR MIT]
+      Copyright (c) 2015 Andrew Gallant
+      https://github.com/BurntSushi/jiff
+  jiff-core 0.1.0 (cargo)  [offered: Unlicense OR MIT]
+      Copyright (c) 2015 Andrew Gallant
+      https://github.com/BurntSushi/jiff
+  jiff-static 0.2.35 (cargo)  [offered: Unlicense OR MIT]
+      Copyright (c) 2015 Andrew Gallant
+      https://github.com/BurntSushi/jiff
+  jiff-tzdb 0.1.8 (cargo)  [offered: Unlicense OR MIT]
+      Copyright (c) 2015 Andrew Gallant
+      https://github.com/BurntSushi/jiff
+  jiff-tzdb-platform 0.1.3 (cargo)  [offered: Unlicense OR MIT]
+      Copyright (c) 2015 Andrew Gallant
+      https://github.com/BurntSushi/jiff
   jni 0.21.1 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2016 Prevoty, Inc. and jni-rs contributors
       https://github.com/jni-rs/jni-rs
@@ -4099,7 +3877,7 @@ Applies to:
   jobserver 0.1.35 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/jobserver-rs
-  js-sys 0.3.103 (cargo)  [offered: MIT OR Apache-2.0]
+  js-sys 0.3.104 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys
   json-patch 3.0.1 (cargo)  [offered: MIT/Apache-2.0]
@@ -4115,13 +3893,13 @@ Applies to:
       Copyright (c) 2017-2021 qDot
       Copyright (c) 2021 Tauri Apps Contributors
   libappindicator-sys 0.9.0 (cargo)  [offered: Apache-2.0 OR MIT]
-  libc 0.2.186 (cargo)  [offered: MIT OR Apache-2.0]
+  libc 0.2.189 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) The Rust Project Developers
       https://github.com/rust-lang/libc
   libdbus-sys 0.2.7 (cargo)  [offered: Apache-2.0/MIT]
       Copyright (c) 2014-2018 David Henningsson <diwic@ubuntu.com> and other contributors
       https://github.com/diwic/dbus-rs
-  libredox 0.1.18 (cargo)
+  libredox 0.1.19 (cargo)
       Copyright (c) 2023 4lDO2
       https://gitlab.redox-os.org/redox-os/libredox.git
   libsqlite3-sys 0.31.0 (cargo)
@@ -4157,7 +3935,7 @@ Applies to:
       Copyright (c) 2017 Frommi
       Copyright (c) 2017-2024 oyvindln
       https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-  mio 1.2.1 (cargo)
+  mio 1.2.2 (cargo)
       Copyright (c) 2014 Carl Lerche and other MIO contributors
       https://github.com/tokio-rs/mio
   muda 0.19.3 (cargo)  [offered: Apache-2.0 OR MIT]
@@ -4232,7 +4010,7 @@ Applies to:
   once_cell 1.21.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Aleksey Kladov
       https://github.com/matklad/once_cell
-  open 5.4.0 (cargo)
+  open 5.4.1 (cargo)
       Copyright © `2015` `Sebastian Thiel`
       https://github.com/Byron/open-rs
   openssl-probe 0.2.1 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4306,6 +4084,10 @@ Applies to:
   polling 3.11.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/polling
+  portable-atomic 1.15.0 (cargo)  [offered: Apache-2.0 OR MIT]
+      https://github.com/taiki-e/portable-atomic
+  portable-atomic-util 0.2.7 (cargo)  [offered: Apache-2.0 OR MIT]
+      https://github.com/taiki-e/portable-atomic-util
   powerfmt 0.2.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2023 Jacob Pratt et al
       https://github.com/jhpratt/powerfmt
@@ -4330,40 +4112,23 @@ Applies to:
   proc-macro-error-attr 1.0.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2019-2020 CreepySkeleton
       https://gitlab.com/CreepySkeleton/proc-macro-error
-  proc-macro2 1.0.106 (cargo)  [offered: MIT OR Apache-2.0]
+  proc-macro2 1.0.107 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/proc-macro2
-  ptr_meta 0.1.4 (cargo)
-      Copyright 2021 David Koloski
-      https://github.com/djkoloski/ptr_meta
-  ptr_meta_derive 0.1.4 (cargo)
-      Copyright 2021 David Koloski
-      https://github.com/djkoloski/ptr_meta
   qrcode 0.14.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 kennytm
       https://github.com/kennytm/qrcode-rust
   quick-xml 0.41.0 (cargo)
       Copyright (c) 2016 Johann Tuffe
       https://github.com/tafia/quick-xml
-  quote 1.0.46 (cargo)  [offered: MIT OR Apache-2.0]
+  quote 1.0.47 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/quote
   r-efi 5.3.0 (cargo)  [offered: MIT OR Apache-2.0 OR LGPL-2.1-or-later]
       https://github.com/r-efi/r-efi
   r-efi 6.0.0 (cargo)  [offered: MIT OR Apache-2.0 OR LGPL-2.1-or-later]
       https://github.com/r-efi/r-efi
-  radium 0.7.0 (cargo)
-      Copyright (c) 2019 kneecaw (Nika Layzell)
-      https://github.com/bitvecto-rs/radium
-  rand 0.8.7 (cargo)  [offered: MIT OR Apache-2.0]
-      Copyright 2018 Developers of the Rand project
-      Copyright (c) 2014 The Rust Project Developers
-      https://github.com/rust-random/rand
   rand 0.9.5 (cargo)  [offered: MIT OR Apache-2.0]
-      Copyright 2018 Developers of the Rand project
-      Copyright (c) 2014 The Rust Project Developers
-      https://github.com/rust-random/rand
-  rand_chacha 0.3.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright 2018 Developers of the Rand project
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-random/rand
@@ -4391,42 +4156,30 @@ Applies to:
   redox_users 0.5.2 (cargo)
       Copyright (c) 2017 Jose Narvaez
       https://gitlab.redox-os.org/redox-os/users
-  ref-cast 1.0.25 (cargo)  [offered: MIT OR Apache-2.0]
+  ref-cast 1.0.26 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/ref-cast
-  ref-cast-impl 1.0.25 (cargo)  [offered: MIT OR Apache-2.0]
+  ref-cast-impl 1.0.26 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/ref-cast
-  regex 1.13.0 (cargo)  [offered: MIT OR Apache-2.0]
+  regex 1.13.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-lang/regex
-  regex-automata 0.4.15 (cargo)  [offered: MIT OR Apache-2.0]
+  regex-automata 0.4.18 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-lang/regex
   regex-syntax 0.8.11 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-lang/regex
-  rend 0.4.2 (cargo)
-      Copyright 2021 David Koloski
-      https://github.com/djkoloski/rend
   reqwest 0.13.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016-2026 Sean McArthur
       https://github.com/seanmonstar/reqwest
   rfd 0.16.0 (cargo)
       Copyright (c) 2022 Bartłomiej Maryńczak
       https://github.com/PolyMeilex/rfd
-  rkyv 0.7.46 (cargo)
-      Copyright 2021 David Koloski
-      https://github.com/rkyv/rkyv
-  rkyv_derive 0.7.46 (cargo)
-      Copyright 2021 David Koloski
-      https://github.com/rkyv/rkyv
   rusqlite 0.33.0 (cargo)
       Copyright (c) 2014-2021 The rusqlite developers
       https://github.com/rusqlite/rusqlite
-  rust_decimal 1.42.1 (cargo)
-      Copyright (c) 2016 Paul Mason
-      https://github.com/paupino/rust-decimal
   rustc_version 0.4.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 The Rust Project Developers
       https://github.com/djc/rustc-version-rs
@@ -4439,7 +4192,7 @@ Applies to:
   rustls 0.20.9 (cargo)  [offered: Apache-2.0/ISC/MIT]
       Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
       https://github.com/rustls/rustls
-  rustls 0.23.41 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
+  rustls 0.23.43 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
       Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
       https://github.com/rustls/rustls
   rustls-native-certs 0.8.4 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
@@ -4451,7 +4204,7 @@ Applies to:
   rustls-pemfile 2.2.0 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
       Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
       https://github.com/rustls/pemfile
-  rustls-pki-types 1.15.0 (cargo)  [offered: MIT OR Apache-2.0]
+  rustls-pki-types 1.15.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
       https://github.com/rustls/pki-types
   rustls-platform-verifier 0.7.0 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4474,7 +4227,7 @@ Applies to:
   schemars 0.9.0 (cargo)
       Copyright (c) 2019 Graham Esau
       https://github.com/GREsau/schemars
-  schemars 1.2.1 (cargo)
+  schemars 1.2.2 (cargo)
       Copyright (c) 2019 Graham Esau
       https://github.com/GREsau/schemars
   schemars_derive 0.8.22 (cargo)
@@ -4486,9 +4239,6 @@ Applies to:
   sct 0.7.1 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
       Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
       https://github.com/rustls/sct.rs
-  seahash 4.1.0 (cargo)
-      Copyright (c) ticki
-      https://gitlab.redox-os.org/redox-os/seahash
   security-framework 3.7.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015 Steven Fackler
       https://github.com/kornelski/rust-security-framework
@@ -4498,22 +4248,22 @@ Applies to:
   semver 1.0.28 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/semver
-  serde 1.0.228 (cargo)  [offered: MIT OR Apache-2.0]
+  serde 1.0.229 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Erick Tryzelaar
       https://github.com/serde-rs/serde
-  serde_core 1.0.228 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_core 1.0.229 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Erick Tryzelaar
       https://github.com/serde-rs/serde
-  serde_derive 1.0.228 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_derive 1.0.229 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Erick Tryzelaar
       https://github.com/serde-rs/serde
   serde_derive_internals 0.29.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Erick Tryzelaar
       https://github.com/serde-rs/serde
-  serde_json 1.0.150 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_json 1.0.151 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Erick Tryzelaar
       https://github.com/serde-rs/json
-  serde_repr 0.1.20 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_repr 0.1.21 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/serde-repr
   serde_spanned 0.6.9 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4522,10 +4272,10 @@ Applies to:
   serde_spanned 1.1.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
-  serde_with 3.21.0 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_with 3.22.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015
       https://github.com/jonasbb/serde_with/
-  serde_with_macros 3.21.0 (cargo)  [offered: MIT OR Apache-2.0]
+  serde_with_macros 3.22.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015
       https://github.com/jonasbb/serde_with/
   serde-untagged 0.1.9 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4554,7 +4304,7 @@ Applies to:
   simd_cesu8 1.2.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Sean C. Roach
       https://github.com/seancroach/simd_cesu8
-  simd-adler32 0.3.9 (cargo)
+  simd-adler32 0.3.10 (cargo)
       Copyright (c) [2021] [Marvin Countryman]
       https://github.com/mcountryman/simd-adler32
   simdutf8 0.1.5 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4566,7 +4316,7 @@ Applies to:
   smallvec 1.15.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2018 The Servo Project Developers
       https://github.com/servo/rust-smallvec
-  socket2 0.6.4 (cargo)  [offered: MIT OR Apache-2.0]
+  socket2 0.6.5 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/socket2
   softbuffer 0.4.8 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4601,7 +4351,10 @@ Applies to:
   syn 1.0.109 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/syn
-  syn 2.0.118 (cargo)  [offered: MIT OR Apache-2.0]
+  syn 2.0.119 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) David Tolnay
+      https://github.com/dtolnay/syn
+  syn 3.0.3 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/syn
   synstructure 0.13.2 (cargo)
@@ -4610,12 +4363,9 @@ Applies to:
   system-deps 6.2.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Guillaume Desmottes
       https://github.com/gdesmott/system-deps
-  tao-macros 0.1.3 (cargo)  [offered: MIT OR Apache-2.0]
-      Copyright (c) Tauri Programme within The Commons Conservancy
+  tao-macros 0.1.4 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2022 - Present Tauri Apps Contributors
       https://github.com/tauri-apps/tao
-  tap 1.0.1 (cargo)
-      Copyright (c) 2017 Elliot Linder <darfink@gmail.com>
-      https://github.com/myrrlyn/tap
   tar 0.4.46 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) The tar-rs Project Contributors
       https://github.com/composefs/tar-rs
@@ -4643,7 +4393,7 @@ Applies to:
   tauri-plugin-fs 2.5.1 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017 - Present Tauri Apps Contributors
       https://github.com/tauri-apps/plugins-workspace
-  tauri-plugin-log 2.8.0 (cargo)  [offered: Apache-2.0 OR MIT]
+  tauri-plugin-log 2.9.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017 - Present Tauri Apps Contributors
       https://github.com/tauri-apps/plugins-workspace
   tauri-plugin-notification 2.3.3 (cargo)  [offered: Apache-2.0 OR MIT]
@@ -4680,22 +4430,22 @@ Applies to:
   thiserror 1.0.69 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/thiserror
-  thiserror 2.0.18 (cargo)  [offered: MIT OR Apache-2.0]
+  thiserror 2.0.20 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/thiserror
   thiserror-impl 1.0.69 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/thiserror
-  thiserror-impl 2.0.18 (cargo)  [offered: MIT OR Apache-2.0]
+  thiserror-impl 2.0.20 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/thiserror
-  time 0.3.53 (cargo)  [offered: MIT OR Apache-2.0]
+  time 0.3.55 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Jacob Pratt et al
       https://github.com/time-rs/time
   time-core 0.1.9 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Jacob Pratt et al
       https://github.com/time-rs/time
-  time-macros 0.2.31 (cargo)  [offered: MIT OR Apache-2.0]
+  time-macros 0.2.32 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Jacob Pratt et al
       https://github.com/time-rs/time
   tiny_http 0.12.0 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4707,13 +4457,13 @@ Applies to:
   tinyvec_macros 0.1.1 (cargo)  [offered: MIT OR Apache-2.0 OR Zlib]
       Copyright (c) 2020 Soveu
       https://github.com/Soveu/tinyvec_macros
-  tokio 1.52.3 (cargo)
+  tokio 1.53.1 (cargo)
       Copyright (c) Tokio Contributors
       https://github.com/tokio-rs/tokio
   tokio-rustls 0.26.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 quininer kel
       https://github.com/rustls/tokio-rustls
-  tokio-util 0.7.18 (cargo)
+  tokio-util 0.7.19 (cargo)
       Copyright (c) Tokio Contributors
       https://github.com/tokio-rs/tokio
   toml 0.8.2 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4722,7 +4472,7 @@ Applies to:
   toml 0.9.12+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
-  toml 1.1.2+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+  toml 1.1.4+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
   toml_datetime 0.6.3 (cargo)  [offered: MIT OR Apache-2.0]
@@ -4740,13 +4490,13 @@ Applies to:
   toml_edit 0.20.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
-  toml_edit 0.25.12+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+  toml_edit 0.25.13+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
-  toml_parser 1.1.2+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+  toml_parser 1.1.3+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
-  toml_writer 1.1.1+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+  toml_writer 1.1.2+spec-1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Individual contributors
       https://github.com/toml-rs/toml
   tower 0.5.3 (cargo)
@@ -4770,7 +4520,7 @@ Applies to:
   tracing-core 0.1.36 (cargo)
       Copyright (c) 2019 Tokio Contributors
       https://github.com/tokio-rs/tracing
-  tray-icon 0.24.1 (cargo)  [offered: MIT OR Apache-2.0]
+  tray-icon 0.24.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2022-2022 Tauri Programme within The Commons Conservancy
       https://github.com/tauri-apps/tray-icon
   try-lock 0.2.5 (cargo)
@@ -4819,16 +4569,10 @@ Applies to:
   utf8_iter 1.0.4 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright Mozilla Foundation
       https://github.com/hsivonen/utf8_iter
-  utf8-width 0.1.9 (cargo)
-      Copyright (c) 2020 magiclen.org (Ron Li)
-      https://github.com/magiclen/utf8-width
-  uuid 1.23.4 (cargo)  [offered: Apache-2.0 OR MIT]
+  uuid 1.24.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2014 The Rust Project Developers
       Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
       https://github.com/uuid-rs/uuid
-  value-bag 1.12.0 (cargo)  [offered: Apache-2.0 OR MIT]
-      Copyright (c) 2020 sval-rs
-      https://github.com/sval-rs/value-bag
   vcpkg 0.2.15 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2017 Jim McGrath
       https://github.com/mcgoo/vcpkg-rs
@@ -4855,28 +4599,28 @@ Applies to:
       https://github.com/bytecodealliance/wasi
   wasip2 1.0.4+wasi-0.2.12 (cargo)  [offered: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT]
       https://github.com/bytecodealliance/wasi-rs
-  wasm-bindgen 0.2.126 (cargo)  [offered: MIT OR Apache-2.0]
+  wasm-bindgen 0.2.127 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen
-  wasm-bindgen-futures 0.4.76 (cargo)  [offered: MIT OR Apache-2.0]
+  wasm-bindgen-futures 0.4.77 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/futures
-  wasm-bindgen-macro 0.2.126 (cargo)  [offered: MIT OR Apache-2.0]
+  wasm-bindgen-macro 0.2.127 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro
-  wasm-bindgen-macro-support 0.2.126 (cargo)  [offered: MIT OR Apache-2.0]
+  wasm-bindgen-macro-support 0.2.127 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support
-  wasm-bindgen-shared 0.2.126 (cargo)  [offered: MIT OR Apache-2.0]
+  wasm-bindgen-shared 0.2.127 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared
   wasm-streams 0.5.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Mattias Buelens
       https://github.com/MattiasBuelens/wasm-streams/
-  web_atoms 0.2.5 (cargo)  [offered: MIT OR Apache-2.0]
+  web_atoms 0.2.6 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The html5ever Project Developers
       https://github.com/servo/html5ever
-  web-sys 0.3.103 (cargo)  [offered: MIT OR Apache-2.0]
+  web-sys 0.3.104 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys
   webkit2gtk 2.0.2 (cargo)
@@ -5053,7 +4797,7 @@ Applies to:
       https://github.com/winnow-rs/winnow
   winnow 0.7.15 (cargo)
       https://github.com/winnow-rs/winnow
-  winnow 1.0.3 (cargo)
+  winnow 1.0.4 (cargo)
       https://github.com/winnow-rs/winnow
   winreg 0.55.0 (cargo)
       Copyright (c) 2015 Igor Shaula
@@ -5064,9 +4808,6 @@ Applies to:
   wry 0.55.1 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2020-2023 Ngo Iok Ui & Tauri Programme within The Commons Conservancy
       https://github.com/tauri-apps/wry
-  wyz 0.5.1 (cargo)
-      Copyright (c) 2018 myrrlyn (Alexander Payne)
-      https://github.com/myrrlyn/wyz
   x11 2.21.0 (cargo)
       Copyright (c) daggerbot
       https://github.com/AltF02/x11-rs.git
@@ -5079,25 +4820,28 @@ Applies to:
   yasna 0.5.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Masaki Hara
       https://github.com/qnighy/yasna.rs
-  zbus 5.17.0 (cargo)
+  zbus 5.19.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
-  zbus_macros 5.17.0 (cargo)
+  zbus_macros 5.19.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
-  zbus_names 4.3.3 (cargo)
+  zbus_names 4.3.4 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
-  zerocopy 0.8.54 (cargo)  [offered: BSD-2-Clause OR Apache-2.0 OR MIT]
+  zcheapstr 1.1.0 (cargo)
+      Copyright (c) 2026 Zeeshan Ali Khan & zcheapstr contributors
+      https://github.com/z-galaxy/zcheapstr/
+  zerocopy 0.8.56 (cargo)  [offered: BSD-2-Clause OR Apache-2.0 OR MIT]
       Copyright 2023 The Fuchsia Authors
       https://github.com/google/zerocopy
-  zerocopy-derive 0.8.54 (cargo)  [offered: BSD-2-Clause OR Apache-2.0 OR MIT]
+  zerocopy-derive 0.8.56 (cargo)  [offered: BSD-2-Clause OR Apache-2.0 OR MIT]
       Copyright 2023 The Fuchsia Authors
       https://github.com/google/zerocopy
   zeroize 1.9.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2018-2026 The RustCrypto Project Developers
       https://github.com/RustCrypto/utils
-  zmij 1.0.21 (cargo)
+  zmij 1.0.23 (cargo)
       Copyright (c) David Tolnay
       https://github.com/dtolnay/zmij
   zstd 0.13.3 (cargo)
@@ -5109,13 +4853,13 @@ Applies to:
   zstd-sys 2.0.16+zstd.1.5.7 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2016 Alexandre Bury
       https://github.com/gyscos/zstd-rs
-  zvariant 5.13.0 (cargo)
+  zvariant 5.14.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
-  zvariant_derive 5.13.0 (cargo)
+  zvariant_derive 5.14.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
-  zvariant_utils 3.5.0 (cargo)
+  zvariant_utils 4.0.0 (cargo)
       Copyright (c) Zeeshan Ali Khan
       https://github.com/z-galaxy/zbus/
   @babel/runtime 7.29.7 (npm)
@@ -5314,10 +5058,10 @@ MIT
 ----------------------------------------------------------------------------
 
 Applies to:
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
-  aws-lc-sys 0.43.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
+  aws-lc-sys 0.44.0 (cargo)  [offered: ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0)]
       Copyright (c) AWS-LC
       https://github.com/aws/aws-lc-rs
 
@@ -5664,7 +5408,7 @@ MIT
 ----------------------------------------------------------------------------
 
 Applies to:
-  bytemuck 1.25.1 (cargo)  [offered: Zlib OR Apache-2.0 OR MIT]
+  bytemuck 1.25.2 (cargo)  [offered: Zlib OR Apache-2.0 OR MIT]
       Copyright (c) 2019 Daniel "Lokathor" Gee
       https://github.com/Lokathor/bytemuck
 
@@ -7435,7 +7179,7 @@ OFL-1.1
 ----------------------------------------------------------------------------
 
 Applies to:
-  @fontsource-variable/inter 5.2.8 (npm)
+  @fontsource-variable/inter 5.3.0 (npm)
       Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter) Inter-Italic[opsz,wght].ttf: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
       https://github.com/fontsource/font-files
 

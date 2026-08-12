@@ -13,15 +13,6 @@ set is summarized in the [README](../README.md).
   listing, closed testing, the production-access request and review. The signed
   AAB build and its technical verification already exist.
 
-## Performance and maintainability
-
-- [ ] Move the updater-manifest implementation out of the release workflow into
-  a small testable script; keep workflows focused on orchestration.
-- [ ] After the measurable work above, split the largest modules (`insights.rs`,
-  `sync.rs`, `study.rs`, `Settings.tsx`, `Puzzles.tsx`, `Repertoire.tsx`) along
-  their existing responsibilities. This is a maintainability change, not a
-  rewrite.
-
 ## Platform horizon
 
 - [ ] Revisit iOS only with an in-process Stockfish integration. The current

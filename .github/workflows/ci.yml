@@ -32,6 +32,9 @@ jobs:
       - name: Tests
         run: npm run test:run
 
+      - name: Build-Skript-Tests
+        run: npm run test:scripts
+
       - name: Toolchain-Pins prüfen
         run: npm run pins:check
 

@@ -197,10 +197,10 @@ describe("Analysis page", () => {
     expect(board.dataset.arrows).toContain("c7");
     expect(board.dataset.arrows).toContain("e7");
     expect(screen.getByRole("button", { name: "e4" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "e5 ?!" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /e5\s*\?!/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Nf3" })).toBeTruthy();
     // Exzellente Züge werden in der Zugliste jetzt ebenfalls markiert.
-    expect(screen.getByRole("button", { name: "Bc4 ✓" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Bc4\s*✓/ })).toBeTruthy();
   });
 
   it("plays a clicked engine move on the analysis board", async () => {

@@ -242,87 +242,13 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SERVER_URL: ${{ github.server_url }}
           TAG: ${{ github.ref_name }}
+        run: node scripts/generate-updater-manifest.mjs
+
+      - name: Manifest an Draft-Release anhängen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
-          node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          import { readFileSync, writeFileSync } from 'node:fs';
-
-          const { RELEASE_ID, REPOSITORY, SERVER_URL, TAG } = process.env;
-          if (!RELEASE_ID || !REPOSITORY || !SERVER_URL || !TAG) {
-            throw new Error('Release-Metadaten fehlen.');
-          }
-
-          const ghJson = (endpoint) => JSON.parse(execFileSync(
-            'gh', ['api', endpoint], { encoding: 'utf8' },
-          ));
-          const release = ghJson(`repos/${REPOSITORY}/releases/${RELEASE_ID}`);
-          const assets = ghJson(
-            `repos/${REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100`,
-          );
-
-          function findSignature(label, suffixes) {
-            for (const suffix of suffixes) {
-              const matches = assets.filter((asset) => asset.name.endsWith(suffix));
-              if (matches.length > 1) {
-                throw new Error(`${label}: mehrere Signaturen mit Endung ${suffix}`);
-              }
-              if (matches.length === 1) return matches[0];
-            }
-            throw new Error(`${label}: keine Signatur (${suffixes.join(' oder ')}) gefunden`);
-          }
-
-          function updaterEntry(label, suffixes) {
-            const signatureAsset = findSignature(label, suffixes);
-            const bundleName = signatureAsset.name.slice(0, -'.sig'.length);
-            const bundleAsset = assets.find((asset) => asset.name === bundleName);
-            if (!bundleAsset) {
-              throw new Error(`${label}: Bundle ${bundleName} zur Signatur fehlt`);
-            }
-
-            const signature = execFileSync(
-              'gh',
-              [
-                'api',
-                `repos/${REPOSITORY}/releases/assets/${signatureAsset.id}`,
-                '-H',
-                'Accept: application/octet-stream',
-              ],
-              { encoding: 'utf8' },
-            );
-            const url = `${SERVER_URL}/${REPOSITORY}/releases/download/` +
-              `${encodeURIComponent(TAG)}/${encodeURIComponent(bundleAsset.name)}`;
-            return { signature, url };
-          }
-
-          const windowsMsi = updaterEntry('Windows MSI', ['.msi.sig', '.msi.zip.sig']);
-          const windowsNsis = updaterEntry('Windows NSIS', ['.exe.sig', '.nsis.zip.sig']);
-          const macos = updaterEntry('macOS', ['.app.tar.gz.sig']);
-          const linux = updaterEntry(
-            'Linux AppImage',
-            ['.AppImage.sig', '.AppImage.tar.gz.sig'],
-          );
-          const version = JSON.parse(
-            readFileSync('src-tauri/tauri.conf.json', 'utf8'),
-          ).version;
-
-          const manifest = {
-            version,
-            notes: release.body ?? '',
-            pub_date: new Date().toISOString(),
-            platforms: {
-              'windows-x86_64': windowsMsi,
-              'windows-x86_64-msi': windowsMsi,
-              'windows-x86_64-nsis': windowsNsis,
-              'darwin-aarch64': macos,
-              'darwin-aarch64-app': macos,
-              'linux-x86_64': linux,
-              'linux-x86_64-appimage': linux,
-            },
-          };
-          writeFileSync('latest.json', `${JSON.stringify(manifest, null, 2)}\n`);
-          console.log(`latest.json für ${Object.keys(manifest.platforms).join(', ')}`);
-          NODE
-
           gh release upload "$TAG" latest.json --clobber
 
   android:

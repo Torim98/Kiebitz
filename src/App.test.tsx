@@ -83,7 +83,7 @@ function pageTitle() {
 
 describe("mobile navigation", () => {
   it("replaces the drawer with an app bar carrying title, back and settings", async () => {
-    let container = document.createElement("div");
+    let container: HTMLElement = document.createElement("div");
     await act(async () => {
       container = render(<LocaleProvider><App /></LocaleProvider>).container;
     });

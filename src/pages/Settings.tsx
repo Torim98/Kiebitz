@@ -5,14 +5,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import {
   AlertTriangle,
   Check,
   ArchiveRestore,
   Bell,
-  ChevronDown,
   Compass,
   Cpu,
   Database,
@@ -33,7 +31,6 @@ import {
   Trash2,
   UserRound,
   Volume2,
-  type LucideIcon,
 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useBackendInfo } from "../lib/backend";
@@ -95,248 +92,17 @@ import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt, errorMessage } from "../lib/util";
 import { showAdPrivacyOptions } from "../lib/ads";
 
-function Field({
-  label,
-  children,
-  className = "",
-}: {
-  label: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <label className={`flex flex-col gap-1.5 ${className}`}>
-      <span className="text-[12px] text-ink3">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-/** Wochentage der Trainingstage-Auswahl · Index 0 = Montag. */
-const WEEKDAY_KEYS = [
-  "set.dayMon",
-  "set.dayTue",
-  "set.dayWed",
-  "set.dayThu",
-  "set.dayFri",
-  "set.daySat",
-  "set.daySun",
-] as const;
-
-const inputCls =
-  "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none";
-
-function NumberField({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <Field label={label}>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className={inputCls}
-      />
-    </Field>
-  );
-}
-
-/** Bereichskennung · trägt Sprungmarke, Navigationseintrag und Nachladen. */
-type SectionId =
-  | "language"
-  | "tour"
-  | "accounts"
-  | "sound"
-  | "notify"
-  | "sync"
-  | "updates"
-  | "privacy"
-  | "support"
-  | "engine"
-  | "database"
-  | "chessdb"
-  | "puzzles"
-  | "about"
-  | "reset";
-
-interface Section {
-  id: SectionId;
-  icon: LucideIcon;
-  title: string;
-  /** Eine Zeile, die sagt, was der Bereich enthält. */
-  summary: string;
-  tone?: "accent" | "loss";
-  /** Selten gebraucht · steht hinter der Zwischenüberschrift "Erweitert". */
-  advanced?: boolean;
-  content: ReactNode;
-}
-
-/** DOM-Id der Sprungmarke eines Bereichs. */
-const anchorId = (id: SectionId) => `set-${id}`;
-
-/**
- * Ein Einstellungsbereich.
- *
- * Auf dem Desktop steht der Bereich offen da · ein Fenster hat den Platz, und
- * Scrollen mit dem Rad kostet nichts.
- *
- * Auf dem Handy sind dreizehn offene Karten eine Wand aus Text. Dort wird
- * derselbe Bereich eine zugeklappte Zeile mit Symbol, Titel und einer Zeile
- * darüber, was drin steckt · aufgeklappt wird, was man gerade sucht.
- *
- * Sichtbar werden heißt auch: die Daten des Bereichs werden jetzt gebraucht.
- * Deshalb meldet der Bereich das nach oben, statt dass die Seite beim Öffnen
- * alles auf einmal lädt.
- */
-function SettingsSection({
-  mobile,
-  id,
-  icon: Icon,
-  title,
-  summary,
-  tone = "accent",
-  onReveal,
-  children,
-}: {
-  mobile: boolean;
-  id: SectionId;
-  icon: LucideIcon;
-  title: string;
-  summary: string;
-  tone?: "accent" | "loss";
-  onReveal: (id: SectionId) => void;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const color = tone === "loss" ? "text-loss" : "text-accent";
-  const shown = !mobile || open;
-
-  useEffect(() => {
-    if (shown) onReveal(id);
-  }, [shown, id, onReveal]);
-
-  const badge = (
-    <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel2 ${color}`}
-    >
-      <Icon size={16} />
-    </span>
-  );
-
-  if (!mobile) {
-    return (
-      <section
-        id={anchorId(id)}
-        data-settings-section={id}
-        className="scroll-mt-4 overflow-hidden rounded-xl border border-line bg-panel"
-      >
-        <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-          {badge}
-          <span className="min-w-0">
-            <h2 className="text-[13.5px] font-medium text-ink">{title}</h2>
-            <span className="block truncate text-[11.5px] text-ink3">{summary}</span>
-          </span>
-        </header>
-        <div className="p-4">{children}</div>
-      </section>
-    );
-  }
-
-  return (
-    <section id={anchorId(id)} className="overflow-hidden rounded-xl border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 px-3.5 py-3 text-left"
-      >
-        {badge}
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-medium text-ink">{title}</span>
-          <span className="block truncate text-[11.5px] text-ink3">{summary}</span>
-        </span>
-        <ChevronDown
-          size={17}
-          className={`shrink-0 text-ink3 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && <div className="border-t border-line p-4">{children}</div>}
-    </section>
-  );
-}
-
-/**
- * Sprungleiste für breite Fenster · dieselbe Reihenfolge und Gruppierung wie
- * die Bereiche selbst, nur als stehendes Verzeichnis daneben. Auf dem Handy
- * übernimmt das Zuklappen diese Aufgabe, dort gibt es sie nicht.
- */
-function SectionNav({
-  sections,
-  active,
-  advancedLabel,
-  label,
-  onJump,
-}: {
-  sections: Section[];
-  active: SectionId | null;
-  advancedLabel: string;
-  label: string;
-  onJump: (id: SectionId) => void;
-}) {
-  return (
-    <div className="hidden min-[1160px]:block">
-      <nav aria-label={label} className="sticky top-0 flex flex-col gap-0.5 pt-1">
-        {sections.map((section, index) => {
-          const Icon = section.icon;
-          const current = section.id === active;
-          return (
-            <Fragment key={section.id}>
-              {section.advanced && !sections[index - 1]?.advanced && (
-                <div className="px-3 pb-1 pt-4 text-[10.5px] font-medium uppercase tracking-[0.12em] text-ink3">
-                  {advancedLabel}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => onJump(section.id)}
-                aria-current={current ? "true" : undefined}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-[12.5px] transition-colors ${
-                  current
-                    ? "bg-panel2 font-medium text-ink"
-                    : "text-ink2 hover:bg-panel2/60 hover:text-ink"
-                }`}
-              >
-                <Icon
-                  size={15}
-                  className={
-                    section.tone === "loss"
-                      ? "shrink-0 text-loss"
-                      : current
-                        ? "shrink-0 text-accent"
-                        : "shrink-0 text-ink3"
-                  }
-                />
-                <span className="truncate">{section.title}</span>
-              </button>
-            </Fragment>
-          );
-        })}
-      </nav>
-    </div>
-  );
-}
+import {
+  Field,
+  NumberField,
+  SectionNav,
+  SettingsSection,
+  WEEKDAY_KEYS,
+  anchorId,
+  inputCls,
+  type Section,
+  type SectionId,
+} from "./settings/SettingsLayout";
 
 export default function SettingsPage({
   openSupport,
