@@ -13,6 +13,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "bundle:check": "node scripts/check-bundle-size.mjs",
+    "pins:sync": "node scripts/generate-stockfish-notice.mjs",
+    "pins:check": "node scripts/generate-stockfish-notice.mjs --check && node scripts/check-toolchain-pin-consumers.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",

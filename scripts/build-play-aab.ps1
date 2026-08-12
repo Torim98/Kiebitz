@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$pins = Get-Content -LiteralPath (Join-Path $repoRoot "config\toolchain-pins.json") -Raw |
+    ConvertFrom-Json
+$androidPins = $pins.android
 
 function Find-AndroidSdk {
     $candidates = @()
@@ -22,13 +25,13 @@ function Find-AndroidSdk {
 
     foreach ($candidate in $candidates | Select-Object -Unique) {
         if (
-            (Test-Path -LiteralPath (Join-Path $candidate "platforms\android-36")) -and
-            (Test-Path -LiteralPath (Join-Path $candidate "ndk\28.2.13676358"))
+            (Test-Path -LiteralPath (Join-Path $candidate "platforms\android-$($androidPins.compileSdk)")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "ndk\$($androidPins.ndk)"))
         ) {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
-    throw "Kein vollständiges Android SDK mit API 36 und NDK 28.2.13676358 gefunden."
+    throw "Kein vollständiges Android SDK mit API $($androidPins.compileSdk) und NDK $($androidPins.ndk) gefunden."
 }
 
 function Find-JdkHome {
@@ -54,7 +57,7 @@ if (-not $Keystore) {
 $keystorePath = (Resolve-Path -LiteralPath $Keystore).Path
 $androidSdk = Find-AndroidSdk
 $jdkHome = Find-JdkHome
-$ndkHome = Join-Path $androidSdk "ndk\28.2.13676358"
+$ndkHome = Join-Path $androidSdk "ndk\$($androidPins.ndk)"
 $npx = (Get-Command npx.cmd -ErrorAction Stop).Source
 $keytool = Join-Path $jdkHome "bin\keytool.exe"
 $androidProject = Join-Path $repoRoot "src-tauri\gen\android"

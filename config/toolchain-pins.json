@@ -1,0 +1,31 @@
+{
+  "stockfish": {
+    "version": "18",
+    "commit": "cb3d4ee9b47d0c5aae855b12379378ea1439675c",
+    "gitDate": "20260131",
+    "repository": "https://github.com/official-stockfish/Stockfish",
+    "windowsArchive": {
+      "name": "stockfish-windows-x86-64-avx2.zip",
+      "sha256": "6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900"
+    },
+    "networks": [
+      {
+        "file": "nn-c288c895ea92.nnue",
+        "sha256": "c288c895ea924429ea9092e3f36b2b3c1f00f2a3a4c759ff7e57e79e3b43e4a7"
+      },
+      {
+        "file": "nn-37f18f62d772.nnue",
+        "sha256": "37f18f62d772f3107e1d6aaca3898c130c3c86f2ab63e6555fbbca20635a899d"
+      }
+    ]
+  },
+  "android": {
+    "compileSdk": 36,
+    "targetSdk": 36,
+    "minSdk": 24,
+    "nativeApi": 29,
+    "buildTools": "35.0.0",
+    "ndk": "28.2.13676358",
+    "pageSize": 16384
+  }
+}

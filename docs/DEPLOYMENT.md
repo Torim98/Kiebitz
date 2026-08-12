@@ -11,6 +11,9 @@ signing & notarization → iOS*.
 - Product name: `Kiebitz`
 - Bundle identifier: `de.torim.kiebitz`
 - Current version: see `src-tauri/tauri.conf.json` → `version`
+- Stockfish and Android toolchain pins: `config/toolchain-pins.json`. Run
+  `npm run pins:sync` after changing it; CI verifies its consumers with
+  `npm run pins:check`.
 - Website: <https://torim98.github.io/kiebitz-site/> — a **separate** repository,
   [`Torim98/kiebitz-site`](https://github.com/Torim98/kiebitz-site), served by
   GitHub Pages from `main`/root. It hosts the privacy policy that Google Play
@@ -50,11 +53,12 @@ Android Studio required — the command-line tools are enough.
    to `<sdk>` (here: `C:\Users\tomma\AppData\Local\Android\Sdk`), then:
 
    ```sh
+   eval "$(node scripts/export-toolchain-pins.mjs)"
    sdkmanager --licenses
-   sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "ndk;28.2.13676358"
+   sdkmanager "platform-tools" "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS" "ndk;$ANDROID_NDK_VERSION"
    ```
 
-   Set `NDK_HOME` to `<sdk>\ndk\28.2.13676358`.
+   Set `NDK_HOME` to `<sdk>\ndk\$ANDROID_NDK_VERSION` using the exported pin.
 3. **Rust Android targets**:
 
    ```sh
@@ -137,15 +141,15 @@ Notes:
   flag survives into the `.app`, the AppImage and the `.deb`/`.rpm`.
 - **Licensing**: Stockfish is **GPL-3.0** and Kiebitz distributes its unmodified
   official binary as a separate UCI process. `resources/stockfish/NOTICE.txt`
-  records Stockfish 18, the exact source commit, official binary URLs and their
+  is generated from the central pins and records the Stockfish version, exact
+  source commit, official binary URLs and their
   SHA-256 hashes, plus a **written offer for the corresponding source** (GPL-3.0
   §6); `COPYING.txt` contains the complete GPL-3.0. Both files are bundled on
   desktop and Android and are also referenced by `THIRD_PARTY_NOTICES.md`. CI
-  verifies the pinned `sf_18` source, binaries and NNUE networks, and a
+  verifies the pinned Stockfish source, binaries and NNUE networks, and a
   separate `stockfish-source` job attaches the engine's source archive to every
-  release (see below). Keep all of this in sync whenever Stockfish is upgraded —
-  the commit, binary/network hashes, the archive **filename** in `NOTICE.txt` and
-  `THIRD_PARTY_NOTICES.md`, and the commit in the workflow job.
+  release (see below). Stockfish upgrades change the pins once and then run
+  `npm run pins:sync`; workflows and local scripts read those pins directly.
 
 ## Android build (APK)
 
@@ -168,9 +172,10 @@ install prompt; the existing app data is preserved.
 Build a debug APK (arm64), exporting the toolchain paths inline:
 
 ```sh
+eval "$(node scripts/export-toolchain-pins.mjs)"
 JAVA_HOME=".../jdk-17.0.19+10" \
 ANDROID_HOME=".../Android/Sdk" \
-NDK_HOME=".../Android/Sdk/ndk/28.2.13676358" \
+NDK_HOME=".../Android/Sdk/ndk/$ANDROID_NDK_VERSION" \
 npx tauri android build --debug --apk --target aarch64
 ```
 
@@ -187,8 +192,8 @@ committed; build outputs and the engine `.so` stay gitignored):
 
 - **Engine**: Stockfish ships per ABI as
   `app/src/main/jniLibs/<abi>/libstockfish.so` (arm64 today). CI stages it
-  automatically by compiling the pinned Stockfish 18 commit with NDK r28 and
-  16-KB ELF alignment. For a **local** build,
+  automatically by compiling the centrally pinned Stockfish commit with the
+  pinned NDK and ELF alignment. For a **local** build,
   `scripts/build-stockfish-android.ps1` performs the identical source build and
   verifies the NNUE checksums. `resolve_engine`
   (`src-tauri/src/lib.rs`) finds it in the app's `nativeLibraryDir` via
@@ -508,7 +513,7 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 
 ### What the workflow handles for you
 
-- **Engine**: on Windows it fetches the pinned official Stockfish 18 AVX2
+- **Engine**: on Windows it fetches the pinned official Stockfish AVX2
   archive (hash-checked) into `src-tauri/binaries/stockfish.exe`; on macOS and
   Linux it compiles the pinned Stockfish commit itself into
   `src-tauri/binaries/stockfish` (`ARCH=apple-silicon` / `x86-64-avx2`), the
@@ -530,14 +535,14 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
   with `git` — which validates the tree against the commit hash intrinsically,
   unlike a SHA-256 over GitHub's generated archives, which are not byte-stable —
   and uploads `git archive`'s tarball as
-  `stockfish-18-source-<short-commit>.tar.gz` (~250 KB). The filename carries the
+  generated `stockfish-<version>-source-<short-commit>.tar.gz` (~250 KB). The filename carries the
   **commit**, not the Kiebitz version, so the `/releases/latest/download/` URL
   quoted in `NOTICE.txt` stays valid across releases. Because `publish` needs
   this job, no public release can ever ship the engine binary without its source.
 - **Android**: a second job (`android`, on `ubuntu-latest`) sets up the JDK, the
-  Android SDK/NDK (r28) and the `aarch64-linux-android` Rust target, compiles
-  the pinned Stockfish 18 commit into `jniLibs/arm64-v8a/` with 16-KB ELF
-  alignment and verified NNUE networks,
+  centrally pinned Android SDK/NDK and the `aarch64-linux-android` Rust target,
+  compiles the pinned Stockfish commit into `jniLibs/arm64-v8a/` with the pinned
+  ELF alignment and verified NNUE networks,
   restores the keystore from the secrets, builds a signed release APK
   (`tauri android build --apk --target aarch64`), and uploads
   `Kiebitz_<version>_arm64.apk` to the draft release. Without the keystore

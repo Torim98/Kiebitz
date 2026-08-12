@@ -138,7 +138,7 @@ fn engine_info(app: tauri::AppHandle) -> EngineInfo {
                 .and_then(|name| name.to_str())
                 .unwrap_or("Engine");
             let name = if file_name.to_ascii_lowercase().contains("stockfish") {
-                "Stockfish 18".to_string()
+                format!("Stockfish {}", env!("KIEBITZ_STOCKFISH_VERSION"))
             } else {
                 file_name.to_string()
             };

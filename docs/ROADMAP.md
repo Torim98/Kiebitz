@@ -15,8 +15,6 @@ set is summarized in the [README](../README.md).
 
 ## Performance and maintainability
 
-- [ ] Centralize Stockfish version, archive hashes, Android API and NDK pins so
-  CI, release workflows, local scripts and notices consume one source of truth.
 - [ ] Move the updater-manifest implementation out of the release workflow into
   a small testable script; keep workflows focused on orchestration.
 - [ ] After the measurable work above, split the largest modules (`insights.rs`,

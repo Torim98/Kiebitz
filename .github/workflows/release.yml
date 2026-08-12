@@ -70,19 +70,24 @@ jobs:
     needs: prepare-release
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain-Pins laden
+        run: node scripts/export-toolchain-pins.mjs --github-env
+
       - name: Stockfish-Quellcode holen und ans Release hängen
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          commit=cb3d4ee9b47d0c5aae855b12379378ea1439675c
+          commit="$STOCKFISH_COMMIT"
           # Der Dateiname trägt den Commit, nicht die Kiebitz-Version: so bleibt
           # die in NOTICE.txt genannte /releases/latest/download/-URL stabil.
-          out="$GITHUB_WORKSPACE/stockfish-18-source-${commit:0:12}.tar.gz"
+          out="$GITHUB_WORKSPACE/$STOCKFISH_SOURCE_ASSET"
 
           git init -q sf-src
-          git -C sf-src remote add origin https://github.com/official-stockfish/Stockfish
+          git -C sf-src remote add origin "$STOCKFISH_REPOSITORY"
           git -C sf-src fetch -q --depth 1 origin "$commit"
           git -C sf-src checkout -q FETCH_HEAD
           have=$(git -C sf-src rev-parse HEAD)
@@ -92,7 +97,7 @@ jobs:
           fi
 
           git -C sf-src archive --format=tar.gz \
-            --prefix="stockfish-18-${commit:0:12}/" -o "$out" FETCH_HEAD
+            --prefix="stockfish-${STOCKFISH_VERSION}-${commit:0:12}/" -o "$out" FETCH_HEAD
 
           echo "Quellarchiv: $(basename "$out") ($(du -h "$out" | cut -f1))"
           echo "SHA-256: $(sha256sum "$out" | cut -d' ' -f1)"
@@ -122,6 +127,9 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22
+
+      - name: Toolchain-Pins laden
+        run: node scripts/export-toolchain-pins.mjs --github-env
 
       - name: Rust einrichten
         uses: dtolnay/rust-toolchain@stable
@@ -153,8 +161,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $url = "https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip"
-          $expected = "6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900"
+          $url = $env:STOCKFISH_WINDOWS_URL
+          $expected = $env:STOCKFISH_WINDOWS_SHA256
           Invoke-WebRequest $url -OutFile sf.zip
           $actual = (Get-FileHash sf.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Stockfish archive has unexpected SHA-256: $actual" }
@@ -162,7 +170,7 @@ jobs:
           $exe = Get-ChildItem sf -Recurse -Filter *.exe | Select-Object -First 1
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
           Copy-Item $exe.FullName src-tauri/binaries/stockfish.exe
-          Write-Host "Stockfish 18 gebündelt: stockfish-windows-x86-64-avx2.zip ($actual)"
+          Write-Host "Stockfish $env:STOCKFISH_VERSION gebündelt: $env:STOCKFISH_WINDOWS_ARCHIVE ($actual)"
 
       # macOS und Linux: aus demselben gepinnten Commit bauen, den der
       # stockfish-source-Job als Quellarchiv ans Release hängt — so wie es der
@@ -172,8 +180,8 @@ jobs:
       - name: Stockfish bauen (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
-          commit="cb3d4ee9b47d0c5aae855b12379378ea1439675c"
-          git clone --filter=blob:none --no-checkout https://github.com/official-stockfish/Stockfish.git sf-src
+          commit="$STOCKFISH_COMMIT"
+          git clone --filter=blob:none --no-checkout "$STOCKFISH_REPOSITORY" sf-src
           git -C sf-src fetch --depth 1 origin "$commit"
           git -C sf-src checkout --detach "$commit"
           test "$(git -C sf-src rev-parse HEAD)" = "$commit"
@@ -193,7 +201,7 @@ jobs:
           mkdir -p src-tauri/binaries
           cp sf-src/src/stockfish src-tauri/binaries/stockfish
           chmod +x src-tauri/binaries/stockfish
-          echo "Stockfish 18 ($arch/$comp) aus $commit gebaut"
+          echo "Stockfish $STOCKFISH_VERSION ($arch/$comp) aus $commit gebaut"
 
       - name: Bauen, signieren & Artefakte an Draft-Release anhängen
         uses: tauri-apps/tauri-action@v0
@@ -349,6 +357,10 @@ jobs:
         with:
           node-version: 22
 
+      - name: Toolchain-Pins laden
+        if: steps.guard.outputs.has_keystore == 'true'
+        run: node scripts/export-toolchain-pins.mjs --github-env
+
       - name: JDK 17 einrichten
         if: steps.guard.outputs.has_keystore == 'true'
         uses: actions/setup-java@v5
@@ -363,9 +375,9 @@ jobs:
       - name: NDK + Plattform installieren
         if: steps.guard.outputs.has_keystore == 'true'
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" "ndk;28.2.13676358"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          sdkmanager "platform-tools" "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS" "ndk;$ANDROID_NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
 
       - name: Rust + Android-Targets einrichten
         if: steps.guard.outputs.has_keystore == 'true'
@@ -390,8 +402,8 @@ jobs:
       - name: Stockfish bauen (Android, armv8, 16 KB)
         if: steps.guard.outputs.has_keystore == 'true'
         run: |
-          commit="cb3d4ee9b47d0c5aae855b12379378ea1439675c"
-          git clone --filter=blob:none --no-checkout https://github.com/official-stockfish/Stockfish.git sf-src
+          commit="$STOCKFISH_COMMIT"
+          git clone --filter=blob:none --no-checkout "$STOCKFISH_REPOSITORY" sf-src
           git -C sf-src fetch --depth 1 origin "$commit"
           git -C sf-src checkout --detach "$commit"
           test "$(git -C sf-src rev-parse HEAD)" = "$commit"
@@ -399,10 +411,10 @@ jobs:
           cd sf-src/src
           ../scripts/net.sh
           make -j2 build ARCH=armv8 COMP=ndk \
-            EXTRALDFLAGS="-Wl,-z,max-page-size=16384"
+            EXTRALDFLAGS="-Wl,-z,max-page-size=$ANDROID_PAGE_SIZE"
           llvm-strip stockfish
           while read -r alignment; do
-            if (( alignment < 0x4000 )); then
+            if (( alignment < ANDROID_PAGE_SIZE )); then
               echo "::error::Stockfish LOAD alignment is only $(printf '0x%x' "$alignment")."
               exit 1
             fi
@@ -411,7 +423,7 @@ jobs:
           dest=src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a
           mkdir -p "$dest"
           cp sf-src/src/stockfish "$dest/libstockfish.so"
-          echo "Stockfish 18 built from $commit -> $dest/libstockfish.so"
+          echo "Stockfish $STOCKFISH_VERSION built from $commit -> $dest/libstockfish.so"
 
       # Keystore aus dem Secret wiederherstellen und die von Gradle gelesene
       # keystore.properties erzeugen (beide sind gitignored).

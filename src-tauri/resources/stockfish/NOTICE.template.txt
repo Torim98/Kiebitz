@@ -1,0 +1,63 @@
+Stockfish {{STOCKFISH_VERSION}}
+============
+
+Kiebitz includes Stockfish, a free UCI chess engine developed by the Stockfish
+authors and contributors. Stockfish is distributed under the GNU General Public
+License version 3 (GPL-3.0). The complete license is included next to this file
+as COPYING.txt.
+
+Kiebitz starts Stockfish as a separate process and communicates with it through
+the public UCI text protocol. Stockfish is not modified by Kiebitz and no part
+of Stockfish is linked into the Kiebitz binary.
+
+Exact corresponding source
+--------------------------
+
+Release: Stockfish {{STOCKFISH_VERSION}} (tag {{STOCKFISH_TAG}})
+Commit:  {{STOCKFISH_COMMIT}}
+Source:  {{STOCKFISH_REPOSITORY}}/tree/{{STOCKFISH_COMMIT}}
+
+The source tree contains the build instructions, Makefile, authorship
+information, and NNUE network information needed for the official binaries.
+
+Written offer for the corresponding source (GPL-3.0, section 6)
+--------------------------------------------------------------
+
+The complete corresponding source code of the bundled Stockfish version is
+distributed alongside every Kiebitz release, at no charge, as the release asset
+
+  {{STOCKFISH_SOURCE_ASSET}}
+
+Permanent download link (always resolves to the current Kiebitz release):
+
+  https://github.com/Torim98/Kiebitz/releases/latest/download/{{STOCKFISH_SOURCE_ASSET}}
+
+The archive is generated directly from the Git commit named above, so its
+contents are verifiable against that commit.
+
+In addition, and valid for at least three years from the date you received this
+copy of Kiebitz, the Kiebitz author hereby offers to provide any third party
+with a complete machine-readable copy of that corresponding source code, for no
+more than the cost of physically performing the distribution. Requests can be
+made at:
+
+  https://github.com/Torim98/Kiebitz/issues
+
+This offer is valid to anyone who received the Stockfish binary as part of
+Kiebitz, regardless of the channel it was obtained from.
+
+Binary provenance
+-----------------
+
+The Android arm64 engine is compiled without source modifications from the
+exact commit above. Kiebitz uses Android NDK {{ANDROID_NDK_VERSION}}, the generic armv8
+target, and {{ANDROID_PAGE_SIZE_KB}}-KB ELF LOAD alignment. The reproducible build commands and
+checksum verification for both NNUE networks are in
+scripts/build-stockfish-android.ps1 and .github/workflows/release.yml.
+
+The Windows x86-64 AVX2 engine is taken from the unmodified official release
+archive. Kiebitz verifies this SHA-256 hash before packaging and aborts on a
+mismatch:
+
+{{STOCKFISH_WINDOWS_URL}}
+SHA-256: {{STOCKFISH_WINDOWS_SHA256}}

@@ -7,7 +7,8 @@ own license.
 
 ## Stockfish (GPL-3.0)
 
-Kiebitz distributes Stockfish 18 and starts it as a separate process,
+Kiebitz distributes the Stockfish version pinned in
+[`config/toolchain-pins.json`](config/toolchain-pins.json) and starts it as a separate process,
 communicating over the public UCI text protocol. The Android binary is compiled
 without source modifications from the pinned official commit; the Windows binary
 comes from the official release archive. No part of Stockfish is linked into the
@@ -19,9 +20,8 @@ source** live in [`src-tauri/resources/stockfish/`](src-tauri/resources/stockfis
 These files ship as application resources in both the desktop and the Android
 bundle, so every recipient of a binary also receives the notice and the offer.
 
-Corresponding source, at no charge, attached to every Kiebitz release:
-
-<https://github.com/Torim98/Kiebitz/releases/latest/download/stockfish-18-source-cb3d4ee9b47d.tar.gz>
+Corresponding source is attached at no charge to every Kiebitz release. Its
+exact, generated asset name is recorded in the bundled Stockfish notice.
 
 The release workflow verifies the documented Windows archive and NNUE hashes,
 compiles Android Stockfish from the pinned commit, and generates the source

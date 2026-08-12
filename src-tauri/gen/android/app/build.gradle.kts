@@ -1,4 +1,5 @@
 import java.util.Properties
+import groovy.json.JsonSlurper
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -23,6 +24,14 @@ val keystoreProperties = Properties().apply {
         keystorePropertiesFile.inputStream().use { load(it) }
     }
 }
+
+@Suppress("UNCHECKED_CAST")
+val androidPins = (
+    JsonSlurper().parse(rootProject.file("../../../config/toolchain-pins.json"))
+        as Map<String, Any>
+    )["android"] as Map<String, Any>
+
+fun androidPin(name: String): Int = (androidPins.getValue(name) as Number).toInt()
 
 // Lokal kann das Play-AAB ohne Passwortdatei gebaut werden: Das PowerShell-
 // Skript reicht die Werte nur für die Dauer des Build-Prozesses als Umgebung
@@ -64,15 +73,15 @@ val releaseAdmobBannerAdUnitId = advertisingValue(
 )
 
 android {
-    compileSdk = 36
+    compileSdk = androidPin("compileSdk")
     namespace = "de.torim.kiebitz"
     defaultConfig {
         // Der Geräte-Sync ist ausschließlich HTTPS; Android darf keinen
         // Cleartext-Verkehr für Kiebitz erlauben.
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "de.torim.kiebitz"
-        minSdk = 24
-        targetSdk = 36
+        minSdk = androidPin("minSdk")
+        targetSdk = androidPin("targetSdk")
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }

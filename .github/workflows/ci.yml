@@ -32,6 +32,9 @@ jobs:
       - name: Tests
         run: npm run test:run
 
+      - name: Toolchain-Pins prüfen
+        run: npm run pins:check
+
       - name: Produktionsbundle bauen
         run: npm run build
 
@@ -44,6 +47,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Toolchain-Pins laden
+        run: node scripts/export-toolchain-pins.mjs --github-env
 
       - name: Rust einrichten
         uses: dtolnay/rust-toolchain@stable
@@ -65,8 +71,8 @@ jobs:
       - name: Stockfish holen (Windows, AVX2)
         shell: pwsh
         run: |
-          $url = "https://github.com/official-stockfish/Stockfish/releases/download/sf_18/stockfish-windows-x86-64-avx2.zip"
-          $expected = "6f6c272ebd6ea594377715235c8a7326f75940ef4f4f856f45106028fe6ae900"
+          $url = $env:STOCKFISH_WINDOWS_URL
+          $expected = $env:STOCKFISH_WINDOWS_SHA256
           Invoke-WebRequest $url -OutFile sf.zip
           $actual = (Get-FileHash sf.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Stockfish archive has unexpected SHA-256: $actual" }
