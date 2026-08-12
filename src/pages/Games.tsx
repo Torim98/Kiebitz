@@ -801,7 +801,7 @@ export default function Games({
 
             <Card title={t("games.notes")}>
               <textarea
-                key={selected.id}
+                key={`${selected.id}-${selectedRecord?.id === selected.dbId ? "detail" : "summary"}`}
                 defaultValue={selected.note ?? ""}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 placeholder={t("games.notesPlaceholder")}

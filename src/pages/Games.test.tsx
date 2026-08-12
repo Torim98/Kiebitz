@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -38,12 +38,14 @@ const game = {
   analyzed: true,
 };
 let listedGame: typeof game & { analysis_excluded?: boolean } = { ...game };
+let gameDetail: Promise<typeof listedGame> | null = null;
 let deleted = false;
 
 beforeEach(() => {
   localStorage.clear();
   emitDataChange();
   listedGame = { ...game };
+  gameDetail = null;
   deleted = false;
   invokeMock.mockReset();
   vi.mocked(openDialog).mockReset();
@@ -61,11 +63,18 @@ beforeEach(() => {
       });
     }
     if (command === "list_games_page") return Promise.resolve({
-      items: deleted ? [] : [{ ...listedGame, has_moves: true, has_note: Boolean(listedGame.note) }],
+      items: deleted ? [] : [{
+        ...listedGame,
+        moves: undefined,
+        note: undefined,
+        source_id: undefined,
+        has_moves: true,
+        has_note: Boolean(listedGame.note),
+      }],
       total: deleted ? 0 : 1,
       library_total: deleted ? 0 : 1,
     });
-    if (command === "game_detail") return Promise.resolve(listedGame);
+    if (command === "game_detail") return gameDetail ?? Promise.resolve(listedGame);
     if (command === "list_games_for_export") return Promise.resolve(deleted ? [] : [listedGame]);
     if (command === "delete_game") { deleted = true; return Promise.resolve(true); }
     if (command === "read_pgn_file") return Promise.resolve(`[Event "Friend"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0`);
@@ -88,6 +97,23 @@ describe("Games page", () => {
     });
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("game_detail", { id: 1 }));
     expect(invokeMock).not.toHaveBeenCalledWith("list_games_for_export");
+  });
+
+  it("shows a note once the selected game detail finishes loading", async () => {
+    listedGame = { ...game, note: "Review the missed tactic on move 18." };
+    let resolveDetail!: (value: typeof listedGame) => void;
+    gameDetail = new Promise((resolve) => { resolveDetail = resolve; });
+
+    render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+    await screen.findByText("Testgegner");
+    const notes = screen.getByPlaceholderText("Gedanken zur Partie festhalten …") as HTMLTextAreaElement;
+    expect(notes.value.trim()).toBe("");
+
+    await act(async () => { resolveDetail(listedGame); });
+
+    await waitFor(() => expect((screen.getByPlaceholderText(
+      "Gedanken zur Partie festhalten …",
+    ) as HTMLTextAreaElement).value).toBe("Review the missed tactic on move 18."));
   });
 
   it("deletes the selected database game after confirmation", async () => {
