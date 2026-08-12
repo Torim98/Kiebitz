@@ -23,6 +23,7 @@
  */
 import type { Key } from "./i18n";
 import type { DeepInsights } from "./insights";
+import { isoDay } from "./dates";
 import type { LiveInsights } from "./stats";
 import type { PuzzleInsights } from "./puzzles";
 import type { Finding, FindingAction } from "./findings";
@@ -450,10 +451,6 @@ export function templateArea(template: StudyTemplate): Area | null {
   if (haystack.includes("game") || haystack.includes("partie")) return "play";
   if (haystack.includes("analys")) return "analysis";
   return null;
-}
-
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 /**

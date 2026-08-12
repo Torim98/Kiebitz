@@ -310,6 +310,45 @@ mod tests {
     }
 
     #[test]
+    fn collect_games_groups_bulk_loaded_evals_by_game_and_ply() {
+        let mut conn = mem_db();
+        let games: Vec<SyncGame> = (0..64)
+            .map(|index| {
+                let mut game = sample_game(&format!("bulk-evals-{index}"));
+                game.analyzed = true;
+                game.evals = vec![
+                    SyncEval {
+                        ply: 2,
+                        san: "e5".into(),
+                        eval_cp: Some(index),
+                        mate_in: None,
+                        best_uci: "e7e5".into(),
+                        judgment: String::new(),
+                        phase: "opening".into(),
+                    },
+                    SyncEval {
+                        ply: 1,
+                        san: "e4".into(),
+                        eval_cp: Some(index + 1),
+                        mate_in: None,
+                        best_uci: "e2e4".into(),
+                        judgment: String::new(),
+                        phase: "opening".into(),
+                    },
+                ];
+                game
+            })
+            .collect();
+        apply_games(&mut conn, &games).unwrap();
+
+        let collected = collect_games(&conn, 0).unwrap();
+        assert_eq!(collected.len(), games.len());
+        assert!(collected
+            .iter()
+            .all(|game| game.evals.iter().map(|eval| eval.ply).collect::<Vec<_>>() == [1, 2]));
+    }
+
+    #[test]
     fn own_puzzle_snapshot_remaps_game_ids_and_propagates_removals() {
         let mut desktop = mem_db();
         apply_games(&mut desktop, &[sample_game("puzzle-game")]).unwrap();

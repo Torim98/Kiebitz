@@ -1,5 +1,6 @@
 mod ads;
 mod analysis;
+mod build_info;
 mod chess;
 mod chessdb;
 mod db;
@@ -37,20 +38,13 @@ struct AppInfo {
 
 #[tauri::command]
 fn app_info(app: tauri::AppHandle) -> AppInfo {
-    let distribution = if cfg!(all(target_os = "android", feature = "play-store")) {
-        "play-store"
-    } else if cfg!(target_os = "android") {
-        "sideload"
-    } else {
-        "desktop"
-    };
     AppInfo {
         // Version aus tauri.conf.json (das Feld, das beim Release erhöht wird),
         // nicht aus Cargo.toml · sonst driften Anzeige und Release auseinander.
         version: app.package_info().version.to_string(),
         backend: "tauri".to_string(),
         platform: std::env::consts::OS.to_string(),
-        distribution: distribution.to_string(),
+        distribution: build_info::distribution_channel().to_string(),
     }
 }
 

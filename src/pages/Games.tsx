@@ -13,7 +13,6 @@ import {
   History,
   Loader2,
   FolderOpen,
-  Plus,
   Save,
   Search,
   StickyNote,
@@ -34,6 +33,7 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
+import TagEditor from "../components/TagEditor";
 import { de, deInt } from "../lib/format";
 import { fenAfter } from "../lib/position";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
@@ -72,7 +72,6 @@ export default function Games({
   const [importTone, setImportTone] = useState<ImportTone>("info");
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
-  const [tagDraft, setTagDraft] = useState("");
   const [pgnPath, setPgnPath] = useState("");
   const [pgnExportPath, setPgnExportPath] = useState("");
   const [pgnPlayer, setPgnPlayer] = useState("");
@@ -257,14 +256,6 @@ export default function Games({
     setSelectedRecord((record) => record ? { ...record, tags: saved } : record);
   };
 
-  const addTags = async () => {
-    if (!selected) return;
-    const additions = tagDraft.split(/[,;]/).map((v) => v.trim()).filter(Boolean);
-    if (!additions.length) return;
-    await saveTags([...selected.tags, ...additions]);
-    setTagDraft("");
-  };
-
   const deleteSelected = async () => {
     if (!selected?.dbId || deleting) return;
     setDeleteConfirmOpen(false);
@@ -277,7 +268,6 @@ export default function Games({
       setSelectedId(null);
       setSelectedRecord(null);
       setNoteDraft(null);
-      setTagDraft("");
     } catch (e) {
       setDeleteError(t("games.deleteFailed", { e: String(e) }));
     } finally {
@@ -797,41 +787,15 @@ export default function Games({
                     ))}
                   </div>
                 )}
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {selected.analysisExcluded && <Tag>{t("games.analysisExcludedTag")}</Tag>}
-                  {selected.tags.length > 0
-                    ? selected.tags.map((tag) => (
-                        <button key={tag} onClick={() => saveTags(selected.tags.filter((v) => v !== tag))} disabled={!selected.dbId} title={t("games.removeTag")}>
-                          <Tag>{tag} ×</Tag>
-                        </button>
-                      ))
-                    : !selected.analysisExcluded && <span className="text-[12px] text-ink3">{t("games.noTags")}</span>}
+                <div className="mt-3">
+                  <TagEditor
+                    key={selected.id}
+                    tags={selected.tags}
+                    onChange={saveTags}
+                    editable={Boolean(selected.dbId)}
+                    prefix={selected.analysisExcluded ? <Tag>{t("games.analysisExcludedTag")}</Tag> : undefined}
+                  />
                 </div>
-                {selected.dbId && (
-                  // Der Button ist nicht nur Komfort: auf Android gibt es keine
-                  // Enter-Taste, die das Feld abschicken könnte.
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      value={tagDraft}
-                      onChange={(e) => setTagDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          addTags();
-                        }
-                      }}
-                      placeholder={t("games.tagPlaceholder")}
-                      className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-                    />
-                    <Button
-                      onClick={addTags}
-                      disabled={!tagDraft.trim()}
-                      className="!px-2.5 !py-1.5 !text-[12px]"
-                    >
-                      <Plus size={13} /> {t("games.addTag")}
-                    </Button>
-                  </div>
-                )}
               </div>
             </Card>
 

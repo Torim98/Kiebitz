@@ -33,6 +33,7 @@ import {
   type StudyTemplateInput,
 } from "../lib/study";
 import { onDataChange } from "../lib/changes";
+import { isoDay } from "../lib/dates";
 import { isStoreCapture } from "../lib/storeCapture";
 
 const DAY_MS = 86_400_000;
@@ -42,10 +43,6 @@ const EMPTY_TEMPLATE: StudyTemplateInput = {
   tool: "",
   description: "",
 };
-
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 function mondayOf(date: Date): Date {
   const day = date.getUTCDay() || 7;

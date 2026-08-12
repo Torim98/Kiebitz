@@ -204,13 +204,7 @@ pub fn diag_report(app: tauri::AppHandle, db: tauri::State<crate::db::Db>) -> St
         std::env::consts::OS,
         std::env::consts::ARCH
     ));
-    let distribution = if cfg!(all(target_os = "android", feature = "play-store")) {
-        "play-store"
-    } else if cfg!(target_os = "android") {
-        "sideload"
-    } else {
-        "desktop"
-    };
+    let distribution = crate::build_info::distribution_channel();
     out.push_str(&format!("Vertriebskanal: {distribution}\n"));
     out.push_str(&format!(
         "Build: {}\n",

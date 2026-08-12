@@ -62,30 +62,46 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string())?;
 
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut eval_stmt = conn
         .prepare(
-            "SELECT ply, san, eval_cp, mate_in, best_uci, judgment, phase
-             FROM move_evals WHERE game_id = ?1 ORDER BY ply",
+            "SELECT e.game_id, e.ply, e.san, e.eval_cp, e.mate_in, e.best_uci,
+                    e.judgment, e.phase
+             FROM move_evals e
+             JOIN games g ON g.id = e.game_id
+             WHERE g.analyzed = 1 AND (g.source = 'manual' OR g.updated_ts >= ?1)
+             ORDER BY e.game_id, e.ply",
         )
         .map_err(|e| e.to_string())?;
+    let mut evals_by_game: HashMap<i64, Vec<SyncEval>> = HashMap::new();
+    for row in eval_stmt
+        .query_map(params![cutoff], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                SyncEval {
+                    ply: r.get(1)?,
+                    san: r.get(2)?,
+                    eval_cp: r.get(3)?,
+                    mate_in: r.get(4)?,
+                    best_uci: r.get(5)?,
+                    judgment: r.get(6)?,
+                    phase: r.get(7)?,
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?
+    {
+        let (game_id, eval) = row.map_err(|e| e.to_string())?;
+        evals_by_game.entry(game_id).or_default().push(eval);
+    }
+
     let mut out = Vec::with_capacity(rows.len());
     for (id, mut g) in rows {
         if g.analyzed {
-            g.evals = eval_stmt
-                .query_map(params![id], |r| {
-                    Ok(SyncEval {
-                        ply: r.get(0)?,
-                        san: r.get(1)?,
-                        eval_cp: r.get(2)?,
-                        mate_in: r.get(3)?,
-                        best_uci: r.get(4)?,
-                        judgment: r.get(5)?,
-                        phase: r.get(6)?,
-                    })
-                })
-                .map_err(|e| e.to_string())?
-                .collect::<Result<_, _>>()
-                .map_err(|e| e.to_string())?;
+            g.evals = evals_by_game.remove(&id).unwrap_or_default();
         }
         out.push(g);
     }

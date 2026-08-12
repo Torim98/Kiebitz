@@ -10,7 +10,6 @@ import {
   Cpu,
   ListChecks,
   Loader2,
-  Plus,
   Save,
   Search,
   Square,
@@ -39,7 +38,8 @@ import {
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import LiveEngine from "../components/LiveEngine";
-import { Button, Card, ExtLink, ResultBadge, Tag } from "../components/ui";
+import TagEditor from "../components/TagEditor";
+import { Button, Card, ExtLink, ResultBadge } from "../components/ui";
 import { de } from "../lib/format";
 import { evalLabel, winProb } from "../lib/evaluation";
 import { fenAfter } from "../lib/position";
@@ -320,7 +320,6 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
   const [noteDraft, setNoteDraft] = useState("");
-  const [tagDraft, setTagDraft] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
 
@@ -456,7 +455,6 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   // Notizen und Tags der gewählten Partie in die Eingaben übernehmen.
   useEffect(() => {
     setNoteDraft(game?.note ?? "");
-    setTagDraft("");
     setNoteSaved(false);
     setNotesError(null);
   }, [game?.id, game?.note]);
@@ -492,14 +490,6 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     } catch (e) {
       setNotesError(String(e));
     }
-  };
-
-  const addTags = async () => {
-    if (!game) return;
-    const additions = tagDraft.split(/[,;]/).map((v) => v.trim()).filter(Boolean);
-    if (!additions.length) return;
-    await saveTags([...(game.tags ?? []), ...additions]);
-    setTagDraft("");
   };
 
   // Beim Partiewechsel ans Ende springen.
@@ -1138,38 +1128,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
 
           {live && (
             <Card title={t("an.notesAndTags")}>
-              <div className="flex flex-wrap gap-1.5">
-                {(game.tags ?? []).length > 0 ? (
-                  (game.tags ?? []).map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => saveTags((game.tags ?? []).filter((v) => v !== tag))}
-                      title={t("games.removeTag")}
-                    >
-                      <Tag>{tag} ×</Tag>
-                    </button>
-                  ))
-                ) : (
-                  <span className="text-[12px] text-ink3">{t("games.noTags")}</span>
-                )}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      addTags();
-                    }
-                  }}
-                  placeholder={t("games.tagPlaceholder")}
-                  className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-2 py-1.5 text-[12px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-                />
-                <Button onClick={addTags} disabled={!tagDraft.trim()} className="!px-2.5 !py-1.5 !text-[12px]">
-                  <Plus size={13} /> {t("games.addTag")}
-                </Button>
-              </div>
+              <TagEditor key={game.id} tags={game.tags ?? []} onChange={saveTags} />
               <textarea
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}

@@ -12,6 +12,7 @@ import {
   Timer,
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
+import { isoDay } from "../lib/dates";
 import { useI18n } from "../lib/i18n";
 import { listGameSummaries, type GameSummary } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
@@ -619,12 +620,6 @@ export default function Study({
       <StudyPlanner desktop={desktop} />
     </div>
   );
-}
-
-// ── Kleine Helfer ────────────────────────────────────────────────────────────
-
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 export { DAY };

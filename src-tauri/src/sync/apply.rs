@@ -1,29 +1,50 @@
 // ── Apply: Daten der Gegenseite einmergen ───────────────────────────────────
 
+fn execute_cached<P: rusqlite::Params>(
+    conn: &Connection,
+    sql: &str,
+    params: P,
+) -> rusqlite::Result<usize> {
+    conn.prepare_cached(sql)?.execute(params)
+}
+
 fn apply_game_tombstones(
     conn: &mut Connection,
     tombstones: &[SyncGameTombstone],
 ) -> Result<usize, String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut deleted = 0usize;
-    for tombstone in tombstones {
-        tx.execute(
+    {
+        let mut upsert = tx
+            .prepare(
             "INSERT INTO game_tombstones (source, source_id, deleted_ts) VALUES (?1, ?2, ?3)
              ON CONFLICT(source, source_id) DO UPDATE SET deleted_ts = MAX(deleted_ts, excluded.deleted_ts)",
-            params![tombstone.source, tombstone.source_id, tombstone.deleted_ts],
-        )
-        .map_err(|e| e.to_string())?;
-        let local: Option<(i64, i64)> = tx
-            .query_row(
-                "SELECT id, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
-                params![tombstone.source, tombstone.source_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .ok();
-        if let Some((id, updated_ts)) = local {
-            if tombstone.deleted_ts >= updated_ts {
-                db::delete_game_rows(&tx, id)?;
-                deleted += 1;
+            .map_err(|e| e.to_string())?;
+        let mut find_game = tx
+            .prepare(
+                "SELECT id, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        for tombstone in tombstones {
+            upsert
+                .execute(params![
+                    tombstone.source,
+                    tombstone.source_id,
+                    tombstone.deleted_ts
+                ])
+                .map_err(|e| e.to_string())?;
+            let local: Option<(i64, i64)> = find_game
+                .query_row(
+                    params![tombstone.source, tombstone.source_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+            if let Some((id, updated_ts)) = local {
+                if tombstone.deleted_ts >= updated_ts {
+                    db::delete_game_rows(&tx, id)?;
+                    deleted += 1;
+                }
             }
         }
     }
@@ -35,35 +56,46 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
     let now = db::now_ts();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut applied = 0usize;
+    let mut find_tombstone = tx
+        .prepare("SELECT deleted_ts FROM game_tombstones WHERE source = ?1 AND source_id = ?2")
+        .map_err(|e| e.to_string())?;
+    let mut delete_tombstone = tx
+        .prepare("DELETE FROM game_tombstones WHERE source = ?1 AND source_id = ?2")
+        .map_err(|e| e.to_string())?;
+    let mut find_game = tx
+        .prepare(
+            "SELECT id, note_ts, tags_ts, analyzed, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut insert_eval = tx
+        .prepare(
+            "INSERT INTO move_evals (game_id, ply, san, eval_cp, mate_in, best_uci, judgment, phase)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        )
+        .map_err(|e| e.to_string())?;
     for g in games {
-        let tombstone_ts: Option<i64> = tx
-            .query_row(
-                "SELECT deleted_ts FROM game_tombstones WHERE source = ?1 AND source_id = ?2",
-                params![g.source, g.source_id],
-                |row| row.get(0),
-            )
+        let tombstone_ts: Option<i64> = find_tombstone
+            .query_row(params![g.source, g.source_id], |row| row.get(0))
             .ok();
         if tombstone_ts.is_some_and(|deleted_ts| deleted_ts >= g.updated_ts) {
             continue;
         }
         if tombstone_ts.is_some() {
-            tx.execute(
-                "DELETE FROM game_tombstones WHERE source = ?1 AND source_id = ?2",
-                params![g.source, g.source_id],
-            )
-            .map_err(|e| e.to_string())?;
+            delete_tombstone
+                .execute(params![g.source, g.source_id])
+                .map_err(|e| e.to_string())?;
         }
         let incoming_updated = if g.updated_ts > 0 { g.updated_ts } else { now };
-        let existing: Option<(i64, i64, i64, bool, i64)> = tx
+        let existing: Option<(i64, i64, i64, bool, i64)> = find_game
             .query_row(
-                "SELECT id, note_ts, tags_ts, analyzed, updated_ts FROM games WHERE source = ?1 AND source_id = ?2",
                 params![g.source, g.source_id],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?)),
             )
             .ok();
         let game_id = match existing {
             None => {
-                tx.execute(
+                execute_cached(
+                    &tx,
                     "INSERT INTO games (source, source_id, url, played_at, played_ts, time_class,
                         color, my_name, opponent, opp_elo, my_elo, result, opening, eco, moves_count,
                         accuracy, accuracy_opening, accuracy_middlegame, accuracy_endgame,
@@ -89,7 +121,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                 tx.last_insert_rowid()
             }
             Some((id, local_note_ts, local_tags_ts, _, _local_updated_ts)) => {
-                tx.execute(
+                execute_cached(
+                    &tx,
                     "UPDATE games SET
                         accuracy = COALESCE(accuracy, ?2),
                         accuracy_opening = COALESCE(accuracy_opening, ?3),
@@ -133,14 +166,16 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                 )
                 .map_err(|e| e.to_string())?;
                 if g.note_ts > local_note_ts {
-                    tx.execute(
+                    execute_cached(
+                        &tx,
                         "UPDATE games SET note = ?2, note_ts = ?3 WHERE id = ?1",
                         params![id, g.note, g.note_ts],
                     )
                     .map_err(|e| e.to_string())?;
                 }
                 if g.tags_ts > local_tags_ts {
-                    tx.execute(
+                    execute_cached(
+                        &tx,
                         "UPDATE games SET tags = ?2, tags_ts = ?3 WHERE id = ?1",
                         params![
                             id,
@@ -157,25 +192,21 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
         // Analyse übernehmen, wenn die Gegenseite sie hat und wir (noch) nicht.
         let locally_analyzed = existing.map(|(_, _, _, a, _)| a).unwrap_or(false);
         if !g.evals.is_empty() && !locally_analyzed {
-            tx.execute(
+            execute_cached(
+                &tx,
                 "DELETE FROM move_evals WHERE game_id = ?1",
                 params![game_id],
             )
             .map_err(|e| e.to_string())?;
-            let mut ins = tx
-                .prepare(
-                    "INSERT INTO move_evals (game_id, ply, san, eval_cp, mate_in, best_uci, judgment, phase)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                )
-                .map_err(|e| e.to_string())?;
             for e in &g.evals {
-                ins.execute(params![
+                insert_eval.execute(params![
                     game_id, e.ply, e.san, e.eval_cp, e.mate_in, e.best_uci, e.judgment, e.phase
                 ])
                 .map_err(|e| e.to_string())?;
             }
         }
     }
+    drop((find_tombstone, delete_tombstone, find_game, insert_eval));
     tx.commit().map_err(|e| e.to_string())?;
     Ok(applied)
 }
@@ -218,6 +249,19 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
     sorted.sort_by_key(|n| n.depth);
     let mut merged = 0usize;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut insert_node = tx
+        .prepare(
+            "INSERT INTO rep_nodes (parent_id, side, san, name, fen_key, depth,
+                stability, difficulty, reps, lapses, due_ts, last_ts, created_ts)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut update_node = tx
+        .prepare(
+            "UPDATE rep_nodes SET stability = ?2, difficulty = ?3, reps = ?4,
+                lapses = ?5, due_ts = ?6, last_ts = ?7 WHERE id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
     for n in sorted {
         let alive = n.last_ts.max(n.created_ts);
         let buried = tombstones.iter().any(|t| {
@@ -243,10 +287,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                     },
                 };
                 let san = n.path.rsplit(' ').next().unwrap_or(&n.path);
-                tx.execute(
-                    "INSERT INTO rep_nodes (parent_id, side, san, name, fen_key, depth,
-                        stability, difficulty, reps, lapses, due_ts, last_ts, created_ts)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                insert_node.execute(
                     params![
                         parent_id,
                         n.side,
@@ -261,7 +302,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                         n.due_ts,
                         n.last_ts,
                         n.created_ts
-                    ],
+                    ]
                 )
                 .map_err(|e| e.to_string())?;
                 local_ids.insert(key, (tx.last_insert_rowid(), n.last_ts));
@@ -269,9 +310,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
             }
             Some((id, local_last)) => {
                 if n.last_ts > *local_last {
-                    tx.execute(
-                        "UPDATE rep_nodes SET stability = ?2, difficulty = ?3, reps = ?4,
-                            lapses = ?5, due_ts = ?6, last_ts = ?7 WHERE id = ?1",
+                    update_node.execute(
                         params![
                             id,
                             n.stability,
@@ -280,7 +319,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                             n.lapses,
                             n.due_ts,
                             n.last_ts
-                        ],
+                        ]
                     )
                     .map_err(|e| e.to_string())?;
                     merged += 1;
@@ -288,6 +327,7 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
             }
         }
     }
+    drop((insert_node, update_node));
     tx.commit().map_err(|e| e.to_string())?;
     Ok(merged)
 }
@@ -297,12 +337,16 @@ fn apply_puzzle_attempts(
     attempts: &[SyncPuzzleAttempt],
 ) -> Result<usize, String> {
     let mut n = 0usize;
+    let mut insert = conn
+        .prepare(
+            "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+             WHERE NOT EXISTS (SELECT 1 FROM puzzle_attempts WHERE puzzle_id = ?1 AND ts = ?2)",
+        )
+        .map_err(|e| e.to_string())?;
     for a in attempts {
-        n += conn
+        n += insert
             .execute(
-                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after, themes, puzzle_rating)
-                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
-                 WHERE NOT EXISTS (SELECT 1 FROM puzzle_attempts WHERE puzzle_id = ?1 AND ts = ?2)",
                 params![a.puzzle_id, a.ts, a.solved as i64, a.rating_before, a.rating_after, a.themes, a.puzzle_rating],
             )
             .map_err(|e| e.to_string())?;
@@ -316,39 +360,44 @@ fn apply_own_puzzles(conn: &mut Connection, puzzles: &[SyncOwnPuzzle]) -> Result
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let mut retained = HashSet::new();
     let mut changed = 0usize;
+    let mut find_game = tx
+        .prepare("SELECT id FROM games WHERE source = ?1 AND source_id = ?2")
+        .map_err(|e| e.to_string())?;
+    let mut upsert_puzzle = tx
+        .prepare(
+            "INSERT INTO puzzles
+             (id, fen, moves, rating, rd, popularity, nb_plays, themes,
+              opening_tags, source, source_game_id, source_ply, setup_plies)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'own',?10,?11,?12)
+             ON CONFLICT(id) DO UPDATE SET
+                fen = excluded.fen,
+                moves = excluded.moves,
+                rating = excluded.rating,
+                rd = excluded.rd,
+                popularity = excluded.popularity,
+                nb_plays = excluded.nb_plays,
+                themes = excluded.themes,
+                opening_tags = excluded.opening_tags,
+                source = 'own',
+                source_game_id = excluded.source_game_id,
+                source_ply = excluded.source_ply,
+                setup_plies = excluded.setup_plies",
+        )
+        .map_err(|e| e.to_string())?;
 
     for puzzle in puzzles {
-        let game_id: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM games WHERE source = ?1 AND source_id = ?2",
-                params![puzzle.game_source, puzzle.game_source_id],
-                |row| row.get(0),
-            )
+        let game_id: Option<i64> = find_game
+            .query_row(params![puzzle.game_source, puzzle.game_source_id], |row| {
+                row.get(0)
+            })
             .ok();
         let Some(game_id) = game_id else {
             continue;
         };
 
         retained.insert(puzzle.id.clone());
-        changed += tx
+        changed += upsert_puzzle
             .execute(
-                "INSERT INTO puzzles
-                 (id, fen, moves, rating, rd, popularity, nb_plays, themes,
-                  opening_tags, source, source_game_id, source_ply, setup_plies)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'own',?10,?11,?12)
-                 ON CONFLICT(id) DO UPDATE SET
-                    fen = excluded.fen,
-                    moves = excluded.moves,
-                    rating = excluded.rating,
-                    rd = excluded.rd,
-                    popularity = excluded.popularity,
-                    nb_plays = excluded.nb_plays,
-                    themes = excluded.themes,
-                    opening_tags = excluded.opening_tags,
-                    source = 'own',
-                    source_game_id = excluded.source_game_id,
-                    source_ply = excluded.source_ply,
-                    setup_plies = excluded.setup_plies",
                 params![
                     puzzle.id,
                     puzzle.fen,
@@ -389,6 +438,7 @@ fn apply_own_puzzles(conn: &mut Connection, puzzles: &[SyncOwnPuzzle]) -> Result
         }
     }
 
+    drop((find_game, upsert_puzzle));
     tx.commit().map_err(|e| e.to_string())?;
     Ok(changed)
 }
@@ -398,8 +448,6 @@ fn apply_own_puzzles(conn: &mut Connection, puzzles: &[SyncOwnPuzzle]) -> Result
 /// unabhängig nach (ts, puzzle_id); Versuche ohne bekanntes Puzzle-Rating
 /// (puzzle_rating = 0) lassen das Rating unverändert.
 fn replay_puzzle_ratings(conn: &mut Connection) -> Result<(), String> {
-    const ELO_K: f64 = 24.0; // identisch zu puzzles.rs
-    const DEFAULT_RATING: i64 = 1500;
     let rows: Vec<(i64, bool, i64)> = {
         let mut stmt = conn
             .prepare("SELECT id, solved, puzzle_rating FROM puzzle_attempts ORDER BY ts, puzzle_id")
@@ -412,23 +460,25 @@ fn replay_puzzle_ratings(conn: &mut Connection) -> Result<(), String> {
         rows?
     };
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let mut rating = DEFAULT_RATING;
+    let mut rating = crate::puzzles::rating::DEFAULT_RATING;
+    let mut update_attempt = tx
+        .prepare(
+            "UPDATE puzzle_attempts SET rating_before = ?2, rating_after = ?3 WHERE id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
     for (id, solved, puzzle_rating) in rows {
         let before = rating;
         let after = if puzzle_rating > 0 {
-            let expected = 1.0 / (1.0 + 10f64.powf((puzzle_rating - before) as f64 / 400.0));
-            let score = if solved { 1.0 } else { 0.0 };
-            (before as f64 + ELO_K * (score - expected)).round() as i64
+            crate::puzzles::rating::elo_after(before, puzzle_rating, solved)
         } else {
             before
         };
-        tx.execute(
-            "UPDATE puzzle_attempts SET rating_before = ?2, rating_after = ?3 WHERE id = ?1",
-            params![id, before, after],
-        )
-        .map_err(|e| e.to_string())?;
+        update_attempt
+            .execute(params![id, before, after])
+            .map_err(|e| e.to_string())?;
         rating = after;
     }
+    drop(update_attempt);
     db::meta_set(&tx, "puzzle_rating", &rating.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
@@ -439,12 +489,16 @@ fn apply_endgame_attempts(
     attempts: &[SyncEndgameAttempt],
 ) -> Result<usize, String> {
     let mut n = 0usize;
+    let mut insert = conn
+        .prepare(
+            "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
+             SELECT ?1, ?2, ?3, ?4
+             WHERE NOT EXISTS (SELECT 1 FROM endgame_attempts WHERE drill_id = ?1 AND ts = ?2)",
+        )
+        .map_err(|e| e.to_string())?;
     for a in attempts {
-        n += conn
+        n += insert
             .execute(
-                "INSERT INTO endgame_attempts (drill_id, ts, solved, moves)
-                 SELECT ?1, ?2, ?3, ?4
-                 WHERE NOT EXISTS (SELECT 1 FROM endgame_attempts WHERE drill_id = ?1 AND ts = ?2)",
                 params![a.drill_id, a.ts, a.solved as i64, a.moves],
             )
             .map_err(|e| e.to_string())?;
@@ -457,20 +511,34 @@ fn apply_study_templates(
     templates: &[SyncStudyTemplate],
 ) -> Result<usize, String> {
     let mut merged = 0usize;
+    let mut find_template = conn
+        .prepare("SELECT id, updated_ts FROM study_templates WHERE sync_key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut update_template = conn
+        .prepare(
+            "UPDATE study_templates
+             SET title=?1, duration_min=?2, tool=?3, description=?4,
+                 created_ts=?5, updated_ts=?6, deleted=?7
+             WHERE id=?8",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut insert_template = conn
+        .prepare(
+            "INSERT INTO study_templates
+             (sync_key, title, duration_min, tool, description,
+              created_ts, updated_ts, deleted)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        )
+        .map_err(|e| e.to_string())?;
     for template in templates {
-        let existing = conn.query_row(
-            "SELECT id, updated_ts FROM study_templates WHERE sync_key = ?1",
+        let existing = find_template.query_row(
             params![template.sync_key],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
         );
         match existing {
             Ok((id, updated_ts)) if template.updated_ts > updated_ts => {
-                merged += conn
+                merged += update_template
                     .execute(
-                        "UPDATE study_templates
-                         SET title=?1, duration_min=?2, tool=?3, description=?4,
-                             created_ts=?5, updated_ts=?6, deleted=?7
-                         WHERE id=?8",
                         params![
                             template.title,
                             template.duration_min,
@@ -486,12 +554,8 @@ fn apply_study_templates(
             }
             Ok(_) => {}
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                merged += conn
+                merged += insert_template
                     .execute(
-                        "INSERT INTO study_templates
-                         (sync_key, title, duration_min, tool, description,
-                          created_ts, updated_ts, deleted)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                         params![
                             template.sync_key,
                             template.title,
@@ -513,9 +577,32 @@ fn apply_study_templates(
 
 fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<usize, String> {
     let mut merged = 0usize;
+    let mut find_template = conn
+        .prepare("SELECT id FROM study_templates WHERE sync_key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut find_event = conn
+        .prepare("SELECT id, updated_ts FROM study_events WHERE sync_key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut update_event = conn
+        .prepare(
+            "UPDATE study_events
+             SET template_id=?1, day=?2, position=?3, completed=?4,
+                 completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8,
+                 repeat_rule=?9, series_key=?10
+             WHERE id=?11",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut insert_event = conn
+        .prepare(
+            "INSERT INTO study_events
+             (sync_key, template_id, day, position, completed,
+              completed_ts, created_ts, updated_ts, deleted,
+              repeat_rule, series_key)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+        )
+        .map_err(|e| e.to_string())?;
     for event in events {
-        let template_id = match conn.query_row(
-            "SELECT id FROM study_templates WHERE sync_key = ?1",
+        let template_id = match find_template.query_row(
             params![event.template_sync_key],
             |row| row.get::<_, i64>(0),
         ) {
@@ -523,20 +610,14 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
             Err(rusqlite::Error::QueryReturnedNoRows) => continue,
             Err(error) => return Err(error.to_string()),
         };
-        let existing = conn.query_row(
-            "SELECT id, updated_ts FROM study_events WHERE sync_key = ?1",
+        let existing = find_event.query_row(
             params![event.sync_key],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
         );
         match existing {
             Ok((id, updated_ts)) if event.updated_ts > updated_ts => {
-                merged += conn
+                merged += update_event
                     .execute(
-                        "UPDATE study_events
-                         SET template_id=?1, day=?2, position=?3, completed=?4,
-                             completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8,
-                             repeat_rule=?9, series_key=?10
-                         WHERE id=?11",
                         params![
                             template_id,
                             event.day,
@@ -555,13 +636,8 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
             }
             Ok(_) => {}
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                merged += conn
+                merged += insert_event
                     .execute(
-                        "INSERT INTO study_events
-                         (sync_key, template_id, day, position, completed,
-                          completed_ts, created_ts, updated_ts, deleted,
-                          repeat_rule, series_key)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
                         params![
                             event.sync_key,
                             template_id,
@@ -592,11 +668,15 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
 /// Bequemlichkeit für lokal geschriebene Zeilen, kein Fremdschlüssel.
 fn apply_rep_reviews(conn: &Connection, reviews: &[SyncRepReview]) -> Result<usize, String> {
     let mut merged = 0usize;
+    let mut insert = conn
+        .prepare(
+            "INSERT OR IGNORE INTO rep_review_log (node_id, ts, grade, side, path)
+             VALUES (0, ?1, ?2, ?3, ?4)",
+        )
+        .map_err(|e| e.to_string())?;
     for review in reviews {
-        merged += conn
+        merged += insert
             .execute(
-                "INSERT OR IGNORE INTO rep_review_log (node_id, ts, grade, side, path)
-                 VALUES (0, ?1, ?2, ?3, ?4)",
                 params![review.ts, review.grade, review.side, review.path],
             )
             .map_err(|e| e.to_string())?;
@@ -606,21 +686,35 @@ fn apply_rep_reviews(conn: &Connection, reviews: &[SyncRepReview]) -> Result<usi
 
 fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<usize, String> {
     let mut merged = 0usize;
+    let mut find_focus = conn
+        .prepare("SELECT id, updated_ts FROM study_focus WHERE sync_key = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut update_focus = conn
+        .prepare(
+            "UPDATE study_focus
+             SET area=?1, metric_key=?2, label_params=?3, target=?4, cycle_days=?5,
+                 start_ts=?6, end_ts=?7, status=?8, created_ts=?9, updated_ts=?10,
+                 deleted=?11
+             WHERE id=?12",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut insert_focus = conn
+        .prepare(
+            "INSERT INTO study_focus
+             (sync_key, area, metric_key, label_params, target, cycle_days,
+              start_ts, end_ts, status, created_ts, updated_ts, deleted)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+        )
+        .map_err(|e| e.to_string())?;
     for focus in focuses {
-        let existing = conn.query_row(
-            "SELECT id, updated_ts FROM study_focus WHERE sync_key = ?1",
+        let existing = find_focus.query_row(
             params![focus.sync_key],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
         );
         match existing {
             Ok((id, updated_ts)) if focus.updated_ts > updated_ts => {
-                merged += conn
+                merged += update_focus
                     .execute(
-                        "UPDATE study_focus
-                         SET area=?1, metric_key=?2, label_params=?3, target=?4, cycle_days=?5,
-                             start_ts=?6, end_ts=?7, status=?8, created_ts=?9, updated_ts=?10,
-                             deleted=?11
-                         WHERE id=?12",
                         params![
                             focus.area,
                             focus.metric_key,
@@ -640,12 +734,8 @@ fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<us
             }
             Ok(_) => {}
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                merged += conn
+                merged += insert_focus
                     .execute(
-                        "INSERT INTO study_focus
-                         (sync_key, area, metric_key, label_params, target, cycle_days,
-                          start_ts, end_ts, status, created_ts, updated_ts, deleted)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
                         params![
                             focus.sync_key,
                             focus.area,

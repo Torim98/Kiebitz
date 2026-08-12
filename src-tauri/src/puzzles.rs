@@ -9,6 +9,10 @@ use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager, State};
 
+pub(crate) mod rating;
+
+use rating::{elo_after, DEFAULT_RATING};
+
 pub struct PuzzleImportState(pub AtomicBool);
 
 impl Default for PuzzleImportState {
@@ -18,8 +22,6 @@ impl Default for PuzzleImportState {
 }
 
 const DUMP_URL: &str = "https://database.lichess.org/lichess_db_puzzle.csv.zst";
-const DEFAULT_RATING: i64 = 1500;
-const ELO_K: f64 = 24.0;
 
 pub(crate) struct OwnPuzzleCandidate {
     pub ply: u32,
@@ -813,12 +815,6 @@ pub fn record_attempt(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     record_attempt_at(&conn, &puzzle_id, solved, now)
-}
-
-fn elo_after(before: i64, puzzle_rating: i64, solved: bool) -> i64 {
-    let expected = 1.0 / (1.0 + 10f64.powf((puzzle_rating - before) as f64 / 400.0));
-    let score = if solved { 1.0 } else { 0.0 };
-    (before as f64 + ELO_K * (score - expected)).round() as i64
 }
 
 fn record_attempt_at(
