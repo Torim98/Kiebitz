@@ -5,6 +5,7 @@
  * serialisiert). Gerechnet wird alles dort · hier steht nur, was ankommt.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { onDataChange } from "./changes";
 
 export type Phase = "opening" | "middlegame" | "endgame";
 
@@ -406,8 +407,21 @@ export interface DeepInsights {
   spotlight: Spotlight | null;
 }
 
+let deepInsightsRequest: Promise<DeepInsights> | null = null;
+
+onDataChange(() => {
+  deepInsightsRequest = null;
+});
+
 export function deepInsights(): Promise<DeepInsights> {
-  return invoke<DeepInsights>("deep_insights");
+  if (!deepInsightsRequest) {
+    const request = invoke<DeepInsights>("deep_insights");
+    deepInsightsRequest = request;
+    void request.catch(() => {
+      if (deepInsightsRequest === request) deepInsightsRequest = null;
+    });
+  }
+  return deepInsightsRequest;
 }
 
 // ── Block J · Wirkungsfenster ───────────────────────────────────────────────

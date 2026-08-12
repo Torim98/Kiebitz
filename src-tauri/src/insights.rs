@@ -13,10 +13,11 @@
 //! immer der Gewinnwahrscheinlichkeits-Verlust eines Zuges (0..1) · dieselbe
 //! Größe, aus der `analysis.rs` Ungenauigkeit/Fehler/Patzer ableitet.
 
+use crate::analysis;
 use crate::chess;
 use crate::db;
 use crate::repertoire;
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use tauri::Manager;
@@ -856,9 +857,27 @@ impl<'a> GameView<'a> {
 #[tauri::command]
 pub async fn deep_insights(app: tauri::AppHandle) -> Result<DeepInsights, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let db = app.state::<db::Db>();
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        compute(&conn)
+        // The calculation can scan many games and evaluations. A dedicated
+        // read-only WAL connection keeps that work off the global command
+        // mutex while still giving the whole calculation one stable snapshot.
+        let path = app
+            .state::<analysis::DbPath>()
+            .0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone();
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| e.to_string())?;
+        conn.busy_timeout(std::time::Duration::from_secs(10))
+            .map_err(|e| e.to_string())?;
+        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+        let result = compute(&conn);
+        if result.is_ok() {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        } else {
+            let _ = conn.execute_batch("ROLLBACK");
+        }
+        result
     })
     .await
     .map_err(|e| format!("Tiefenanalyse fehlgeschlagen: {e}"))?

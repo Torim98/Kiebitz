@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emitDataChange } from "./changes";
+import { emitDataChange, onDataChange } from "./changes";
 
 /** Spiegelt db::GameRecord aus dem Rust-Backend (snake_case wie serialisiert). */
 export interface GameRecord {
@@ -46,8 +46,23 @@ export interface UpsertResult {
   total: number;
 }
 
+let gamesRequest: Promise<GameRecord[]> | null = null;
+let statsRequest: Promise<{ total: number }> | null = null;
+
+onDataChange(() => {
+  gamesRequest = null;
+  statsRequest = null;
+});
+
 export function listGames(): Promise<GameRecord[]> {
-  return invoke<GameRecord[]>("list_games");
+  if (!gamesRequest) {
+    const request = invoke<GameRecord[]>("list_games");
+    gamesRequest = request;
+    void request.catch(() => {
+      if (gamesRequest === request) gamesRequest = null;
+    });
+  }
+  return gamesRequest;
 }
 
 export function upsertGames(games: GameRecord[]): Promise<UpsertResult> {
@@ -84,5 +99,12 @@ export function writePgnFile(path: string, contents: string): Promise<number> {
 }
 
 export function dbStats(): Promise<{ total: number }> {
-  return invoke<{ total: number }>("db_stats");
+  if (!statsRequest) {
+    const request = invoke<{ total: number }>("db_stats");
+    statsRequest = request;
+    void request.catch(() => {
+      if (statsRequest === request) statsRequest = null;
+    });
+  }
+  return statsRequest;
 }

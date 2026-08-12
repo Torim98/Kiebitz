@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useBackendInfo } from "./lib/backend";
 import { dbStats } from "./lib/db";
+import { onDataChange } from "./lib/changes";
 import { getSettings, type Settings } from "./lib/settings";
 import { syncInfo } from "./lib/sync";
 import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
@@ -126,10 +127,13 @@ export default function App() {
     push("support", { reportType });
 
   useEffect(() => {
-    if (backend.mode === "desktop") {
+    if (backend.mode !== "desktop") return;
+    const refresh = () => {
       dbStats().then((s) => setGameCount(s.total)).catch(() => {});
-    }
-  }, [backend.mode, page]);
+    };
+    refresh();
+    return onDataChange(refresh);
+  }, [backend.mode]);
 
   // Brettklänge nach den gespeicherten Einstellungen scharfschalten. Ohne
   // Backend (Web-Preview) bleiben die Voreinstellungen aus lib/sound stehen.

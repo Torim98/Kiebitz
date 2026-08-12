@@ -6,6 +6,10 @@ use std::sync::Mutex;
 
 pub struct Db(pub Mutex<Connection>);
 
+/// Current SQLite schema version. It is stored only after the complete
+/// migration has committed successfully.
+const SCHEMA_VERSION: i64 = 15;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
     pub id: Option<i64>,
@@ -129,6 +133,76 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     let _ = conn.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024);
     let _ = conn.pragma_update(None, "wal_autocheckpoint", 1_000);
     checkpoint(conn);
+
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|e| format!("Schema-Version konnte nicht gelesen werden: {e}"))?;
+    if version > SCHEMA_VERSION {
+        return Err(format!(
+            "Die Datenbank verwendet Schema-Version {version}, diese Kiebitz-Version unterstützt höchstens {SCHEMA_VERSION}"
+        ));
+    }
+    if version == SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| format!("Migration konnte nicht gestartet werden: {e}"))?;
+    let result = migrate_to_current(conn).and_then(|_| {
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+            .map_err(|e| format!("Schema-Version konnte nicht gespeichert werden: {e}"))
+    });
+    match result {
+        Ok(()) => match conn.execute_batch("COMMIT") {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(format!(
+                    "Migration konnte nicht abgeschlossen werden: {error}"
+                ))
+            }
+        },
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| e.to_string())?;
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+    for name in names {
+        if name.map_err(|e| e.to_string())? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    if !column_exists(conn, table, column)? {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+            [],
+        )
+        .map_err(|e| format!("Spalte {table}.{column} konnte nicht angelegt werden: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Upgrades both new databases and legacy databases which predate
+/// `user_version`. The caller owns the surrounding transaction.
+fn migrate_to_current(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS games (
             id          INTEGER PRIMARY KEY,
@@ -252,68 +326,64 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Schema-Init fehlgeschlagen: {e}"))?;
 
-    // Migration v2: Zeitstempel-Spalte. Schlägt fehl, wenn sie schon existiert · ok.
-    let _ = conn.execute(
-        "ALTER TABLE games ADD COLUMN played_ts INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
+    // Migration v2: Zeitstempel-Spalte. Legacy-Datenbanken werden anhand ihrer
+    // tatsächlichen Spaltenstruktur erkannt.
+    add_column_if_missing(conn, "games", "played_ts", "INTEGER NOT NULL DEFAULT 0")?;
     // Migration v6 (Sync): Änderungs-Zeitstempel für den Delta-Sync und
     // Last-Write-Wins bei Notizen. DEFAULT 0 = "vor Einführung des Syncs" ·
     // der erste Sync (Cursor 0) überträgt damit den kompletten Bestand.
-    let _ = conn.execute(
-        "ALTER TABLE games ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
-    let _ = conn.execute(
-        "ALTER TABLE games ADD COLUMN note_ts INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
+    add_column_if_missing(conn, "games", "updated_ts", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column_if_missing(conn, "games", "note_ts", "INTEGER NOT NULL DEFAULT 0")?;
     // Migration v8: Phasen-Genauigkeit und frei editierbare Tags.
-    for sql in [
-        "ALTER TABLE games ADD COLUMN accuracy_opening REAL",
-        "ALTER TABLE games ADD COLUMN accuracy_middlegame REAL",
-        "ALTER TABLE games ADD COLUMN accuracy_endgame REAL",
-        "ALTER TABLE games ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
-        "ALTER TABLE games ADD COLUMN tags_ts INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE games ADD COLUMN analysis_excluded INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE games ADD COLUMN my_name TEXT NOT NULL DEFAULT ''",
+    for (column, definition) in [
+        ("accuracy_opening", "REAL"),
+        ("accuracy_middlegame", "REAL"),
+        ("accuracy_endgame", "REAL"),
+        ("tags", "TEXT NOT NULL DEFAULT '[]'"),
+        ("tags_ts", "INTEGER NOT NULL DEFAULT 0"),
+        ("analysis_excluded", "INTEGER NOT NULL DEFAULT 0"),
+        ("my_name", "TEXT NOT NULL DEFAULT ''"),
         // Migration v10: Zeitpunkt der Auto-Analyse · der Wochenkalender zählt
         // ein vollständiges Partie-Review als Lerneinheit an genau diesem Tag.
-        "ALTER TABLE games ADD COLUMN analyzed_ts INTEGER NOT NULL DEFAULT 0",
+        ("analyzed_ts", "INTEGER NOT NULL DEFAULT 0"),
         // Migration v12: Uhrendaten · das Analyse-Brett zeigt die Restzeit
         // beider Seiten, sobald eine Partie sie mitbringt.
-        "ALTER TABLE games ADD COLUMN clocks TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE games ADD COLUMN time_control TEXT NOT NULL DEFAULT ''",
+        ("clocks", "TEXT NOT NULL DEFAULT ''"),
+        ("time_control", "TEXT NOT NULL DEFAULT ''"),
         // Migration v15: Die Partieanalyse zeigt dieselben Gesamt- und
         // Phasenwerte auch fuer den Gegner.
-        "ALTER TABLE games ADD COLUMN opponent_accuracy REAL",
-        "ALTER TABLE games ADD COLUMN opponent_accuracy_opening REAL",
-        "ALTER TABLE games ADD COLUMN opponent_accuracy_middlegame REAL",
-        "ALTER TABLE games ADD COLUMN opponent_accuracy_endgame REAL",
+        ("opponent_accuracy", "REAL"),
+        ("opponent_accuracy_opening", "REAL"),
+        ("opponent_accuracy_middlegame", "REAL"),
+        ("opponent_accuracy_endgame", "REAL"),
     ] {
-        let _ = conn.execute(sql, []);
+        add_column_if_missing(conn, "games", column, definition)?;
     }
     // Migration v7 (Sync-Grenzen): Repertoire-Löschungen propagieren über
     // Tombstones (Löschung gewinnt nur gegen ältere Knoten · created_ts
     // erlaubt das Wieder-Anlegen), und Puzzle-Versuche merken sich das
     // Puzzle-Rating zur Versuchszeit, damit die Elo-Kette nach einem Merge
     // deterministisch neu berechnet werden kann.
-    let _ = conn.execute(
-        "ALTER TABLE rep_nodes ADD COLUMN created_ts INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
-    let _ = conn.execute(
-        "ALTER TABLE puzzle_attempts ADD COLUMN puzzle_rating INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
+    add_column_if_missing(
+        conn,
+        "rep_nodes",
+        "created_ts",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    add_column_if_missing(
+        conn,
+        "puzzle_attempts",
+        "puzzle_rating",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     // Migration v9: Herkunft eigener Puzzles sowie persistenter Studienkalender.
-    for sql in [
-        "ALTER TABLE puzzles ADD COLUMN source TEXT NOT NULL DEFAULT 'lichess'",
-        "ALTER TABLE puzzles ADD COLUMN source_game_id INTEGER",
-        "ALTER TABLE puzzles ADD COLUMN source_ply INTEGER",
-        "ALTER TABLE puzzles ADD COLUMN setup_plies INTEGER NOT NULL DEFAULT 1",
+    for (column, definition) in [
+        ("source", "TEXT NOT NULL DEFAULT 'lichess'"),
+        ("source_game_id", "INTEGER"),
+        ("source_ply", "INTEGER"),
+        ("setup_plies", "INTEGER NOT NULL DEFAULT 1"),
     ] {
-        let _ = conn.execute(sql, []);
+        add_column_if_missing(conn, "puzzles", column, definition)?;
     }
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_puzzles_source ON puzzles(source);
@@ -353,29 +423,30 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("Kalender-Schema fehlgeschlagen: {e}"))?;
     // Sync-fähiger Kalender (v11). Soft deletes prevent removed units from
     // reappearing when an older peer reconnects.
-    for sql in [
-        "ALTER TABLE study_templates ADD COLUMN sync_key TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE study_templates ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE study_events ADD COLUMN sync_key TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE study_events ADD COLUMN updated_ts INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE study_events ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0",
+    for (table, column, definition) in [
+        ("study_templates", "sync_key", "TEXT NOT NULL DEFAULT ''"),
+        ("study_templates", "deleted", "INTEGER NOT NULL DEFAULT 0"),
+        ("study_events", "sync_key", "TEXT NOT NULL DEFAULT ''"),
+        ("study_events", "updated_ts", "INTEGER NOT NULL DEFAULT 0"),
+        ("study_events", "deleted", "INTEGER NOT NULL DEFAULT 0"),
         // Migration v12: wiederkehrende Einheiten. Eine Serie ist keine Regel,
         // sondern eine Reihe echter Termine mit gemeinsamem `series_key` ·
         // dadurch bleiben Abhaken, Verschieben, Löschen und der Gerätesync
         // genau die Operationen, die es für einzelne Einheiten schon gibt.
-        "ALTER TABLE study_events ADD COLUMN repeat_rule TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE study_events ADD COLUMN series_key TEXT NOT NULL DEFAULT ''",
+        ("study_events", "repeat_rule", "TEXT NOT NULL DEFAULT ''"),
+        ("study_events", "series_key", "TEXT NOT NULL DEFAULT ''"),
         // Migration v13: Notiz je Repertoire-Stellung. Ein Repertoire ohne
         // Begründung ist nach ein paar Monaten nur noch eine Zugliste · der
         // Plan hinter der Variante gehört an die Stellung, nicht ins Gedächtnis.
-        "ALTER TABLE rep_nodes ADD COLUMN note TEXT NOT NULL DEFAULT ''",
+        ("rep_nodes", "note", "TEXT NOT NULL DEFAULT ''"),
     ] {
-        let _ = conn.execute(sql, []);
+        add_column_if_missing(conn, table, column, definition)?;
     }
-    let _ = conn.execute(
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_study_events_series ON study_events(series_key)",
         [],
-    );
+    )
+    .map_err(|e| e.to_string())?;
     conn.execute_batch(
         "UPDATE study_templates
            SET sync_key = CASE
@@ -416,7 +487,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         meta_set(conn, "study_templates_seeded", "1")?;
     }
     translate_seeded_study_templates(conn)?;
-    let _ = conn.execute(
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS rep_tombstones (
             side       TEXT NOT NULL,
             path       TEXT NOT NULL,
@@ -424,8 +495,9 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             PRIMARY KEY (side, path)
         )",
         [],
-    );
-    let _ = conn.execute(
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
         "CREATE TABLE IF NOT EXISTS game_tombstones (
             source      TEXT NOT NULL,
             source_id   TEXT NOT NULL,
@@ -433,14 +505,16 @@ pub fn init(conn: &Connection) -> Result<(), String> {
             PRIMARY KEY (source, source_id)
         )",
         [],
-    );
+    )
+    .map_err(|e| e.to_string())?;
     // Backfill: Puzzle-Rating für Alt-Versuche aus der lokalen Puzzle-DB.
-    let _ = conn.execute(
+    conn.execute(
         "UPDATE puzzle_attempts
          SET puzzle_rating = COALESCE((SELECT rating FROM puzzles WHERE id = puzzle_id), 0)
          WHERE puzzle_rating = 0",
         [],
-    );
+    )
+    .map_err(|e| format!("Puzzle-Rating-Backfill fehlgeschlagen: {e}"))?;
 
     // Migration v14: Trainingsprogramm.
     //
@@ -500,7 +574,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
     if meta_get(conn, "rep_review_log_backfilled").is_none() {
         // `path` ist die SAN-Kette von der Wurzel · derselbe geräteunabhängige
         // Schlüssel, den der Sync für Repertoire-Knoten und Tombstones nutzt.
-        let _ = conn.execute(
+        conn.execute(
             "WITH RECURSIVE chain(id, path) AS (
                  SELECT id, san FROM rep_nodes WHERE parent_id = 0
                  UNION ALL
@@ -512,9 +586,29 @@ pub fn init(conn: &Connection) -> Result<(), String> {
              FROM rep_nodes n JOIN chain c ON c.id = n.id
              WHERE n.reps > 0 AND n.last_ts > 0",
             [],
-        );
+        )
+        .map_err(|e| format!("Review-Log-Backfill fehlgeschlagen: {e}"))?;
         meta_set(conn, "rep_review_log_backfilled", "1")?;
     }
+
+    // Read-heavy screens aggregate by timestamps and analysis state. These
+    // indexes turn their former full-table scans into bounded range scans.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_games_played_ts
+           ON games(played_ts DESC, played_at DESC, id DESC);
+         CREATE INDEX IF NOT EXISTS idx_games_analysis_queue
+           ON games(analysis_excluded, analyzed, played_ts);
+         CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_ts
+           ON puzzle_attempts(ts);
+         CREATE INDEX IF NOT EXISTS idx_endgame_attempts_ts
+           ON endgame_attempts(ts);
+         CREATE INDEX IF NOT EXISTS idx_rep_nodes_due
+           ON rep_nodes(due_ts);
+         CREATE INDEX IF NOT EXISTS idx_study_events_completed
+           ON study_events(completed_ts)
+           WHERE completed = 1 AND deleted = 0;",
+    )
+    .map_err(|e| format!("Performance-Indizes konnten nicht angelegt werden: {e}"))?;
     Ok(())
 }
 
@@ -938,5 +1032,87 @@ mod tests {
             assert_eq!(count, 0, "derived rows remain in {table}");
         }
         assert!(!delete_game(&mut conn, id).unwrap());
+    }
+
+    #[test]
+    fn init_migrates_once_and_records_schema_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        conn.execute(
+            "INSERT INTO study_events
+             (template_id, day, created_ts, updated_ts) VALUES (1, '2026-08-12', 42, 0)",
+            [],
+        )
+        .unwrap();
+        init(&conn).unwrap();
+
+        let updated_ts: i64 = conn
+            .query_row("SELECT updated_ts FROM study_events", [], |row| row.get(0))
+            .unwrap();
+        let templates: i64 = conn
+            .query_row("SELECT COUNT(*) FROM study_templates", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(updated_ts, 0, "one-time backfill ran again");
+        assert_eq!(templates, DEFAULT_STUDY_TEMPLATES.len() as i64);
+        for index in [
+            "idx_games_played_ts",
+            "idx_games_analysis_queue",
+            "idx_puzzle_attempts_ts",
+            "idx_endgame_attempts_ts",
+            "idx_rep_nodes_due",
+            "idx_study_events_completed",
+        ] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1)",
+                    params![index],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(exists, "missing performance index {index}");
+        }
+    }
+
+    #[test]
+    fn init_upgrades_an_unversioned_legacy_database_without_losing_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE games (
+                id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                url TEXT NOT NULL DEFAULT '',
+                played_at TEXT NOT NULL DEFAULT '',
+                time_class TEXT NOT NULL DEFAULT '',
+                color TEXT NOT NULL DEFAULT '',
+                opponent TEXT NOT NULL DEFAULT '',
+                opp_elo INTEGER NOT NULL DEFAULT 0,
+                my_elo INTEGER NOT NULL DEFAULT 0,
+                result TEXT NOT NULL DEFAULT '',
+                opening TEXT NOT NULL DEFAULT '',
+                eco TEXT NOT NULL DEFAULT '',
+                moves_count INTEGER NOT NULL DEFAULT 0,
+                accuracy REAL,
+                moves TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                analyzed INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(source, source_id)
+             );
+             INSERT INTO games (source, source_id, opponent)
+             VALUES ('legacy', 'kept', 'Player');",
+        )
+        .unwrap();
+
+        init(&conn).unwrap();
+
+        let game = list_games(&conn).unwrap().pop().unwrap();
+        assert_eq!(game.source_id, "kept");
+        assert!(column_exists(&conn, "games", "opponent_accuracy_endgame").unwrap());
+        assert!(column_exists(&conn, "study_events", "series_key").unwrap());
     }
 }

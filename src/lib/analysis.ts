@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitDataChange } from "./changes";
 
 // ── Live-Engine (persistente Stockfish-Instanz, Streaming) ──────────────────
 
@@ -112,7 +113,10 @@ export function onAnalysisGameDone(cb: (p: AnalysisGameDone) => void): Promise<U
 }
 
 export function onAnalysisDone(cb: (p: AnalysisAllDone) => void): Promise<UnlistenFn> {
-  return listen<AnalysisAllDone>("analysis://done", (e) => cb(e.payload));
+  return listen<AnalysisAllDone>("analysis://done", (e) => {
+    if (e.payload.analyzed > 0) emitDataChange();
+    cb(e.payload);
+  });
 }
 
 // ── Fehler nach Spielphase ───────────────────────────────────────────────────

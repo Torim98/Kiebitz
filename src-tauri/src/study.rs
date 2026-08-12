@@ -209,76 +209,196 @@ fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
     .map_err(|_| "Lerneinheit nicht gefunden".to_string())
 }
 
-/// Kennzahlen eines Kalendertags: erledigte Einheiten und fällige Wiederholungen.
-fn study_day(conn: &Connection, day_start: i64, now: i64) -> Result<StudyDay, String> {
-    let day_end = day_start + 86_400;
-    let today_start = now - now.rem_euclid(86_400);
-    let puzzle_attempts = count(
-        conn,
-        "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
-        day_start,
-        day_end,
-    )?;
-    let puzzle_solved = count(
-        conn,
-        "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1 AND ts < ?2",
-        day_start,
-        day_end,
-    )?;
-    let endgame_attempts = count(
-        conn,
-        "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
-        day_start,
-        day_end,
-    )?;
-    let rep_reviews = count(
-        conn,
-        "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
-        day_start,
-        day_end,
-    )?;
-    let (game_reviews, analysis_centi) = completed_analysis_load(conn, day_start, day_end)?;
-    let play_centi = game_load_between(conn, day_start, day_end)?.1;
-    let actual_centi = play_centi
-        + puzzle_attempts * CENTI_PER_PUZZLE
-        + endgame_attempts * CENTI_PER_DRILL
-        + rep_reviews * CENTI_PER_REVIEW
-        + analysis_centi;
-    // my_move-Parität wie in repertoire.rs: Weiß trainiert ungerade Halbzüge.
+#[derive(Default)]
+struct DayTotals {
+    puzzle_attempts: i64,
+    puzzle_solved: i64,
+    endgame_attempts: i64,
+    rep_reviews: i64,
+    game_reviews: i64,
+    play_centi: i64,
+    analysis_centi: i64,
+    due_reviews: i64,
+}
+
+fn range_index(day: i64, first: i64, len: usize) -> Option<usize> {
+    let index = (day - first).div_euclid(86_400);
+    (index >= 0 && index < len as i64).then_some(index as usize)
+}
+
+/// Aggregates a complete range with a constant number of SQL statements.
+fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<StudyDay>, String> {
+    let len = ((last - first).div_euclid(86_400) + 1).max(0) as usize;
+    let end = first + len as i64 * 86_400;
+    let mut totals: Vec<DayTotals> = (0..len).map(|_| DayTotals::default()).collect();
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT (ts / 86400) * 86400, COUNT(*),
+                        COALESCE(SUM(CASE WHEN solved = 1 THEN 1 ELSE 0 END), 0)
+                   FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2
+                  GROUP BY ts / 86400",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![first, end], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (day, attempts, solved) = row.map_err(|e| e.to_string())?;
+            if let Some(index) = range_index(day, first, len) {
+                totals[index].puzzle_attempts = attempts;
+                totals[index].puzzle_solved = solved;
+            }
+        }
+    }
+    for (sql, endgame) in [
+        (
+            "SELECT (ts / 86400) * 86400, COUNT(*) FROM endgame_attempts
+             WHERE ts >= ?1 AND ts < ?2 GROUP BY ts / 86400",
+            true,
+        ),
+        (
+            "SELECT (ts / 86400) * 86400, COUNT(*) FROM rep_review_log
+             WHERE ts >= ?1 AND ts < ?2 GROUP BY ts / 86400",
+            false,
+        ),
+    ] {
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![first, end], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (day, value) = row.map_err(|e| e.to_string())?;
+            if let Some(index) = range_index(day, first, len) {
+                if endgame {
+                    totals[index].endgame_attempts = value;
+                } else {
+                    totals[index].rep_reviews = value;
+                }
+            }
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT (e.completed_ts / 86400) * 86400, COUNT(*),
+                        COALESCE(SUM(t.duration_min), 0) * 100
+                   FROM study_events e JOIN study_templates t ON t.id = e.template_id
+                  WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
+                    AND e.completed_ts >= ?1 AND e.completed_ts < ?2
+                    AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')
+                  GROUP BY e.completed_ts / 86400",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![first, end], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (day, reviews, centi) = row.map_err(|e| e.to_string())?;
+            if let Some(index) = range_index(day, first, len) {
+                totals[index].game_reviews = reviews;
+                totals[index].analysis_centi = centi;
+            }
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT played_ts, time_control, time_class, moves_count
+                   FROM games
+                  WHERE played_ts >= ?1 AND played_ts < ?2 AND analysis_excluded = 0",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![first, end], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (ts, control, class, moves) = row.map_err(|e| e.to_string())?;
+            if let Some(index) = range_index(day_bucket(ts), first, len) {
+                totals[index].play_centi +=
+                    (game_minutes(&control, &class, moves) * 100.0).round() as i64;
+            }
+        }
+    }
+
+    let today = day_bucket(now);
     let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
-    let due_reviews = if day_start < today_start {
-        0
-    } else if day_start == today_start {
-        // Heute: alles Überfällige plus neue Karten.
-        conn.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
-            ),
-            params![day_end],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?
-    } else {
-        conn.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM rep_nodes
-                 WHERE {my_move} AND reps > 0 AND due_ts >= ?1 AND due_ts < ?2"
-            ),
-            params![day_start, day_end],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?
-    };
-    Ok(StudyDay {
-        day: iso_day(day_start),
-        puzzle_attempts,
-        puzzle_solved,
-        endgame_attempts,
-        rep_reviews,
-        game_reviews,
-        actual_minutes: round_centi(actual_centi),
-        due_reviews,
-    })
+    if let Some(index) = range_index(today, first, len) {
+        totals[index].due_reviews = conn
+            .query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
+                ),
+                params![today + 86_400],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    let future_start = first.max(today + 86_400);
+    if future_start < end {
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT (due_ts / 86400) * 86400, COUNT(*) FROM rep_nodes
+                 WHERE {my_move} AND reps > 0 AND due_ts >= ?1 AND due_ts < ?2
+                 GROUP BY due_ts / 86400"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![future_start, end], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (day, due) = row.map_err(|e| e.to_string())?;
+            if let Some(index) = range_index(day, first, len) {
+                totals[index].due_reviews = due;
+            }
+        }
+    }
+
+    Ok(totals
+        .into_iter()
+        .enumerate()
+        .map(|(index, total)| {
+            let actual_centi = total.play_centi
+                + total.puzzle_attempts * CENTI_PER_PUZZLE
+                + total.endgame_attempts * CENTI_PER_DRILL
+                + total.rep_reviews * CENTI_PER_REVIEW
+                + total.analysis_centi;
+            StudyDay {
+                day: iso_day(first + index as i64 * 86_400),
+                puzzle_attempts: total.puzzle_attempts,
+                puzzle_solved: total.puzzle_solved,
+                endgame_attempts: total.endgame_attempts,
+                rep_reviews: total.rep_reviews,
+                game_reviews: total.game_reviews,
+                actual_minutes: round_centi(actual_centi),
+                due_reviews: total.due_reviews,
+            }
+        })
+        .collect())
 }
 
 fn calendar_from_conn(
@@ -353,12 +473,8 @@ fn calendar_from_conn(
     let (Some(first), Some(last)) = (day_start_ts(start_day), day_start_ts(end_day)) else {
         return Err("Ungültiger Kalenderzeitraum".into());
     };
-    let mut days = Vec::new();
-    let mut cursor = first;
-    while cursor <= last && days.len() < 42 {
-        days.push(study_day(conn, cursor, now)?);
-        cursor += 86_400;
-    }
+    let capped_last = last.min(first + 41 * 86_400);
+    let days = study_days(conn, first, capped_last, now)?;
     Ok(StudyCalendar {
         templates,
         events,
@@ -669,6 +785,9 @@ fn study_data_from_conn(
 ) -> Result<StudyData, String> {
     let today = now / 86_400;
     let day_start = today * 86_400;
+    // One grouped pass covers both the last seven activity days and the next
+    // seven due-date buckets (today is the shared middle element).
+    let summary_days = study_days(conn, day_start - 6 * 86_400, day_start + 6 * 86_400, now)?;
 
     // ── Repertoire-Fälligkeiten ──────────────────────────────────────────────
     // my_move-Parität wie in repertoire.rs: Weiß trainiert ungerade Halbzüge.
@@ -683,31 +802,11 @@ fn study_data_from_conn(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut due_week = Vec::with_capacity(7);
+    let due_week: Vec<i64> = summary_days[6..13]
+        .iter()
+        .map(|day| day.due_reviews)
+        .collect();
     // Heute: alles, was bis Tagesende fällig ist (inkl. neuer Karten).
-    due_week.push(
-        conn.query_row(
-            &format!(
-                "SELECT COUNT(*) FROM rep_nodes WHERE {my_move} AND (reps = 0 OR due_ts < ?1)"
-            ),
-            params![day_start + 86_400],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?,
-    );
-    for k in 1..7i64 {
-        due_week.push(
-            conn.query_row(
-                &format!(
-                    "SELECT COUNT(*) FROM rep_nodes
-                     WHERE {my_move} AND reps > 0 AND due_ts >= ?1 AND due_ts < ?2"
-                ),
-                params![day_start + k * 86_400, day_start + (k + 1) * 86_400],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?,
-        );
-    }
 
     // ── Backlog & Tagesziel ──────────────────────────────────────────────────
     let unanalyzed: i64 = conn
@@ -718,65 +817,39 @@ fn study_data_from_conn(
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
-    let today_puzzle_attempts = count(
-        conn,
-        "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
-        day_start,
-        day_start + 86_400,
-    )?;
+    let today_puzzle_attempts = summary_days[6].puzzle_attempts;
     // ── Aktivität der letzten 7 Tage ─────────────────────────────────────────
-    let mut activity = Vec::with_capacity(7);
-    for k in (0..7i64).rev() {
-        let lo = day_start - k * 86_400;
-        let hi = lo + 86_400;
-        activity.push(DayActivity {
-            day_ts: lo,
-            puzzle_attempts: count(
-                conn,
-                "SELECT COUNT(*) FROM puzzle_attempts WHERE ts >= ?1 AND ts < ?2",
-                lo,
-                hi,
-            )?,
-            puzzle_solved: count(
-                conn,
-                "SELECT COUNT(*) FROM puzzle_attempts WHERE solved = 1 AND ts >= ?1 AND ts < ?2",
-                lo,
-                hi,
-            )?,
-            endgame_attempts: count(
-                conn,
-                "SELECT COUNT(*) FROM endgame_attempts WHERE ts >= ?1 AND ts < ?2",
-                lo,
-                hi,
-            )?,
-            rep_reviews: count(
-                conn,
-                "SELECT COUNT(*) FROM rep_review_log WHERE ts >= ?1 AND ts < ?2",
-                lo,
-                hi,
-            )?,
-            game_reviews: completed_analysis_load(conn, lo, hi)?.0,
-        });
-    }
+    let activity = summary_days[..7]
+        .iter()
+        .enumerate()
+        .map(|(index, day)| DayActivity {
+            day_ts: day_start - (6 - index as i64) * 86_400,
+            puzzle_attempts: day.puzzle_attempts,
+            puzzle_solved: day.puzzle_solved,
+            endgame_attempts: day.endgame_attempts,
+            rep_reviews: day.rep_reviews,
+            game_reviews: day.game_reviews,
+        })
+        .collect();
 
     // ── Streak: zusammenhängende Tage mit irgendeiner Lernaktivität ─────────
     let mut days: BTreeSet<i64> = BTreeSet::new();
-    for sql in [
-        "SELECT DISTINCT ts / 86400 FROM puzzle_attempts",
-        "SELECT DISTINCT ts / 86400 FROM endgame_attempts",
-        "SELECT DISTINCT ts / 86400 FROM rep_review_log",
-        "SELECT DISTINCT e.completed_ts / 86400
-           FROM study_events e JOIN study_templates t ON t.id = e.template_id
-          WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
-            AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
-    ] {
-        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        for d in rows {
-            days.insert(d.map_err(|e| e.to_string())?);
-        }
+    let mut stmt = conn
+        .prepare(
+            "SELECT ts / 86400 FROM puzzle_attempts
+             UNION SELECT ts / 86400 FROM endgame_attempts
+             UNION SELECT ts / 86400 FROM rep_review_log
+             UNION SELECT e.completed_ts / 86400
+               FROM study_events e JOIN study_templates t ON t.id = e.template_id
+              WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
+                AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    for day in rows {
+        days.insert(day.map_err(|e| e.to_string())?);
     }
     let mut streak = 0i64;
     // Heute zählt, sobald etwas passiert ist; sonst ab gestern rückwärts.

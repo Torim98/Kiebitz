@@ -4,6 +4,7 @@ import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import Games from "./Games";
+import { emitDataChange } from "../lib/changes";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
@@ -40,6 +41,7 @@ let listedGame: typeof game & { analysis_excluded?: boolean } = { ...game };
 
 beforeEach(() => {
   localStorage.clear();
+  emitDataChange();
   listedGame = { ...game };
   invokeMock.mockReset();
   vi.mocked(openDialog).mockReset();
