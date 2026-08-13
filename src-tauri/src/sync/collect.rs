@@ -463,6 +463,33 @@ fn collect_rep_reviews(conn: &Connection, since: i64) -> Result<Vec<SyncRepRevie
     rows
 }
 
+fn collect_study_sessions(
+    conn: &Connection,
+    since: i64,
+) -> Result<Vec<SyncStudySession>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sync_key, area, start_ts, end_ts, seconds, updated_ts
+             FROM study_sessions WHERE updated_ts >= ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![since.saturating_sub(SLACK)], |r| {
+            Ok(SyncStudySession {
+                sync_key: r.get(0)?,
+                area: r.get(1)?,
+                start_ts: r.get(2)?,
+                end_ts: r.get(3)?,
+                seconds: r.get(4)?,
+                updated_ts: r.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string());
+    rows
+}
+
 fn collect_study_focus(conn: &Connection, since: i64) -> Result<Vec<SyncStudyFocus>, String> {
     let mut stmt = conn
         .prepare(

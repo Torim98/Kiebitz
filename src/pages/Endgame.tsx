@@ -27,6 +27,7 @@ import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
+import { useTrainingSession } from "../lib/session";
 import { Button, Card } from "../components/ui";
 import { deInt } from "../lib/format";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
@@ -52,6 +53,8 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
+  // Endspielbudget: gemessene Zeit am Brett statt vier Minuten je Drill.
+  useTrainingSession("endgames", desktop);
 
   const firstDrill =
     (initialCategory && ENDGAME_DRILLS.find((d) => d.category === initialCategory)) ??

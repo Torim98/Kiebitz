@@ -181,6 +181,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         let response = handle_sync(&mut desktop, &request).unwrap();
         apply_game_tombstones(&mut mobile, &response.game_tombstones).unwrap();
@@ -212,6 +213,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         let second_response = handle_sync(&mut desktop, &second_request).unwrap();
         apply_games(&mut mobile, &second_response.games).unwrap();
@@ -258,6 +260,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         assert_eq!(request.games.len(), 1, "manual games bypass the cursor");
         let response = handle_sync(&mut desktop, &request).unwrap();
@@ -551,6 +554,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         let response = handle_sync(&mut desktop, &request).unwrap();
         apply_puzzle_attempts(&mobile, &response.puzzle_attempts).unwrap();
@@ -861,6 +865,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         let tls_config = pinned_tls_config(&fingerprint).unwrap();
         let agent = ureq::AgentBuilder::new()
@@ -917,6 +922,7 @@ mod tests {
             study_events: vec![],
             rep_reviews: vec![],
             study_focus: vec![],
+            study_sessions: vec![],
         };
         let resp = handle_sync(&mut desktop, &req).unwrap();
         assert_eq!(resp.games.len(), 1);

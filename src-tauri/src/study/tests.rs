@@ -469,6 +469,72 @@ mod tests {
     }
 
     #[test]
+    fn measures_game_length_from_the_clocks() {
+        // 5+3, beide Seiten haben je zwei Züge gemacht. Weiß steht am Ende bei
+        // 4:50 (29000), Schwarz bei 4:40 (28000). Verbraucht hat damit Weiß
+        // 300 + 2×3 − 290 = 16 s, Schwarz 300 + 2×3 − 280 = 26 s.
+        let seconds = game_seconds_measured("29500 29000 29000 28000", "300+3").unwrap();
+        assert!((seconds - 42.0).abs() < 0.01, "gemessen: {seconds}");
+
+        // Ohne Uhren oder ohne Zeitvorgabe gibt es nichts zu messen.
+        assert!(game_seconds_measured("", "300+3").is_none());
+        assert!(game_seconds_measured("29500 29000", "").is_none());
+        assert!(game_seconds_measured("29500 29000", "-").is_none());
+        // Uhren, die nicht zur angegebenen Vorgabe passen, zählen lieber nicht.
+        assert!(game_seconds_measured("60000 60000", "300+0").is_none());
+
+        // Die Partieminuten nehmen die Messung, wenn es eine gibt.
+        assert_eq!(
+            game_minutes_real("29500 29000 29000 28000", "300+3", "blitz", 2).round(),
+            1.0
+        );
+        // Ohne Uhren bleibt die Schätzung aus der Zeitkontrolle.
+        assert_eq!(game_minutes_real("", "300+3", "blitz", 40).round(), 4.0);
+        // Fernpartien zählen weiterhin gar nicht.
+        assert_eq!(game_minutes_real("100 90", "1209600+0", "daily", 60), 0.0);
+    }
+
+    #[test]
+    fn measured_sessions_replace_the_estimate_from_their_first_day_on() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+
+        // Ein Puzzle-Versuch gestern, einer heute · dazu eine echte Messung,
+        // aber erst ab heute.
+        for day in [TODAY - 1, TODAY] {
+            conn.execute(
+                "INSERT INTO puzzle_attempts (puzzle_id, ts, solved, rating_before, rating_after)
+                 VALUES ('p', ?1, 1, 1500, 1510)",
+                params![day * 86_400 + 3_600],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s1', 'tactics', ?1, ?1, 900, ?1)",
+            params![TODAY * 86_400 + 3_600],
+        )
+        .unwrap();
+
+        let program = training_program_from_conn(&conn, NOW, 28).unwrap();
+        let today = program
+            .days
+            .iter()
+            .find(|d| d.day_ts == TODAY * 86_400)
+            .unwrap();
+        let yesterday = program
+            .days
+            .iter()
+            .find(|d| d.day_ts == (TODAY - 1) * 86_400)
+            .unwrap();
+
+        // Heute zählt die Messung: 900 s sind 15 Minuten, nicht 1,5.
+        assert_eq!(today.tactics, 15);
+        // Gestern liegt vor der ersten Messung und behält die Hochrechnung.
+        assert_eq!(yesterday.tactics, 2);
+    }
+
+    #[test]
     fn game_minutes_fall_back_to_the_time_class() {
         // Zeitkontrolle mit Inkrement: 300 s + 3 s × 20 Züge = 360 s → 4 min.
         assert_eq!(game_minutes("300+3", "blitz", 40).round(), 4.0);

@@ -202,6 +202,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 study_events: collect_study_events(&conn, since)?,
                 rep_reviews: collect_rep_reviews(&conn, since)?,
                 study_focus: collect_study_focus(&conn, since)?,
+                study_sessions: collect_study_sessions(&conn, since)?,
             };
             (since, req)
         };
@@ -241,6 +242,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let study_events = apply_study_events(&conn, &resp.study_events)?;
         let rep_reviews = apply_rep_reviews(&conn, &resp.rep_reviews)?;
         let study_focus = apply_study_focus(&conn, &resp.study_focus)?;
+        let study_sessions = apply_study_sessions(&conn, &resp.study_sessions)?;
         db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
         Ok(SyncSummary {
             games_pulled,
@@ -248,7 +250,11 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
             own_puzzles_pulled,
             puzzle_attempts_pulled: pz,
             endgame_attempts_pulled: eg,
-            study_merged: study_templates + study_events + rep_reviews + study_focus,
+            study_merged: study_templates
+                + study_events
+                + rep_reviews
+                + study_focus
+                + study_sessions,
         })
     })
     .await

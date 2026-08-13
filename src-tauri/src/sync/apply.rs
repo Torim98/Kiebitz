@@ -686,6 +686,44 @@ fn apply_rep_reviews(conn: &Connection, reviews: &[SyncRepReview]) -> Result<usi
     Ok(merged)
 }
 
+/// Sitzungen vereinigen: der weiter fortgeschrittene Stand gewinnt.
+///
+/// Kein Last-Write-Wins über `updated_ts`, sondern MAX über die Sekunden. Ein
+/// Gerät, das eine Sitzung geführt und später einen älteren Stand derselben
+/// Sitzung zurückbekommt, soll seine Messung nicht verlieren.
+fn apply_study_sessions(
+    conn: &Connection,
+    sessions: &[SyncStudySession],
+) -> Result<usize, String> {
+    let mut merged = 0usize;
+    let mut upsert = conn
+        .prepare(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(sync_key) DO UPDATE SET
+                seconds = MAX(study_sessions.seconds, excluded.seconds),
+                end_ts = MAX(study_sessions.end_ts, excluded.end_ts),
+                updated_ts = MAX(study_sessions.updated_ts, excluded.updated_ts)",
+        )
+        .map_err(|e| e.to_string())?;
+    for session in sessions {
+        if session.sync_key.trim().is_empty() || session.seconds <= 0 {
+            continue;
+        }
+        merged += upsert
+            .execute(params![
+                session.sync_key,
+                session.area,
+                session.start_ts,
+                session.end_ts,
+                session.seconds,
+                session.updated_ts
+            ])
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(merged)
+}
+
 fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<usize, String> {
     let mut merged = 0usize;
     let mut find_focus = conn
@@ -777,6 +815,7 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
     apply_study_events(conn, &req.study_events)?;
     apply_rep_reviews(conn, &req.rep_reviews)?;
     apply_study_focus(conn, &req.study_focus)?;
+    apply_study_sessions(conn, &req.study_sessions)?;
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
@@ -790,5 +829,6 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         study_events: collect_study_events(conn, req.since)?,
         rep_reviews: collect_rep_reviews(conn, req.since)?,
         study_focus: collect_study_focus(conn, req.since)?,
+        study_sessions: collect_study_sessions(conn, req.since)?,
     })
 }

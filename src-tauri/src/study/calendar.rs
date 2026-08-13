@@ -205,6 +205,10 @@ struct DayTotals {
     game_reviews: i64,
     play_centi: i64,
     analysis_centi: i64,
+    /// Gemessene Trainingszeit der vier Trainerseiten, in Hundertstelminuten.
+    measured_centi: i64,
+    /// Gilt für diesen Tag schon die Messung? Davor zählen die Hochrechnungen.
+    measured: bool,
     due_reviews: i64,
 }
 
@@ -218,6 +222,18 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
     let len = ((last - first).div_euclid(86_400) + 1).max(0) as usize;
     let end = first + len as i64 * 86_400;
     let mut totals: Vec<DayTotals> = (0..len).map(|_| DayTotals::default()).collect();
+
+    // Gemessene Trainingszeit · dieselbe Quelle wie im Trainingsprogramm,
+    // damit Kalender und Budget nie zwei verschiedene Zahlen zeigen.
+    let measured_from = measurement_start(conn)?;
+    for index in 0..len {
+        totals[index].measured = measured_day(measured_from, first + index as i64 * 86_400);
+    }
+    for ((day, _area), seconds) in measured_seconds(conn, first, end)? {
+        if let Some(index) = range_index(day, first, len) {
+            totals[index].measured_centi += (seconds as f64 / 60.0 * 100.0).round() as i64;
+        }
+    }
 
     {
         let mut stmt = conn
@@ -306,7 +322,7 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
     {
         let mut stmt = conn
             .prepare(
-                "SELECT played_ts, time_control, time_class, moves_count
+                "SELECT played_ts, clocks, time_control, time_class, moves_count
                    FROM games
                   WHERE played_ts >= ?1 AND played_ts < ?2 AND analysis_excluded = 0",
             )
@@ -317,15 +333,16 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         for row in rows {
-            let (ts, control, class, moves) = row.map_err(|e| e.to_string())?;
+            let (ts, clocks, control, class, moves) = row.map_err(|e| e.to_string())?;
             if let Some(index) = range_index(day_bucket(ts), first, len) {
                 totals[index].play_centi +=
-                    (game_minutes(&control, &class, moves) * 100.0).round() as i64;
+                    (game_minutes_real(&clocks, &control, &class, moves) * 100.0).round() as i64;
             }
         }
     }
@@ -369,11 +386,18 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
         .into_iter()
         .enumerate()
         .map(|(index, total)| {
-            let actual_centi = total.play_centi
-                + total.puzzle_attempts * CENTI_PER_PUZZLE
-                + total.endgame_attempts * CENTI_PER_DRILL
-                + total.rep_reviews * CENTI_PER_REVIEW
-                + total.analysis_centi;
+            // Partien zählen immer mit, sie werden aus den Uhren gemessen.
+            // Für das Training am Gerät gilt entweder die Messung oder — vor
+            // deren Beginn — die alte Hochrechnung, nie beides.
+            let training_centi = if total.measured {
+                total.measured_centi
+            } else {
+                total.puzzle_attempts * CENTI_PER_PUZZLE
+                    + total.endgame_attempts * CENTI_PER_DRILL
+                    + total.rep_reviews * CENTI_PER_REVIEW
+                    + total.analysis_centi
+            };
+            let actual_centi = total.play_centi + training_centi;
             StudyDay {
                 day: iso_day(first + index as i64 * 86_400),
                 puzzle_attempts: total.puzzle_attempts,

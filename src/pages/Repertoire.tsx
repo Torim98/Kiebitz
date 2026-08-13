@@ -38,6 +38,7 @@ import {
   type RepStats,
 } from "../lib/repertoire";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
+import { useTrainingSession } from "../lib/session";
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
 import RepertoireTrainer from "../components/RepertoireTrainer";
@@ -273,6 +274,8 @@ function Panel({
 function LiveRepertoire() {
   const t = useT();
   const compact = useMobileShell();
+  // Eröffnungsbudget: gemessene Zeit im Repertoire statt 30 Sekunden je Karte.
+  useTrainingSession("openings");
   const [nodes, setNodes] = useState<RepNode[]>([]);
   const [stats, setStats] = useState<RepStats | null>(null);
   const [gaps, setGaps] = useState<RepGap[] | null>(null);

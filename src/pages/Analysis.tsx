@@ -20,6 +20,7 @@ import { featuredGame } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key, type Locale, type TFunc } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
+import { useTrainingSession } from "../lib/session";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { getGame, listGameSummaries, setGameNote, setGameTags, type GameRecord, type GameSummary } from "../lib/db";
 import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
@@ -302,6 +303,11 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
   const desktop = backend.mode === "desktop";
+  // Analysebudget: die Zeit, die vor einer Partie verbracht wird. Bisher zählte
+  // nur ein im Kalender abgehakter Termin · eine Engine, die im Hintergrund
+  // 1.000 Partien rechnet, hat nie ein Partie-Review ersetzt, aber wer eine
+  // Stunde lang durch seine Fehler blättert, hat sie auch nicht angesammelt.
+  useTrainingSession("analysis", desktop);
 
   const [games, setGames] = useState<GameSummary[]>([]);
   const [game, setGame] = useState<GameRecord | null>(null);

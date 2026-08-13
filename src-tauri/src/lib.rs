@@ -503,6 +503,7 @@ pub fn run() {
             study::set_study_focus,
             study::close_study_focus,
             study::training_program,
+            study::record_study_time,
             sync::sync_info,
             sync::sync_server_start,
             sync::sync_now,

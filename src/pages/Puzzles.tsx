@@ -31,6 +31,7 @@ import {
 import { getSettings } from "../lib/settings";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { onDataChange } from "../lib/changes";
+import { useTrainingSession } from "../lib/session";
 import Board from "../components/Board";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
@@ -162,6 +163,9 @@ function TrainerView({
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  // Die hier verbrachte Zeit ist das Taktikbudget · gemessen, nicht aus der
+  // Zahl der Versuche hochgerechnet.
+  useTrainingSession("tactics");
   const [puzzle, setPuzzle] = useState<PuzzleOut | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   /** Tatsächlich gezeigte Stellungen, inklusive Puzzle-Ausgangsstellung. */

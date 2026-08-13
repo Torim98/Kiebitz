@@ -636,6 +636,35 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
          CREATE INDEX IF NOT EXISTS idx_study_focus_status ON study_focus(status, start_ts);",
     )
     .map_err(|e| format!("Trainingsprogramm-Schema fehlgeschlagen: {e}"))?;
+
+    // Migration v16: gemessene Trainingszeit.
+    //
+    // Das Trainingsbudget verglich bis hierhin eine getippte Wochenvorgabe mit
+    // einer Hochrechnung aus Zählern (1,5 Minuten je Puzzle, 4 je Drill …).
+    // Beide Seiten waren Schätzungen, und die Lücke dazwischen war die ganze
+    // Aussage der Seite. `study_sessions` hält stattdessen, was tatsächlich
+    // vor dem Brett verbracht wurde: die Trainerseiten zählen aktive Sekunden
+    // und schreiben sie regelmäßig fort.
+    //
+    // Eine Sitzung ist über `sync_key` identifiziert und wächst · deshalb ist
+    // dies keine append-only Tabelle wie `puzzle_attempts`, sondern eine mit
+    // Fortschreibung, und der Sync vereinigt sie über MAX(seconds).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS study_sessions (
+            id         INTEGER PRIMARY KEY,
+            sync_key   TEXT NOT NULL,
+            area       TEXT NOT NULL,
+            start_ts   INTEGER NOT NULL,
+            end_ts     INTEGER NOT NULL DEFAULT 0,
+            seconds    INTEGER NOT NULL DEFAULT 0,
+            updated_ts INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_study_sessions_key
+           ON study_sessions(sync_key);
+         CREATE INDEX IF NOT EXISTS idx_study_sessions_start
+           ON study_sessions(start_ts);",
+    )
+    .map_err(|e| format!("Sitzungs-Schema fehlgeschlagen: {e}"))?;
     conn.execute_batch(
         "UPDATE study_focus
            SET sync_key = 'focus-' || created_ts || '-' || id

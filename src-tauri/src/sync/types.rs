@@ -209,6 +209,22 @@ pub struct SyncStudyFocus {
     pub deleted: bool,
 }
 
+/// Eine gemessene Trainingssitzung.
+///
+/// Anders als Puzzle-Versuche wächst eine Sitzung nach dem Anlegen weiter ·
+/// deshalb reist sie mit ihrem Schlüssel und wird über MAX(seconds) vereinigt.
+/// Zwei Geräte können dieselbe Sitzung nicht gleichzeitig führen, also gewinnt
+/// schlicht der weiter fortgeschrittene Stand.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncStudySession {
+    pub sync_key: String,
+    pub area: String,
+    pub start_ts: i64,
+    pub end_ts: i64,
+    pub seconds: i64,
+    pub updated_ts: i64,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SyncRequest {
     pub code: String,
@@ -230,6 +246,10 @@ pub struct SyncRequest {
     pub rep_reviews: Vec<SyncRepReview>,
     #[serde(default)]
     pub study_focus: Vec<SyncStudyFocus>,
+    /// Ältere Gegenstellen kennen das Feld nicht · dort bleibt die gemessene
+    /// Zeit auf dem Gerät, auf dem sie angefallen ist.
+    #[serde(default)]
+    pub study_sessions: Vec<SyncStudySession>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -255,4 +275,8 @@ pub struct SyncResponse {
     pub rep_reviews: Vec<SyncRepReview>,
     #[serde(default)]
     pub study_focus: Vec<SyncStudyFocus>,
+    /// Ältere Gegenstellen kennen das Feld nicht · dort bleibt die gemessene
+    /// Zeit auf dem Gerät, auf dem sie angefallen ist.
+    #[serde(default)]
+    pub study_sessions: Vec<SyncStudySession>,
 }

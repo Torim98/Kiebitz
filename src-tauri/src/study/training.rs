@@ -32,19 +32,51 @@ pub struct TrainingProgram {
     pub observed_weekly_minutes: i64,
 }
 
-/// Aufwandsschätzung in Hundertstelminuten. Kalender und Ist-Budget benutzen
-/// dieselben Konstanten; gerundet wird erst nach dem Summieren.
+/// Aufwandsschätzung in Hundertstelminuten · **nur noch für die Zeit vor der
+/// ersten gemessenen Sitzung**. Ab dann zählt `study_sessions`, siehe
+/// `sessions.rs`. Die Konstanten stehen hier weiter, damit die Vergangenheit
+/// beim Update nicht auf null fällt.
 const CENTI_PER_PUZZLE: i64 = 150;
 const CENTI_PER_DRILL: i64 = 400;
 const CENTI_PER_REVIEW: i64 = 50;
+
+/// Gilt für diesen Tag schon die Messung?
+///
+/// Der Schnitt liegt am Tag der ersten Sitzung. Davor wäre eine gemessene Null
+/// keine Aussage, sondern nur die Abwesenheit des Features; danach ist sie
+/// genau die Aussage, um die es geht — an diesem Tag wurde nicht trainiert.
+fn measured_day(measurement_start: Option<i64>, day: i64) -> bool {
+    matches!(measurement_start, Some(start) if day >= day_bucket(start))
+}
 
 fn round_centi(value: i64) -> i64 {
     ((value.max(0) as f64) / 100.0).round() as i64
 }
 
-/// Spielminuten einer Partie aus ihrer Zeitkontrolle ("300+3"), sonst nach
-/// Zeitklasse geschätzt. Beide Seiten zusammen, gedeckelt · eine Fernpartie
-/// über zwei Wochen ist keine zweiwöchige Trainingseinheit.
+/// Spielminuten einer Partie.
+///
+/// Bringt die Partie Uhrenstände mit, ist die Dauer **gemessen**: verbraucht
+/// haben beide Seiten Grundzeit plus Zuschläge minus Restzeit, und genau so
+/// lange saß der Spieler vor dem Brett. Ohne Uhren bleibt die alte Schätzung
+/// aus der Zeitkontrolle · besser als die Partie zu verschweigen.
+fn game_minutes_real(
+    clocks: &str,
+    time_control: &str,
+    time_class: &str,
+    moves_count: i64,
+) -> f64 {
+    if matches!(time_class, "daily" | "correspondence") {
+        return 0.0;
+    }
+    match game_seconds_measured(clocks, time_control) {
+        Some(seconds) => (seconds / 60.0).clamp(0.0, 180.0),
+        None => game_minutes(time_control, time_class, moves_count),
+    }
+}
+
+/// Schätzung aus der Zeitkontrolle ("300+3"), sonst nach Zeitklasse. Beide
+/// Seiten zusammen, gedeckelt · eine Fernpartie über zwei Wochen ist keine
+/// zweiwöchige Trainingseinheit.
 fn game_minutes(time_control: &str, time_class: &str, moves_count: i64) -> f64 {
     // Bei Fernpartien verteilt sich die Arbeit über Tage; der Endzeitpunkt und
     // die mehrtägige Nominaluhr taugen nicht als Trainingsdauer. Eine erfundene
@@ -123,6 +155,14 @@ fn day_bucket(ts: i64) -> i64 {
     ts.div_euclid(86_400) * 86_400
 }
 
+/// Tageseintrag der Lastkurve, bei Bedarf angelegt.
+fn day_entry(map: &mut BTreeMap<i64, LoadDay>, day: i64) -> &mut LoadDay {
+    map.entry(day).or_insert(LoadDay {
+        day_ts: day,
+        ..Default::default()
+    })
+}
+
 #[tauri::command]
 pub fn training_program(db: State<db::Db>, days: Option<i64>) -> Result<TrainingProgram, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -137,8 +177,23 @@ fn training_program_from_conn(
     let today = day_bucket(now);
     let from = today - (window_days - 1) * 86_400;
     let mut by_day: BTreeMap<i64, LoadDay> = BTreeMap::new();
+    let measured_from = measurement_start(conn)?;
 
-    // Interne Trainer: ein Zeitstempel je tatsächlichem Versuch/Review.
+    // Gemessene Trainingszeit der vier Trainerseiten.
+    for ((day, area), seconds) in measured_seconds(conn, from, now + 86_400)? {
+        let entry = day_entry(&mut by_day, day);
+        let centi = (seconds as f64 / 60.0 * 100.0).round() as i64;
+        match area.as_str() {
+            "tactics" => entry.tactics += centi,
+            "endgames" => entry.endgames += centi,
+            "openings" => entry.openings += centi,
+            "analysis" => entry.analysis += centi,
+            _ => {}
+        }
+    }
+
+    // Tage vor der ersten Messung behalten die alte Hochrechnung aus Zählern.
+    // Ohne sie stünde die gesamte Vergangenheit am Tag des Updates auf null.
     for (sql, area) in [
         ("SELECT ts FROM puzzle_attempts WHERE ts >= ?1", "tactics"),
         ("SELECT ts FROM endgame_attempts WHERE ts >= ?1", "endgames"),
@@ -150,10 +205,10 @@ fn training_program_from_conn(
             .map_err(|e| e.to_string())?;
         for ts in rows {
             let day = day_bucket(ts.map_err(|e| e.to_string())?);
-            let entry = by_day.entry(day).or_insert(LoadDay {
-                day_ts: day,
-                ..Default::default()
-            });
+            if measured_day(measured_from, day) {
+                continue;
+            }
+            let entry = day_entry(&mut by_day, day);
             match area {
                 "tactics" => entry.tactics += CENTI_PER_PUZZLE,
                 "endgames" => entry.endgames += CENTI_PER_DRILL,
@@ -162,9 +217,10 @@ fn training_program_from_conn(
         }
     }
 
-    // Analysezeit ist eine bewusste, im Lernkalender abgehakte Sitzung. Eine
-    // Engine kann 1.000 Partien im Hintergrund rechnen, ohne dass der Nutzer
-    // 1.000 Partie-Reviews absolviert hat.
+    // Vor der Messung war Analysezeit das, was im Lernkalender abgehakt wurde ·
+    // eine Engine kann 1.000 Partien im Hintergrund rechnen, ohne dass jemand
+    // 1.000 Partie-Reviews gemacht hat. Seit der Messung zählt die Zeit auf der
+    // Analyseseite selbst.
     {
         let mut stmt = conn
             .prepare(
@@ -182,21 +238,19 @@ fn training_program_from_conn(
             .map_err(|e| e.to_string())?;
         for row in rows {
             let (ts, minutes) = row.map_err(|e| e.to_string())?;
-            by_day
-                .entry(day_bucket(ts))
-                .or_insert(LoadDay {
-                    day_ts: day_bucket(ts),
-                    ..Default::default()
-                })
-                .analysis += minutes.max(0) * 100;
+            let day = day_bucket(ts);
+            if measured_day(measured_from, day) {
+                continue;
+            }
+            day_entry(&mut by_day, day).analysis += minutes.max(0) * 100;
         }
     }
 
-    // Gespielte Partien: Minuten aus der Zeitkontrolle.
+    // Gespielte Partien: aus den Uhrenständen gemessen, sonst geschätzt.
     {
         let mut stmt = conn
             .prepare(
-                "SELECT played_ts, time_control, time_class, moves_count
+                "SELECT played_ts, clocks, time_control, time_class, moves_count
                  FROM games WHERE played_ts >= ?1 AND analysis_excluded = 0",
             )
             .map_err(|e| e.to_string())?;
@@ -206,22 +260,17 @@ fn training_program_from_conn(
                     r.get::<_, i64>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
-                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         for row in rows {
-            let (ts, tc, class, moves) = row.map_err(|e| e.to_string())?;
+            let (ts, clocks, tc, class, moves) = row.map_err(|e| e.to_string())?;
             let day = day_bucket(ts);
-            let centi = (game_minutes(&tc, &class, moves) * 100.0).round() as i64;
+            let centi = (game_minutes_real(&clocks, &tc, &class, moves) * 100.0).round() as i64;
             if centi > 0 {
-                by_day
-                    .entry(day)
-                    .or_insert(LoadDay {
-                        day_ts: day,
-                        ..Default::default()
-                    })
-                    .play += centi;
+                day_entry(&mut by_day, day).play += centi;
             }
         }
     }
