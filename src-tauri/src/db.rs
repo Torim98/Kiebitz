@@ -8,7 +8,7 @@ pub struct Db(pub Mutex<Connection>);
 
 /// Current SQLite schema version. It is stored only after the complete
 /// migration has committed successfully.
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
@@ -1432,6 +1432,72 @@ mod tests {
                 .unwrap();
             assert!(exists, "missing performance index {index}");
         }
+    }
+
+    #[test]
+    fn init_upgrades_v15_before_running_v16_game_queries() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE games (
+                id INTEGER PRIMARY KEY,
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                url TEXT NOT NULL DEFAULT '',
+                played_at TEXT NOT NULL DEFAULT '',
+                time_class TEXT NOT NULL DEFAULT '',
+                color TEXT NOT NULL DEFAULT '',
+                opponent TEXT NOT NULL DEFAULT '',
+                opp_elo INTEGER NOT NULL DEFAULT 0,
+                my_elo INTEGER NOT NULL DEFAULT 0,
+                result TEXT NOT NULL DEFAULT '',
+                opening TEXT NOT NULL DEFAULT '',
+                eco TEXT NOT NULL DEFAULT '',
+                moves_count INTEGER NOT NULL DEFAULT 0,
+                accuracy REAL,
+                moves TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                analyzed INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(source, source_id)
+             );
+             INSERT INTO games (source, source_id, played_at, opponent)
+             VALUES ('lichess', 'v15-game', '2026-08-12', 'Existing player');
+             PRAGMA user_version = 15;",
+        )
+        .unwrap();
+
+        init(&conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 16);
+        assert!(column_exists(&conn, "games", "termination").unwrap());
+        assert!(column_exists(&conn, "study_templates", "area").unwrap());
+        assert!(column_exists(&conn, "study_templates", "i18n_key").unwrap());
+
+        let study_sessions_exist: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'study_sessions'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(study_sessions_exist);
+
+        let page = list_games_page(
+            &conn,
+            &GamePageRequest {
+                limit: 10,
+                ..GamePageRequest::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(page.library_total, 1);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].opponent, "Existing player");
     }
 
     #[test]
