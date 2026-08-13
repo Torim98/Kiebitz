@@ -8,27 +8,10 @@
  *
  * Alle Minuten sind gemessen · siehe `lib/session.ts` und `study/sessions.rs`.
  */
-import { useI18n, type Key } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { deInt } from "../lib/format";
 import type { WeekBudget } from "../lib/week";
-import type { Area } from "../lib/study";
-
-const AREA_KEY: Record<Area, Key> = {
-  play: "plan.areaPlay",
-  tactics: "plan.areaTactics",
-  openings: "plan.areaOpenings",
-  endgames: "plan.areaEndgames",
-  analysis: "plan.areaAnalysis",
-};
-
-/** Feste Farben je Bereich · dieselbe Zuordnung wie in der Tageszelle. */
-export const AREA_COLOR: Record<Area, string> = {
-  play: "var(--color-accent)",
-  tactics: "var(--color-blue)",
-  openings: "var(--color-violet)",
-  endgames: "var(--color-gold)",
-  analysis: "var(--color-cc)",
-};
+import { AREA_COLOR, AREA_KEY } from "../lib/study";
 
 export default function WeekBudgetBar({ budget }: { budget: WeekBudget }) {
   const { t } = useI18n();
@@ -47,9 +30,9 @@ export default function WeekBudgetBar({ budget }: { budget: WeekBudget }) {
           })}
         </span>
         <span className="text-[12px] text-ink3">
-          {budget.remaining === 0
+          {budget.open === 0
             ? t("st.weekBudgetDone")
-            : t("st.weekBudgetLeft", { m: deInt(budget.remaining) })}
+            : t("st.weekBudgetLeft", { m: deInt(budget.open) })}
         </span>
       </div>
 

@@ -15,7 +15,7 @@
 /// Vor der ersten gemessenen Sitzung gibt es keine Messwerte. Für diese Tage
 /// bleibt die alte Hochrechnung stehen — sonst fiele die Vergangenheit am Tag
 /// des Updates auf null, und das wäre eine schlechtere Lüge als die Schätzung.
-
+///
 /// Bereiche, für die eine Sitzung gemessen werden kann. „play" fehlt bewusst:
 /// gespielt wird außerhalb von Kiebitz, dort messen die Partieuhren.
 const SESSION_AREAS: [&str; 4] = ["tactics", "openings", "endgames", "analysis"];
@@ -145,8 +145,9 @@ pub fn game_seconds_measured(clocks: &str, time_control: &str) -> Option<f64> {
 
     let mut total = 0.0;
     for side in 0..2usize {
-        let moves = values.iter().skip(side).step_by(2).count() as f64;
-        let Some(last) = values.iter().skip(side).step_by(2).last() else {
+        let own: Vec<f64> = values.iter().skip(side).step_by(2).copied().collect();
+        let moves = own.len() as f64;
+        let Some(last) = own.last() else {
             continue;
         };
         // Der gespeicherte Reststand enthält den Zuschlag des jeweiligen Zuges

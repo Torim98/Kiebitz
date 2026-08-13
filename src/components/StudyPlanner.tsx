@@ -13,7 +13,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button, Card } from "./ui";
-import { useMobileShell } from "./MobileShell";
 import { useI18n, type Key } from "../lib/i18n";
 import {
   completeStudyUnit,
@@ -26,6 +25,8 @@ import {
   scheduleStudyUnit,
   templateText,
   AREAS,
+  AREA_COLOR,
+  AREA_KEY,
   REPEAT_RULES,
   REPEAT_STEP_DAYS,
   type Area,
@@ -35,6 +36,7 @@ import {
   type StudyTemplate,
   type StudyTemplateInput,
 } from "../lib/study";
+import { templateArea } from "../lib/plan";
 import { onDataChange } from "../lib/changes";
 import { isoDay } from "../lib/dates";
 import { isStoreCapture } from "../lib/storeCapture";
@@ -46,14 +48,6 @@ const EMPTY_TEMPLATE: StudyTemplateInput = {
   tool: "",
   description: "",
   area: "",
-};
-
-const AREA_KEY: Record<Area, Key> = {
-  play: "plan.areaPlay",
-  tactics: "plan.areaTactics",
-  openings: "plan.areaOpenings",
-  endgames: "plan.areaEndgames",
-  analysis: "plan.areaAnalysis",
 };
 
 function mondayOf(date: Date): Date {
@@ -188,7 +182,6 @@ function dayAtPoint(x: number, y: number): string | null {
 export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
-  const mobile = useMobileShell();
   // Der Kalender ist der Hauptinhalt; die Vorlagen bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -389,11 +382,12 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
             <div className="text-[11.5px] text-ink3">{t("st.calendarHint")}</div>
           </div>
 
-          {/* Mobil steht die Woche als Agenda untereinander · das Sieben-Spalten-
-              Raster braucht 760 px und wäre nur quer scrollend lesbar. Die
-              Tageszellen behalten data-study-day, damit Ziehen weiter geht. */}
-          <div className={mobile ? "" : "overflow-x-auto pb-1"}>
-            <div className={mobile ? "flex flex-col gap-2" : "grid min-w-[760px] grid-cols-7 gap-2"}>
+          {/* Die Woche steht als Agenda untereinander · auch am Desktop.
+              Das frühere Sieben-Spalten-Raster brauchte 760 px, war nur quer
+              scrollend lesbar und hielt jeden Tag auf 300 px Höhe, ob er etwas
+              enthielt oder nicht. Die Tageszellen behalten data-study-day,
+              damit das Ziehen zwischen Tagen unverändert funktioniert. */}
+          <div className="flex flex-col gap-2">
               {days.map((date) => {
                 const day = isoDay(date);
                 const events = visibleCalendar.events.filter((event) => event.day === day);
@@ -401,17 +395,21 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                 const isToday = day === today;
                 const future = day > today;
                 const actualMinutes = metrics?.actual_minutes ?? 0;
-                const due = (metrics?.due_reviews ?? 0) + events.filter((event) => !event.completed).length;
-                // Leere vergangene Tage tragen mobil nichts bei und blähen die
-                // Liste auf · sie schrumpfen auf eine Zeile.
-                const collapsed = mobile && events.length === 0 && !isToday && due === 0;
+                const plannedMinutes = events.reduce(
+                  (sum, event) => sum + event.template.duration_min,
+                  0
+                );
+                const due =
+                  (metrics?.due_reviews ?? 0)
+                  + events.filter((event) => !event.completed && !event.auto_done).length;
+                // Leere vergangene Tage tragen nichts bei und blähen die Liste
+                // auf · sie schrumpfen auf eine Zeile.
+                const collapsed = events.length === 0 && !isToday && due === 0;
                 return (
                   <div
                     key={day}
                     data-study-day={day}
-                    className={`rounded-xl border transition-colors ${
-                      mobile ? "p-2.5" : "min-h-[300px] p-2"
-                    } ${
+                    className={`rounded-xl border p-2.5 transition-colors ${
                       drag?.over === day
                         ? "border-accent bg-accent-soft/60"
                         : isToday
@@ -420,30 +418,42 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                     }`}
                   >
                     <div
-                      className={
-                        mobile
-                          ? `flex items-baseline gap-2 ${collapsed ? "" : "border-b border-line pb-2"}`
-                          : "border-b border-line pb-2 text-center"
-                      }
+                      className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 ${
+                        collapsed ? "" : "border-b border-line pb-2"
+                      }`}
                     >
-                      <div
-                        className={`uppercase tracking-wide text-ink3 ${mobile ? "text-[11px]" : "text-[10.5px]"}`}
-                      >
+                      <div className="text-[11px] uppercase tracking-wide text-ink3">
                         {date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })}
                       </div>
                       <div
-                        className={`font-semibold ${mobile ? "text-[14px]" : "mt-0.5 text-[18px]"} ${isToday ? "text-accent" : "text-ink"}`}
+                        className={`text-[14px] font-semibold ${isToday ? "text-accent" : "text-ink"}`}
                       >
                         {date.getUTCDate()}
                       </div>
-                      <div
-                        className={`flex flex-wrap items-center gap-x-1.5 text-[10px] ${
-                          mobile ? "ml-auto justify-end" : "mt-0.5 justify-center"
-                        }`}
-                      >
+                      {/* Ist gegen Geplant · der Balken beantwortet für den Tag
+                          dieselbe Frage wie die Wochenleiste für die Woche. */}
+                      {plannedMinutes > 0 && !future && (
+                        <div
+                          className="h-1.5 w-16 shrink-0 self-center overflow-hidden rounded-full bg-panel3"
+                          title={`${t("st.actualMinutes", { n: actualMinutes })} · ${t("st.dayPlanned", { m: plannedMinutes })}`}
+                        >
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{
+                              width: `${Math.min(100, Math.round((actualMinutes / plannedMinutes) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10.5px]">
                         {!future && (
                           <span className={actualMinutes > 0 ? "text-ink2" : "text-ink3"}>
                             {t("st.actualMinutes", { n: actualMinutes })}
+                          </span>
+                        )}
+                        {plannedMinutes > 0 && (
+                          <span className="text-ink3">
+                            {t("st.dayPlanned", { m: plannedMinutes })}
                           </span>
                         )}
                         {(future || isToday) && due > 0 && (
@@ -451,13 +461,24 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                         )}
                       </div>
                     </div>
-                    <div className={`flex flex-col gap-2 ${collapsed ? "hidden" : "mt-2"}`}>
-                      {events.map((event) => (
+                    <div
+                      className={`gap-2 ${
+                        collapsed ? "hidden" : "mt-2 grid min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3"
+                      }`}
+                    >
+                      {events.map((event) => {
+                        const area = templateArea(event.template);
+                        const done = event.completed || event.auto_done;
+                        return (
                         <div
                           key={event.id}
+                          data-study-unit={event.id}
+                          // Der farbige Streifen links nennt den Bereich, ohne
+                          // eine Zeile dafür zu verbrauchen.
+                          style={area ? { borderLeftColor: AREA_COLOR[area], borderLeftWidth: 3 } : undefined}
                           className={`rounded-lg border p-2 ${
                             drag?.kind === "event" && drag.id === event.id ? "opacity-40" : ""
-                          } ${event.completed ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
+                          } ${done ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
                         >
                           <div className="flex items-start gap-1.5">
                             <span
@@ -474,11 +495,18 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                               <GripVertical size={12} />
                             </span>
                             <div className="min-w-0 flex-1">
-                              <div className={`text-[11.5px] font-medium leading-tight ${event.completed ? "text-ink3 line-through" : "text-ink"}`}>
+                              <div className={`text-[11.5px] font-medium leading-tight ${done ? "text-ink3 line-through" : "text-ink"}`}>
                                 {templateText(event.template, "title", t)}
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
                                 <span>{event.template.duration_min} min</span>
+                                {area && <span>{t(AREA_KEY[area])}</span>}
+                                {/* Von der gemessenen Zeit erfüllt · das
+                                    unterscheidet sich von Hand abgehakt und
+                                    soll auch so aussehen. */}
+                                {!event.completed && event.auto_done && (
+                                  <span className="text-accent">{t("st.doneMeasured")}</span>
+                                )}
                                 {event.repeat_rule && (
                                   <span
                                     className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
@@ -548,13 +576,10 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                             />
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                       {events.length === 0 && (
-                        <div
-                          className={`rounded-lg border border-dashed border-line px-2 text-center text-[10.5px] text-ink3 ${
-                            mobile ? "py-2" : "py-5"
-                          }`}
-                        >
+                        <div className="rounded-lg border border-dashed border-line px-2 py-2 text-center text-[10.5px] text-ink3">
                           {t("st.dropHere")}
                         </div>
                       )}
@@ -562,7 +587,6 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                   </div>
                 );
               })}
-            </div>
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
         </div>

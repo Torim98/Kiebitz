@@ -287,9 +287,9 @@ describe("Board end overlay", () => {
 
     const mark = screen.getByTestId("board-end-mark");
     // e1 aus Weiß-Sicht: fünfte Spalte (Index 4), unterste Reihe (Index 7) ·
-    // der Marker sitzt in der Feldmitte, also je 6,25 % weiter.
-    expect(mark.style.left).toBe("56.25%");
-    expect(mark.style.top).toBe("93.75%");
+    // der Marker sitzt auf der oberen rechten Feldecke wie die Zugmarker.
+    expect(mark.style.left).toBe("62.5%");
+    expect(mark.style.top).toBe("87.5%");
     expect(screen.getByText("Schwarz gewinnt durch Matt")).toBeTruthy();
   });
 
@@ -298,8 +298,8 @@ describe("Board end overlay", () => {
 
     // Gedreht liegt e1 in Spalte 3 und der obersten Reihe.
     const mark = screen.getByTestId("board-end-mark");
-    expect(mark.style.left).toBe("43.75%");
-    expect(mark.style.top).toBe("6.25%");
+    expect(mark.style.left).toBe("50%");
+    expect(mark.style.top).toBe("0%");
   });
 
   it("hides the strip on click and brings it back for the next ending", () => {

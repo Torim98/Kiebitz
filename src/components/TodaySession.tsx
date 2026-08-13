@@ -9,15 +9,16 @@
  * Hier ist es eine Liste: die für heute geplanten Einheiten in ihrer
  * Reihenfolge, jede mit ihrer Dosis aus dem Lernplan („15 Aufgaben, Band
  * 1420–1580, Motiv Fesselung") und einer Schaltfläche, die genau das öffnet.
- * Was ohne Plan täglich anfällt — fällige Wiederholungen, offene Analysen —
- * steht darunter, aber nur, solange es offen ist.
+ * Darunter steht, was ohne Plan täglich anfällt — fällige Wiederholungen,
+ * Tagesdosis, offene Analysen. Auch erledigt: der erreichte Zustand ist die
+ * halbe Rückmeldung, und eine Liste, die beim Abhaken verschwindet, nimmt sie
+ * einem wieder weg.
  */
 import { CheckCircle2, type LucideIcon } from "lucide-react";
 import { Button } from "./ui";
 import { useI18n, type Key } from "../lib/i18n";
 import { deInt } from "../lib/format";
-import { AREA_COLOR } from "./WeekBudgetBar";
-import type { Area } from "../lib/study";
+import { AREA_COLOR, type Area } from "../lib/study";
 
 export interface SessionItem {
   id: string;

@@ -65,6 +65,15 @@ describe("buildWeekBudget", () => {
     expect(buildWeekBudget(days, allocation, MONDAY, NOW).today).toBe(32);
   });
 
+  it("separates the budget shortfall from the sum of area gaps", () => {
+    // Weit über dem Spielsoll, dafür überall sonst darunter: das Wochenbudget
+    // ist erfüllt, die Bereichslücken bleiben es trotzdem.
+    const week = buildWeekBudget([day(0, { play: 220 })], allocation, MONDAY, NOW);
+    expect(week.minutes).toBe(220);
+    expect(week.open).toBe(0);
+    expect(week.remaining).toBe(140);
+  });
+
   it("names the gap per area and never counts a surplus as one", () => {
     const week = buildWeekBudget(days, allocation, MONDAY, NOW);
     const gaps = Object.fromEntries(week.byArea.map((entry) => [entry.area, entry.gap]));
@@ -88,7 +97,7 @@ describe("buildWeekBudget", () => {
 
   it("stays at zero without any target", () => {
     const week = buildWeekBudget([], [], MONDAY, NOW);
-    expect(week).toMatchObject({ minutes: 0, target: 0, progress: 0, remaining: 0 });
+    expect(week).toMatchObject({ minutes: 0, target: 0, progress: 0, open: 0, remaining: 0 });
   });
 });
 

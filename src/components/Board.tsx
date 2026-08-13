@@ -618,21 +618,13 @@ export default function Board({
     };
   };
 
-  /**
-   * Feldkoordinaten in Prozent des Bretts: die obere linke Ecke für den Ring,
-   * der ein ganzes Feld füllt, und die Mitte für den Marker darauf.
-   */
+  /** Obere linke Ecke eines Feldes in Prozent · Bezugspunkt für den Ring. */
   const squareBox = (square: string) => {
     const file = square.charCodeAt(0) - 97;
     const rank = Number(square[1]);
     const x = orientation === "white" ? file : 7 - file;
     const y = orientation === "white" ? 8 - rank : rank - 1;
-    return {
-      left: `${x * 12.5}%`,
-      top: `${y * 12.5}%`,
-      centerLeft: `${x * 12.5 + 6.25}%`,
-      centerTop: `${y * 12.5 + 6.25}%`,
-    };
+    return { left: `${x * 12.5}%`, top: `${y * 12.5}%` };
   };
 
   // Der Streifen ist eine Aussage, keine Sperre: er verschwindet auf Klick und
@@ -703,16 +695,14 @@ export default function Board({
                     boxShadow: `inset 0 0 0 max(2px, 0.5vw) ${end.color}`,
                   }}
                 />
+                {/* Der Marker sitzt auf der oberen rechten Feldecke · dieselbe
+                    Stelle wie die Zugqualitaets-Marker. Mittig auf dem Feld
+                    verdeckte er die Figur, um die es gerade geht. */}
                 <span
                   key={`mark-${endKey}`}
                   data-testid="board-end-mark"
-                  className="board-end-mark pointer-events-none absolute z-30 flex h-[8.5%] min-h-5 w-[8.5%] min-w-5 items-center justify-center rounded-full border border-white/90 text-[clamp(8px,1.35vw,14px)] font-extrabold leading-none text-white shadow-lg"
-                  style={{
-                    left: squareBox(endSquare).centerLeft,
-                    top: squareBox(endSquare).centerTop,
-                    transform: "translate(-50%, -50%)",
-                    background: end.color,
-                  }}
+                  className="board-end-mark pointer-events-none absolute z-30 flex h-[7.5%] min-h-4 w-[7.5%] min-w-4 items-center justify-center rounded-full border border-white/90 text-[clamp(8px,1.2vw,13px)] font-extrabold leading-none text-white shadow-lg"
+                  style={{ ...badgePosition(endSquare), background: end.color }}
                 >
                   {end.mark}
                 </span>

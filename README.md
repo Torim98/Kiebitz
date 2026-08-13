@@ -17,18 +17,22 @@ on your device. Devices sync directly with each other over the local network.
 - **Game database** — duplicate-safe import from chess.com/Lichess, PGN
   import/export, tags, per-game and per-move notes, position search.
 - **Analysis** — live Stockfish analysis plus a background pipeline that
-  annotates every game (per-move evals, inaccuracy/mistake/blunder, accuracy).
+  annotates every game (per-move evals, inaccuracy/mistake/blunder, accuracy),
+  and a board that shows how the game ended — checkmate, resignation, timeout
+  or draw, marked on the losing king.
 - **Insights** — four in-depth pages on playing strength, openings by color,
   behavioral patterns and error phases across your whole history.
 - **Repertoire** — a position tree trained with FSRS spaced repetition.
 - **Puzzles** — offline tactics from the Lichess database *and* from your own
   missed moves, with Elo and per-theme tracking.
 - **Endgames** — curated theoretical drills against the engine, optional Syzygy.
-- **Study** — a training programme: budget split across playing, tactics,
-  openings, endgames and analysis, quantified prescriptions (which puzzle band,
-  which opening, which endgame type), focus cycles that measure whether the
-  training actually changed anything, and a drag-and-drop study planner that can
-  be filled from the recommendations.
+- **Study** — a training programme built on measured time: the trainer pages
+  count the minutes you actually spend, games contribute their real length from
+  the clocks. A weekly bar shows where you stand, the day's session lists what
+  to do with the dose attached (which puzzle band, which opening, which endgame
+  type) and opens it in one click, planned units complete themselves once the
+  measured time covers them, and what a week leaves open carries into the next.
+  Focus cycles measure whether the training actually changed anything.
 - **Mobile** — Android build with native per-ABI Stockfish and encrypted
   device-to-device LAN sync (QR pairing) with the desktop as hub.
 

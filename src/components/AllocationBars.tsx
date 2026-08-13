@@ -6,18 +6,10 @@
  * Aussage. Der Ist-Wert stammt aus den letzten 28 Tagen, damit eine gute oder
  * schlechte Woche ihn nicht kippt.
  */
-import { useI18n, type Key } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { deInt } from "../lib/format";
 import type { AreaNeed } from "../lib/plan";
-import type { Area } from "../lib/study";
-
-const AREA_KEY: Record<Area, Key> = {
-  play: "plan.areaPlay",
-  tactics: "plan.areaTactics",
-  openings: "plan.areaOpenings",
-  endgames: "plan.areaEndgames",
-  analysis: "plan.areaAnalysis",
-};
+import { AREA_KEY } from "../lib/study";
 
 export default function AllocationBars({
   allocation,

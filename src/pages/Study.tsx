@@ -681,7 +681,10 @@ export default function Study({
               onClick={proposePlan}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-3 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
             >
-              <CalendarPlus size={15} /> {t("plan.proposeWeek")}
+              {/* Steht schon etwas in der Woche, füllt der Vorschlag nur die
+                  fehlenden Bereiche auf · das sagt auch die Beschriftung. */}
+              <CalendarPlus size={15} />{" "}
+              {(state?.events.length ?? 0) > 0 ? t("st.proposeTopUp") : t("plan.proposeWeek")}
             </button>
           ) : (
             <Card title={t("plan.proposalTitle")}>

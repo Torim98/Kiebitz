@@ -241,8 +241,8 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
     // Gemessene Trainingszeit · dieselbe Quelle wie im Trainingsprogramm,
     // damit Kalender und Budget nie zwei verschiedene Zahlen zeigen.
     let measured_from = measurement_start(conn)?;
-    for index in 0..len {
-        totals[index].measured = measured_day(measured_from, first + index as i64 * 86_400);
+    for (index, total) in totals.iter_mut().enumerate() {
+        total.measured = measured_day(measured_from, first + index as i64 * 86_400);
     }
     for ((day, _area), seconds) in measured_seconds(conn, first, end)? {
         if let Some(index) = range_index(day, first, len) {

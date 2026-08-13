@@ -15,15 +15,7 @@ import { localizeFindingParams } from "../lib/findings";
 import type { Prescription } from "../lib/plan";
 import type { EffectResult } from "../lib/effect";
 import { cycleProgress } from "../lib/effect";
-import type { Area, StudyFocus } from "../lib/study";
-
-const AREA_KEY: Record<Area, Key> = {
-  play: "plan.areaPlay",
-  tactics: "plan.areaTactics",
-  openings: "plan.areaOpenings",
-  endgames: "plan.areaEndgames",
-  analysis: "plan.areaAnalysis",
-};
+import { AREA_KEY, type StudyFocus } from "../lib/study";
 
 const VERDICT_STYLE = {
   improved: { icon: TrendingUp, color: "text-win", key: "plan.verdictImproved" as Key },

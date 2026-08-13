@@ -205,6 +205,28 @@ export type Area = "play" | "tactics" | "openings" | "endgames" | "analysis";
 
 export const AREAS: Area[] = ["play", "tactics", "openings", "endgames", "analysis"];
 
+/**
+ * Name eines Bereichs in der Oberfläche. Steht hier und nicht in den
+ * Komponenten, weil vier von ihnen dieselbe Tabelle brauchen · vorher stand sie
+ * viermal da, und eine sechste Farbe wäre viermal nachzutragen gewesen.
+ */
+export const AREA_KEY: Record<Area, Key> = {
+  play: "plan.areaPlay",
+  tactics: "plan.areaTactics",
+  openings: "plan.areaOpenings",
+  endgames: "plan.areaEndgames",
+  analysis: "plan.areaAnalysis",
+};
+
+/** Feste Farbe je Bereich · Wochenleiste, Tagessitzung und Kalender teilen sie. */
+export const AREA_COLOR: Record<Area, string> = {
+  play: "var(--color-accent)",
+  tactics: "var(--color-blue)",
+  openings: "var(--color-violet)",
+  endgames: "var(--color-gold)",
+  analysis: "var(--color-cc)",
+};
+
 /** Wählbare Zykluslängen in Tagen. */
 export const CYCLE_DAYS = [7, 14, 28] as const;
 

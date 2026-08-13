@@ -48,7 +48,20 @@ export interface WeekBudget {
   /** Heute bereits angefallene Minuten. */
   today: number;
   byArea: WeekArea[];
-  /** Summe aller Lücken · das, was die Woche noch schuldet. */
+  /**
+   * Was am Wochenbudget noch fehlt · schlicht Ziel minus Ist.
+   *
+   * Bewusst *nicht* die Summe der Bereichslücken: wer im Spielen 60 Minuten
+   * über dem Soll liegt und im Endspiel 20 darunter, hat sein Wochenbudget
+   * erfüllt. Die Bereichslücke steht daneben in der Legende, wo sie hingehört.
+   */
+  open: number;
+  /**
+   * Summe der Bereichslücken · die Grundlage des Übertrags in die nächste
+   * Woche, nicht die Zahl neben dem Balken. Sie kann größer sein als `open`,
+   * weil ein Überschuss in einem Bereich einen Rückstand im anderen nicht
+   * ausgleicht: eine Stunde Blitz ersetzt kein Turmendspiel.
+   */
   remaining: number;
 }
 
@@ -92,6 +105,7 @@ export function buildWeekBudget(
     progress: target > 0 ? Math.min(100, Math.round((minutes / target) * 100)) : 0,
     today: week.filter((day) => day.day_ts === todayStart).reduce((sum, day) => sum + dayMinutes(day), 0),
     byArea,
+    open: Math.max(0, target - minutes),
     remaining: byArea.reduce((sum, entry) => sum + entry.gap, 0),
   };
 }

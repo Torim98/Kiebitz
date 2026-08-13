@@ -785,13 +785,38 @@ export default function SettingsPage({
 
             {/* Trainingsprogramm · drei Felder, kein Fragebogen. Alles Weitere
                 leitet der Lernplan aus der tatsächlichen Aktivität ab. */}
-            <NumberField
-              label={t("set.weeklyMinutes")}
-              value={draft.weekly_minutes}
-              min={0}
-              max={3000}
-              onChange={(v) => patch({ weekly_minutes: v })}
-            />
+            {/* Ein leeres Zahlenfeld ist für neue Nutzer keine Frage, sondern
+                eine Zumutung · die drei Vorgaben decken den üblichen Bereich
+                ab und lassen sich weiter frei überschreiben. */}
+            <Field label={t("set.weeklyMinutes")}>
+              <div className="flex flex-wrap gap-1.5">
+                {[90, 180, 300].map((minutes) => (
+                  <button
+                    key={minutes}
+                    type="button"
+                    onClick={() => patch({ weekly_minutes: minutes })}
+                    className={`rounded-md border px-2.5 py-1 text-[12px] tabular-nums transition-colors ${
+                      draft.weekly_minutes === minutes
+                        ? "border-accent-dim bg-accent-soft text-accent"
+                        : "border-line text-ink3 hover:text-ink"
+                    }`}
+                  >
+                    {t("plan.minutes", { m: minutes })}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={3000}
+                value={draft.weekly_minutes}
+                aria-label={t("set.budgetCustom")}
+                onChange={(e) =>
+                  patch({ weekly_minutes: Math.max(0, Math.min(3000, Number(e.target.value))) })
+                }
+                className={`mt-2 ${inputCls}`}
+              />
+            </Field>
             <Field label={t("set.focusCycle")}>
               <select
                 value={draft.focus_cycle_days}
