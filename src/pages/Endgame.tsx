@@ -22,6 +22,8 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { endgameMove, endgameRecord, endgameStats, type DrillStat } from "../lib/endgame";
 import Board from "../components/Board";
+import { useBoardEndView } from "../components/BoardEndView";
+import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
@@ -227,6 +229,12 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     [stats]
   );
 
+  // Der Drill spielt sich selbst aus · was am Ende steht, sagt die Stellung.
+  // Aufgabe oder Zeitüberschreitung gibt es hier nicht.
+  const boardEnd = useBoardEndView(
+    status === "solved" || status === "failed" ? endForPosition(fen) : null
+  );
+
   const nextUnsolved = (): EndgameDrill | null => {
     const idx = ENDGAME_DRILLS.findIndex((d) => d.id === drill.id);
     for (let i = 1; i <= ENDGAME_DRILLS.length; i++) {
@@ -293,6 +301,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
             squareStyles={squareStyles}
             orientation={drill.side}
             shake={shake}
+            end={boardEnd}
             mouseDrag
           />
 

@@ -7,6 +7,12 @@ import {
   parseTimeControl,
   serializeClocks,
 } from "./clocks";
+import {
+  endForPosition,
+  isTermination,
+  pgnTerminationHeader,
+  terminationFromPgnHeader,
+} from "./boardEnd";
 
 function splitGames(text: string): string[] {
   const normalized = text.replace(/\r\n?/g, "\n").trim();
@@ -154,6 +160,13 @@ export function importPgn(
       opp_elo: Number(color === "white" ? h.BlackElo : h.WhiteElo) || 0,
       my_elo: Number(color === "white" ? h.WhiteElo : h.BlackElo) || 0,
       result,
+      // Der Header ist die genauere Quelle · nur er kennt Aufgabe und
+      // Zeitüberschreitung. Fehlt er, verrät wenigstens die Schlussstellung,
+      // ob die Partie mit Matt oder Patt endete.
+      termination:
+        terminationFromPgnHeader(h.Termination || "") ||
+        endForPosition(chess.fen())?.reason ||
+        "",
       opening: h.Opening || "",
       eco: h.ECO || "",
       moves_count: Math.ceil(moves.length / 2),
@@ -208,6 +221,9 @@ export function exportPgn(games: GameRecord[], playerName: string): string {
     if (game.eco) values.ECO = game.eco;
     if (game.opening) values.Opening = game.opening;
     if (game.time_control) values.TimeControl = game.time_control;
+    if (game.termination && isTermination(game.termination)) {
+      values.Termination = pgnTerminationHeader(game.termination);
+    }
     if (game.tags?.length) values.KiebitzTags = game.tags.join(", ");
     if (game.note) values.KiebitzNote = game.note;
     if (game.analysis_excluded) values.KiebitzAnalysisExcluded = "true";

@@ -35,6 +35,11 @@ export interface GameSummary {
   clocks?: string;
   /** PGN-TimeControl der Partie ("600+5"); leer, wenn unbekannt. */
   time_control?: string;
+  /**
+   * Wie die Partie endete · siehe `TERMINATIONS` in lib/boardEnd.ts. Leer,
+   * wenn weder Quelle noch Schlussstellung etwas hergeben.
+   */
+  termination?: string;
   note?: string;
   tags?: string[];
   analyzed: boolean;

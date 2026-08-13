@@ -5,6 +5,7 @@ import {
   parseTimeControl,
   serializeClocks,
 } from "./clocks";
+import { terminationFromChessCom, terminationFromLichess } from "./boardEnd";
 
 /** Liest einen PGN-Header-Wert, z. B. header(pgn, "ECO") → "B20". */
 function pgnHeader(pgn: string, key: string): string {
@@ -114,6 +115,7 @@ export async function importChessCom(
         opp_elo: opp.rating,
         my_elo: me.rating,
         result: ccResult(me, opp),
+        termination: terminationFromChessCom(me.result, opp.result),
         opening: openingFromSlug(pgnHeader(pgn, "ECOUrl")) || pgnHeader(pgn, "ECO"),
         eco: pgnHeader(pgn, "ECO"),
         moves_count: Math.ceil(sans.length / 2),
@@ -134,6 +136,8 @@ interface LiGame {
   id: string;
   speed: string;
   winner?: "white" | "black";
+  /** "mate", "resign", "outoftime", "stalemate", "draw", … */
+  status?: string;
   createdAt: number;
   moves?: string;
   /** Restzeit nach jedem Halbzug in Hundertstelsekunden (clocks=true). */
@@ -185,6 +189,7 @@ export async function importLichess(user: string, max?: number): Promise<GameRec
       opp_elo: opp.rating ?? 0,
       my_elo: me.rating ?? 0,
       result: g.winner == null ? "draw" : g.winner === myColor ? "win" : "loss",
+      termination: terminationFromLichess(g.status ?? ""),
       opening: g.opening?.name ?? "",
       eco: g.opening?.eco ?? "",
       moves_count: Math.ceil(plies / 2),

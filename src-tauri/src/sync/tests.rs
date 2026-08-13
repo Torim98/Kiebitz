@@ -42,6 +42,7 @@ mod tests {
             analyzed_ts: 0,
             clocks: String::new(),
             time_control: String::new(),
+            termination: String::new(),
             analysis_excluded: false,
             updated_ts: 100,
             evals: Vec::new(),

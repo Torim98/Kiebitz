@@ -32,6 +32,8 @@ import { getSettings } from "../lib/settings";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { onDataChange } from "../lib/changes";
 import Board from "../components/Board";
+import { useBoardEndView } from "../components/BoardEndView";
+import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
@@ -388,6 +390,21 @@ function TrainerView({
   if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
   if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px #d9a028" };
 
+  // Endet die Kombination mit Matt, bekommt der König sein Zeichen. Mehr
+  // nicht: eine gelöste Aufgabe ist keine gewonnene Partie, ein
+  // Ergebnisstreifen wäre hier eine falsche Behauptung.
+  const matedEnd = useMemo(() => {
+    if (!atLive) return null;
+    const end = endForPosition(fen);
+    return end?.reason === "mate" ? end : null;
+  }, [fen, atLive]);
+  const matedView = useBoardEndView(matedEnd);
+  // Leerer Streifentext · siehe `BoardEndView.label`.
+  const boardEnd = useMemo(
+    () => (matedView ? { ...matedView, label: "" } : null),
+    [matedView]
+  );
+
   const mainTheme = puzzle?.themes.find(
     (value) => !["ownGame", "oneMove", "opening", "middlegame", "blunder", "mistake"].includes(value)
   ) ?? "";
@@ -469,6 +486,7 @@ function TrainerView({
             squareStyles={squareStyles}
             orientation={orientation}
             shake={shake}
+            end={boardEnd}
             mouseDrag
           />
 

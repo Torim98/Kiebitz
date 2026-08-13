@@ -238,6 +238,23 @@ export const de = {
   "an.bookUnknown": "Stellung nicht in der Online-Datenbank.",
   "an.bookError": "ChessDB nicht erreichbar.",
   "an.bookCached": "aus dem Cache",
+  // ── Partieende auf dem Brett ───────────────────────────────────────────────
+  "end.whiteWins": "Weiß gewinnt",
+  "end.blackWins": "Schwarz gewinnt",
+  "end.draw": "Remis",
+  "end.winBy": "{side} durch {reason}",
+  "end.drawBy": "Remis durch {reason}",
+  "end.reason.mate": "Matt",
+  "end.reason.resign": "Aufgabe",
+  "end.reason.timeout": "Zeitüberschreitung",
+  "end.reason.stalemate": "Patt",
+  "end.reason.agreement": "Vereinbarung",
+  "end.reason.repetition": "Stellungswiederholung",
+  "end.reason.fifty": "die 50-Züge-Regel",
+  "end.reason.insufficient": "ungenügendes Material",
+  "end.reason.abandoned": "Abbruch",
+  "end.reason.rules": "Regelverstoß",
+  "end.dismiss": "Hinweis ausblenden",
 
   // ── Live-Engine ────────────────────────────────────────────────────────────
   "eng.title": "Engine-Analyse",

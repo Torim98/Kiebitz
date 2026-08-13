@@ -36,6 +36,8 @@ import {
   type PositionSearch,
 } from "../lib/analysis";
 import Board from "../components/Board";
+import { useBoardEndView } from "../components/BoardEndView";
+import { endForPosition, gameEnd } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
@@ -508,6 +510,29 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     [sans, ply, variation]
   );
 
+  /**
+   * Partieende · nur an der Schlussstellung der Partie selbst. Wer
+   * zurückblättert oder in einer Variante steht, sieht eine Stellung, die so
+   * nie das Ende war; dort wäre der Hinweis schlicht falsch.
+   *
+   * Bei importierten Partien schlägt der gespeicherte Grund die Ableitung: nur
+   * er kennt Aufgabe und Zeitüberschreitung. Am freien Brett und in der
+   * Web-Vorschau bleibt, was in der Stellung steht.
+   */
+  const boardEndState = useMemo(() => {
+    if (variation || ply !== sans.length || sans.length === 0) return null;
+    if (live && game) {
+      return gameEnd({
+        fen,
+        termination: game.termination,
+        result: game.result,
+        color: game.color,
+      });
+    }
+    return endForPosition(fen);
+  }, [variation, ply, sans.length, live, game, fen]);
+  const boardEnd = useBoardEndView(boardEndState);
+
   const playBoardMove = (from: string, to: string, promotion = "q"): boolean => {
     if (!scratch && !live) return false;
     try {
@@ -923,6 +948,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   title: judgmentLabel(t, currentQuality),
                 }] : []}
                 muted={!!variation}
+                end={boardEnd}
                 mouseDrag
               />
             </div>

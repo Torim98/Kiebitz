@@ -51,6 +51,10 @@ pub struct SyncGame {
     pub clocks: String,
     #[serde(default)]
     pub time_control: String,
+    /// Beendigungsgrund der Partie · wie die Uhren ein unveränderliches
+    /// Partiedatum. Ältere Gegenstellen kennen das Feld nicht.
+    #[serde(default)]
+    pub termination: String,
     pub note: String,
     pub note_ts: i64,
     #[serde(default)]

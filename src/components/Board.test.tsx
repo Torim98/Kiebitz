@@ -272,3 +272,60 @@ describe("Board badges", () => {
     expect(screen.getByTestId("book-icon")).toBeTruthy();
   });
 });
+
+describe("Board end overlay", () => {
+  const END = {
+    square: "e1",
+    mark: "#",
+    color: "var(--color-loss)",
+    label: "Schwarz gewinnt durch Matt",
+    dismissLabel: "Hinweis ausblenden",
+  };
+
+  it("marks the king's square and shows the result strip", () => {
+    render(<Board boardId="test" fen={FEN} width={400} end={END} />);
+
+    const mark = screen.getByTestId("board-end-mark");
+    // e1 aus Weiß-Sicht: fünfte Spalte (Index 4), unterste Reihe (Index 7) ·
+    // der Marker sitzt in der Feldmitte, also je 6,25 % weiter.
+    expect(mark.style.left).toBe("56.25%");
+    expect(mark.style.top).toBe("93.75%");
+    expect(screen.getByText("Schwarz gewinnt durch Matt")).toBeTruthy();
+  });
+
+  it("follows the board orientation", () => {
+    render(<Board boardId="test" fen={FEN} width={400} orientation="black" end={END} />);
+
+    // Gedreht liegt e1 in Spalte 3 und der obersten Reihe.
+    const mark = screen.getByTestId("board-end-mark");
+    expect(mark.style.left).toBe("43.75%");
+    expect(mark.style.top).toBe("6.25%");
+  });
+
+  it("hides the strip on click and brings it back for the next ending", () => {
+    const { rerender } = render(<Board boardId="test" fen={FEN} width={400} end={END} />);
+
+    fireEvent.click(screen.getByText("Schwarz gewinnt durch Matt"));
+    expect(screen.queryByText("Schwarz gewinnt durch Matt")).toBeNull();
+    // Der Marker bleibt · weggeklickt wird nur der Satz.
+    expect(screen.getByTestId("board-end-mark")).toBeTruthy();
+
+    rerender(
+      <Board boardId="test" fen={FEN} width={400} end={{ ...END, label: "Remis durch Patt" }} />
+    );
+    expect(screen.getByText("Remis durch Patt")).toBeTruthy();
+  });
+
+  it("keeps the marker alone when there is no sentence to show", () => {
+    render(<Board boardId="test" fen={FEN} width={400} end={{ ...END, label: "" }} />);
+
+    expect(screen.getByTestId("board-end-mark")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows nothing at all without an ending", () => {
+    render(<Board boardId="test" fen={FEN} width={400} />);
+
+    expect(screen.queryByTestId("board-end")).toBeNull();
+  });
+});

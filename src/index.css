@@ -188,6 +188,82 @@ html[data-store-capture="true"] .chess-backdrop {
   animation: shake 0.25s ease-in-out 2;
 }
 
+/* ── Partieende ──────────────────────────────────────────────────────────────
+   Drei kurze Bewegungen, die zusammen eine Aussage machen: ein Ring läuft
+   einmal über das Feld des betroffenen Königs, der Marker setzt sich darauf,
+   der Ergebnisstreifen steigt von unten ein. Alles über transform und opacity ·
+   die Android-WebView animiert das Brett selbst nicht (animationDuration 0),
+   und Layout-Eigenschaften würden dort ruckeln.
+
+   Die Basiszustände sind bewusst die *sichtbaren*: wer Bewegung abbestellt hat
+   und die reproduzierbaren Store-Screenshots bekommen dieselbe Aussage, nur
+   ohne Weg dorthin. */
+@keyframes board-end-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  35% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+.board-end-flash {
+  animation: board-end-flash 0.62s ease-out 1 both;
+}
+
+@keyframes board-end-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  62% {
+    transform: translate(-50%, -50%) scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.board-end-mark {
+  animation: board-end-pop 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) 1 both;
+}
+
+@keyframes board-end-rise {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.board-end-strip {
+  animation: board-end-rise 0.26s ease-out 1 both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-end-mark,
+  .board-end-strip {
+    animation: none;
+  }
+  /* Der Ring ist reine Bewegung · ohne sie hat er nichts zu zeigen. */
+  .board-end-flash {
+    display: none;
+  }
+}
+html[data-store-capture="true"] .board-end-mark,
+html[data-store-capture="true"] .board-end-strip {
+  animation: none;
+}
+html[data-store-capture="true"] .board-end-flash {
+  display: none;
+}
+
 /* Der gemeinsame WebView-Pointer-Drag deaktiviert das interne react-dnd,
    deshalb setzen wir den passenden Mauszeiger am Figuren-DOM selbst. */
 .board-pointer-drag [data-piece] {

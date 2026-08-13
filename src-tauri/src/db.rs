@@ -56,6 +56,11 @@ pub struct GameRecord {
     /// PGN-TimeControl der Partie ("600+5"), leer wenn unbekannt.
     #[serde(default)]
     pub time_control: String,
+    /// Wie die Partie endete: mate, resign, timeout, stalemate, agreement,
+    /// repetition, fifty, insufficient, abandoned, rules · leer, wenn die Quelle
+    /// nichts hergibt und die Schlussstellung selbst nichts verrät.
+    #[serde(default)]
+    pub termination: String,
     pub note: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -201,6 +206,8 @@ pub struct GameSummary {
     pub analysis_excluded: bool,
     pub has_moves: bool,
     pub has_note: bool,
+    /// Beendigungsgrund; siehe `GameRecord::termination`.
+    pub termination: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -421,6 +428,10 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         ("opponent_accuracy_opening", "REAL"),
         ("opponent_accuracy_middlegame", "REAL"),
         ("opponent_accuracy_endgame", "REAL"),
+        // Migration v16: Wie die Partie endete. Aufgabe, Zeitüberschreitung und
+        // Remisangebot stehen nicht in der Schlussstellung · ohne diese Spalte
+        // koennte Kiebitz "auf Zeit verloren" nie anzeigen.
+        ("termination", "TEXT NOT NULL DEFAULT ''"),
     ] {
         add_column_if_missing(conn, "games", column, definition)?;
     }
@@ -656,6 +667,39 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         meta_set(conn, "rep_review_log_backfilled", "1")?;
     }
 
+    // Migration v16: Beendigungsgrund für den Altbestand nachtragen.
+    //
+    // Aus der Zugfolge sind nur die Gründe rekonstruierbar, die in der
+    // Schlussstellung stehen: Matt, Patt, ungenügendes Material, 50 Züge. Wer
+    // aufgegeben hat oder auf Zeit verlor, hinterlässt dort nichts · diese
+    // Partien behalten einen leeren Grund und zeigen weiterhin nur Sieg oder
+    // Niederlage. Ein erneuter Import füllt sie später aus der Quelle.
+    if meta_get(conn, "games_termination_backfilled").is_none() {
+        let rows: Vec<(i64, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT id, moves FROM games WHERE termination = '' AND moves != ''")
+                .map_err(|e| e.to_string())?;
+            let mapped = stmt
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            mapped
+        };
+        let mut update = conn
+            .prepare("UPDATE games SET termination = ?2 WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+        for (id, moves) in rows {
+            if let Some(reason) = crate::chess::terminal_reason(&moves) {
+                update
+                    .execute(params![id, reason])
+                    .map_err(|e| format!("Termination-Backfill fehlgeschlagen: {e}"))?;
+            }
+        }
+        drop(update);
+        meta_set(conn, "games_termination_backfilled", "1")?;
+    }
+
     // Read-heavy screens aggregate by timestamps and analysis state. These
     // indexes turn their former full-table scans into bounded range scans.
     conn.execute_batch(
@@ -737,8 +781,8 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     opponent_accuracy, opponent_accuracy_opening,
                     opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
                     note, note_ts, tags, tags_ts, analysis_excluded, updated_ts,
-                    clocks, time_control)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)
+                    clocks, time_control, termination)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)
                  ON CONFLICT(source, source_id) DO UPDATE SET
                     url = excluded.url,
                     played_at = excluded.played_at,
@@ -764,7 +808,11 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     -- Ein Re-Import ohne Uhrendaten darf vorhandene nicht löschen.
                     clocks = CASE WHEN excluded.clocks != '' THEN excluded.clocks ELSE games.clocks END,
                     time_control = CASE WHEN excluded.time_control != ''
-                        THEN excluded.time_control ELSE games.time_control END",
+                        THEN excluded.time_control ELSE games.time_control END,
+                    -- Wie bei den Uhren: ein Re-Import ohne Beendigungsgrund
+                    -- darf einen bereits bekannten nicht wieder loeschen.
+                    termination = CASE WHEN excluded.termination != ''
+                        THEN excluded.termination ELSE games.termination END",
             )
             .map_err(|e| e.to_string())?;
 
@@ -813,7 +861,8 @@ pub fn upsert_games(conn: &mut Connection, games: &[GameRecord]) -> Result<Upser
                     g.analysis_excluded as i64,
                     changed_at,
                     g.clocks,
-                    g.time_control
+                    g.time_control,
+                    g.termination
                 ])
                 .map_err(|e| e.to_string())?;
             if !existed {
@@ -837,7 +886,7 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                     accuracy_opening, accuracy_middlegame, accuracy_endgame,
                     opponent_accuracy, opponent_accuracy_opening,
                     opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
-                    note, tags, analyzed, analysis_excluded, clocks, time_control
+                    note, tags, analyzed, analysis_excluded, clocks, time_control, termination
              FROM games ORDER BY played_ts DESC, played_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -875,6 +924,7 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 analysis_excluded: r.get::<_, i64>(28)? != 0,
                 clocks: r.get(29)?,
                 time_control: r.get(30)?,
+                termination: r.get(31)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -964,7 +1014,8 @@ const GAME_SUMMARY_COLUMNS: &str =
      opponent_accuracy, opponent_accuracy_opening, opponent_accuracy_middlegame,
      opponent_accuracy_endgame, tags, analyzed, analysis_excluded,
      CASE WHEN TRIM(moves) != '' THEN 1 ELSE 0 END,
-     CASE WHEN TRIM(note) != '' THEN 1 ELSE 0 END";
+     CASE WHEN TRIM(note) != '' THEN 1 ELSE 0 END,
+     termination";
 
 fn game_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameSummary> {
     Ok(GameSummary {
@@ -996,6 +1047,7 @@ fn game_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<GameSummar
         analysis_excluded: row.get::<_, i64>(25)? != 0,
         has_moves: row.get::<_, i64>(26)? != 0,
         has_note: row.get::<_, i64>(27)? != 0,
+        termination: row.get(28)?,
     })
 }
 
@@ -1019,7 +1071,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameRecord, String> {
                 accuracy_opening, accuracy_middlegame, accuracy_endgame,
                 opponent_accuracy, opponent_accuracy_opening,
                 opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
-                note, tags, analyzed, analysis_excluded, clocks, time_control
+                note, tags, analyzed, analysis_excluded, clocks, time_control, termination
          FROM games WHERE id = ?1",
         params![id],
         |r| {
@@ -1036,7 +1088,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameRecord, String> {
                 tags: serde_json::from_str(&r.get::<_, String>(26)?).unwrap_or_default(),
                 analyzed: r.get::<_, i64>(27)? != 0,
                 analysis_excluded: r.get::<_, i64>(28)? != 0,
-                clocks: r.get(29)?, time_control: r.get(30)?,
+                clocks: r.get(29)?, time_control: r.get(30)?, termination: r.get(31)?,
             })
         },
     )
@@ -1140,6 +1192,7 @@ mod tests {
             moves: "e4 c6 Qf3 e5".into(),
             clocks: "59500 59300 58800 58100".into(),
             time_control: "600+0".into(),
+            termination: String::new(),
             note: String::new(),
             tags: Vec::new(),
             analyzed: false,

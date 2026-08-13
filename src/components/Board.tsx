@@ -36,6 +36,28 @@ const EMPTY_STYLES: Record<string, CSSProperties> = {};
 type BoardArrow = [string, string, string?];
 type BoardBadge = { square: string; label: ReactNode; color: string; title?: string };
 
+/**
+ * Fertig aufbereitetes Partieende · das Brett übersetzt nichts und entscheidet
+ * nichts. Woher Grund und Ausgang kommen, steht in `lib/boardEnd.ts`; wie sie
+ * in dieser Ansicht heißen, in `useBoardEndView`.
+ */
+export type BoardEndView = {
+  /** Feld des betroffenen Königs; ohne Feld bleibt nur der Streifen. */
+  square: string | null;
+  /** Kurzzeichen auf dem Königsfeld ("#", "½", ein Icon). */
+  mark: ReactNode;
+  /** Farbe von Marker und Ring. */
+  color: string;
+  /**
+   * Übersetzter Satz für den Streifen ("Schwarz gewinnt durch Matt"). Leer
+   * heißt: nur der Marker · so bleibt im Puzzle-Trainer das Mattzeichen auf
+   * dem König, ohne dass eine gelöste Aufgabe als gewonnene Partie auftritt.
+   */
+  label: string;
+  /** Beschriftung der Schließen-Schaltfläche. */
+  dismissLabel: string;
+};
+
 type BoardProps = {
   fen: string;
   /** Maximale Brettbreite in px; der Container kann sie unterschreiten. */
@@ -57,6 +79,8 @@ type BoardProps = {
   mouseDrag?: boolean;
   /** Reine Vorschaubretter bleiben stumm, auch wenn Ton aktiviert ist. */
   silent?: boolean;
+  /** Partieende; null solange gespielt wird oder das Brett zurückblättert. */
+  end?: BoardEndView | null;
 };
 
 function isAndroidWebView(): boolean {
@@ -300,6 +324,7 @@ export default function Board({
   muted = false,
   mouseDrag = false,
   silent = false,
+  end = null,
 }: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(width);
@@ -593,6 +618,34 @@ export default function Board({
     };
   };
 
+  /**
+   * Feldkoordinaten in Prozent des Bretts: die obere linke Ecke für den Ring,
+   * der ein ganzes Feld füllt, und die Mitte für den Marker darauf.
+   */
+  const squareBox = (square: string) => {
+    const file = square.charCodeAt(0) - 97;
+    const rank = Number(square[1]);
+    const x = orientation === "white" ? file : 7 - file;
+    const y = orientation === "white" ? 8 - rank : rank - 1;
+    return {
+      left: `${x * 12.5}%`,
+      top: `${y * 12.5}%`,
+      centerLeft: `${x * 12.5 + 6.25}%`,
+      centerTop: `${y * 12.5 + 6.25}%`,
+    };
+  };
+
+  // Der Streifen ist eine Aussage, keine Sperre: er verschwindet auf Klick und
+  // kommt bei jedem neuen Partieende zurück.
+  const [endDismissed, setEndDismissed] = useState(false);
+  const endKey = end ? `${end.label}|${end.square ?? ""}` : "";
+  const lastEndKeyRef = useRef(endKey);
+  if (lastEndKeyRef.current !== endKey) {
+    lastEndKeyRef.current = endKey;
+    if (endDismissed) setEndDismissed(false);
+  }
+  const endSquare = end?.square && /^[a-h][1-8]$/.test(end.square) ? end.square : null;
+
   return (
     <div
       ref={ref}
@@ -636,6 +689,51 @@ export default function Board({
             {badge.label}
           </span>
         ))}
+        {end && (
+          <div data-testid="board-end" aria-live="polite">
+            {endSquare && (
+              <>
+                <span
+                  aria-hidden="true"
+                  key={`flash-${endKey}`}
+                  className="board-end-flash pointer-events-none absolute z-20 h-[12.5%] w-[12.5%] rounded-full"
+                  style={{
+                    left: squareBox(endSquare).left,
+                    top: squareBox(endSquare).top,
+                    boxShadow: `inset 0 0 0 max(2px, 0.5vw) ${end.color}`,
+                  }}
+                />
+                <span
+                  key={`mark-${endKey}`}
+                  data-testid="board-end-mark"
+                  className="board-end-mark pointer-events-none absolute z-30 flex h-[8.5%] min-h-5 w-[8.5%] min-w-5 items-center justify-center rounded-full border border-white/90 text-[clamp(8px,1.35vw,14px)] font-extrabold leading-none text-white shadow-lg"
+                  style={{
+                    left: squareBox(endSquare).centerLeft,
+                    top: squareBox(endSquare).centerTop,
+                    transform: "translate(-50%, -50%)",
+                    background: end.color,
+                  }}
+                >
+                  {end.mark}
+                </span>
+              </>
+            )}
+            {end.label !== "" && !endDismissed && (
+              <div className="absolute inset-x-0 bottom-[7%] z-30 flex justify-center px-3">
+                <button
+                  type="button"
+                  key={`strip-${endKey}`}
+                  onClick={() => setEndDismissed(true)}
+                  title={end.dismissLabel}
+                  aria-label={`${end.label} · ${end.dismissLabel}`}
+                  className="board-end-strip max-w-full truncate rounded-lg border border-white/15 bg-[#0e0e0dd9] px-3.5 py-1.5 text-[clamp(11px,1.25vw,13.5px)] font-semibold text-ink shadow-xl backdrop-blur-[2px] transition-colors hover:bg-[#0e0e0d]"
+                >
+                  {end.label}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

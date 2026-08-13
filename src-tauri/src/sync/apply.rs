@@ -102,8 +102,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         opponent_accuracy, opponent_accuracy_opening,
                         opponent_accuracy_middlegame, opponent_accuracy_endgame,
                         moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
-                        analyzed_ts, clocks, time_control)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34)",
+                        analyzed_ts, clocks, time_control, termination)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)",
                     params![
                         g.source, g.source_id, g.url, g.played_at, g.played_ts, g.time_class,
                         g.color, g.my_name, g.opponent, g.opp_elo, g.my_elo, g.result, g.opening, g.eco,
@@ -113,7 +113,7 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.moves, g.note, g.note_ts,
                         serde_json::to_string(&g.tags).map_err(|e| e.to_string())?, g.tags_ts,
                         g.analyzed as i64, g.analysis_excluded as i64, incoming_updated,
-                        g.analyzed_ts, g.clocks, g.time_control
+                        g.analyzed_ts, g.clocks, g.time_control, g.termination
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -142,6 +142,7 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         -- hat, behält sie; wer keine hat, übernimmt sie.
                         clocks = CASE WHEN clocks = '' THEN ?16 ELSE clocks END,
                         time_control = CASE WHEN time_control = '' THEN ?17 ELSE time_control END,
+                        termination = CASE WHEN termination = '' THEN ?18 ELSE termination END,
                         updated_ts = MAX(updated_ts, ?11)
                      WHERE id = ?1",
                     params![
@@ -161,7 +162,8 @@ fn apply_games(conn: &mut Connection, games: &[SyncGame]) -> Result<usize, Strin
                         g.my_name,
                         g.analyzed_ts,
                         g.clocks,
-                        g.time_control
+                        g.time_control,
+                        g.termination
                     ],
                 )
                 .map_err(|e| e.to_string())?;

@@ -10,7 +10,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     opponent_accuracy, opponent_accuracy_opening,
                     opponent_accuracy_middlegame, opponent_accuracy_endgame,
                     moves, note, note_ts, tags, tags_ts, analyzed, analysis_excluded, updated_ts,
-                    analyzed_ts, clocks, time_control
+                    analyzed_ts, clocks, time_control, termination
              FROM games
              WHERE source = 'manual' OR updated_ts >= ?1",
         )
@@ -54,6 +54,7 @@ fn collect_games(conn: &Connection, since: i64) -> Result<Vec<SyncGame>, String>
                     analyzed_ts: r.get(32)?,
                     clocks: r.get(33)?,
                     time_control: r.get(34)?,
+                    termination: r.get(35)?,
                     evals: Vec::new(),
                 },
             ))

@@ -139,6 +139,37 @@ pub fn walk_sans(moves: &str) -> Vec<WalkedMove> {
     out
 }
 
+/// Grund, aus dem eine Zugfolge auf dem Brett endet · `None`, wenn die
+/// Schlussstellung noch spielbar ist.
+///
+/// Erkennbar sind nur die Gründe, die in der Stellung selbst stehen. Aufgabe,
+/// Zeitüberschreitung und Remisangebot hinterlassen dort keine Spur und kommen
+/// deshalb ausschließlich von der Plattform bzw. aus dem PGN-Header.
+/// Dreifachwiederholung fehlt bewusst: `Board` kennt die Vorgeschichte nicht.
+pub fn terminal_reason(moves: &str) -> Option<&'static str> {
+    let mut pos = Position::initial();
+    for san_str in moves.split_whitespace() {
+        let san: owlchess::moves::san::Move = san_str.parse().ok()?;
+        let mv = san.into_move(&pos).ok()?;
+        pos = pos.make_move(mv).ok()?;
+    }
+    match pos.calc_outcome()? {
+        owlchess::types::Outcome::Win { .. } => Some("mate"),
+        owlchess::types::Outcome::Draw(reason) => match reason {
+            owlchess::types::DrawReason::Stalemate => Some("stalemate"),
+            owlchess::types::DrawReason::InsufficientMaterial => Some("insufficient"),
+            owlchess::types::DrawReason::Moves50 | owlchess::types::DrawReason::Moves75 => {
+                Some("fifty")
+            }
+            owlchess::types::DrawReason::Repeat3 | owlchess::types::DrawReason::Repeat5 => {
+                Some("repetition")
+            }
+            owlchess::types::DrawReason::Agreement => Some("agreement"),
+            _ => None,
+        },
+    }
+}
+
 /// Eigenschaften eines Zuges, die für die Fehler-Anatomie zählen: War der Zug
 /// forcierend? Wer einen übersehenen Schlag oder ein Schach nicht sieht, hat ein
 /// anderes Problem als wer einen ruhigen Zug nicht findet.
@@ -238,6 +269,24 @@ pub(crate) mod tests {
         // Umwandlung steht unmittelbar an.
         "1n2k3/1P6/8/8/8/8/8/4K3 w - - 0 40",
     ];
+
+    #[test]
+    fn reads_the_ending_out_of_the_final_position() {
+        // Narrenmatt.
+        assert_eq!(terminal_reason("f3 e5 g4 Qh4"), Some("mate"));
+        // Klassisches Patt: Schwarz hat nur noch den König und keinen Zug.
+        assert_eq!(
+            terminal_reason(
+                "e3 a5 Qh5 Ra6 Qxa5 h5 Qxc7 Rah6 h4 f6 Qxd7+ Kf7 Qxb7 Qd3 Qxb8 Qh7 Qxc8 Kg6 Qe6"
+            ),
+            Some("stalemate")
+        );
+        // Eine laufende Partie hat keinen Grund.
+        assert_eq!(terminal_reason("e4 e5 Nf3 Nc6"), None);
+        // Unlesbare oder illegale Folgen dürfen nichts behaupten.
+        assert_eq!(terminal_reason("e4 e5 Qxz9"), None);
+        assert_eq!(terminal_reason(""), None);
+    }
 
     #[test]
     fn walks_a_short_game() {
