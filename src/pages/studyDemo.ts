@@ -7,6 +7,7 @@
  * den Befunden, und die Wirkungszeile zeigt bewusst auch einen Fall, der noch
  * nicht messbar ist — das ist der häufigste echte Zustand.
  */
+import { isoDay } from "../lib/dates";
 import type { Locale } from "../lib/i18n";
 import type { Finding } from "../lib/findings";
 import type { MetricWindow } from "../lib/insights";
@@ -37,6 +38,8 @@ function demoWindow(blunders: number, from: number, to: number): MetricWindow {
 export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
   const now = Math.floor(Date.now() / 1000);
   const today = Math.floor(now / DAY);
+  // Montag dieser Woche als Tagesbeginn · dieselbe Grenze wie `weekStartOf`.
+  const weekStart = (today - ((new Date().getUTCDay() || 7) - 1)) * DAY;
 
   const findings: Finding[] = [
     {
@@ -127,7 +130,20 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
         { area: "endgames", items: 3, minutes: 12 },
         { area: "analysis", items: 12, minutes: 72 },
       ],
-      days: [],
+      // Die laufende Woche ab Montag · daraus baut die Wochenleiste ihren
+      // Balken. Die Verteilung ist die typische: viel Spielen, Taktik
+      // regelmäßig, Endspiel als der Bereich, der liegen bleibt.
+      days: [0, 1, 2, 3, 4, 5, 6]
+        .map((offset) => (weekStart + offset * DAY))
+        .filter((dayTs) => dayTs <= today * DAY)
+        .map((dayTs, index) => ({
+          day_ts: dayTs,
+          play: [42, 0, 28, 55, 0, 36, 0][index] ?? 0,
+          tactics: [14, 9, 0, 18, 11, 0, 0][index] ?? 0,
+          openings: [6, 0, 8, 0, 5, 7, 0][index] ?? 0,
+          endgames: [0, 0, 0, 12, 0, 0, 0][index] ?? 0,
+          analysis: [0, 16, 0, 22, 0, 9, 0][index] ?? 0,
+        })),
       observed_weekly_minutes: 201,
     },
     plan: {
@@ -198,6 +214,51 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       ],
     ]),
     templates: [],
+    // Zwei Einheiten für heute · die eine ist von der gemessenen Zeit bereits
+    // erfüllt, die andere steht noch offen. Genau dieser Unterschied ist es,
+    // was die Tagessitzung zeigen soll.
+    events: [
+      {
+        id: 1,
+        template_id: 3,
+        day: isoDay(new Date()),
+        position: 0,
+        completed: false,
+        completed_ts: 0,
+        auto_done: true,
+        repeat_rule: "weekly",
+        series_key: "demo-tactics",
+        template: {
+          id: 3,
+          title: "Tactics",
+          duration_min: 20,
+          tool: "Kiebitz Puzzles",
+          description: "",
+          area: "tactics",
+          i18n_key: "st.seed.tactics",
+        },
+      },
+      {
+        id: 2,
+        template_id: 2,
+        day: isoDay(new Date()),
+        position: 1,
+        completed: false,
+        completed_ts: 0,
+        auto_done: false,
+        repeat_rule: "",
+        series_key: "",
+        template: {
+          id: 2,
+          title: "Endgame training",
+          duration_min: 20,
+          tool: "Kiebitz Endgames",
+          description: "",
+          area: "endgames",
+          i18n_key: "st.seed.endgames",
+        },
+      },
+    ],
     rating: { delta: 34, confidence: "measured", pools: 2, games: 118 },
     trainingDays: [true, true, false, true, true, false, true],
   };

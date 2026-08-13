@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CalendarPlus,
-  CheckCircle2,
   Cpu,
   Crown,
   Flame,
@@ -22,9 +21,11 @@ import {
   scheduleStudyUnit,
   setStudyFocus,
   studyData,
+  templateText,
   trainingProgram,
   type Area,
   type StudyData,
+  type StudyEvent,
   type StudyFocus,
   type StudyTemplate,
   type TrainingProgram,
@@ -33,7 +34,13 @@ import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
 import { deepInsights, studyMetrics, type MetricWindow } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
-import { buildPlan, buildWeekPlan, type PlannedUnit, type TrainingPlan } from "../lib/plan";
+import {
+  buildPlan,
+  buildWeekPlan,
+  templateArea,
+  type PlannedUnit,
+  type TrainingPlan,
+} from "../lib/plan";
 import {
   cycleWindows,
   measureEffect,
@@ -42,10 +49,13 @@ import {
   type EffectResult,
   type RatingEffect,
 } from "../lib/effect";
+import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "../lib/week";
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
 import StudyFocusCard from "../components/StudyFocusCard";
 import AllocationBars from "../components/AllocationBars";
+import WeekBudgetBar from "../components/WeekBudgetBar";
+import TodaySession, { type SessionItem } from "../components/TodaySession";
 import { useMobileShell } from "../components/MobileShell";
 import { batchDataChanges, onDataChange } from "../lib/changes";
 import { deInt } from "../lib/format";
@@ -64,6 +74,8 @@ export interface StudyState {
   findings: Finding[];
   windows: Map<number, { before: MetricWindow; after: MetricWindow }>;
   templates: StudyTemplate[];
+  /** Geplante Einheiten der laufenden Woche · Montag bis Sonntag. */
+  events: StudyEvent[];
   rating: RatingEffect | null;
   /** Trainingstage aus den Einstellungen, Index 0 = Montag. */
   trainingDays: boolean[];
@@ -138,9 +150,15 @@ export default function Study({
       if (before && after) windows.set(focus.id, { before, after });
     });
 
-    const templates = await getStudyCalendar(isoDay(new Date()), isoDay(new Date()))
-      .then((calendar) => calendar.templates)
-      .catch(() => [] as StudyTemplate[]);
+    // Die ganze Woche, nicht nur heute: der Tagesplan ist ein Ausschnitt
+    // davon, und der Wochenvorschlag muss wissen, was schon geplant ist.
+    const weekStart = weekStartOf(new Date());
+    const weekEnd = new Date(weekStart.getTime() + 6 * DAY * 1_000);
+    const calendar = await getStudyCalendar(isoDay(weekStart), isoDay(weekEnd)).catch(() => ({
+      templates: [] as StudyTemplate[],
+      events: [] as StudyEvent[],
+      days: [],
+    }));
 
     setState({
       data,
@@ -148,7 +166,8 @@ export default function Study({
       plan,
       findings,
       windows,
-      templates,
+      templates: calendar.templates,
+      events: calendar.events,
       rating: measureRating(measured),
       trainingDays,
     });
@@ -234,8 +253,30 @@ export default function Study({
     }
   };
 
+  // ── Woche ──────────────────────────────────────────────────────────────────
+
+  const weekStart = useMemo(() => weekStartOf(new Date()), []);
+  const week: WeekBudget | null = useMemo(
+    () =>
+      state?.program && plan
+        ? buildWeekBudget(state.program.days, plan.allocation, weekStart, new Date())
+        : null,
+    [state, plan, weekStart]
+  );
+
+  /** Bereits verplante Minuten dieser Woche je Bereich. */
+  const plannedMinutes = useMemo(() => {
+    const out: Partial<Record<Area, number>> = {};
+    for (const event of state?.events ?? []) {
+      const area = templateArea(event.template);
+      if (!area) continue;
+      out[area] = (out[area] ?? 0) + event.template.duration_min;
+    }
+    return out;
+  }, [state]);
+
   const proposePlan = () => {
-    if (!plan || !state) return;
+    if (!plan || !state?.program) return;
     // `due_week[0]` bedeutet heute. Die alte Verankerung am Montag verschob
     // diese Fälligkeiten mitten in der Woche rückwärts auf vergangene Tage.
     const today = new Date();
@@ -246,7 +287,14 @@ export default function Study({
         state.templates,
         data?.due_week ?? [],
         state.trainingDays,
-        firstDay
+        firstDay,
+        {
+          // Was die Vorwoche schuldig blieb, kommt oben drauf; was diese Woche
+          // schon im Kalender steht, wird abgezogen. Damit verdoppelt ein
+          // zweiter Vorschlag nichts mehr, sondern füllt auf.
+          carryOver: lastWeekDeficit(state.program.days, plan.allocation, weekStart, today),
+          planned: plannedMinutes,
+        }
       )
     );
   };
@@ -272,41 +320,128 @@ export default function Study({
   // ── Tagesplan ──────────────────────────────────────────────────────────────
 
   const dose = plan?.dose ?? null;
-  const tasks = useMemo(() => {
-    if (!data) return [];
-    const puzzleTarget = dose ? dose.perDay : data.puzzle_goal;
-    return [
-      {
-        id: "reviews",
-        icon: BookOpen,
-        label: t("st.taskReviews"),
-        progress: t("st.due", { n: deInt(data.due_now) }),
-        done: data.due_now === 0,
-        btn: t("dash.train"),
-        onClick: () => go("repertoire"),
-      },
-      {
-        id: "puzzles",
-        icon: PuzzleIcon,
-        label: t("st.taskPuzzles"),
-        progress: `${deInt(data.today_puzzle_attempts)} / ${deInt(puzzleTarget)}`,
-        done: data.today_puzzle_attempts >= puzzleTarget,
-        btn: t("dash.solve"),
-        onClick: () =>
-          openPuzzles(dose?.theme, dose ? { minRating: dose.minRating, maxRating: dose.maxRating } : undefined),
-      },
-      {
-        id: "analysis",
-        icon: Cpu,
-        label: t("st.taskAnalysis"),
-        progress: t("st.gamesPending", { n: deInt(data.unanalyzed) }),
-        done: data.unanalyzed === 0,
-        btn: t("dash.start"),
-        onClick: () => go("analysis"),
-      },
-    ];
-  }, [data, dose, t, go, openPuzzles]);
-  const allDone = tasks.length > 0 && tasks.every((task) => task.done);
+
+  /** Icon und Sprungziel je Bereich · dasselbe wie in den Fokuskarten. */
+  const areaAction = useCallback(
+    (area: Area): { icon: typeof BookOpen; label: string; run: () => void } => {
+      switch (area) {
+        case "tactics":
+          return {
+            icon: PuzzleIcon,
+            label: t("dash.solve"),
+            run: () =>
+              openPuzzles(
+                dose?.theme,
+                dose ? { minRating: dose.minRating, maxRating: dose.maxRating } : undefined
+              ),
+          };
+        case "openings":
+          return { icon: BookOpen, label: t("dash.train"), run: () => go("repertoire") };
+        case "endgames":
+          return {
+            icon: Crown,
+            label: t("dash.train"),
+            run: () => (openEndgame ? openEndgame() : go("endgame")),
+          };
+        case "analysis":
+          return { icon: Cpu, label: t("dash.start"), run: () => go("analysis") };
+        default:
+          // Gespielt wird außerhalb von Kiebitz · das Dashboard hält die
+          // Absprünge zu chess.com und Lichess bereit.
+          return { icon: Timer, label: t("st.sessionPlay"), run: () => go("dashboard") };
+      }
+    },
+    [t, go, openPuzzles, openEndgame, dose]
+  );
+
+  /**
+   * Die Sitzung für heute: erst die geplanten Einheiten in ihrer Reihenfolge,
+   * darunter das, was ohne Plan täglich anfällt und noch offen ist.
+   */
+  const todayIso = isoDay(new Date());
+  const sessionItems = useMemo<SessionItem[]>(() => {
+    const items: SessionItem[] = [];
+    for (const event of (state?.events ?? []).filter((entry) => entry.day === todayIso)) {
+      const area = templateArea(event.template);
+      const done = event.completed || event.auto_done;
+      const action = area ? areaAction(area) : null;
+      // Für Taktik trägt die Dosis das Band und das Motiv · sonst steht dort
+      // die Beschreibung der Einheit.
+      const detail =
+        area === "tactics" && dose
+          ? t(dose.theme ? "plan.dosePuzzlesTheme" : "plan.dosePuzzles", {
+              n: deInt(dose.perDay),
+              lo: deInt(dose.minRating),
+              hi: deInt(dose.maxRating),
+              theme: dose.theme
+                ? localizeFindingParams({ theme: dose.theme }, t, locale).theme
+                : "",
+            })
+          : templateText(event.template, "desc", t) || templateText(event.template, "tool", t);
+      items.push({
+        id: `event-${event.id}`,
+        area,
+        icon: action?.icon ?? Lightbulb,
+        label: templateText(event.template, "title", t),
+        detail: String(detail),
+        minutes: event.template.duration_min,
+        done,
+        auto: !event.completed && event.auto_done,
+        action: action ? { label: action.label, run: action.run } : undefined,
+      });
+    }
+
+    if (data) {
+      // Fällige Wiederholungen, Tagesdosis und offene Analysen sind Mengen,
+      // keine Zeitbudgets · sie hängen deshalb nicht am Wochenplan, sondern
+      // stehen jeden Tag hier. Auch erledigt: der erreichte Zustand ist die
+      // halbe Rückmeldung.
+      const puzzleTarget = dose ? dose.perDay : data.puzzle_goal;
+      items.push(
+        {
+          id: "reviews",
+          area: "openings",
+          icon: BookOpen,
+          label: t("st.taskReviews"),
+          detail: t("st.due", { n: deInt(data.due_now) }),
+          minutes: null,
+          done: data.due_now === 0,
+          auto: false,
+          action: { label: t("dash.train"), run: () => go("repertoire") },
+        },
+        {
+          id: "puzzles",
+          area: "tactics",
+          icon: PuzzleIcon,
+          label: t("st.taskPuzzles"),
+          detail: `${deInt(data.today_puzzle_attempts)} / ${deInt(puzzleTarget)}`,
+          minutes: null,
+          done: data.today_puzzle_attempts >= puzzleTarget,
+          auto: false,
+          action: {
+            label: t("dash.solve"),
+            run: () =>
+              openPuzzles(
+                dose?.theme,
+                dose ? { minRating: dose.minRating, maxRating: dose.maxRating } : undefined
+              ),
+          },
+        },
+        {
+          id: "analysis",
+          area: "analysis",
+          icon: Cpu,
+          label: t("st.taskAnalysis"),
+          detail: t("st.gamesPending", { n: deInt(data.unanalyzed) }),
+          minutes: null,
+          done: data.unanalyzed === 0,
+          auto: false,
+          action: { label: t("dash.start"), run: () => go("analysis") },
+        }
+      );
+    }
+    return items;
+  }, [state, data, todayIso, areaAction, dose, t, locale, go, openPuzzles]);
 
   const areas = useMemo(
     () => [
@@ -398,6 +533,21 @@ export default function Study({
         </nav>
       )}
 
+      {/* Die Woche als eine Zahl · sie steht über allem anderen, weil sie die
+          Frage beantwortet, mit der man diese Seite öffnet. */}
+      {week && (
+        <Card
+          className="mb-4"
+          title={
+            <span className="flex items-center gap-2">
+              <Gauge size={14} className="text-accent" /> {t("st.weekBudget")}
+            </span>
+          }
+        >
+          <WeekBudgetBar budget={week} />
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
         {/* Fokusse */}
         <Card
@@ -470,44 +620,7 @@ export default function Study({
 
         {/* Heute */}
         <Card title={t("st.today")}>
-          <div className="flex flex-col gap-2.5">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
-                  task.done ? "border-accent-dim bg-accent-soft/40" : "border-line bg-panel2"
-                }`}
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  {task.done ? (
-                    <CheckCircle2 size={17} className="shrink-0 text-win" />
-                  ) : (
-                    <task.icon size={17} className="shrink-0 text-ink3" />
-                  )}
-                  <div className="min-w-0">
-                    <div className={`text-[13px] ${task.done ? "text-ink3" : "text-ink"}`}>
-                      {task.label}
-                    </div>
-                    <div className="text-[12px] text-ink3">{task.progress}</div>
-                  </div>
-                </div>
-                {task.done ? (
-                  <span className="shrink-0 text-[12px] font-medium text-win">
-                    {t("st.doneLabel")}
-                  </span>
-                ) : (
-                  <Button onClick={task.onClick} className="shrink-0">
-                    {task.btn}
-                  </Button>
-                )}
-              </div>
-            ))}
-            {allDone && (
-              <div className="rounded-lg border border-accent-dim bg-accent-soft px-3 py-2.5 text-[12.5px] font-medium text-accent">
-                {t("st.allDone")}
-              </div>
-            )}
-          </div>
+          <TodaySession items={sessionItems} emptyKey="st.sessionEmpty" />
         </Card>
       </div>
 

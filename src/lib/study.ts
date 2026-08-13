@@ -64,6 +64,11 @@ export interface StudyEvent {
   position: number;
   completed: boolean;
   completed_ts: number;
+  /**
+   * Von selbst erfüllt: an diesem Tag wurde im Bereich der Einheit mindestens
+   * ihre Dauer gemessen. Ersetzt kein Abhaken, sondern erübrigt es.
+   */
+  auto_done: boolean;
   /** "" bei einem Einzeltermin, sonst das Raster der Serie. */
   repeat_rule: RepeatRule;
   /** Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin). */

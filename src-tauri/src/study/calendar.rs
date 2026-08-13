@@ -61,6 +61,13 @@ pub struct StudyEvent {
     pub position: i64,
     pub completed: bool,
     pub completed_ts: i64,
+    /// Von selbst erfüllt: an diesem Tag wurde im Bereich der Einheit
+    /// mindestens ihre Dauer gemessen.
+    ///
+    /// Das ersetzt kein Abhaken, es erübrigt es. Wer 20 Minuten Taktik geplant
+    /// und 25 trainiert hat, soll die Einheit nicht noch einmal von Hand als
+    /// erledigt melden müssen · die App hat dabei zugesehen.
+    pub auto_done: bool,
     /// "" (Einzeltermin), "daily", "weekly" oder "biweekly".
     pub repeat_rule: String,
     /// Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin).
@@ -475,6 +482,9 @@ fn calendar_from_conn(
                     position: r.get(3)?,
                     completed: r.get::<_, i64>(4)? != 0,
                     completed_ts: r.get(5)?,
+                    // Wird gleich aus der gemessenen Zeit des Tages gesetzt ·
+                    // die steht erst nach dieser Abfrage zur Verfügung.
+                    auto_done: false,
                     repeat_rule: r.get(6)?,
                     series_key: r.get(7)?,
                     template: StudyTemplate {
@@ -499,6 +509,30 @@ fn calendar_from_conn(
     };
     let capped_last = last.min(first + 41 * 86_400);
     let days = study_days(conn, first, capped_last, now)?;
+
+    // Von selbst erfüllte Einheiten. Mehrere Einheiten desselben Bereichs an
+    // einem Tag teilen sich die gemessene Zeit der Reihe nach · zwei mal
+    // 20 Minuten Taktik brauchen 40 gemessene Minuten, nicht 20.
+    let measured = measured_seconds(conn, first, capped_last + 86_400)?;
+    let mut spent: BTreeMap<(i64, String), i64> = BTreeMap::new();
+    let mut events = events;
+    for event in &mut events {
+        let area = event.template.area.clone();
+        if area.is_empty() {
+            continue;
+        }
+        let Some(day) = day_start_ts(&event.day) else {
+            continue;
+        };
+        let available = measured.get(&(day, area.clone())).copied().unwrap_or(0);
+        let used = spent.entry((day, area)).or_insert(0);
+        let needed = event.template.duration_min.max(0) * 60;
+        if available - *used >= needed && needed > 0 {
+            *used += needed;
+            event.auto_done = true;
+        }
+    }
+
     Ok(StudyCalendar {
         templates,
         events,

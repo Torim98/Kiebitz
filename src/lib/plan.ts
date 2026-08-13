@@ -479,7 +479,20 @@ export function buildWeekPlan(
   templates: StudyTemplate[],
   dueWeek: number[],
   trainingDayMask: boolean[],
-  startDay: Date
+  startDay: Date,
+  options: {
+    /**
+     * Offene Minuten je Bereich aus der Vorwoche · sie erhöhen das Budget
+     * dieser Woche. Ohne Übertrag verschwindet eine ausgefallene Woche
+     * spurlos, und der Plan wiederholte jedes Mal denselben Vorschlag.
+     */
+    carryOver?: Partial<Record<Area, number>>;
+    /**
+     * Schon geplante Minuten je Bereich. Ein zweiter Vorschlag für dieselbe
+     * Woche füllt damit nur auf, statt alles zu verdoppeln.
+     */
+    planned?: Partial<Record<Area, number>>;
+  } = {}
 ): PlannedUnit[] {
   const byArea = new Map<Area, StudyTemplate>();
   for (const template of templates) {
@@ -506,12 +519,17 @@ export function buildWeekPlan(
   const out: PlannedUnit[] = [];
   for (const need of allocation) {
     const template = byArea.get(need.area);
-    if (!template || need.minutes < template.duration_min / 2) continue;
+    if (!template) continue;
+    const open =
+      need.minutes
+      + (options.carryOver?.[need.area] ?? 0)
+      - (options.planned?.[need.area] ?? 0);
+    if (open < template.duration_min / 2) continue;
 
-    // Wie viele Einheiten passen ins Budget dieses Bereichs?
+    // Wie viele Einheiten passen ins offene Budget dieses Bereichs?
     const count = Math.min(
       usable.length,
-      Math.max(1, Math.round(need.minutes / template.duration_min))
+      Math.max(1, Math.round(open / template.duration_min))
     );
     let chosen: typeof usable;
     if (need.area === "openings") {

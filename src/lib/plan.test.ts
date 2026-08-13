@@ -330,6 +330,36 @@ describe("buildWeekPlan", () => {
     expect(plan.map((unit) => unit.day)).toEqual(["2026-07-29", "2026-07-31"]);
   });
 
+  it("tops up instead of duplicating what the week already holds", () => {
+    const allocation: AreaNeed[] = [
+      { area: "tactics", target: 100, actual: 0, minutes: 100, actualMinutes: 0, evidence: 1 },
+    ];
+    const full = buildWeekPlan(allocation, templates, [], [], monday);
+    expect(full).toHaveLength(5);
+
+    // 60 der 100 Minuten stehen schon im Kalender · es fehlen zwei Einheiten.
+    const topUp = buildWeekPlan(allocation, templates, [], [], monday, {
+      planned: { tactics: 60 },
+    });
+    expect(topUp).toHaveLength(2);
+
+    // Ist die Woche voll, schlägt ein weiterer Klick nichts mehr vor.
+    expect(
+      buildWeekPlan(allocation, templates, [], [], monday, { planned: { tactics: 100 } })
+    ).toHaveLength(0);
+  });
+
+  it("adds what the previous week left open", () => {
+    const allocation: AreaNeed[] = [
+      { area: "endgames", target: 10, actual: 0, minutes: 20, actualMinutes: 0, evidence: 0 },
+    ];
+    // 20 Minuten Soll ergeben eine Einheit, mit 40 Minuten Rückstand drei.
+    expect(buildWeekPlan(allocation, templates, [], [], monday)).toHaveLength(1);
+    expect(
+      buildWeekPlan(allocation, templates, [], [], monday, { carryOver: { endgames: 40 } })
+    ).toHaveLength(3);
+  });
+
   it("respects the chosen training days", () => {
     const allocation: AreaNeed[] = [
       { area: "tactics", target: 100, actual: 0, minutes: 100, actualMinutes: 0, evidence: 1 },

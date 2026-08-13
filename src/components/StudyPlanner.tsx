@@ -221,8 +221,8 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
     return {
       templates,
       events: [
-        { id: 1, template_id: 3, day: isoDay(days[2]), position: 0, completed: true, completed_ts: 1, repeat_rule: "weekly", series_key: "preview-tactics", template: templates[2] },
-        { id: 2, template_id: 4, day: isoDay(days[5]), position: 0, completed: false, completed_ts: 0, repeat_rule: "", series_key: "", template: templates[3] },
+        { id: 1, template_id: 3, day: isoDay(days[2]), position: 0, completed: true, completed_ts: 1, auto_done: false, repeat_rule: "weekly", series_key: "preview-tactics", template: templates[2] },
+        { id: 2, template_id: 4, day: isoDay(days[5]), position: 0, completed: false, completed_ts: 0, auto_done: false, repeat_rule: "", series_key: "", template: templates[3] },
       ],
       days: days.map((date, index) => {
         const day = isoDay(date);

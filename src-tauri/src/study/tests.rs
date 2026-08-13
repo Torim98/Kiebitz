@@ -470,6 +470,88 @@ mod tests {
     }
 
     #[test]
+    fn measured_time_completes_planned_units_by_itself() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let day = "2026-08-13";
+        let day_ts = day_start_ts(day).unwrap();
+
+        // Zwei geplante Taktikeinheiten à 20 Minuten an einem Tag.
+        conn.execute(
+            "INSERT INTO study_templates
+             (sync_key, title, duration_min, tool, description, area, created_ts, updated_ts)
+             VALUES ('tpl', 'Taktik', 20, '', '', 'tactics', 1, 1)",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+        for position in 0..2 {
+            conn.execute(
+                "INSERT INTO study_events
+                 (sync_key, template_id, day, position, created_ts, updated_ts)
+                 VALUES (?1, ?2, ?3, ?4, 1, 1)",
+                params![format!("event-{position}"), template_id, day, position],
+            )
+            .unwrap();
+        }
+
+        // 25 gemessene Minuten decken die erste Einheit, die zweite nicht.
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s1', 'tactics', ?1, ?1, 1500, ?1)",
+            params![day_ts + 3_600],
+        )
+        .unwrap();
+        let calendar = calendar_from_conn(&conn, day, day, day_ts + 7_200).unwrap();
+        let done: Vec<bool> = calendar.events.iter().map(|e| e.auto_done).collect();
+        assert_eq!(done, vec![true, false]);
+
+        // Mit 40 gemessenen Minuten sind beide erfüllt.
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s2', 'tactics', ?1, ?1, 900, ?1)",
+            params![day_ts + 7_200],
+        )
+        .unwrap();
+        let calendar = calendar_from_conn(&conn, day, day, day_ts + 10_800).unwrap();
+        assert!(calendar.events.iter().all(|e| e.auto_done));
+    }
+
+    #[test]
+    fn units_without_an_area_are_never_completed_by_themselves() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let day = "2026-08-13";
+        let day_ts = day_start_ts(day).unwrap();
+        conn.execute(
+            "INSERT INTO study_templates
+             (sync_key, title, duration_min, tool, description, area, created_ts, updated_ts)
+             VALUES ('tpl', 'Nachdenken', 20, '', '', '', 1, 1)",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO study_events
+             (sync_key, template_id, day, position, created_ts, updated_ts)
+             VALUES ('event', ?1, ?2, 0, 1, 1)",
+            params![template_id, day],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s1', 'tactics', ?1, ?1, 7200, ?1)",
+            params![day_ts + 3_600],
+        )
+        .unwrap();
+
+        // Ohne Bereich lässt sich nicht sagen, worauf die gemessene Zeit
+        // einzahlt · dann bleibt das Abhaken beim Nutzer.
+        let calendar = calendar_from_conn(&conn, day, day, day_ts + 7_200).unwrap();
+        assert!(!calendar.events[0].auto_done);
+    }
+
+    #[test]
     fn measures_game_length_from_the_clocks() {
         // 5+3, beide Seiten haben je zwei Züge gemacht. Weiß steht am Ende bei
         // 4:50 (29000), Schwarz bei 4:40 (28000). Verbraucht hat damit Weiß
