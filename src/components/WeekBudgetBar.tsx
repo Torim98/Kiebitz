@@ -75,7 +75,7 @@ export default function WeekBudgetBar({ budget }: { budget: WeekBudget }) {
       </div>
 
       <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">
-        {t("st.weekToday", { m: deInt(budget.today) })} · {t("st.weekMeasured")}
+        {t("st.weekToday", { m: deInt(budget.today) })}
       </p>
     </div>
   );
