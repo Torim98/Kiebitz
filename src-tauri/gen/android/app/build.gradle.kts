@@ -64,12 +64,12 @@ val testAdmobBannerAdUnitId = "ca-app-pub-3940256099942544/6300978111"
 val releaseAdmobAppId = advertisingValue(
     "KIEBITZ_ADMOB_APP_ID",
     "kiebitz.admob.appId",
-    "ca-app-pub-9343669245707846~1360316109",
+    "ca-app-pub-9343669245707846~7313498282",
 )
 val releaseAdmobBannerAdUnitId = advertisingValue(
     "KIEBITZ_ADMOB_BANNER_ID",
     "kiebitz.admob.bannerId",
-    "ca-app-pub-9343669245707846/3667181173",
+    "ca-app-pub-9343669245707846/9496808496",
 )
 
 android {

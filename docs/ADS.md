@@ -13,8 +13,8 @@ ID. They do not generate revenue and are safe for development.
 Release builds use Kiebitz' production IDs:
 
 ```text
-App:    ca-app-pub-9343669245707846~1360316109
-Banner: ca-app-pub-9343669245707846/3667181173
+App:    ca-app-pub-9343669245707846~7313498282
+Banner: ca-app-pub-9343669245707846/9496808496
 ```
 
 The release IDs can be overridden as environment variables:
