@@ -520,7 +520,7 @@ fn apply_study_templates(
         .prepare(
             "UPDATE study_templates
              SET title=?1, duration_min=?2, tool=?3, description=?4,
-                 created_ts=?5, updated_ts=?6, deleted=?7
+                 created_ts=?5, updated_ts=?6, deleted=?7, area=?9, i18n_key=?10
              WHERE id=?8",
         )
         .map_err(|e| e.to_string())?;
@@ -528,8 +528,8 @@ fn apply_study_templates(
         .prepare(
             "INSERT INTO study_templates
              (sync_key, title, duration_min, tool, description,
-              created_ts, updated_ts, deleted)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+              created_ts, updated_ts, deleted, area, i18n_key)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         )
         .map_err(|e| e.to_string())?;
     for template in templates {
@@ -549,7 +549,9 @@ fn apply_study_templates(
                             template.created_ts,
                             template.updated_ts,
                             template.deleted as i64,
-                            id
+                            id,
+                            template.area,
+                            template.i18n_key
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -566,7 +568,9 @@ fn apply_study_templates(
                             template.description,
                             template.created_ts,
                             template.updated_ts,
-                            template.deleted as i64
+                            template.deleted as i64,
+                            template.area,
+                            template.i18n_key
                         ],
                     )
                     .map_err(|e| e.to_string())?;

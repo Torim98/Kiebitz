@@ -160,6 +160,12 @@ pub struct SyncStudyTemplate {
     pub created_ts: i64,
     pub updated_ts: i64,
     pub deleted: bool,
+    /// Trainingsbereich; ältere Gegenstellen kennen ihn nicht · dort bleibt er
+    /// leer und die lokale Zuordnung greift wieder über den Titel.
+    #[serde(default)]
+    pub area: String,
+    #[serde(default)]
+    pub i18n_key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

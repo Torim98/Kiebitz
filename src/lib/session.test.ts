@@ -19,10 +19,11 @@ function advance(seconds: number) {
 
 /** Letzter an das Backend gemeldeter Stand einer Sitzung. */
 function lastCall() {
-  const call = invoke.mock.calls.at(-1) as
-    | [string, { sessionKey: string; area: string; startTs: number; seconds: number }]
-    | undefined;
-  return call?.[1];
+  const calls = invoke.mock.calls as unknown as [
+    string,
+    { sessionKey: string; area: string; startTs: number; seconds: number },
+  ][];
+  return calls[calls.length - 1]?.[1];
 }
 
 beforeEach(() => {

@@ -36,6 +36,10 @@ pub struct StudyTemplate {
     pub duration_min: i64,
     pub tool: String,
     pub description: String,
+    /// Trainingsbereich der Einheit; "" = keiner zugeordnet.
+    pub area: String,
+    /// Basis der Übersetzungsschlüssel bei unbearbeiteten Startvorlagen.
+    pub i18n_key: String,
 }
 
 #[derive(Deserialize)]
@@ -45,6 +49,8 @@ pub struct StudyTemplateInput {
     pub duration_min: i64,
     pub tool: String,
     pub description: String,
+    #[serde(default)]
+    pub area: String,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -180,7 +186,7 @@ fn valid_day(day: &str) -> bool {
 
 fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
     conn.query_row(
-        "SELECT id, title, duration_min, tool, description
+        "SELECT id, title, duration_min, tool, description, area, i18n_key
          FROM study_templates WHERE id = ?1 AND deleted = 0",
         params![id],
         |r| {
@@ -190,6 +196,8 @@ fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
                 duration_min: r.get(2)?,
                 tool: r.get(3)?,
                 description: r.get(4)?,
+                area: r.get(5)?,
+                i18n_key: r.get(6)?,
             })
         },
     )
@@ -424,7 +432,7 @@ fn calendar_from_conn(
     let templates = {
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, duration_min, tool, description
+                "SELECT id, title, duration_min, tool, description, area, i18n_key
                  FROM study_templates WHERE deleted = 0 ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
@@ -436,6 +444,8 @@ fn calendar_from_conn(
                     duration_min: r.get(2)?,
                     tool: r.get(3)?,
                     description: r.get(4)?,
+                    area: r.get(5)?,
+                    i18n_key: r.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -448,7 +458,8 @@ fn calendar_from_conn(
             .prepare(
                 "SELECT e.id, e.template_id, e.day, e.position, e.completed, e.completed_ts,
                         e.repeat_rule, e.series_key,
-                        t.id, t.title, t.duration_min, t.tool, t.description
+                        t.id, t.title, t.duration_min, t.tool, t.description,
+                        t.area, t.i18n_key
                  FROM study_events e JOIN study_templates t ON t.id = e.template_id
                  WHERE e.day >= ?1 AND e.day <= ?2
                    AND e.deleted = 0 AND t.deleted = 0
@@ -472,6 +483,8 @@ fn calendar_from_conn(
                         duration_min: r.get(10)?,
                         tool: r.get(11)?,
                         description: r.get(12)?,
+                        area: r.get(13)?,
+                        i18n_key: r.get(14)?,
                     },
                 })
             })

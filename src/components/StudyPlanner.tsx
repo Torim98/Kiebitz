@@ -24,8 +24,11 @@ import {
   repeatStudyUnit,
   saveStudyTemplate,
   scheduleStudyUnit,
+  templateText,
+  AREAS,
   REPEAT_RULES,
   REPEAT_STEP_DAYS,
+  type Area,
   type RepeatRule,
   type StudyCalendar,
   type StudyEvent,
@@ -42,6 +45,15 @@ const EMPTY_TEMPLATE: StudyTemplateInput = {
   duration_min: 20,
   tool: "",
   description: "",
+  area: "",
+};
+
+const AREA_KEY: Record<Area, Key> = {
+  play: "plan.areaPlay",
+  tactics: "plan.areaTactics",
+  openings: "plan.areaOpenings",
+  endgames: "plan.areaEndgames",
+  analysis: "plan.areaAnalysis",
 };
 
 function mondayOf(date: Date): Date {
@@ -196,11 +208,13 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
     [weekStart]
   );
   const previewCalendar = useMemo<StudyCalendar>(() => {
+    // Die Vorschau zeigt dieselben Startvorlagen wie eine frische Installation ·
+    // über i18n_key stehen sie auch hier in der Sprache der Oberfläche.
     const templates: StudyTemplate[] = [
-      { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "Reinforce the first 8–10 moves and the ideas behind them." },
-      { id: 2, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "Train queen, rook, and fundamental pawn endings." },
-      { id: 3, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "15–20 puzzles: forks, pins, skewers, and discovered attacks." },
-      { id: 4, title: "Game + analysis", duration_min: 40, tool: "Lichess + Kiebitz Analysis", description: "Play rapid, review yourself, then understand the three biggest errors." },
+      { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "Reinforce the first 8–10 moves and the ideas behind them.", area: "openings", i18n_key: "st.seed.openings" },
+      { id: 2, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "Train queen, rook, and fundamental pawn endings.", area: "endgames", i18n_key: "st.seed.endgames" },
+      { id: 3, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "15–20 puzzles: forks, pins, skewers, and discovered attacks.", area: "tactics", i18n_key: "st.seed.tactics" },
+      { id: 4, title: "Game + analysis", duration_min: 40, tool: "Lichess + Kiebitz Analysis", description: "Play rapid, review yourself, then understand the three biggest errors.", area: "play", i18n_key: "st.seed.play" },
     ];
     const today = isoDay(new Date());
     const demoMinutes = [24, 0, 16, 40, 10, 19, 0];
@@ -451,7 +465,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                                 startDrag(pointerEvent, {
                                   kind: "event",
                                   id: event.id,
-                                  label: event.template.title,
+                                  label: templateText(event.template, "title", t),
                                 })
                               }
                               className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
@@ -461,7 +475,7 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className={`text-[11.5px] font-medium leading-tight ${event.completed ? "text-ink3 line-through" : "text-ink"}`}>
-                                {event.template.title}
+                                {templateText(event.template, "title", t)}
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
                                 <span>{event.template.duration_min} min</span>
@@ -614,7 +628,11 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                   <div className="flex items-start gap-2">
                     <span
                       onPointerDown={(pointerEvent) =>
-                        startDrag(pointerEvent, { kind: "template", id: template.id, label: template.title })
+                        startDrag(pointerEvent, {
+                          kind: "template",
+                          id: template.id,
+                          label: templateText(template, "title", t),
+                        })
                       }
                       className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
                       aria-label={t("st.dragUnit")}
@@ -622,20 +640,35 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
                       <GripVertical size={15} />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-ink">{template.title}</div>
+                      <div className="text-[12.5px] font-medium text-ink">
+                        {templateText(template, "title", t)}
+                      </div>
                       <div className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-ink3">
                         <span className="flex items-center gap-1"><Clock3 size={11} /> {template.duration_min} min</span>
-                        {template.tool && <span>{template.tool}</span>}
+                        {template.tool && <span>{templateText(template, "tool", t)}</span>}
                       </div>
                       {template.description && (
-                        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">{template.description}</p>
+                        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">
+                          {templateText(template, "desc", t)}
+                        </p>
                       )}
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-end gap-1">
                     <button
                       type="button"
-                      onClick={() => setEditing(template)}
+                      // Bearbeitet wird der Text, der auf dem Bildschirm
+                      // steht · bei einer Startvorlage ist das die Übersetzung.
+                      onClick={() =>
+                        setEditing({
+                          id: template.id,
+                          title: templateText(template, "title", t),
+                          duration_min: template.duration_min,
+                          tool: templateText(template, "tool", t),
+                          description: templateText(template, "desc", t),
+                          area: template.area,
+                        })
+                      }
                       disabled={!desktop}
                       className="rounded-md p-1.5 text-ink3 hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                       aria-label={t("common.edit")}
@@ -673,9 +706,24 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
         {editing && (
           <div className="rounded-xl border border-accent-dim bg-panel2 p-4">
             <div className="mb-3 text-[13px] font-medium text-ink">{editing.id ? t("st.editUnit") : t("st.newUnit")}</div>
-            <div className="grid gap-3 min-[700px]:grid-cols-[1fr_120px_1fr]">
+            <div className="grid gap-3 min-[700px]:grid-cols-[1fr_120px_1fr_1fr]">
               <label className="text-[11px] text-ink3">{t("st.unitTitle")}<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
               <label className="text-[11px] text-ink3">{t("st.duration")}<input type="number" min={5} max={480} value={editing.duration_min} onChange={(event) => setEditing({ ...editing, duration_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
+              {/* Der Bereich entscheidet, auf welches Budget die Einheit
+                  einzahlt und woher der Wochenplan sie nimmt · früher wurde er
+                  aus dem Titel geraten, und zwar nur auf Deutsch und Englisch. */}
+              <label className="text-[11px] text-ink3">{t("st.unitArea")}
+                <select
+                  value={editing.area}
+                  onChange={(event) => setEditing({ ...editing, area: event.target.value as Area | "" })}
+                  className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+                >
+                  <option value="">{t("st.areaNone")}</option>
+                  {AREAS.map((area) => (
+                    <option key={area} value={area}>{t(AREA_KEY[area])}</option>
+                  ))}
+                </select>
+              </label>
               <label className="text-[11px] text-ink3">{t("st.tool")}<input value={editing.tool} onChange={(event) => setEditing({ ...editing, tool: event.target.value })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
             </div>
             <label className="mt-3 block text-[11px] text-ink3">{t("st.description")}<textarea rows={3} value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} className="mt-1 w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] leading-relaxed text-ink focus:border-accent-dim focus:outline-none" /></label>

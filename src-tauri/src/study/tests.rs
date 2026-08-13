@@ -113,6 +113,7 @@ mod tests {
             duration_min: 30,
             tool: "Board".into(),
             description: "Three candidate moves".into(),
+            area: "tactics".into(),
         };
         let title = clean_text(template.title, 80);
         conn.execute(

@@ -388,7 +388,7 @@ fn collect_study_templates(
     let mut stmt = conn
         .prepare(
             "SELECT sync_key, title, duration_min, tool, description,
-                    created_ts, updated_ts, deleted
+                    created_ts, updated_ts, deleted, area, i18n_key
              FROM study_templates WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -403,6 +403,8 @@ fn collect_study_templates(
                 created_ts: r.get(5)?,
                 updated_ts: r.get(6)?,
                 deleted: r.get::<_, i64>(7)? != 0,
+                area: r.get(8)?,
+                i18n_key: r.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?

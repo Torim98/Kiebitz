@@ -291,14 +291,28 @@ describe("referenceRating", () => {
 });
 
 describe("buildWeekPlan", () => {
+  // Bewusst ohne gespeicherten Bereich: diese Vorlagen stehen für Altbestand
+  // und für Vorlagen von einer älteren Gegenstelle, bei denen nur der
+  // Rateversuch über Titel und Werkzeug bleibt.
   const templates: StudyTemplate[] = [
-    { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "" },
-    { id: 2, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "" },
-    { id: 3, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "" },
+    { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "", area: "", i18n_key: "" },
+    { id: 2, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "", area: "", i18n_key: "" },
+    { id: 3, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "", area: "", i18n_key: "" },
   ];
   const monday = new Date(Date.UTC(2026, 6, 27));
 
-  it("maps templates to areas through their tool", () => {
+  it("takes the stored area over any guess from the title", () => {
+    // "Táctica" trifft kein Teilwort · genau dafür steht der Bereich an der
+    // Vorlage, und er überstimmt auch einen widersprechenden Titel.
+    const spanish: StudyTemplate = {
+      id: 9, title: "Táctica", duration_min: 20, tool: "Ejercicios", description: "",
+      area: "tactics", i18n_key: "",
+    };
+    expect(templateArea(spanish)).toBe("tactics");
+    expect(templateArea({ ...templates[0], area: "endgames" })).toBe("endgames");
+  });
+
+  it("falls back to tool and title when no area is stored", () => {
     expect(templateArea(templates[0])).toBe("openings");
     expect(templateArea(templates[1])).toBe("tactics");
     expect(templateArea(templates[2])).toBe("endgames");

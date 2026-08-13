@@ -22,12 +22,21 @@ pub fn save_study_template(
     let tool = clean_text(template.tool, 100);
     let description = clean_text(template.description, 2_000);
     let now = now_ts();
+    let area = if AREAS.contains(&template.area.as_str()) {
+        template.area.clone()
+    } else {
+        String::new()
+    };
     let id = if let Some(id) = template.id {
         let changed = conn
             .execute(
+                // Ab der ersten Bearbeitung gehört der Text dem Nutzer · der
+                // Übersetzungsschlüssel der Startvorlage fällt damit weg, sonst
+                // überschriebe die nächste Sprachumstellung seine Formulierung.
                 "UPDATE study_templates SET title=?1, duration_min=?2, tool=?3,
-                    description=?4, updated_ts=?5, deleted=0 WHERE id=?6",
-                params![title, duration, tool, description, now, id],
+                    description=?4, area=?5, i18n_key='', updated_ts=?6, deleted=0
+                 WHERE id=?7",
+                params![title, duration, tool, description, area, now, id],
             )
             .map_err(|e| e.to_string())?;
         if changed == 0 {
@@ -37,9 +46,9 @@ pub fn save_study_template(
     } else {
         conn.execute(
             "INSERT INTO study_templates
-             (sync_key, title, duration_min, tool, description, created_ts, updated_ts)
-             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5, ?5)",
-            params![title, duration, tool, description, now],
+             (sync_key, title, duration_min, tool, description, area, created_ts, updated_ts)
+             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![title, duration, tool, description, area, now],
         )
         .map_err(|e| e.to_string())?;
         conn.last_insert_rowid()

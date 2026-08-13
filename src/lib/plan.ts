@@ -436,8 +436,18 @@ export interface PlannedUnit {
   minutes: number;
 }
 
-/** Ordnet eine Vorlage einem Bereich zu · über ihr Werkzeug, sonst über den Titel. */
+/**
+ * Bereich einer Lerneinheit.
+ *
+ * Maßgeblich ist der gespeicherte Bereich · er steht seit v0.9 an der Vorlage
+ * und wird im Editor gewählt. Der Rateversuch darunter gilt nur noch für
+ * Altbestand und für Vorlagen von einer älteren Gegenstelle: er sucht
+ * englische und deutsche Teilwörter und trifft eine spanische "Táctica"
+ * genauso wenig wie ein französisches "Finales", weshalb er nie mehr sein
+ * durfte als ein Rückfall.
+ */
 export function templateArea(template: StudyTemplate): Area | null {
+  if (template.area) return template.area;
   const haystack = `${template.tool} ${template.title}`.toLowerCase();
   if (haystack.includes("repertoire") || haystack.includes("opening") || haystack.includes("eröffnung")) {
     return "openings";

@@ -583,6 +583,8 @@ mod tests {
             created_ts: 100,
             updated_ts: 100,
             deleted: false,
+            area: "tactics".into(),
+            i18n_key: String::new(),
         };
         let mut event = SyncStudyEvent {
             sync_key: "event-calculation-monday".into(),

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emitDataChange } from "./changes";
+import type { Key, TFunc } from "./i18n";
 
 /** Spiegelt study::DayActivity. */
 export interface DayActivity {
@@ -34,6 +35,14 @@ export interface StudyTemplate {
   duration_min: number;
   tool: string;
   description: string;
+  /** Trainingsbereich der Einheit; "" = keiner zugeordnet. */
+  area: Area | "";
+  /**
+   * Basis der Übersetzungsschlüssel einer unbearbeiteten Startvorlage
+   * ("st.seed.tactics"). Leer, sobald der Nutzer den Text angefasst hat · ab
+   * dann gehört er ihm und wird nicht mehr übersetzt.
+   */
+  i18n_key: string;
 }
 
 /** Wiederholungsraster einer Serie; "" ist ein Einzeltermin. */
@@ -82,7 +91,31 @@ export interface StudyCalendar {
   days: StudyDay[];
 }
 
-export type StudyTemplateInput = Omit<StudyTemplate, "id"> & { id?: number };
+/** Der Übersetzungsschlüssel wird nie geschrieben · das Backend räumt ihn weg. */
+export type StudyTemplateInput = Omit<StudyTemplate, "id" | "i18n_key"> & { id?: number };
+
+/**
+ * Angezeigter Text einer Lerneinheit.
+ *
+ * Die vier Startvorlagen liegen englisch in der Datenbank, weil sie echte,
+ * bearbeitbare Nutzerdaten sind · angezeigt werden sie trotzdem in der Sprache
+ * der Oberfläche, solange sie unverändert sind. Ab der ersten Bearbeitung
+ * entfällt `i18n_key`, und der eigene Text steht da, wo er hingehört.
+ */
+export function templateText(
+  template: StudyTemplate,
+  field: "title" | "tool" | "desc",
+  t: TFunc
+): string {
+  const own = field === "title" ? template.title : field === "tool" ? template.tool : template.description;
+  if (!template.i18n_key) return own;
+  // Der Schlüssel wird zur Laufzeit zusammengesetzt · die Prüfung darunter
+  // fängt ab, wenn er im Wörterbuch fehlt.
+  const translated = t(`${template.i18n_key}.${field}` as Key);
+  // Fehlt der Schlüssel (etwa nach einem Sync von einer neueren Version),
+  // bleibt der gespeicherte englische Text stehen statt eines rohen Schlüssels.
+  return translated.startsWith(template.i18n_key) ? own : translated;
+}
 
 export function getStudyCalendar(startDay: string, endDay: string): Promise<StudyCalendar> {
   return invoke<StudyCalendar>("study_calendar", { startDay, endDay });

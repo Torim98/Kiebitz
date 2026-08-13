@@ -77,32 +77,56 @@ pub struct UpsertResult {
     pub total: i64,
 }
 
-/// Startvorlagen des Studienkalenders (Titel, Dauer, Tool, Beschreibung).
-const DEFAULT_STUDY_TEMPLATES: [(&str, i64, &str, &str); 4] = [
-    (
-        "Opening training",
-        20,
-        "Kiebitz Repertoire",
-        "Pick one opening for White and one for Black. Learn the first 8–10 moves and the ideas behind them.",
-    ),
-    (
-        "Endgame training",
-        20,
-        "Kiebitz Endgames",
-        "Fundamentals in order: queen vs. king, rook vs. king, pawn endings with opposition and the square rule.",
-    ),
-    (
-        "Tactics",
-        20,
-        "Kiebitz Puzzles",
-        "15–20 puzzles, slow and accurate. Focus: forks, pins, skewers and discovered attacks.",
-    ),
-    (
-        "Game + analysis",
-        40,
-        "Lichess + Kiebitz Analysis",
-        "Play one rapid game, review it yourself first, then understand the three biggest engine mistakes.",
-    ),
+/// Startvorlagen des Studienkalenders.
+///
+/// Die Texte sind der Rückfall, nicht die Anzeige: solange eine Startvorlage
+/// unbearbeitet ist, zeigt die Oberfläche sie über `i18n_key` in der
+/// eingestellten Sprache. Ab der ersten Bearbeitung gehört der Text dem Nutzer,
+/// und `i18n_key` fällt weg.
+struct SeedTemplate {
+    title: &'static str,
+    duration_min: i64,
+    tool: &'static str,
+    description: &'static str,
+    /// Trainingsbereich · derselbe Schlüssel wie in `study.rs`.
+    area: &'static str,
+    /// Basis der Übersetzungsschlüssel (`<base>.title`, `.tool`, `.desc`).
+    i18n_key: &'static str,
+}
+
+const DEFAULT_STUDY_TEMPLATES: [SeedTemplate; 4] = [
+    SeedTemplate {
+        title: "Opening training",
+        duration_min: 20,
+        tool: "Kiebitz Repertoire",
+        description: "Pick one opening for White and one for Black. Learn the first 8–10 moves and the ideas behind them.",
+        area: "openings",
+        i18n_key: "st.seed.openings",
+    },
+    SeedTemplate {
+        title: "Endgame training",
+        duration_min: 20,
+        tool: "Kiebitz Endgames",
+        description: "Fundamentals in order: queen vs. king, rook vs. king, pawn endings with opposition and the square rule.",
+        area: "endgames",
+        i18n_key: "st.seed.endgames",
+    },
+    SeedTemplate {
+        title: "Tactics",
+        duration_min: 20,
+        tool: "Kiebitz Puzzles",
+        description: "15–20 puzzles, slow and accurate. Focus: forks, pins, skewers and discovered attacks.",
+        area: "tactics",
+        i18n_key: "st.seed.tactics",
+    },
+    SeedTemplate {
+        title: "Game + analysis",
+        duration_min: 40,
+        tool: "Lichess + Kiebitz Analysis",
+        description: "Play one rapid game, review it yourself first, then understand the three biggest engine mistakes.",
+        area: "play",
+        i18n_key: "st.seed.play",
+    },
 ];
 
 /// Deutsche Startvorlagen aus v0.5.x auf die englischen Texte heben · aber nur,
@@ -119,15 +143,39 @@ fn translate_seeded_study_templates(conn: &Connection) -> Result<(), String> {
         ("Partie + Analyse", 3),
     ];
     for (german_title, index) in legacy {
-        let (title, duration, tool, description) = DEFAULT_STUDY_TEMPLATES[index];
+        let seed = &DEFAULT_STUDY_TEMPLATES[index];
         conn.execute(
             "UPDATE study_templates SET title = ?1, duration_min = ?2, tool = ?3, description = ?4
              WHERE title = ?5",
-            params![title, duration, tool, description, german_title],
+            params![
+                seed.title,
+                seed.duration_min,
+                seed.tool,
+                seed.description,
+                german_title
+            ],
         )
         .map_err(|e| e.to_string())?;
     }
     meta_set(conn, "study_templates_en", "1")
+}
+
+/// Trägt Bereich und Übersetzungsschlüssel bei den Startvorlagen nach.
+///
+/// Nur bei unveränderten Vorlagen · wer "Tactics" in "Endspiel-Drills"
+/// umbenannt hat, meint etwas anderes als der Startbestand, und ein
+/// aufgezwungener Bereich wäre dort schlicht falsch. Für solche Zeilen bleibt
+/// der Bereich leer, bis er im Editor gewählt wird.
+fn classify_seeded_study_templates(conn: &Connection) -> Result<(), String> {
+    for seed in &DEFAULT_STUDY_TEMPLATES {
+        conn.execute(
+            "UPDATE study_templates SET area = ?1, i18n_key = ?2
+             WHERE title = ?3 AND area = '' AND deleted = 0",
+            params![seed.area, seed.i18n_key, seed.title],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn init(conn: &Connection) -> Result<(), String> {
@@ -515,6 +563,15 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         // Begründung ist nach ein paar Monaten nur noch eine Zugliste · der
         // Plan hinter der Variante gehört an die Stellung, nicht ins Gedächtnis.
         ("rep_nodes", "note", "TEXT NOT NULL DEFAULT ''"),
+        // Migration v16: Lerneinheiten tragen ihren Trainingsbereich selbst.
+        //
+        // Vorher riet der Wochenplaner ihn aus Teilwörtern des Titels, und zwar
+        // aus englischen und deutschen · eine Vorlage "Táctica" traf nichts und
+        // fiel damit stillschweigend aus der Planung. `i18n_key` markiert die
+        // vier Startvorlagen, damit sie in der Sprache der Oberfläche stehen,
+        // solange niemand sie bearbeitet hat.
+        ("study_templates", "area", "TEXT NOT NULL DEFAULT ''"),
+        ("study_templates", "i18n_key", "TEXT NOT NULL DEFAULT ''"),
     ] {
         add_column_if_missing(conn, table, column, definition)?;
     }
@@ -542,19 +599,20 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
     // kleinste gemeinsame Basis aller Nutzer ist.
     if meta_get(conn, "study_templates_seeded").is_none() {
         let now = now_ts();
-        for (index, (title, duration, tool, description)) in
-            DEFAULT_STUDY_TEMPLATES.into_iter().enumerate()
-        {
+        for (index, seed) in DEFAULT_STUDY_TEMPLATES.iter().enumerate() {
             conn.execute(
                 "INSERT INTO study_templates
-                 (sync_key, title, duration_min, tool, description, created_ts, updated_ts)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                 (sync_key, title, duration_min, tool, description, area, i18n_key,
+                  created_ts, updated_ts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
                 params![
                     format!("seed-{}", index + 1),
-                    title,
-                    duration,
-                    tool,
-                    description,
+                    seed.title,
+                    seed.duration_min,
+                    seed.tool,
+                    seed.description,
+                    seed.area,
+                    seed.i18n_key,
                     now
                 ],
             )
@@ -563,6 +621,7 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         meta_set(conn, "study_templates_seeded", "1")?;
     }
     translate_seeded_study_templates(conn)?;
+    classify_seeded_study_templates(conn)?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rep_tombstones (
             side       TEXT NOT NULL,
