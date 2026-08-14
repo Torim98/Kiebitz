@@ -57,7 +57,7 @@ neither AdSense nor the Android SDK on desktop. A sandboxed frame loads the
 static campaign surface from:
 
 ```text
-https://torim98.github.io/kiebitz-site/desktop-ad/
+https://kiebitz.dev/desktop-ad/
 ```
 
 The frame is sandboxed, receives no referrer, and is not passed chess data, a

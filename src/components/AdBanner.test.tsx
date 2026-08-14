@@ -14,7 +14,7 @@ function sendFromFrame(iframe: HTMLIFrameElement, data: unknown) {
   act(() => {
     window.dispatchEvent(new MessageEvent("message", {
       data,
-      origin: "https://torim98.github.io",
+      origin: "https://kiebitz.dev",
       source: iframe.contentWindow,
     }));
   });

@@ -19,7 +19,7 @@ export interface PrivacyOptionsResult {
 }
 
 export const DESKTOP_AD_FRAME_URL =
-  "https://torim98.github.io/kiebitz-site/desktop-ad/";
+  "https://kiebitz.dev/desktop-ad/";
 
 export const DESKTOP_AD_MESSAGE_SOURCE = "kiebitz-desktop-ad";
 

@@ -1645,7 +1645,7 @@ export default function SettingsPage({
             </span>
             <button
               type="button"
-              onClick={() => openExternal("https://torim98.github.io/kiebitz-site/")}
+              onClick={() => openExternal("https://kiebitz.dev/")}
               className="inline-flex items-center gap-1 text-accent transition-colors hover:text-ink"
             >
               <ExternalLink size={12} /> {t("set.aboutWebsite")}

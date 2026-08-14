@@ -14,7 +14,7 @@ signing & notarization → iOS*.
 - Stockfish and Android toolchain pins: `config/toolchain-pins.json`. Run
   `npm run pins:sync` after changing it; CI verifies its consumers with
   `npm run pins:check`.
-- Website: <https://torim98.github.io/kiebitz-site/> — a **separate** repository,
+- Website: <https://kiebitz.dev/> — a **separate** repository,
   [`Torim98/kiebitz-site`](https://github.com/Torim98/kiebitz-site), served by
   GitHub Pages from `main`/root. It hosts the privacy policy that Google Play
   requires, so that URL has to stay reachable and stable. Referenced from
