@@ -8,7 +8,7 @@ pub struct Db(pub Mutex<Connection>);
 
 /// Current SQLite schema version. It is stored only after the complete
 /// migration has committed successfully.
-const SCHEMA_VERSION: i64 = 16;
+const SCHEMA_VERSION: i64 = 17;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
@@ -77,12 +77,17 @@ pub struct UpsertResult {
     pub total: i64,
 }
 
-/// Startvorlagen des Studienkalenders.
+/// Standardeinheiten des Studienkalenders · genau eine je Trainingsbereich.
 ///
-/// Die Texte sind der Rückfall, nicht die Anzeige: solange eine Startvorlage
+/// Die Texte sind der Rückfall, nicht die Anzeige: solange eine Standardeinheit
 /// unbearbeitet ist, zeigt die Oberfläche sie über `i18n_key` in der
 /// eingestellten Sprache. Ab der ersten Bearbeitung gehört der Text dem Nutzer,
 /// und `i18n_key` fällt weg.
+///
+/// `builtin` überlebt das Bearbeiten: daran hängt, dass es zu jedem der fünf
+/// Bereiche dauerhaft eine Einheit gibt, die der Wochenvorschlag einplanen kann.
+/// Früher fiel ein Bereich ohne passende Vorlage stillschweigend aus der
+/// Planung — Analyse hatte nie eine und wurde deshalb nie geplant.
 struct SeedTemplate {
     title: &'static str,
     duration_min: i64,
@@ -94,7 +99,7 @@ struct SeedTemplate {
     i18n_key: &'static str,
 }
 
-const DEFAULT_STUDY_TEMPLATES: [SeedTemplate; 4] = [
+const DEFAULT_STUDY_TEMPLATES: [SeedTemplate; 5] = [
     SeedTemplate {
         title: "Opening training",
         duration_min: 20,
@@ -120,12 +125,20 @@ const DEFAULT_STUDY_TEMPLATES: [SeedTemplate; 4] = [
         i18n_key: "st.seed.tactics",
     },
     SeedTemplate {
-        title: "Game + analysis",
+        title: "Playing",
         duration_min: 40,
-        tool: "Lichess + Kiebitz Analysis",
-        description: "Play one rapid game, review it yourself first, then understand the three biggest engine mistakes.",
+        tool: "Lichess / chess.com",
+        description: "Play deliberately, not on the side: one long game beats five hasty ones.",
         area: "play",
         i18n_key: "st.seed.play",
+    },
+    SeedTemplate {
+        title: "Game review",
+        duration_min: 25,
+        tool: "Kiebitz Analysis",
+        description: "Review your own game first, then let the engine show you the three biggest mistakes.",
+        area: "analysis",
+        i18n_key: "st.seed.analysis",
     },
 ];
 
@@ -160,21 +173,92 @@ fn translate_seeded_study_templates(conn: &Connection) -> Result<(), String> {
     meta_set(conn, "study_templates_en", "1")
 }
 
-/// Trägt Bereich und Übersetzungsschlüssel bei den Startvorlagen nach.
+/// Sorgt dafür, dass es zu jedem der fünf Bereiche genau eine Standardeinheit
+/// gibt · auf jedem Gerät unter demselben `sync_key`, damit der Sync sie
+/// vereinigt statt zu verdoppeln.
 ///
-/// Nur bei unveränderten Vorlagen · wer "Tactics" in "Endspiel-Drills"
-/// umbenannt hat, meint etwas anderes als der Startbestand, und ein
-/// aufgezwungener Bereich wäre dort schlicht falsch. Für solche Zeilen bleibt
-/// der Bereich leer, bis er im Editor gewählt wird.
-fn classify_seeded_study_templates(conn: &Connection) -> Result<(), String> {
-    for seed in &DEFAULT_STUDY_TEMPLATES {
-        conn.execute(
-            "UPDATE study_templates SET area = ?1, i18n_key = ?2
-             WHERE title = ?3 AND area = '' AND deleted = 0",
-            params![seed.area, seed.i18n_key, seed.title],
-        )
-        .map_err(|e| e.to_string())?;
+/// Die Einheit gehört dem Nutzer: Titel, Beschreibung und Bereiche darf er
+/// ändern. Nur ihre Existenz ist nicht verhandelbar, denn der Wochenvorschlag
+/// plant über sie. Solange sie unbearbeitet ist (`i18n_key` steht noch), wird
+/// der hinterlegte englische Text mitgezogen — angezeigt wird ohnehin die
+/// Übersetzung.
+///
+/// Läuft bei jedem Start, nicht nur bei einer Migration: eine Standardeinheit
+/// kann auch über den Sync von einer älteren Gegenstelle verschwinden. Wo
+/// nichts abweicht, wird auch nichts geschrieben — sonst reisten die fünf
+/// Zeilen bei jedem Start erneut durch den Sync.
+fn ensure_builtin_study_templates(conn: &Connection) -> Result<(), String> {
+    let now = now_ts();
+    for (index, seed) in DEFAULT_STUDY_TEMPLATES.iter().enumerate() {
+        let sync_key = format!("seed-{}", index + 1);
+        let existing: Option<(i64, String, String, String, i64)> = conn
+            .query_row(
+                "SELECT id, i18n_key, builtin, areas, deleted
+                   FROM study_templates WHERE sync_key = ?1",
+                params![sync_key],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .ok();
+        match existing {
+            Some((id, i18n_key, builtin, areas, deleted)) => {
+                // Bereich, Bereichsliste und Löschmarke gehören zur Existenz,
+                // nicht zum Text · sie werden geradegezogen, falls nötig.
+                if builtin != seed.area || deleted != 0 || areas.is_empty() {
+                    conn.execute(
+                        "UPDATE study_templates
+                            SET builtin = ?1, area = ?1, deleted = 0,
+                                areas = CASE WHEN areas = '' THEN ?1 ELSE areas END,
+                                updated_ts = ?2
+                          WHERE id = ?3",
+                        params![seed.area, now, id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                if i18n_key == seed.i18n_key {
+                    conn.execute(
+                        "UPDATE study_templates
+                            SET title = ?1, duration_min = ?2, tool = ?3, description = ?4
+                          WHERE id = ?5
+                            AND (title <> ?1 OR duration_min <> ?2
+                                 OR tool <> ?3 OR description <> ?4)",
+                        params![
+                            seed.title,
+                            seed.duration_min,
+                            seed.tool,
+                            seed.description,
+                            id
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+            None => {
+                conn.execute(
+                    "INSERT INTO study_templates
+                     (sync_key, title, duration_min, tool, description, area, areas,
+                      builtin, i18n_key, created_ts, updated_ts)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?7, ?8, ?8)",
+                    params![
+                        sync_key,
+                        seed.title,
+                        seed.duration_min,
+                        seed.tool,
+                        seed.description,
+                        seed.area,
+                        seed.i18n_key,
+                        now
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
     }
+    // Altbestand ohne Bereichsliste: der einzelne Bereich ist die Liste.
+    conn.execute(
+        "UPDATE study_templates SET areas = area WHERE areas = '' AND area <> ''",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -196,7 +280,11 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         ));
     }
     if version == SCHEMA_VERSION {
-        return Ok(());
+        // Ohne Migration nichts zu tun · außer der einen Zusicherung, die auch
+        // zwischen zwei Versionen brechen kann: zu jedem Bereich gibt es eine
+        // Standardeinheit. Ein Sync von einer älteren Gegenstelle könnte sie
+        // sonst löschen und den Wochenvorschlag stillschweigend entkernen.
+        return ensure_builtin_study_templates(conn);
     }
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -572,6 +660,23 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         // solange niemand sie bearbeitet hat.
         ("study_templates", "area", "TEXT NOT NULL DEFAULT ''"),
         ("study_templates", "i18n_key", "TEXT NOT NULL DEFAULT ''"),
+        // Migration v17: die Länge einer Einheit steht am Termin, nicht mehr an
+        // der Vorlage.
+        //
+        // Kiebitz misst die Trainingszeit selbst; eine von Hand eingetippte
+        // Dauer war ab da nur noch eine zweite, schlechtere Zahl. Geplant wird
+        // jetzt aus dem Wochenbudget: der Vorschlag rechnet die Lücke je
+        // Bereich in Sitzungen um und schreibt deren Minuten an den Termin.
+        // `duration_min` bleibt als Rückfall für Altbestand stehen.
+        //
+        // `areas` erlaubt einer eigenen Einheit mehrere Bereiche ("Taktik und
+        // Endspiel"), `builtin` hält die fünf Standardeinheiten am Leben, und
+        // `source` unterscheidet vom Vorschlag erzeugte Termine von selbst
+        // geplanten · nur die eigenen darf ein neuer Vorschlag ersetzen.
+        ("study_templates", "areas", "TEXT NOT NULL DEFAULT ''"),
+        ("study_templates", "builtin", "TEXT NOT NULL DEFAULT ''"),
+        ("study_events", "planned_min", "INTEGER NOT NULL DEFAULT 0"),
+        ("study_events", "source", "TEXT NOT NULL DEFAULT ''"),
     ] {
         add_column_if_missing(conn, table, column, definition)?;
     }
@@ -594,34 +699,24 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Kalender-Sync-Migration fehlgeschlagen: {e}"))?;
 
-    // Einmalige, danach vollständig editier- und löschbare Startvorlagen.
-    // Englisch ausgeliefert, weil die App zweisprachig ist und Englisch die
+    // Einstellungen des Trainingsprogramms · sie liegen bewusst *hier* und
+    // nicht in der settings.json: ein Wochenbudget, das auf jedem Gerät ein
+    // anderes ist, ist kein Budget. Alles andere in den Einstellungen bleibt
+    // gerätelokal (Engine-Pfade, Fenster, Sync-Adresse).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS study_prefs (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_ts INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Englisch ausgeliefert, weil die App vielsprachig ist und Englisch die
     // kleinste gemeinsame Basis aller Nutzer ist.
-    if meta_get(conn, "study_templates_seeded").is_none() {
-        let now = now_ts();
-        for (index, seed) in DEFAULT_STUDY_TEMPLATES.iter().enumerate() {
-            conn.execute(
-                "INSERT INTO study_templates
-                 (sync_key, title, duration_min, tool, description, area, i18n_key,
-                  created_ts, updated_ts)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
-                params![
-                    format!("seed-{}", index + 1),
-                    seed.title,
-                    seed.duration_min,
-                    seed.tool,
-                    seed.description,
-                    seed.area,
-                    seed.i18n_key,
-                    now
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        meta_set(conn, "study_templates_seeded", "1")?;
-    }
     translate_seeded_study_templates(conn)?;
-    classify_seeded_study_templates(conn)?;
+    ensure_builtin_study_templates(conn)?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS rep_tombstones (
             side       TEXT NOT NULL,
@@ -838,6 +933,70 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> Result<(), String>
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Eine Einstellung des Trainingsprogramms mit ihrem Änderungszeitpunkt · der
+/// Zeitstempel entscheidet beim Sync, welches Gerät recht behält.
+pub struct StudyPref {
+    pub key: String,
+    pub value: String,
+    pub updated_ts: i64,
+}
+
+/// Die Namen, die zwischen Geräten wandern. Bewusst eine feste Liste: was hier
+/// nicht steht, bleibt gerätelokal.
+pub const STUDY_PREF_KEYS: [&str; 4] = [
+    "weekly_minutes",
+    "training_days",
+    "goal_date",
+    "focus_cycle_days",
+];
+
+pub fn study_pref_get(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM study_prefs WHERE key = ?1",
+        params![key],
+        |r| r.get(0),
+    )
+    .ok()
+}
+
+/// Schreibt eine Einstellung fort. `updated_ts` ist der Konfliktschlüssel des
+/// Syncs, deshalb steht er hier explizit und wird nicht intern erzeugt.
+pub fn study_pref_set(
+    conn: &Connection,
+    key: &str,
+    value: &str,
+    updated_ts: i64,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO study_prefs (key, value, updated_ts) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_ts = excluded.updated_ts
+          WHERE excluded.updated_ts >= study_prefs.updated_ts",
+        params![key, value, updated_ts],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn study_prefs_all(conn: &Connection) -> Result<Vec<StudyPref>, String> {
+    let mut stmt = conn
+        .prepare("SELECT key, value, updated_ts FROM study_prefs")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(StudyPref {
+                key: r.get(0)?,
+                value: r.get(1)?,
+                updated_ts: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(rows)
 }
 
 #[derive(Serialize)]
@@ -1470,7 +1629,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         assert!(column_exists(&conn, "games", "termination").unwrap());
         assert!(column_exists(&conn, "study_templates", "area").unwrap());
         assert!(column_exists(&conn, "study_templates", "i18n_key").unwrap());

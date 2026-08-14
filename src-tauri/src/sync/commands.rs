@@ -203,6 +203,7 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 rep_reviews: collect_rep_reviews(&conn, since)?,
                 study_focus: collect_study_focus(&conn, since)?,
                 study_sessions: collect_study_sessions(&conn, since)?,
+                prefs: collect_prefs(&conn)?,
             };
             (since, req)
         };
@@ -243,6 +244,13 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let rep_reviews = apply_rep_reviews(&conn, &resp.rep_reviews)?;
         let study_focus = apply_study_focus(&conn, &resp.study_focus)?;
         let study_sessions = apply_study_sessions(&conn, &resp.study_sessions)?;
+        // Wochenbudget und Trainingstage können vom anderen Gerät kommen ·
+        // der laufende Einstellungs-Zustand muss ihnen sofort folgen, sonst
+        // rechnet der Lernplan bis zum Neustart mit dem alten Ziel weiter.
+        let prefs = apply_prefs(&conn, &resp.prefs)?;
+        if prefs > 0 {
+            settings::refresh_study_prefs(&app, &conn);
+        }
         db::meta_set(&conn, "sync_last_ts", &resp.now.to_string())?;
         Ok(SyncSummary {
             games_pulled,
@@ -254,7 +262,8 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 + study_events
                 + rep_reviews
                 + study_focus
-                + study_sessions,
+                + study_sessions
+                + prefs,
         })
     })
     .await

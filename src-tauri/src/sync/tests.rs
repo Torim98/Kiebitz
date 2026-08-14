@@ -182,6 +182,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         let response = handle_sync(&mut desktop, &request).unwrap();
         apply_game_tombstones(&mut mobile, &response.game_tombstones).unwrap();
@@ -214,6 +215,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         let second_response = handle_sync(&mut desktop, &second_request).unwrap();
         apply_games(&mut mobile, &second_response.games).unwrap();
@@ -261,6 +263,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         assert_eq!(request.games.len(), 1, "manual games bypass the cursor");
         let response = handle_sync(&mut desktop, &request).unwrap();
@@ -555,6 +558,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         let response = handle_sync(&mut desktop, &request).unwrap();
         apply_puzzle_attempts(&mobile, &response.puzzle_attempts).unwrap();
@@ -571,6 +575,70 @@ mod tests {
         }
     }
 
+    /// Das Trainingsprogramm gehört dem Nutzer, nicht dem Gerät: Wochenbudget
+    /// und Trainingstage reisen mit, und der jüngere Stand gewinnt.
+    #[test]
+    fn training_prefs_travel_between_devices() {
+        let mut desktop = mem_db();
+        db::study_pref_set(&desktop, "weekly_minutes", "0", 1).unwrap();
+        db::study_pref_set(&desktop, "training_days", "0", 1).unwrap();
+
+        let request = SyncRequest {
+            code: "code".into(),
+            since: 0,
+            games: vec![],
+            game_tombstones: vec![],
+            rep_nodes: vec![],
+            rep_tombstones: vec![],
+            puzzle_attempts: vec![],
+            endgame_attempts: vec![],
+            study_templates: vec![],
+            study_events: vec![],
+            rep_reviews: vec![],
+            study_focus: vec![],
+            study_sessions: vec![],
+            prefs: vec![
+                SyncPref {
+                    key: "weekly_minutes".into(),
+                    value: "180".into(),
+                    updated_ts: 500,
+                },
+                // Ein Schlüssel, den dieses Gerät nicht kennt, wird verworfen.
+                SyncPref {
+                    key: "engine_path".into(),
+                    value: "/tmp/stockfish".into(),
+                    updated_ts: 900,
+                },
+            ],
+        };
+        let response = handle_sync(&mut desktop, &request).unwrap();
+        assert_eq!(
+            db::study_pref_get(&desktop, "weekly_minutes").as_deref(),
+            Some("180")
+        );
+        assert!(db::study_pref_get(&desktop, "engine_path").is_none());
+        // Die Antwort trägt den vereinigten Stand zurück.
+        assert!(response
+            .prefs
+            .iter()
+            .any(|pref| pref.key == "weekly_minutes" && pref.value == "180"));
+
+        // Ein älterer Stand überschreibt den neueren nicht.
+        let stale = SyncRequest {
+            prefs: vec![SyncPref {
+                key: "weekly_minutes".into(),
+                value: "30".into(),
+                updated_ts: 100,
+            }],
+            ..request
+        };
+        handle_sync(&mut desktop, &stale).unwrap();
+        assert_eq!(
+            db::study_pref_get(&desktop, "weekly_minutes").as_deref(),
+            Some("180")
+        );
+    }
+
     #[test]
     fn study_plan_syncs_templates_events_completion_and_deletion() {
         let conn = mem_db();
@@ -585,6 +653,8 @@ mod tests {
             deleted: false,
             area: "tactics".into(),
             i18n_key: String::new(),
+            areas: "tactics".into(),
+            builtin: String::new(),
         };
         let mut event = SyncStudyEvent {
             sync_key: "event-calculation-monday".into(),
@@ -598,6 +668,8 @@ mod tests {
             deleted: false,
             repeat_rule: "weekly".into(),
             series_key: "series-calculation".into(),
+            planned_min: 25,
+            source: String::new(),
         };
 
         assert_eq!(
@@ -868,6 +940,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         let tls_config = pinned_tls_config(&fingerprint).unwrap();
         let agent = ureq::AgentBuilder::new()
@@ -925,6 +998,7 @@ mod tests {
             rep_reviews: vec![],
             study_focus: vec![],
             study_sessions: vec![],
+            prefs: vec![],
         };
         let resp = handle_sync(&mut desktop, &req).unwrap();
         assert_eq!(resp.games.len(), 1);

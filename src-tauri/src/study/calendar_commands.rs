@@ -18,25 +18,31 @@ pub fn save_study_template(
     if title.is_empty() {
         return Err("Titel darf nicht leer sein".into());
     }
-    let duration = template.duration_min.clamp(5, 480);
     let tool = clean_text(template.tool, 100);
     let description = clean_text(template.description, 2_000);
     let now = now_ts();
-    let area = if AREAS.contains(&template.area.as_str()) {
-        template.area.clone()
-    } else {
-        String::new()
-    };
+    // Eine Einheit nennt Bereiche, keine Dauer: gemessen wird ohnehin, und die
+    // Länge einer Sitzung ergibt sich aus dem Wochenbudget.
+    let mut areas: Vec<String> = template
+        .areas
+        .iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| AREAS.contains(&value.as_str()))
+        .collect();
+    areas.dedup();
+    let area = areas.first().cloned().unwrap_or_default();
+    let areas = areas.join(",");
     let id = if let Some(id) = template.id {
         let changed = conn
             .execute(
                 // Ab der ersten Bearbeitung gehört der Text dem Nutzer · der
-                // Übersetzungsschlüssel der Startvorlage fällt damit weg, sonst
-                // überschriebe die nächste Sprachumstellung seine Formulierung.
-                "UPDATE study_templates SET title=?1, duration_min=?2, tool=?3,
-                    description=?4, area=?5, i18n_key='', updated_ts=?6, deleted=0
+                // Übersetzungsschlüssel der Standardeinheit fällt damit weg,
+                // sonst überschriebe die nächste Sprachumstellung seine
+                // Formulierung.
+                "UPDATE study_templates SET title=?1, tool=?2,
+                    description=?3, area=?4, areas=?5, i18n_key='', updated_ts=?6, deleted=0
                  WHERE id=?7",
-                params![title, duration, tool, description, area, now, id],
+                params![title, tool, description, area, areas, now, id],
             )
             .map_err(|e| e.to_string())?;
         if changed == 0 {
@@ -46,9 +52,10 @@ pub fn save_study_template(
     } else {
         conn.execute(
             "INSERT INTO study_templates
-             (sync_key, title, duration_min, tool, description, area, created_ts, updated_ts)
-             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-            params![title, duration, tool, description, area, now],
+             (sync_key, title, duration_min, tool, description, area, areas,
+              created_ts, updated_ts)
+             VALUES (lower(hex(randomblob(16))), ?1, 0, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![title, tool, description, area, areas, now],
         )
         .map_err(|e| e.to_string())?;
         conn.last_insert_rowid()
@@ -56,9 +63,24 @@ pub fn save_study_template(
     read_template(&conn, id)
 }
 
+/// Löscht eine Lerneinheit samt ihrer Termine.
+///
+/// Die fünf Standardeinheiten bleiben: an ihnen hängt der Wochenvorschlag, und
+/// ein Bereich ohne Einheit fiele stillschweigend aus der Planung. Wer sie
+/// nicht mag, benennt sie um.
 #[tauri::command]
 pub fn delete_study_template(db: State<db::Db>, template_id: i64) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let builtin: String = conn
+        .query_row(
+            "SELECT builtin FROM study_templates WHERE id = ?1",
+            params![template_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "Lerneinheit nicht gefunden".to_string())?;
+    if !builtin.is_empty() {
+        return Err("Standardeinheiten lassen sich nicht löschen".into());
+    }
     let now = now_ts();
     conn.execute(
         "UPDATE study_events SET deleted = 1, updated_ts = ?2 WHERE template_id = ?1",
@@ -100,6 +122,15 @@ fn series_days(first_day: &str, rule: &str, until: Option<&str>) -> Result<Vec<S
     Ok(days)
 }
 
+/// Geplante Minuten eines neuen Termins · in 5er-Schritten und in dem Rahmen,
+/// in dem eine Sitzung überhaupt eine Sitzung ist.
+fn clamp_planned(minutes: i64) -> i64 {
+    if minutes <= 0 {
+        return 0;
+    }
+    (minutes.clamp(10, 90) as f64 / 5.0).round() as i64 * 5
+}
+
 /// Legt für jeden Tag einen Termin an; alle teilen `series_key` und Raster.
 fn insert_units(
     conn: &Connection,
@@ -107,6 +138,8 @@ fn insert_units(
     days: &[String],
     rule: &str,
     series_key: &str,
+    planned_min: i64,
+    source: &str,
 ) -> Result<usize, String> {
     let now = now_ts();
     for day in days {
@@ -120,9 +153,18 @@ fn insert_units(
         conn.execute(
             "INSERT INTO study_events
              (sync_key, template_id, day, position, created_ts, updated_ts,
-              repeat_rule, series_key)
-             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?4, ?5, ?6)",
-            params![template_id, day, position, now, rule, series_key],
+              repeat_rule, series_key, planned_min, source)
+             VALUES (lower(hex(randomblob(16))), ?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                template_id,
+                day,
+                position,
+                now,
+                rule,
+                series_key,
+                planned_min,
+                source
+            ],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -136,6 +178,7 @@ pub fn schedule_study_unit(
     day: String,
     repeat_rule: Option<String>,
     until: Option<String>,
+    planned_min: Option<i64>,
 ) -> Result<usize, String> {
     if !valid_day(&day) {
         return Err("Ungültiges Datum".into());
@@ -152,7 +195,70 @@ pub fn schedule_study_unit(
     } else {
         new_series_key(&conn)?
     };
-    insert_units(&conn, template_id, &days, &rule, &series_key)
+    insert_units(
+        &conn,
+        template_id,
+        &days,
+        &rule,
+        &series_key,
+        clamp_planned(planned_min.unwrap_or(0)),
+        "",
+    )
+}
+
+/// Eine Einheit aus dem Wochenvorschlag.
+#[derive(Deserialize)]
+pub struct PlannedUnitInput {
+    pub template_id: i64,
+    pub day: String,
+    pub planned_min: i64,
+}
+
+/// Übernimmt einen Wochenvorschlag.
+///
+/// Der Vorschlag ist ein Regelkreis, kein einmaliger Wurf: er darf jederzeit
+/// neu gezogen werden. Deshalb räumt er im Fenster seine *eigenen* offenen
+/// Termine weg (`source = 'plan'`) und legt sie neu an. Von Hand geplante
+/// Einheiten und alles bereits Erledigte bleiben unangetastet — sonst würde ein
+/// zweiter Vorschlag die Woche entweder verdoppeln oder überschreiben.
+#[tauri::command]
+pub fn apply_week_plan(
+    db: State<db::Db>,
+    from_day: String,
+    to_day: String,
+    units: Vec<PlannedUnitInput>,
+) -> Result<usize, String> {
+    if !valid_day(&from_day) || !valid_day(&to_day) || from_day > to_day {
+        return Err("Ungültiger Planungszeitraum".into());
+    }
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let now = now_ts();
+    tx.execute(
+        "UPDATE study_events SET deleted = 1, updated_ts = ?3
+          WHERE source = 'plan' AND completed = 0 AND deleted = 0
+            AND day >= ?1 AND day <= ?2",
+        params![from_day, to_day, now],
+    )
+    .map_err(|e| e.to_string())?;
+    let mut created = 0usize;
+    for unit in &units {
+        if !valid_day(&unit.day) || unit.day < from_day || unit.day > to_day {
+            return Err("Tag liegt außerhalb des Planungszeitraums".into());
+        }
+        read_template(&tx, unit.template_id)?;
+        created += insert_units(
+            &tx,
+            unit.template_id,
+            std::slice::from_ref(&unit.day),
+            "",
+            "",
+            clamp_planned(unit.planned_min),
+            "plan",
+        )?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(created)
 }
 
 /// Zufälliger Serienschlüssel · dieselbe Quelle wie die sync_keys.
@@ -205,7 +311,23 @@ pub fn repeat_study_unit(
     )
     .map_err(|e| e.to_string())?;
     // Der erste Tag der Reihe ist der Termin selbst · er wird nicht doppelt angelegt.
-    insert_units(&conn, template_id, &days[1..], &repeat_rule, &series_key)
+    // Die weiteren Termine erben die Länge des ersten.
+    let planned_min: i64 = conn
+        .query_row(
+            "SELECT planned_min FROM study_events WHERE id = ?1",
+            params![event_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    insert_units(
+        &conn,
+        template_id,
+        &days[1..],
+        &repeat_rule,
+        &series_key,
+        planned_min,
+        "",
+    )
 }
 
 #[tauri::command]
@@ -367,7 +489,9 @@ fn study_data_from_conn(
              UNION SELECT e.completed_ts / 86400
                FROM study_events e JOIN study_templates t ON t.id = e.template_id
               WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
-                AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+                AND (t.areas LIKE '%analysis%'
+                         OR LOWER(t.tool) LIKE '%analys%'
+                         OR LOWER(t.title) LIKE '%analys%')",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt

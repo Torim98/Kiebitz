@@ -32,13 +32,22 @@ export function studyData(): Promise<StudyData> {
 export interface StudyTemplate {
   id: number;
   title: string;
+  /**
+   * Dauer aus der Zeit vor der Messung · nur noch Rückfall für Altbestand.
+   * Geplant wird über `StudyEvent.planned_min`, und die Zahl kommt aus dem
+   * Wochenbudget statt aus einem Eingabefeld.
+   */
   duration_min: number;
   tool: string;
   description: string;
-  /** Trainingsbereich der Einheit; "" = keiner zugeordnet. */
+  /** Erster Trainingsbereich; "" = keiner zugeordnet. */
   area: Area | "";
+  /** Alle Bereiche der Einheit · eine eigene darf mehrere nennen. */
+  areas: Area[];
+  /** Bereichsschlüssel der fünf Standardeinheiten, sonst "". */
+  builtin: Area | "";
   /**
-   * Basis der Übersetzungsschlüssel einer unbearbeiteten Startvorlage
+   * Basis der Übersetzungsschlüssel einer unbearbeiteten Standardeinheit
    * ("st.seed.tactics"). Leer, sobald der Nutzer den Text angefasst hat · ab
    * dann gehört er ihm und wird nicht mehr übersetzt.
    */
@@ -73,7 +82,22 @@ export interface StudyEvent {
   repeat_rule: RepeatRule;
   /** Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin). */
   series_key: string;
+  /** Geplante Minuten dieses Termins (0 = keine Vorgabe). */
+  planned_min: number;
+  /** "plan" bei Terminen aus dem Wochenvorschlag, sonst "". */
+  source: "plan" | "";
   template: StudyTemplate;
+}
+
+/** Geplante Minuten eines Termins · Rückfall auf die alte Vorlagendauer. */
+export function eventMinutes(event: StudyEvent): number {
+  return event.planned_min > 0 ? event.planned_min : event.template.duration_min;
+}
+
+/** Bereiche einer Einheit · der einzelne Bereich ist der Rückfall. */
+export function templateAreas(template: StudyTemplate): Area[] {
+  if (template.areas.length > 0) return template.areas;
+  return template.area ? [template.area] : [];
 }
 
 /** Tageskennzahlen des Wochenkalenders (spiegelt study::StudyDay). */
@@ -96,8 +120,20 @@ export interface StudyCalendar {
   days: StudyDay[];
 }
 
-/** Der Übersetzungsschlüssel wird nie geschrieben · das Backend räumt ihn weg. */
-export type StudyTemplateInput = Omit<StudyTemplate, "id" | "i18n_key"> & { id?: number };
+/**
+ * Was der Editor schickt: Text und Bereiche.
+ *
+ * Keine Dauer mehr · Kiebitz misst die Zeit, und wie lang eine Sitzung wird,
+ * entscheidet das Wochenbudget beim Einplanen. Der Übersetzungsschlüssel wird
+ * nie geschrieben, den räumt das Backend selbst weg.
+ */
+export interface StudyTemplateInput {
+  id?: number;
+  title: string;
+  tool: string;
+  description: string;
+  areas: Area[];
+}
 
 /**
  * Angezeigter Text einer Lerneinheit.
@@ -141,19 +177,42 @@ export function deleteStudyTemplate(templateId: number): Promise<void> {
  * Plant eine Einheit auf einen Tag. Mit `repeatRule` entsteht daraus eine Serie
  * echter Termine bis `until` (Standard: 12 Wochen bzw. 30 Tage täglich) ·
  * abhaken, verschieben und löschen bleiben damit Operationen auf einem Termin.
+ *
+ * `plannedMin` kommt aus dem Wochenbudget (`sessionMinutes` in `plan.ts`) und
+ * nicht aus einer Eingabe · 0 lässt die Länge offen.
  */
 export function scheduleStudyUnit(
   templateId: number,
   day: string,
   repeatRule: RepeatRule = "",
-  until?: string
+  until?: string,
+  plannedMin = 0
 ): Promise<number> {
   return invoke<number>("schedule_study_unit", {
     templateId,
     day,
     repeatRule: repeatRule || null,
     until: until || null,
+    plannedMin,
   }).then((created) => {
+    emitDataChange("study");
+    return created;
+  });
+}
+
+/**
+ * Übernimmt einen Wochenvorschlag für `from` bis `to`.
+ *
+ * Ersetzt die noch offenen Einheiten *aus früheren Vorschlägen* in diesem
+ * Zeitraum; von Hand geplante und bereits erledigte bleiben stehen. Damit lässt
+ * sich der Vorschlag jederzeit neu ziehen, ohne die Woche zu verdoppeln.
+ */
+export function applyWeekPlan(
+  fromDay: string,
+  toDay: string,
+  units: { template_id: number; day: string; planned_min: number }[]
+): Promise<number> {
+  return invoke<number>("apply_week_plan", { fromDay, toDay, units }).then((created) => {
     emitDataChange("study");
     return created;
   });

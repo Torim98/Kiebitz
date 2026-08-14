@@ -388,7 +388,7 @@ fn collect_study_templates(
     let mut stmt = conn
         .prepare(
             "SELECT sync_key, title, duration_min, tool, description,
-                    created_ts, updated_ts, deleted, area, i18n_key
+                    created_ts, updated_ts, deleted, area, i18n_key, areas, builtin
              FROM study_templates WHERE updated_ts >= ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -405,6 +405,8 @@ fn collect_study_templates(
                 deleted: r.get::<_, i64>(7)? != 0,
                 area: r.get(8)?,
                 i18n_key: r.get(9)?,
+                areas: r.get(10)?,
+                builtin: r.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -418,7 +420,7 @@ fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEv
         .prepare(
             "SELECT e.sync_key, t.sync_key, e.day, e.position, e.completed,
                     e.completed_ts, e.created_ts, e.updated_ts, e.deleted,
-                    e.repeat_rule, e.series_key
+                    e.repeat_rule, e.series_key, e.planned_min, e.source
              FROM study_events e
              JOIN study_templates t ON t.id = e.template_id
              WHERE e.updated_ts >= ?1",
@@ -438,6 +440,8 @@ fn collect_study_events(conn: &Connection, since: i64) -> Result<Vec<SyncStudyEv
                 deleted: r.get::<_, i64>(8)? != 0,
                 repeat_rule: r.get(9)?,
                 series_key: r.get(10)?,
+                planned_min: r.get(11)?,
+                source: r.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -490,6 +494,20 @@ fn collect_study_sessions(
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string());
     rows
+}
+
+/// Einstellungen des Trainingsprogramms · immer vollständig, nie nach `since`
+/// gefiltert. Es sind vier Zeilen, und ein Gerät, das lange nicht gesprochen
+/// hat, soll das gemeinsame Wochenbudget trotzdem erfahren.
+fn collect_prefs(conn: &Connection) -> Result<Vec<SyncPref>, String> {
+    Ok(db::study_prefs_all(conn)?
+        .into_iter()
+        .map(|pref| SyncPref {
+            key: pref.key,
+            value: pref.value,
+            updated_ts: pref.updated_ts,
+        })
+        .collect())
 }
 
 fn collect_study_focus(conn: &Connection, since: i64) -> Result<Vec<SyncStudyFocus>, String> {

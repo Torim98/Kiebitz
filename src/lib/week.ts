@@ -34,6 +34,8 @@ export interface WeekArea {
   minutes: number;
   /** Vorgesehene Minuten aus der Allokation. */
   target: number;
+  /** Empfohlener Anteil am Wochenbudget in Prozent. */
+  share: number;
   /** Was noch fehlt; nie negativ · mehr als geplant ist kein Fehlbetrag. */
   gap: number;
 }
@@ -89,11 +91,18 @@ export function buildWeekBudget(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000
   );
 
-  const targets = new Map(allocation.map((need) => [need.area, need.minutes]));
+  const needs = new Map(allocation.map((need) => [need.area, need]));
   const byArea: WeekArea[] = AREAS.map((area) => {
     const minutes = week.reduce((sum, day) => sum + day[area], 0);
-    const target = targets.get(area) ?? 0;
-    return { area, minutes, target, gap: Math.max(0, target - minutes) };
+    const need = needs.get(area);
+    const target = need?.minutes ?? 0;
+    return {
+      area,
+      minutes,
+      target,
+      share: need?.target ?? 0,
+      gap: Math.max(0, target - minutes),
+    };
   });
 
   const minutes = week.reduce((sum, day) => sum + dayMinutes(day), 0);

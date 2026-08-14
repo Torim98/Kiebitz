@@ -520,7 +520,12 @@ fn apply_study_templates(
         .prepare(
             "UPDATE study_templates
              SET title=?1, duration_min=?2, tool=?3, description=?4,
-                 created_ts=?5, updated_ts=?6, deleted=?7, area=?9, i18n_key=?10
+                 created_ts=?5, updated_ts=?6, deleted=?7, area=?9, i18n_key=?10,
+                 -- Eine ältere Gegenstelle kennt beide Felder nicht und sendet
+                 -- sie leer · dann bleibt der lokale Stand stehen, statt die
+                 -- Bereichsliste und die Standardeinheiten zu löschen.
+                 areas = CASE WHEN ?11 <> '' THEN ?11 ELSE areas END,
+                 builtin = CASE WHEN ?12 <> '' THEN ?12 ELSE builtin END
              WHERE id=?8",
         )
         .map_err(|e| e.to_string())?;
@@ -528,8 +533,8 @@ fn apply_study_templates(
         .prepare(
             "INSERT INTO study_templates
              (sync_key, title, duration_min, tool, description,
-              created_ts, updated_ts, deleted, area, i18n_key)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+              created_ts, updated_ts, deleted, area, i18n_key, areas, builtin)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
         )
         .map_err(|e| e.to_string())?;
     for template in templates {
@@ -551,7 +556,9 @@ fn apply_study_templates(
                             template.deleted as i64,
                             id,
                             template.area,
-                            template.i18n_key
+                            template.i18n_key,
+                            template.areas,
+                            template.builtin
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -570,7 +577,13 @@ fn apply_study_templates(
                             template.updated_ts,
                             template.deleted as i64,
                             template.area,
-                            template.i18n_key
+                            template.i18n_key,
+                            if template.areas.is_empty() {
+                                &template.area
+                            } else {
+                                &template.areas
+                            },
+                            template.builtin
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -594,7 +607,7 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
             "UPDATE study_events
              SET template_id=?1, day=?2, position=?3, completed=?4,
                  completed_ts=?5, created_ts=?6, updated_ts=?7, deleted=?8,
-                 repeat_rule=?9, series_key=?10
+                 repeat_rule=?9, series_key=?10, planned_min=?12, source=?13
              WHERE id=?11",
         )
         .map_err(|e| e.to_string())?;
@@ -603,8 +616,8 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
             "INSERT INTO study_events
              (sync_key, template_id, day, position, completed,
               completed_ts, created_ts, updated_ts, deleted,
-              repeat_rule, series_key)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+              repeat_rule, series_key, planned_min, source)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         )
         .map_err(|e| e.to_string())?;
     for event in events {
@@ -635,7 +648,9 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                             event.deleted as i64,
                             event.repeat_rule,
                             event.series_key,
-                            id
+                            id,
+                            event.planned_min,
+                            event.source
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -655,7 +670,9 @@ fn apply_study_events(conn: &Connection, events: &[SyncStudyEvent]) -> Result<us
                             event.updated_ts,
                             event.deleted as i64,
                             event.repeat_rule,
-                            event.series_key
+                            event.series_key,
+                            event.planned_min,
+                            event.source
                         ],
                     )
                     .map_err(|e| e.to_string())?;
@@ -803,6 +820,33 @@ fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<us
     Ok(merged)
 }
 
+/// Einstellungen des Trainingsprogramms vereinigen · der jüngere Zeitstempel
+/// gewinnt, gleich alte Werte ändern nichts.
+///
+/// Unbekannte Schlüssel werden verworfen: was ein neueres Gerät teilt, dieses
+/// aber nicht kennt, gehört nicht blind in die eigene Tabelle.
+fn apply_prefs(conn: &Connection, prefs: &[SyncPref]) -> Result<usize, String> {
+    let mut merged = 0usize;
+    for pref in prefs {
+        if !db::STUDY_PREF_KEYS.contains(&pref.key.as_str()) {
+            continue;
+        }
+        let current: Option<i64> = conn
+            .query_row(
+                "SELECT updated_ts FROM study_prefs WHERE key = ?1",
+                params![pref.key],
+                |r| r.get(0),
+            )
+            .ok();
+        if current.is_some_and(|ts| ts >= pref.updated_ts) {
+            continue;
+        }
+        db::study_pref_set(conn, &pref.key, &pref.value, pref.updated_ts)?;
+        merged += 1;
+    }
+    Ok(merged)
+}
+
 /// Server-Seite eines Sync-Roundtrips: Request einmergen, Antwort einsammeln.
 #[cfg(any(desktop, test))]
 fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse, String> {
@@ -820,6 +864,7 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
     apply_rep_reviews(conn, &req.rep_reviews)?;
     apply_study_focus(conn, &req.study_focus)?;
     apply_study_sessions(conn, &req.study_sessions)?;
+    apply_prefs(conn, &req.prefs)?;
     Ok(SyncResponse {
         now: db::now_ts(),
         games: collect_games(conn, req.since)?,
@@ -834,5 +879,6 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         rep_reviews: collect_rep_reviews(conn, req.since)?,
         study_focus: collect_study_focus(conn, req.since)?,
         study_sessions: collect_study_sessions(conn, req.since)?,
+        prefs: collect_prefs(conn)?,
     })
 }

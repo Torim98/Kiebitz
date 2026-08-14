@@ -128,9 +128,13 @@ function mockBackend(options: BackendOptions = {}) {
             {
               id: 1,
               title: "Taktik",
-              duration_min: 20,
+              duration_min: 0,
               tool: "Kiebitz Puzzles",
               description: "15–20 Aufgaben",
+              area: "tactics",
+              areas: ["tactics"],
+              builtin: "tactics",
+              i18n_key: "",
             },
           ],
           events: [],
@@ -138,6 +142,10 @@ function mockBackend(options: BackendOptions = {}) {
         });
       case "schedule_study_unit":
         return Promise.resolve(1);
+      case "apply_week_plan":
+        return Promise.resolve(1);
+      case "set_settings":
+        return Promise.resolve({ locale: "de", weekly_minutes: 72, training_days: 0 });
       case "deep_insights":
         return deep ? Promise.resolve(deep) : Promise.reject(new Error("keine Tiefenanalyse"));
       default:
@@ -199,9 +207,10 @@ describe("Study page", () => {
 
     // Ein Befund aus der Tiefenanalyse …
     expect(await screen.findByText("Zeitnot kostet dich Partien")).toBeTruthy();
-    // … und die Budgetverteilung, die aus allen Befunden entsteht.
-    expect(screen.getByText("Trainingsbudget · Soll und Ist")).toBeTruthy();
-    expect(document.querySelector("[data-allocation='tactics']")).toBeTruthy();
+    // … und die Soll-Verteilung, die aus allen Befunden entsteht: sie steht
+    // in der Wochenkarte, neben dem gemessenen Ist, und nirgends sonst.
+    expect(document.querySelector("[data-week-area='tactics']")).toBeTruthy();
+    expect(document.querySelectorAll("[data-week-budget]")).toHaveLength(1);
     // Der Rest der Liste bleibt über die Insights erreichbar.
     fireEvent.click(screen.getByRole("button", { name: /Befunde in den Insights/ }));
     expect(go).toHaveBeenCalledWith("insights");
@@ -406,16 +415,38 @@ describe("Study page", () => {
     renderStudy();
     await screen.findByText("Zeitnot kostet dich Partien");
 
-    fireEvent.click(screen.getByRole("button", { name: /Wochenplan aus den Empfehlungen/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Die nächsten 7 Tage planen/ }));
     expect(await screen.findByText("Vorschlag für die nächsten 7 Tage")).toBeTruthy();
     // Bis hierher darf nichts gespeichert sein.
-    expect(invokeMock).not.toHaveBeenCalledWith("schedule_study_unit", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("apply_week_plan", expect.anything());
 
     fireEvent.click(screen.getByRole("button", { name: "In den Kalender übernehmen" }));
     await waitFor(() => {
+      const call = invokeMock.mock.calls.find(([command]) => command === "apply_week_plan");
+      // Ein Aufruf für die ganze Woche: er ersetzt frühere Vorschläge, statt
+      // sie ein zweites Mal danebenzulegen. Jede Einheit trägt ihre Minuten.
+      expect(call?.[1].units.length).toBeGreaterThan(0);
+      expect(call?.[1].units[0]).toMatchObject({ template_id: 1 });
+      expect(call?.[1].units.every((unit: { planned_min: number }) => unit.planned_min >= 10)).toBe(
+        true
+      );
+    });
+  });
+
+  it("names the source of the weekly target and can adopt the observed average", async () => {
+    // Ohne Vorgabe rechnet der Plan mit dem beobachteten Schnitt · und sagt
+    // das auch, denn genau diese Zahl kann sich je Gerät unterscheiden.
+    mockBackend({ deep: demoDeepInsights() });
+    renderStudy();
+
+    expect(await screen.findByText(/Kein Wochenbudget gesetzt/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "72 Min. übernehmen" }));
+    await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
-        "schedule_study_unit",
-        expect.objectContaining({ templateId: 1 })
+        "set_settings",
+        expect.objectContaining({
+          newSettings: expect.objectContaining({ weekly_minutes: 72 }),
+        })
       );
     });
   });
@@ -431,10 +462,10 @@ describe("Study page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Planen" }));
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "schedule_study_unit",
-        expect.objectContaining({ templateId: 1 })
-      );
+      // Die Länge kommt aus dem Budget, nicht aus einem Eingabefeld.
+      const call = invokeMock.mock.calls.find(([command]) => command === "schedule_study_unit");
+      expect(call?.[1]).toMatchObject({ templateId: 1 });
+      expect(call?.[1].plannedMin).toBeGreaterThanOrEqual(10);
     });
   });
 });

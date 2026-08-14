@@ -22,11 +22,11 @@ function day(offset: number, values: Partial<Omit<LoadDay, "day_ts">>): LoadDay 
 }
 
 const allocation: AreaNeed[] = [
-  { area: "play", target: 30, actual: 0, minutes: 60, actualMinutes: 0, evidence: 0 },
-  { area: "tactics", target: 30, actual: 0, minutes: 60, actualMinutes: 0, evidence: 0 },
-  { area: "openings", target: 20, actual: 0, minutes: 40, actualMinutes: 0, evidence: 0 },
-  { area: "endgames", target: 10, actual: 0, minutes: 20, actualMinutes: 0, evidence: 0 },
-  { area: "analysis", target: 10, actual: 0, minutes: 20, actualMinutes: 0, evidence: 0 },
+  { area: "play", target: 30, minutes: 60, evidence: 0 },
+  { area: "tactics", target: 30, minutes: 60, evidence: 0 },
+  { area: "openings", target: 20, minutes: 40, evidence: 0 },
+  { area: "endgames", target: 10, minutes: 20, evidence: 0 },
+  { area: "analysis", target: 10, minutes: 20, evidence: 0 },
 ];
 
 describe("weekStartOf", () => {

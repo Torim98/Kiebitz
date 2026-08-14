@@ -33,12 +33,22 @@ pub struct StudyData {
 pub struct StudyTemplate {
     pub id: i64,
     pub title: String,
+    /// Dauer aus der Zeit vor der Messung · nur noch Rückfall für Altbestand.
+    /// Geplant wird über `StudyEvent::planned_min`.
     pub duration_min: i64,
     pub tool: String,
     pub description: String,
-    /// Trainingsbereich der Einheit; "" = keiner zugeordnet.
+    /// Erster Trainingsbereich · "" = keiner zugeordnet. Für ältere
+    /// Gegenstellen und alles, was genau einen Bereich braucht.
     pub area: String,
-    /// Basis der Übersetzungsschlüssel bei unbearbeiteten Startvorlagen.
+    /// Alle Bereiche der Einheit. Eine eigene Einheit darf mehrere nennen
+    /// ("Taktik und Endspiel"), damit ihre gemessene Zeit auf beide Budgets
+    /// einzahlt und der Vorschlag sie für beide Lücken einplanen kann.
+    pub areas: Vec<String>,
+    /// Bereichsschlüssel bei den fünf Standardeinheiten, sonst "". Sie sind
+    /// nicht löschbar: der Wochenvorschlag plant über sie.
+    pub builtin: String,
+    /// Basis der Übersetzungsschlüssel bei unbearbeiteten Standardeinheiten.
     pub i18n_key: String,
 }
 
@@ -46,11 +56,11 @@ pub struct StudyTemplate {
 pub struct StudyTemplateInput {
     pub id: Option<i64>,
     pub title: String,
-    pub duration_min: i64,
     pub tool: String,
     pub description: String,
+    /// Die gewählten Bereiche · leer heißt „keinem Budget zugeordnet".
     #[serde(default)]
-    pub area: String,
+    pub areas: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -72,7 +82,32 @@ pub struct StudyEvent {
     pub repeat_rule: String,
     /// Gemeinsamer Schlüssel aller Termine einer Serie ("" = Einzeltermin).
     pub series_key: String,
+    /// Geplante Minuten dieses Termins · sie kommen aus dem Wochenbudget,
+    /// nicht aus einer eingetippten Dauer.
+    pub planned_min: i64,
+    /// "plan" bei Terminen aus dem Wochenvorschlag, sonst "". Nur die darf ein
+    /// neuer Vorschlag ersetzen; von Hand Geplantes bleibt stehen.
+    pub source: String,
     pub template: StudyTemplate,
+}
+
+/// Geplante Minuten eines Termins · vor v17 stand die Länge an der Vorlage,
+/// deshalb bleibt sie der Rückfall für Altbestand.
+pub fn planned_minutes(event: &StudyEvent) -> i64 {
+    if event.planned_min > 0 {
+        event.planned_min
+    } else {
+        event.template.duration_min
+    }
+}
+
+/// Bereichsliste aus der gespeicherten Komma-Form.
+pub fn split_areas(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| AREAS.contains(value))
+        .map(str::to_string)
+        .collect()
 }
 
 /// Wiederholungsraster einer Serie · Abstand in Tagen.
@@ -193,7 +228,8 @@ fn valid_day(day: &str) -> bool {
 
 fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
     conn.query_row(
-        "SELECT id, title, duration_min, tool, description, area, i18n_key
+        "SELECT id, title, duration_min, tool, description, area,
+                CASE WHEN areas = '' THEN area ELSE areas END, builtin, i18n_key
          FROM study_templates WHERE id = ?1 AND deleted = 0",
         params![id],
         |r| {
@@ -204,7 +240,9 @@ fn read_template(conn: &Connection, id: i64) -> Result<StudyTemplate, String> {
                 tool: r.get(3)?,
                 description: r.get(4)?,
                 area: r.get(5)?,
-                i18n_key: r.get(6)?,
+                areas: split_areas(&r.get::<_, String>(6)?),
+                builtin: r.get(7)?,
+                i18n_key: r.get(8)?,
             })
         },
     )
@@ -309,11 +347,13 @@ fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<
         let mut stmt = conn
             .prepare(
                 "SELECT (e.completed_ts / 86400) * 86400, COUNT(*),
-                        COALESCE(SUM(t.duration_min), 0) * 100
+                        COALESCE(SUM(COALESCE(NULLIF(e.planned_min, 0), t.duration_min)), 0) * 100
                    FROM study_events e JOIN study_templates t ON t.id = e.template_id
                   WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
                     AND e.completed_ts >= ?1 AND e.completed_ts < ?2
-                    AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')
+                    AND (t.areas LIKE '%analysis%'
+                         OR LOWER(t.tool) LIKE '%analys%'
+                         OR LOWER(t.title) LIKE '%analys%')
                   GROUP BY e.completed_ts / 86400",
             )
             .map_err(|e| e.to_string())?;
@@ -439,8 +479,12 @@ fn calendar_from_conn(
     let templates = {
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, duration_min, tool, description, area, i18n_key
-                 FROM study_templates WHERE deleted = 0 ORDER BY id",
+                // Standardeinheiten zuerst, in der Reihenfolge der Bereiche ·
+                // sie sind der Startpunkt, eigene Einheiten kommen dahinter.
+                "SELECT id, title, duration_min, tool, description, area,
+                        CASE WHEN areas = '' THEN area ELSE areas END, builtin, i18n_key
+                 FROM study_templates WHERE deleted = 0
+                 ORDER BY CASE WHEN builtin = '' THEN 1 ELSE 0 END, id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -452,7 +496,9 @@ fn calendar_from_conn(
                     tool: r.get(3)?,
                     description: r.get(4)?,
                     area: r.get(5)?,
-                    i18n_key: r.get(6)?,
+                    areas: split_areas(&r.get::<_, String>(6)?),
+                    builtin: r.get(7)?,
+                    i18n_key: r.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -464,9 +510,10 @@ fn calendar_from_conn(
         let mut stmt = conn
             .prepare(
                 "SELECT e.id, e.template_id, e.day, e.position, e.completed, e.completed_ts,
-                        e.repeat_rule, e.series_key,
+                        e.repeat_rule, e.series_key, e.planned_min, e.source,
                         t.id, t.title, t.duration_min, t.tool, t.description,
-                        t.area, t.i18n_key
+                        t.area, CASE WHEN t.areas = '' THEN t.area ELSE t.areas END,
+                        t.builtin, t.i18n_key
                  FROM study_events e JOIN study_templates t ON t.id = e.template_id
                  WHERE e.day >= ?1 AND e.day <= ?2
                    AND e.deleted = 0 AND t.deleted = 0
@@ -487,14 +534,18 @@ fn calendar_from_conn(
                     auto_done: false,
                     repeat_rule: r.get(6)?,
                     series_key: r.get(7)?,
+                    planned_min: r.get(8)?,
+                    source: r.get(9)?,
                     template: StudyTemplate {
-                        id: r.get(8)?,
-                        title: r.get(9)?,
-                        duration_min: r.get(10)?,
-                        tool: r.get(11)?,
-                        description: r.get(12)?,
-                        area: r.get(13)?,
-                        i18n_key: r.get(14)?,
+                        id: r.get(10)?,
+                        title: r.get(11)?,
+                        duration_min: r.get(12)?,
+                        tool: r.get(13)?,
+                        description: r.get(14)?,
+                        area: r.get(15)?,
+                        areas: split_areas(&r.get::<_, String>(16)?),
+                        builtin: r.get(17)?,
+                        i18n_key: r.get(18)?,
                     },
                 })
             })
@@ -513,22 +564,34 @@ fn calendar_from_conn(
     // Von selbst erfüllte Einheiten. Mehrere Einheiten desselben Bereichs an
     // einem Tag teilen sich die gemessene Zeit der Reihe nach · zwei mal
     // 20 Minuten Taktik brauchen 40 gemessene Minuten, nicht 20.
+    //
+    // Nennt eine Einheit mehrere Bereiche, verteilt sich ihr Bedarf gleichmäßig
+    // auf sie: eine halbe Stunde „Taktik und Endspiel" ist erfüllt, wenn in
+    // beiden je eine Viertelstunde gemessen wurde.
     let measured = measured_seconds(conn, first, capped_last + 86_400)?;
     let mut spent: BTreeMap<(i64, String), i64> = BTreeMap::new();
     let mut events = events;
     for event in &mut events {
-        let area = event.template.area.clone();
-        if area.is_empty() {
+        let areas = event.template.areas.clone();
+        if areas.is_empty() {
             continue;
         }
         let Some(day) = day_start_ts(&event.day) else {
             continue;
         };
-        let available = measured.get(&(day, area.clone())).copied().unwrap_or(0);
-        let used = spent.entry((day, area)).or_insert(0);
-        let needed = event.template.duration_min.max(0) * 60;
-        if available - *used >= needed && needed > 0 {
-            *used += needed;
+        let needed = planned_minutes(event).max(0) * 60;
+        if needed == 0 {
+            continue;
+        }
+        let share = needed / areas.len() as i64;
+        let covered = areas.iter().all(|area| {
+            let available = measured.get(&(day, area.clone())).copied().unwrap_or(0);
+            available - spent.get(&(day, area.clone())).copied().unwrap_or(0) >= share
+        });
+        if covered {
+            for area in &areas {
+                *spent.entry((day, area.clone())).or_insert(0) += share;
+            }
             event.auto_done = true;
         }
     }

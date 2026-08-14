@@ -166,6 +166,13 @@ pub struct SyncStudyTemplate {
     pub area: String,
     #[serde(default)]
     pub i18n_key: String,
+    /// Alle Bereiche der Einheit als Komma-Liste ("tactics,endgames").
+    /// Ältere Gegenstellen senden sie nicht · dann gilt `area` allein.
+    #[serde(default)]
+    pub areas: String,
+    /// Bereichsschlüssel bei den fünf Standardeinheiten, sonst leer.
+    #[serde(default)]
+    pub builtin: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -185,6 +192,24 @@ pub struct SyncStudyEvent {
     pub repeat_rule: String,
     #[serde(default)]
     pub series_key: String,
+    /// Geplante Minuten dieses Termins (0 = noch keine). Sie stehen seit v17
+    /// am Termin statt an der Vorlage · ältere Gegenstellen senden 0, dann
+    /// gilt wie früher die Dauer der Vorlage.
+    #[serde(default)]
+    pub planned_min: i64,
+    /// "plan" für vom Wochenvorschlag erzeugte Termine, sonst leer.
+    #[serde(default)]
+    pub source: String,
+}
+
+/// Eine Einstellung des Trainingsprogramms (Wochenbudget, Trainingstage,
+/// Zieldatum, Zykluslänge). Sie beschreibt einen Plan, kein Gerät — deshalb
+/// reist sie mit. Konflikte entscheidet der jüngere Zeitstempel.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SyncPref {
+    pub key: String,
+    pub value: String,
+    pub updated_ts: i64,
 }
 
 /// Eine Repertoire-Wiederholung. Der natürliche Schlüssel ist `(side, path)`
@@ -256,6 +281,10 @@ pub struct SyncRequest {
     /// Zeit auf dem Gerät, auf dem sie angefallen ist.
     #[serde(default)]
     pub study_sessions: Vec<SyncStudySession>,
+    /// Einstellungen des Trainingsprogramms · ältere Gegenstellen kennen sie
+    /// nicht, dort bleibt das Wochenbudget gerätelokal.
+    #[serde(default)]
+    pub prefs: Vec<SyncPref>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -285,4 +314,8 @@ pub struct SyncResponse {
     /// Zeit auf dem Gerät, auf dem sie angefallen ist.
     #[serde(default)]
     pub study_sessions: Vec<SyncStudySession>,
+    /// Einstellungen des Trainingsprogramms · ältere Gegenstellen kennen sie
+    /// nicht, dort bleibt das Wochenbudget gerätelokal.
+    #[serde(default)]
+    pub prefs: Vec<SyncPref>,
 }

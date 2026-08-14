@@ -110,28 +110,27 @@ mod tests {
         let template = StudyTemplateInput {
             id: None,
             title: "  Calculation  ".into(),
-            duration_min: 30,
             tool: "Board".into(),
             description: "Three candidate moves".into(),
-            area: "tactics".into(),
+            areas: vec!["tactics".into()],
         };
         let title = clean_text(template.title, 80);
         conn.execute(
             "INSERT INTO study_templates
-             (title, duration_min, tool, description, created_ts, updated_ts)
-             VALUES (?1, ?2, ?3, ?4, 1, 1)",
+             (title, duration_min, tool, description, area, areas, created_ts, updated_ts)
+             VALUES (?1, 0, ?2, ?3, ?4, ?4, 1, 1)",
             params![
                 title,
-                template.duration_min,
                 template.tool,
-                template.description
+                template.description,
+                template.areas[0]
             ],
         )
         .unwrap();
         let id = conn.last_insert_rowid();
         conn.execute(
-            "INSERT INTO study_events (template_id, day, position, created_ts)
-             VALUES (?1, '2026-07-22', 0, 1)",
+            "INSERT INTO study_events (template_id, day, position, planned_min, created_ts)
+             VALUES (?1, '2026-07-22', 0, 30, 1)",
             params![id],
         )
         .unwrap();
@@ -139,7 +138,8 @@ mod tests {
         let calendar = calendar_from_conn(&conn, "2026-07-20", "2026-07-26", NOW).unwrap();
         assert!(calendar.templates.iter().any(|t| t.title == "Calculation"));
         assert_eq!(calendar.events.len(), 1);
-        assert_eq!(calendar.events[0].template.duration_min, 30);
+        assert_eq!(calendar.events[0].planned_min, 30);
+        assert_eq!(calendar.events[0].template.areas, vec!["tactics"]);
         assert!(!calendar.events[0].completed);
         assert_eq!(calendar.days.len(), 7);
         assert_eq!(calendar.days[0].day, "2026-07-20");
@@ -198,7 +198,7 @@ mod tests {
         let key = new_series_key(&conn).unwrap();
         let days = series_days("2026-07-27", "weekly", Some("2026-08-17")).unwrap();
         assert_eq!(
-            insert_units(&conn, template_id, &days, "weekly", &key).unwrap(),
+            insert_units(&conn, template_id, &days, "weekly", &key, 20, "").unwrap(),
             4
         );
 
@@ -282,7 +282,7 @@ mod tests {
         // oben bloß von der Engine analysierte Spiel dagegen nicht.
         let analysis_template: i64 = conn
             .query_row(
-                "SELECT id FROM study_templates WHERE title = 'Game + analysis'",
+                "SELECT id FROM study_templates WHERE title = 'Game review'",
                 [],
                 |r| r.get(0),
             )
@@ -298,11 +298,11 @@ mod tests {
         let calendar = calendar_from_conn(&conn, &today, &today, NOW).unwrap();
         let day = &calendar.days[0];
         // Beide Puzzleversuche zählen als investierte Zeit: 2 × 1,5 Minuten,
-        // dazu die manuell bestätigte 40-Minuten-Analyse.
+        // dazu das manuell bestätigte 25-Minuten-Review.
         assert_eq!(day.puzzle_attempts, 2);
         assert_eq!(day.puzzle_solved, 1);
         assert_eq!(day.game_reviews, 1);
-        assert_eq!(day.actual_minutes, 43);
+        assert_eq!(day.actual_minutes, 28);
         // Neue Repertoire-Karten sind heute fällig.
         assert_eq!(day.due_reviews, 1);
     }
@@ -549,6 +549,147 @@ mod tests {
         // einzahlt · dann bleibt das Abhaken beim Nutzer.
         let calendar = calendar_from_conn(&conn, day, day, day_ts + 7_200).unwrap();
         assert!(!calendar.events[0].auto_done);
+    }
+
+    #[test]
+    fn every_area_keeps_a_builtin_unit_the_week_plan_can_use() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+
+        // Genau eine Standardeinheit je Bereich · vorher hatte die Analyse
+        // keine, und der Wochenvorschlag ließ sie deshalb stillschweigend aus.
+        let mut areas: Vec<String> = conn
+            .prepare("SELECT builtin FROM study_templates WHERE builtin <> '' ORDER BY builtin")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        areas.sort();
+        assert_eq!(
+            areas,
+            vec!["analysis", "endgames", "openings", "play", "tactics"]
+        );
+
+        // Sie lassen sich nicht löschen, und ein zweiter Start legt sie nicht
+        // ein zweites Mal an.
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM study_templates WHERE builtin = 'analysis'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "UPDATE study_templates SET deleted = 1 WHERE id = ?1",
+            params![id],
+        )
+        .unwrap();
+        db::init(&conn).unwrap();
+        let alive: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM study_templates WHERE builtin <> '' AND deleted = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(alive, 5);
+    }
+
+    #[test]
+    fn a_unit_with_two_areas_needs_measured_time_in_both() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let day = "2026-08-13";
+        let day_ts = day_start_ts(day).unwrap();
+        conn.execute(
+            "INSERT INTO study_templates
+             (sync_key, title, duration_min, tool, description, area, areas, created_ts, updated_ts)
+             VALUES ('tpl', 'Taktik und Endspiel', 0, '', '', 'tactics',
+                     'tactics,endgames', 1, 1)",
+            [],
+        )
+        .unwrap();
+        let template_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO study_events
+             (sync_key, template_id, day, position, planned_min, created_ts, updated_ts)
+             VALUES ('event', ?1, ?2, 0, 30, 1, 1)",
+            params![template_id, day],
+        )
+        .unwrap();
+
+        // Nur Taktik gemessen: die Hälfte des Bedarfs fehlt weiterhin.
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s1', 'tactics', ?1, ?1, 1800, ?1)",
+            params![day_ts + 3_600],
+        )
+        .unwrap();
+        let calendar = calendar_from_conn(&conn, day, day, day_ts + 7_200).unwrap();
+        assert!(!calendar.events[0].auto_done);
+
+        // Mit einer Viertelstunde Endspiel ist die Einheit erfüllt.
+        conn.execute(
+            "INSERT INTO study_sessions (sync_key, area, start_ts, end_ts, seconds, updated_ts)
+             VALUES ('s2', 'endgames', ?1, ?1, 900, ?1)",
+            params![day_ts + 7_200],
+        )
+        .unwrap();
+        let calendar = calendar_from_conn(&conn, day, day, day_ts + 10_800).unwrap();
+        assert!(calendar.events[0].auto_done);
+    }
+
+    #[test]
+    fn a_second_week_plan_replaces_its_own_units_and_spares_the_rest() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        let template_id: i64 = conn
+            .query_row(
+                "SELECT id FROM study_templates WHERE builtin = 'tactics'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        // Von Hand geplant und schon erledigt · beides muss den Vorschlag
+        // überleben, sonst wäre er kein Regelkreis, sondern ein Bulldozer.
+        insert_units(&conn, template_id, &["2026-08-11".to_string()], "", "", 20, "").unwrap();
+        insert_units(&conn, template_id, &["2026-08-12".to_string()], "", "", 20, "plan").unwrap();
+        conn.execute(
+            "UPDATE study_events SET completed = 1 WHERE day = '2026-08-12'",
+            [],
+        )
+        .unwrap();
+        insert_units(&conn, template_id, &["2026-08-13".to_string()], "", "", 20, "plan").unwrap();
+
+        let tx = conn.transaction().unwrap();
+        tx.execute(
+            "UPDATE study_events SET deleted = 1, updated_ts = 2
+              WHERE source = 'plan' AND completed = 0 AND deleted = 0
+                AND day >= '2026-08-10' AND day <= '2026-08-16'",
+            [],
+        )
+        .unwrap();
+        insert_units(&tx, template_id, &["2026-08-14".to_string()], "", "", 35, "plan").unwrap();
+        tx.commit().unwrap();
+
+        let calendar = calendar_from_conn(&conn, "2026-08-10", "2026-08-16", NOW).unwrap();
+        let days: Vec<&str> = calendar.events.iter().map(|e| e.day.as_str()).collect();
+        assert_eq!(days, vec!["2026-08-11", "2026-08-12", "2026-08-14"]);
+        assert_eq!(calendar.events[2].planned_min, 35);
+        assert_eq!(calendar.events[2].source, "plan");
+    }
+
+    #[test]
+    fn a_planned_unit_carries_its_own_length() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        // Fünf-Minuten-Schritte, und nie kürzer als eine Sitzung.
+        assert_eq!(clamp_planned(0), 0);
+        assert_eq!(clamp_planned(3), 10);
+        assert_eq!(clamp_planned(23), 25);
+        assert_eq!(clamp_planned(500), 90);
     }
 
     #[test]

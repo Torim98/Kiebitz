@@ -6,13 +6,14 @@ import {
   buildWeekPlan,
   puzzleDose,
   referenceRating,
-  templateArea,
+  sessionMinutes,
   weakestTheme,
   type AreaNeed,
 } from "./plan";
 import type { Finding } from "./findings";
 import type { DeepInsights } from "./insights";
-import type { AreaLoad, StudyTemplate } from "./study";
+import type { Area, StudyTemplate } from "./study";
+import type { WeekArea } from "./week";
 import type { PuzzleInsights } from "./puzzles";
 import type { LiveInsights } from "./stats";
 import { demoDeepInsights } from "../pages/insights/demo";
@@ -31,8 +32,6 @@ function finding(overrides: Partial<Finding> = {}): Finding {
   };
 }
 
-const NO_LOAD: AreaLoad[] = [];
-
 function share(allocation: AreaNeed[], area: string): number {
   return allocation.find((need) => need.area === area)!.target;
 }
@@ -40,8 +39,8 @@ function share(allocation: AreaNeed[], area: string): number {
 describe("buildAllocation", () => {
   it("starts from the rating-band prior when there are no findings", () => {
     // Unter 1.400 dominiert Taktik, über 2.000 gewinnen Eröffnung und Endspiel.
-    const beginner = buildAllocation([], NO_LOAD, 300, 1150);
-    const advanced = buildAllocation([], NO_LOAD, 300, 2200);
+    const beginner = buildAllocation([], 300, 1150);
+    const advanced = buildAllocation([], 300, 2200);
     expect(share(beginner, "tactics")).toBeGreaterThan(share(advanced, "tactics"));
     expect(share(advanced, "endgames")).toBeGreaterThan(share(beginner, "endgames"));
     // Die Summe bleibt eine Verteilung.
@@ -50,10 +49,9 @@ describe("buildAllocation", () => {
   });
 
   it("shifts the prior towards areas with evidence, without replacing it", () => {
-    const plain = buildAllocation([], NO_LOAD, 300, 1600);
+    const plain = buildAllocation([], 300, 1600);
     const withEndgame = buildAllocation(
       [finding({ id: "eg", severity: 90, lever: { area: "endgames", trainability: 1 } })],
-      NO_LOAD,
       300,
       1600
     );
@@ -65,13 +63,11 @@ describe("buildAllocation", () => {
   it("weights a finding by how well it can actually be trained", () => {
     const trainable = buildAllocation(
       [finding({ severity: 80, lever: { area: "endgames", trainability: 1 } })],
-      NO_LOAD,
       300,
       1600
     );
     const barely = buildAllocation(
       [finding({ severity: 80, lever: { area: "endgames", trainability: 0.1 } })],
-      NO_LOAD,
       300,
       1600
     );
@@ -79,34 +75,19 @@ describe("buildAllocation", () => {
   });
 
   it("ignores praise · a compliment is not a training need", () => {
-    const plain = buildAllocation([], NO_LOAD, 300, 1600);
+    const plain = buildAllocation([], 300, 1600);
     const praised = buildAllocation(
       [finding({ tone: "good", severity: 95, lever: { area: "endgames", trainability: 1 } })],
-      NO_LOAD,
       300,
       1600
     );
     expect(share(praised, "endgames")).toBe(share(plain, "endgames"));
   });
 
-  it("reports the actual share from the recorded load", () => {
-    const load: AreaLoad[] = [
-      { area: "play", items: 20, minutes: 300 },
-      { area: "tactics", items: 40, minutes: 100 },
-      { area: "openings", items: 0, minutes: 0 },
-      { area: "endgames", items: 0, minutes: 0 },
-      { area: "analysis", items: 0, minutes: 0 },
-    ];
-    const allocation = buildAllocation([], load, 400, 1600);
-    expect(allocation.find((need) => need.area === "play")!.actual).toBe(75);
-    expect(allocation.find((need) => need.area === "openings")!.actual).toBe(0);
-    // 300 Minuten in 28 Tagen sind 75 pro Woche.
-    expect(allocation.find((need) => need.area === "play")!.actualMinutes).toBe(75);
-  });
 });
 
 describe("buildPrescriptions", () => {
-  const allocation = buildAllocation([], NO_LOAD, 300, 1600);
+  const allocation = buildAllocation([], 300, 1600);
 
   it("gives at most one prescription per area and at most three in total", () => {
     const findings = [
@@ -126,11 +107,11 @@ describe("buildPrescriptions", () => {
 
   it("orders coaching insights strictly by finding priority", () => {
     const saturated: AreaNeed[] = [
-      { area: "tactics", target: 30, actual: 60, minutes: 90, actualMinutes: 180, evidence: 0 },
-      { area: "endgames", target: 20, actual: 0, minutes: 60, actualMinutes: 0, evidence: 0 },
-      { area: "play", target: 30, actual: 30, minutes: 90, actualMinutes: 90, evidence: 0 },
-      { area: "openings", target: 15, actual: 10, minutes: 45, actualMinutes: 30, evidence: 0 },
-      { area: "analysis", target: 5, actual: 0, minutes: 15, actualMinutes: 0, evidence: 0 },
+      { area: "tactics", target: 30, minutes: 90, evidence: 0 },
+      { area: "endgames", target: 20, minutes: 60, evidence: 0 },
+      { area: "play", target: 30, minutes: 90, evidence: 0 },
+      { area: "openings", target: 15, minutes: 45, evidence: 0 },
+      { area: "analysis", target: 5, minutes: 15, evidence: 0 },
     ];
     const out = buildPrescriptions(
       [
@@ -291,108 +272,128 @@ describe("referenceRating", () => {
 });
 
 describe("buildWeekPlan", () => {
-  // Bewusst ohne gespeicherten Bereich: diese Vorlagen stehen für Altbestand
-  // und für Vorlagen von einer älteren Gegenstelle, bei denen nur der
-  // Rateversuch über Titel und Werkzeug bleibt.
+  function template(id: number, area: Area, builtin = true): StudyTemplate {
+    return {
+      id,
+      title: area,
+      duration_min: 0,
+      tool: "",
+      description: "",
+      area,
+      areas: [area],
+      builtin: builtin ? area : "",
+      i18n_key: "",
+    };
+  }
   const templates: StudyTemplate[] = [
-    { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "", area: "", i18n_key: "" },
-    { id: 2, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "", area: "", i18n_key: "" },
-    { id: 3, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "", area: "", i18n_key: "" },
+    template(1, "openings"),
+    template(2, "tactics"),
+    template(3, "endgames"),
   ];
   const monday = new Date(Date.UTC(2026, 6, 27));
 
-  it("takes the stored area over any guess from the title", () => {
-    // "Táctica" trifft kein Teilwort · genau dafür steht der Bereich an der
-    // Vorlage, und er überstimmt auch einen widersprechenden Titel.
-    const spanish: StudyTemplate = {
-      id: 9, title: "Táctica", duration_min: 20, tool: "Ejercicios", description: "",
-      area: "tactics", i18n_key: "",
-    };
-    expect(templateArea(spanish)).toBe("tactics");
-    expect(templateArea({ ...templates[0], area: "endgames" })).toBe("endgames");
+  /** Eine Woche, in der nur `area` ein Ziel hat. */
+  function week(area: Area, target: number, minutes = 0): WeekArea[] {
+    return [{ area, minutes, target, share: 100, gap: Math.max(0, target - minutes) }];
+  }
+
+  function plan(week: WeekArea[], overrides: Record<string, unknown> = {}) {
+    return buildWeekPlan({
+      week,
+      templates,
+      dueWeek: [],
+      trainingDayMask: [],
+      startDay: monday,
+      ...overrides,
+    });
+  }
+
+  it("plans the gap, not the target", () => {
+    // Dieselbe Vorgabe, aber 60 Minuten sind schon gemessen · es bleibt weniger
+    // zu planen. Genau das war vorher nicht so: der Vorschlag rechnete immer
+    // wieder gegen das volle Wochensoll.
+    const open = plan(week("tactics", 100));
+    const partly = plan(week("tactics", 100, 60));
+    const sum = (units: { minutes: number }[]) =>
+      units.reduce((total, unit) => total + unit.minutes, 0);
+    expect(sum(partly)).toBeLessThan(sum(open));
+    expect(partly.length).toBeLessThan(open.length);
   });
 
-  it("falls back to tool and title when no area is stored", () => {
-    expect(templateArea(templates[0])).toBe("openings");
-    expect(templateArea(templates[1])).toBe("tactics");
-    expect(templateArea(templates[2])).toBe("endgames");
-    expect(templateArea({ ...templates[0], title: "Game + analysis", tool: "Lichess + Kiebitz Analysis" })).toBe("play");
-    expect(templateArea({ ...templates[0], tool: "Notizbuch", title: "Nachdenken" })).toBeNull();
+  it("derives the session length from the gap instead of a typed-in duration", () => {
+    // 60 Minuten Endspiel bei einem Richtwert von 20 sind drei Sitzungen.
+    const units = plan(week("endgames", 60));
+    expect(units).toHaveLength(3);
+    expect(units.every((unit) => unit.minutes === 20)).toBe(true);
+  });
+
+  it("keeps sessions in a length a human will actually sit through", () => {
+    expect(sessionMinutes(2)).toBe(10);
+    expect(sessionMinutes(23)).toBe(25);
+    expect(sessionMinutes(500)).toBe(90);
   });
 
   it("puts repertoire units on the days with the most due cards", () => {
-    const allocation: AreaNeed[] = [
-      { area: "openings", target: 100, actual: 0, minutes: 40, actualMinutes: 0, evidence: 1 },
-    ];
-    // Fälligkeitsspitzen an Tag 2 und 4.
-    const plan = buildWeekPlan(allocation, templates, [0, 0, 30, 0, 25, 0, 0], [], monday);
-    expect(plan).toHaveLength(2);
-    expect(plan.map((unit) => unit.day)).toEqual(["2026-07-29", "2026-07-31"]);
+    const units = plan(week("openings", 24), { dueWeek: [0, 0, 30, 0, 25, 0, 0] });
+    expect(units).toHaveLength(2);
+    expect(units.map((unit) => unit.day)).toEqual(["2026-07-29", "2026-07-31"]);
   });
 
-  it("tops up instead of duplicating what the week already holds", () => {
-    const allocation: AreaNeed[] = [
-      { area: "tactics", target: 100, actual: 0, minutes: 100, actualMinutes: 0, evidence: 1 },
-    ];
-    const full = buildWeekPlan(allocation, templates, [], [], monday);
-    expect(full).toHaveLength(5);
-
-    // 60 der 100 Minuten stehen schon im Kalender · es fehlen zwei Einheiten.
-    const topUp = buildWeekPlan(allocation, templates, [], [], monday, {
-      planned: { tactics: 60 },
-    });
-    expect(topUp).toHaveLength(2);
-
-    // Ist die Woche voll, schlägt ein weiterer Klick nichts mehr vor.
-    expect(
-      buildWeekPlan(allocation, templates, [], [], monday, { planned: { tactics: 100 } })
-    ).toHaveLength(0);
+  it("counts what is already planned by hand as covered", () => {
+    const full = plan(week("tactics", 100));
+    const topUp = plan(week("tactics", 100), { planned: { tactics: 60 } });
+    expect(topUp.length).toBeLessThan(full.length);
+    expect(plan(week("tactics", 100), { planned: { tactics: 100 } })).toHaveLength(0);
   });
 
   it("adds what the previous week left open", () => {
-    const allocation: AreaNeed[] = [
-      { area: "endgames", target: 10, actual: 0, minutes: 20, actualMinutes: 0, evidence: 0 },
-    ];
-    // 20 Minuten Soll ergeben eine Einheit, mit 40 Minuten Rückstand drei.
-    expect(buildWeekPlan(allocation, templates, [], [], monday)).toHaveLength(1);
-    expect(
-      buildWeekPlan(allocation, templates, [], [], monday, { carryOver: { endgames: 40 } })
-    ).toHaveLength(3);
+    expect(plan(week("endgames", 20))).toHaveLength(1);
+    expect(plan(week("endgames", 20), { carryOver: { endgames: 40 } })).toHaveLength(3);
   });
 
   it("respects the chosen training days", () => {
-    const allocation: AreaNeed[] = [
-      { area: "tactics", target: 100, actual: 0, minutes: 100, actualMinutes: 0, evidence: 1 },
-    ];
-    // Nur Montag und Dienstag.
-    const plan = buildWeekPlan(allocation, templates, [], [true, true, false, false, false, false, false], monday);
-    expect(plan.length).toBeGreaterThan(0);
-    expect(new Set(plan.map((unit) => unit.day))).toEqual(
+    const units = plan(week("tactics", 100), {
+      trainingDayMask: [true, true, false, false, false, false, false],
+    });
+    expect(units.length).toBeGreaterThan(0);
+    expect(new Set(units.map((unit) => unit.day))).toEqual(
       new Set(["2026-07-27", "2026-07-28"])
     );
   });
 
-  it("skips areas without a matching template instead of inventing one", () => {
-    const allocation: AreaNeed[] = [
-      { area: "play", target: 100, actual: 0, minutes: 120, actualMinutes: 0, evidence: 1 },
-    ];
-    expect(buildWeekPlan(allocation, templates, [], [], monday)).toHaveLength(0);
+  it("uses any unit that covers the area when the built-in one is gone", () => {
+    const custom: StudyTemplate = {
+      ...template(9, "tactics", false),
+      title: "Tactica y finales",
+      areas: ["tactics", "endgames"],
+    };
+    const units = buildWeekPlan({
+      week: week("endgames", 40),
+      templates: [custom],
+      dueWeek: [],
+      trainingDayMask: [],
+      startDay: monday,
+    });
+    expect(units.length).toBeGreaterThan(0);
+    expect(units[0].templateId).toBe(9);
   });
 
-  it("plans nothing for an area below a single unit's worth of budget", () => {
-    const allocation: AreaNeed[] = [
-      { area: "tactics", target: 2, actual: 0, minutes: 5, actualMinutes: 0, evidence: 0 },
-    ];
-    expect(buildWeekPlan(allocation, templates, [], [], monday)).toHaveLength(0);
+  it("plans nothing for an area whose gap is not worth a session", () => {
+    expect(plan(week("tactics", 5))).toHaveLength(0);
   });
 
-  it("uses the supplied current day as day zero instead of inventing past dates", () => {
+  it("covers the coming week's share once the window reaches into it", () => {
+    // Samstag: funf der sieben Tage gehoren schon zur nachsten Woche. Selbst
+    // bei erfulltem Wochenziel ist da etwas zu planen.
     const saturday = new Date(Date.UTC(2026, 7, 1));
-    const allocation: AreaNeed[] = [
-      { area: "tactics", target: 100, actual: 0, minutes: 20, actualMinutes: 0, evidence: 1 },
-    ];
-    const plan = buildWeekPlan(allocation, templates, [9, 0, 0, 0, 0, 0, 0], [], saturday);
-    expect(plan[0].day).toBe("2026-08-01");
-    expect(plan.every((unit) => unit.day >= "2026-08-01")).toBe(true);
+    const units = buildWeekPlan({
+      week: week("tactics", 70, 70),
+      templates,
+      dueWeek: [9, 0, 0, 0, 0, 0, 0],
+      trainingDayMask: [],
+      startDay: saturday,
+    });
+    expect(units.length).toBeGreaterThan(0);
+    expect(units.every((unit) => unit.day >= "2026-08-01")).toBe(true);
   });
 });

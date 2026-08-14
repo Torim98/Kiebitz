@@ -27,8 +27,9 @@ import { isoDay } from "./dates";
 import type { LiveInsights } from "./stats";
 import type { PuzzleInsights } from "./puzzles";
 import type { Finding, FindingAction } from "./findings";
-import type { AreaLoad, StudyTemplate, TrainingProgram } from "./study";
-import { AREAS, type Area } from "./study";
+import type { StudyTemplate, TrainingProgram } from "./study";
+import { AREAS, templateAreas, type Area } from "./study";
+import type { WeekArea } from "./week";
 import { toReference } from "./formatScale";
 import { isMeaningful, recommendFormat } from "./formatChoice";
 
@@ -84,12 +85,8 @@ export interface AreaNeed {
   area: Area;
   /** Empfohlener Anteil am Wochenbudget in Prozent. */
   target: number;
-  /** Tatsächlicher Anteil der letzten 28 Tage in Prozent. */
-  actual: number;
   /** Empfohlene Minuten pro Woche. */
   minutes: number;
-  /** Minuten pro Woche, die zuletzt tatsächlich anfielen. */
-  actualMinutes: number;
   /** Summierte Evidenz aus den Befunden · nur für die Sortierung. */
   evidence: number;
 }
@@ -97,9 +94,16 @@ export interface AreaNeed {
 /** Wie stark die Befunde die Startverteilung verschieben dürfen. */
 const EVIDENCE_GAIN = 0.6;
 
+/**
+ * Soll-Verteilung des Wochenbudgets.
+ *
+ * Nur noch das Soll: Das Ist steht in `week.ts` und ist die gemessene laufende
+ * Woche. Früher trug diese Funktion beides, das Ist aber aus 28 Tagen ÷ 4 —
+ * zwei Zeiträume, zwei Zahlen für dieselbe Frage, und im Zweifel widersprachen
+ * sie einander auf demselben Bildschirm.
+ */
 export function buildAllocation(
   findings: Finding[],
-  load: AreaLoad[],
   weeklyMinutes: number,
   rating: number | null
 ): AreaNeed[] {
@@ -124,19 +128,12 @@ export function buildAllocation(
   }));
   const total = weights.reduce((sum, entry) => sum + entry.weight, 0) || 1;
 
-  // Ist-Anteil aus den letzten 28 Tagen, auf eine Woche heruntergerechnet.
-  const loadByArea = new Map(load.map((entry) => [entry.area, entry.minutes]));
-  const loadTotal = load.reduce((sum, entry) => sum + entry.minutes, 0);
-
   return weights.map(({ area, weight }) => {
     const share = (weight / total) * 100;
-    const actualMinutes = Math.round((loadByArea.get(area) ?? 0) / 4);
     return {
       area,
       target: Math.round(share),
-      actual: loadTotal > 0 ? Math.round(((loadByArea.get(area) ?? 0) / loadTotal) * 100) : 0,
       minutes: Math.round((share / 100) * weeklyMinutes),
-      actualMinutes,
       evidence: Math.round(evidence[area] * 100) / 100,
     };
   });
@@ -425,7 +422,7 @@ export function buildHygiene(deep: DeepInsights, live: LiveInsights): HygieneTip
   return out;
 }
 
-// ── Wochenplan ──────────────────────────────────────────────────────────────
+// ── Wochenplan ───────────────────────────────────────────────────
 
 export interface PlannedUnit {
   /** ISO-Tag "YYYY-MM-DD". */
@@ -437,105 +434,113 @@ export interface PlannedUnit {
 }
 
 /**
- * Bereich einer Lerneinheit.
+ * Richtwert einer Sitzung je Bereich, in Minuten.
  *
- * Maßgeblich ist der gespeicherte Bereich · er steht seit v0.9 an der Vorlage
- * und wird im Editor gewählt. Der Rateversuch darunter gilt nur noch für
- * Altbestand und für Vorlagen von einer älteren Gegenstelle: er sucht
- * englische und deutsche Teilwörter und trifft eine spanische "Táctica"
- * genauso wenig wie ein französisches "Finales", weshalb er nie mehr sein
- * durfte als ein Rückfall.
+ * Er bestimmt nur, in wie viele Termine eine Lücke zerfällt — die Länge selbst
+ * kommt aus dem Budget. Taktik und Eröffnung stehen kurz und oft da, weil
+ * verteiltes Üben schlägt, was man an einem Stück durchzieht; eine Partie unter
+ * einer halben Stunde ist dagegen keine.
  */
-export function templateArea(template: StudyTemplate): Area | null {
-  if (template.area) return template.area;
-  const haystack = `${template.tool} ${template.title}`.toLowerCase();
-  if (haystack.includes("repertoire") || haystack.includes("opening") || haystack.includes("eröffnung")) {
-    return "openings";
-  }
-  if (haystack.includes("endgame") || haystack.includes("endspiel")) return "endgames";
-  if (haystack.includes("puzzle") || haystack.includes("tact") || haystack.includes("taktik")) {
-    return "tactics";
-  }
-  // Die Standardvorlage „Game + analysis“ erfüllt primär das stets
-  // eingeplante Spielbudget. Reine Analysevorlagen landen weiterhin darunter.
-  if (haystack.includes("game") || haystack.includes("partie")) return "play";
-  if (haystack.includes("analys")) return "analysis";
-  return null;
+const SESSION_TARGET: Record<Area, number> = {
+  play: 40,
+  tactics: 15,
+  openings: 12,
+  endgames: 20,
+  analysis: 25,
+};
+
+/** Sitzungslänge: in Fünf-Minuten-Schritten, und nie lächerlich kurz oder lang. */
+export function sessionMinutes(minutes: number): number {
+  return Math.round(Math.min(90, Math.max(10, minutes)) / 5) * 5;
+}
+
+/** Die Einheit, über die ein Bereich geplant wird. */
+function templateFor(templates: StudyTemplate[], area: Area): StudyTemplate | undefined {
+  return (
+    templates.find((template) => template.builtin === area) ??
+    templates.find((template) => templateAreas(template).includes(area))
+  );
+}
+
+export interface WeekPlanInput {
+  /** Ziel und gemessene Minuten dieser Woche je Bereich (aus `week.ts`). */
+  week: WeekArea[];
+  templates: StudyTemplate[];
+  /** `StudyData.due_week` · Index 0 = heute. */
+  dueWeek: number[];
+  /** Trainingstage, Index 0 = Montag; alles false = jeder Tag. */
+  trainingDayMask: boolean[];
+  /** Erster Tag des Vorschlags (UTC-Mitternacht) · in aller Regel heute. */
+  startDay: Date;
+  /**
+   * Offene Minuten je Bereich aus der Vorwoche · sie erhöhen den Bedarf.
+   * Ohne Übertrag verschwindet eine ausgefallene Woche spurlos.
+   */
+  carryOver?: Partial<Record<Area, number>>;
+  /**
+   * Was in den nächsten sieben Tagen schon von Hand geplant und noch offen
+   * ist. Der Vorschlag ersetzt nur seine eigenen Einheiten; was der Nutzer
+   * selbst eingetragen hat, zählt hier als bereits gedeckt.
+   */
+  planned?: Partial<Record<Area, number>>;
 }
 
 /**
- * Wochenplan-Vorschlag.
+ * Wochenplan-Vorschlag aus den Lücken.
  *
- * Die drei Regeln, die ihn von "jeden Tag dasselbe" unterscheiden:
- * Wiederholungen liegen auf den Tagen mit den meisten FSRS-Fälligkeiten,
- * Partien in den Slots mit der besten Bilanz, und Taktik verteilt sich täglich
- * statt in einem Block — verteiltes Üben schlägt Massieren, und genau deshalb
- * gibt es das Repertoire-Training überhaupt in dieser Form.
+ * Der Bedarf je Bereich ist keine Wunschliste, sondern die Differenz: was das
+ * Budget vorsieht, minus was diese Woche schon gemessen wurde, minus was schon
+ * im Kalender steht. Reicht das Fenster in die nächste Woche hinein — und das
+ * tut es an jedem Tag außer Montag — kommt deren anteiliges Budget dazu.
  *
- * `dueWeek` ist `StudyData.due_week` (Index 0 = heute).
+ * Drei Regeln bestimmen, wo die Termine landen: Wiederholungen auf den Tagen
+ * mit den meisten FSRS-Fälligkeiten, Taktik gleichmäßig über die Woche statt in
+ * einem Block, der Rest gestreut.
  */
-export function buildWeekPlan(
-  allocation: AreaNeed[],
-  templates: StudyTemplate[],
-  dueWeek: number[],
-  trainingDayMask: boolean[],
-  startDay: Date,
-  options: {
-    /**
-     * Offene Minuten je Bereich aus der Vorwoche · sie erhöhen das Budget
-     * dieser Woche. Ohne Übertrag verschwindet eine ausgefallene Woche
-     * spurlos, und der Plan wiederholte jedes Mal denselben Vorschlag.
-     */
-    carryOver?: Partial<Record<Area, number>>;
-    /**
-     * Schon geplante Minuten je Bereich. Ein zweiter Vorschlag für dieselbe
-     * Woche füllt damit nur auf, statt alles zu verdoppeln.
-     */
-    planned?: Partial<Record<Area, number>>;
-  } = {}
-): PlannedUnit[] {
-  const byArea = new Map<Area, StudyTemplate>();
-  for (const template of templates) {
-    const area = templateArea(template);
-    if (area && !byArea.has(area)) byArea.set(area, template);
-  }
-
+export function buildWeekPlan(input: WeekPlanInput): PlannedUnit[] {
   const days: { day: string; index: number; due: number; allowed: boolean }[] = [];
   for (let index = 0; index < 7; index++) {
-    const date = new Date(startDay);
+    const date = new Date(input.startDay);
     date.setUTCDate(date.getUTCDate() + index);
     // Wochentag der Maske: Index 0 = Montag.
     const weekday = (date.getUTCDay() + 6) % 7;
     days.push({
       day: isoDay(date),
       index,
-      due: dueWeek[index] ?? 0,
-      allowed: trainingDayMask.some(Boolean) ? trainingDayMask[weekday] : true,
+      due: input.dueWeek[index] ?? 0,
+      allowed: input.trainingDayMask.some(Boolean) ? input.trainingDayMask[weekday] : true,
     });
   }
   const usable = days.filter((day) => day.allowed);
   if (usable.length === 0) return [];
 
-  const out: PlannedUnit[] = [];
-  for (const need of allocation) {
-    const template = byArea.get(need.area);
-    if (!template) continue;
-    const open =
-      need.minutes
-      + (options.carryOver?.[need.area] ?? 0)
-      - (options.planned?.[need.area] ?? 0);
-    if (open < template.duration_min / 2) continue;
+  // Tage des Fensters, die schon zur nächsten Woche gehören: genau der
+  // Wochentag-Index des Starttages (montags null, sonntags sechs).
+  const beyond = (input.startDay.getUTCDay() + 6) % 7;
 
-    // Wie viele Einheiten passen ins offene Budget dieses Bereichs?
+  const out: PlannedUnit[] = [];
+  for (const entry of input.week) {
+    const template = templateFor(input.templates, entry.area);
+    if (!template) continue;
+    const rest =
+      entry.target -
+      entry.minutes +
+      (input.carryOver?.[entry.area] ?? 0) -
+      (input.planned?.[entry.area] ?? 0);
+    const demand = Math.max(0, rest) + (entry.target * beyond) / 7;
+    // Unter zehn Minuten ist kein Termin, sondern eine Erinnerung.
+    if (demand < 10) continue;
+
     const count = Math.min(
       usable.length,
-      Math.max(1, Math.round(open / template.duration_min))
+      Math.max(1, Math.round(demand / SESSION_TARGET[entry.area]))
     );
+    const minutes = sessionMinutes(demand / count);
     let chosen: typeof usable;
-    if (need.area === "openings") {
+    if (entry.area === "openings") {
       // Wiederholungen dorthin, wo die Fälligkeiten liegen.
       chosen = [...usable].sort((a, b) => b.due - a.due || a.index - b.index).slice(0, count);
-    } else if (need.area === "tactics") {
+    } else if (entry.area === "tactics") {
       // Möglichst gleichmäßig über die Woche.
       const step = usable.length / count;
       chosen = Array.from({ length: count }, (_, i) => usable[Math.floor(i * step)]);
@@ -548,8 +553,8 @@ export function buildWeekPlan(
         day: day.day,
         templateId: template.id,
         templateTitle: template.title,
-        area: need.area,
-        minutes: template.duration_min,
+        area: entry.area,
+        minutes,
       });
     }
   }
@@ -608,7 +613,7 @@ export function buildPlan(input: PlanInput): TrainingPlan {
     ? input.trainingDays.filter(Boolean).length
     : 7;
   const rating = referenceRating(deep);
-  const allocation = buildAllocation(findings, program?.load_28d ?? [], weeklyMinutes, rating);
+  const allocation = buildAllocation(findings, weeklyMinutes, rating);
   const dose = puzzleDose(
     puzzles,
     allocation.find((need) => need.area === "tactics")?.minutes ?? 0,

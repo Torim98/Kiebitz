@@ -189,6 +189,88 @@ impl Default for Settings {
 
 pub struct SettingsState(pub Mutex<Settings>);
 
+// ── Trainingsprogramm: geteilt statt gerätelokal ────────────────────────────
+//
+// Wochenbudget, Trainingstage, Zieldatum und Zykluslänge beschreiben *einen*
+// Trainingsplan, nicht die Einrichtung eines Geräts. Solange sie in der
+// settings.json lagen, rechnete jedes Gerät mit einem anderen Wochenziel — der
+// Desktop mit 84 Minuten, das Handy mit 114, beide aus ihrer eigenen Historie
+// abgeleitet, weil ohne Vorgabe der beobachtete Schnitt einsprang. Deshalb
+// liegen sie jetzt in `study_prefs` und reisen mit dem Sync.
+//
+// Die `Settings`-Struktur behält die Felder: die Oberfläche kennt weiter genau
+// eine Einstellungsseite, und nur diese Datei weiß, dass vier Werte woanders
+// zu Hause sind.
+
+fn pref_value(settings: &Settings, key: &str) -> String {
+    match key {
+        "weekly_minutes" => settings.weekly_minutes.to_string(),
+        "training_days" => settings.training_days.to_string(),
+        "goal_date" => settings.goal_date.clone(),
+        _ => settings.focus_cycle_days.to_string(),
+    }
+}
+
+fn apply_pref(settings: &mut Settings, key: &str, value: &str) {
+    match key {
+        "weekly_minutes" => settings.weekly_minutes = value.parse().unwrap_or(0),
+        "training_days" => settings.training_days = value.parse().unwrap_or(0),
+        "goal_date" => settings.goal_date = value.to_string(),
+        "focus_cycle_days" => settings.focus_cycle_days = value.parse().unwrap_or(14),
+        _ => {}
+    }
+}
+
+/// Legt die geteilten Werte über die geladene settings.json.
+///
+/// Fehlt ein Wert noch, wandert der bisherige aus der Datei hinein. Ein
+/// unveränderter Standardwert bekommt dabei den Zeitstempel 1: er ist keine
+/// Entscheidung, und ein Gerät, auf dem tatsächlich etwas eingestellt wurde,
+/// soll ihn beim ersten Sync überschreiben statt umgekehrt.
+pub fn adopt_study_prefs(conn: &Connection, settings: &mut Settings) {
+    let defaults = Settings::default();
+    let now = db::now_ts();
+    for key in db::STUDY_PREF_KEYS {
+        match db::study_pref_get(conn, key) {
+            Some(value) => apply_pref(settings, key, &value),
+            None => {
+                let value = pref_value(settings, key);
+                let touched = value != pref_value(&defaults, key);
+                let _ = db::study_pref_set(conn, key, &value, if touched { now } else { 1 });
+            }
+        }
+    }
+}
+
+/// Schreibt die geteilten Werte zurück · nach jeder Änderung durch den Nutzer.
+pub fn store_study_prefs(conn: &Connection, settings: &Settings) -> Result<(), String> {
+    let now = db::now_ts();
+    for key in db::STUDY_PREF_KEYS {
+        db::study_pref_set(conn, key, &pref_value(settings, key), now)?;
+    }
+    Ok(())
+}
+
+/// Übernimmt Werte, die der Sync gebracht hat, in den laufenden Zustand.
+/// Gibt zurück, ob sich dabei etwas geändert hat.
+pub fn refresh_study_prefs(app: &tauri::AppHandle, conn: &Connection) -> bool {
+    let state = app.state::<SettingsState>();
+    let Ok(mut settings) = state.0.lock() else {
+        return false;
+    };
+    let before = settings.clone();
+    for key in db::STUDY_PREF_KEYS {
+        if let Some(value) = db::study_pref_get(conn, key) {
+            apply_pref(&mut settings, key, &value);
+        }
+    }
+    *settings = normalize(settings.clone());
+    before.weekly_minutes != settings.weekly_minutes
+        || before.training_days != settings.training_days
+        || before.goal_date != settings.goal_date
+        || before.focus_cycle_days != settings.focus_cycle_days
+}
+
 /// Oberflächensprachen · muss mit LOCALES in src/lib/i18n.tsx übereinstimmen.
 /// Ein unbekannter Wert (alte Datei, fremdes Gerät) fällt auf Englisch zurück.
 pub const LOCALES: [&str; 7] = ["en", "de", "es", "fr", "hi", "ar", "zh"];
@@ -291,6 +373,11 @@ pub async fn set_settings(
     tauri::async_runtime::spawn_blocking(move || {
         let normalized = normalize(new_settings);
         save(&app, &normalized)?;
+        // Das Trainingsprogramm gehört in die Datenbank, damit es beim Sync
+        // mitreist · die settings.json behält nur noch eine Kopie davon.
+        if let Ok(conn) = app.state::<db::Db>().0.lock() {
+            store_study_prefs(&conn, &normalized)?;
+        }
         *app.state::<SettingsState>()
             .0
             .lock()

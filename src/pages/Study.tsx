@@ -16,13 +16,16 @@ import { useI18n } from "../lib/i18n";
 import { listGameSummaries, type GameSummary } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import {
+  applyWeekPlan,
   closeStudyFocus,
+  eventMinutes,
   getStudyCalendar,
-  scheduleStudyUnit,
   setStudyFocus,
   studyData,
+  templateAreas,
   templateText,
   trainingProgram,
+  AREA_COLOR,
   type Area,
   type StudyData,
   type StudyEvent,
@@ -30,14 +33,14 @@ import {
   type StudyTemplate,
   type TrainingProgram,
 } from "../lib/study";
-import { getSettings, trainingDayList } from "../lib/settings";
+import { getSettings, setSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
 import { deepInsights, studyMetrics, type MetricWindow } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
 import {
   buildPlan,
   buildWeekPlan,
-  templateArea,
+  sessionMinutes,
   type PlannedUnit,
   type TrainingPlan,
 } from "../lib/plan";
@@ -53,11 +56,10 @@ import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "
 import { Button, Card } from "../components/ui";
 import StudyPlanner from "../components/StudyPlanner";
 import StudyFocusCard from "../components/StudyFocusCard";
-import AllocationBars from "../components/AllocationBars";
 import WeekBudgetBar from "../components/WeekBudgetBar";
 import TodaySession, { type SessionItem } from "../components/TodaySession";
 import { useMobileShell } from "../components/MobileShell";
-import { batchDataChanges, onDataChange } from "../lib/changes";
+import { onDataChange } from "../lib/changes";
 import { deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
@@ -74,11 +76,15 @@ export interface StudyState {
   findings: Finding[];
   windows: Map<number, { before: MetricWindow; after: MetricWindow }>;
   templates: StudyTemplate[];
-  /** Geplante Einheiten der laufenden Woche · Montag bis Sonntag. */
+  /** Geplante Einheiten der nächsten sieben Tage, ab heute. */
   events: StudyEvent[];
   rating: RatingEffect | null;
   /** Trainingstage aus den Einstellungen, Index 0 = Montag. */
   trainingDays: boolean[];
+  /** Beobachtetes Wochenmittel der letzten acht Wochen. */
+  observedWeeklyMinutes: number;
+  /** Steht ein Wochenbudget in den Einstellungen? */
+  budgetSet: boolean;
 }
 
 export default function Study({
@@ -150,11 +156,12 @@ export default function Study({
       if (before && after) windows.set(focus.id, { before, after });
     });
 
-    // Die ganze Woche, nicht nur heute: der Tagesplan ist ein Ausschnitt
-    // davon, und der Wochenvorschlag muss wissen, was schon geplant ist.
-    const weekStart = weekStartOf(new Date());
-    const weekEnd = new Date(weekStart.getTime() + 6 * DAY * 1_000);
-    const calendar = await getStudyCalendar(isoDay(weekStart), isoDay(weekEnd)).catch(() => ({
+    // Die nächsten sieben Tage, nicht nur heute: der Tagesplan ist ein
+    // Ausschnitt davon, und der Wochenvorschlag muss wissen, was in diesem
+    // Fenster schon geplant ist.
+    const today = new Date();
+    const windowEnd = new Date(today.getTime() + 6 * DAY * 1_000);
+    const calendar = await getStudyCalendar(isoDay(today), isoDay(windowEnd)).catch(() => ({
       templates: [] as StudyTemplate[],
       events: [] as StudyEvent[],
       days: [],
@@ -170,6 +177,8 @@ export default function Study({
       events: calendar.events,
       rating: measureRating(measured),
       trainingDays,
+      observedWeeklyMinutes: program?.observed_weekly_minutes ?? 0,
+      budgetSet: (settings?.weekly_minutes ?? 0) > 0,
     });
   }, [locale]);
 
@@ -264,38 +273,45 @@ export default function Study({
     [state, plan, weekStart]
   );
 
-  /** Bereits verplante Minuten dieser Woche je Bereich. */
+  /**
+   * Was in den nächsten sieben Tagen von Hand geplant und noch offen ist.
+   *
+   * Nur eigene Einheiten: die Termine früherer Vorschläge räumt der nächste
+   * Vorschlag selbst weg, sie dürfen den Bedarf deshalb nicht senken.
+   * Mehrbereichs-Einheiten teilen ihre Minuten unter ihren Bereichen auf.
+   */
   const plannedMinutes = useMemo(() => {
     const out: Partial<Record<Area, number>> = {};
     for (const event of state?.events ?? []) {
-      const area = templateArea(event.template);
-      if (!area) continue;
-      out[area] = (out[area] ?? 0) + event.template.duration_min;
+      if (event.source === "plan" || event.completed || event.auto_done) continue;
+      const areas = templateAreas(event.template);
+      if (areas.length === 0) continue;
+      const share = eventMinutes(event) / areas.length;
+      for (const area of areas) out[area] = (out[area] ?? 0) + share;
     }
     return out;
   }, [state]);
 
   const proposePlan = () => {
-    if (!plan || !state?.program) return;
+    if (!plan || !state?.program || !week) return;
     // `due_week[0]` bedeutet heute. Die alte Verankerung am Montag verschob
     // diese Fälligkeiten mitten in der Woche rückwärts auf vergangene Tage.
     const today = new Date();
     const firstDay = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
     setPlanning(
-      buildWeekPlan(
-        plan.allocation,
-        state.templates,
-        data?.due_week ?? [],
-        state.trainingDays,
-        firstDay,
-        {
-          // Was die Vorwoche schuldig blieb, kommt oben drauf; was diese Woche
-          // schon im Kalender steht, wird abgezogen. Damit verdoppelt ein
-          // zweiter Vorschlag nichts mehr, sondern füllt auf.
-          carryOver: lastWeekDeficit(state.program.days, plan.allocation, weekStart, today),
-          planned: plannedMinutes,
-        }
-      )
+      buildWeekPlan({
+        // Ziel und gemessenes Ist derselben Woche, die oben auf der Seite
+        // steht · der Vorschlag plant genau die Lücke dazwischen.
+        week: week.byArea,
+        templates: state.templates,
+        dueWeek: data?.due_week ?? [],
+        trainingDayMask: state.trainingDays,
+        startDay: firstDay,
+        // Was die Vorwoche schuldig blieb, kommt oben drauf; was von Hand
+        // schon im Kalender steht, wird abgezogen.
+        carryOver: lastWeekDeficit(state.program.days, plan.allocation, weekStart, today),
+        planned: plannedMinutes,
+      })
     );
   };
 
@@ -303,14 +319,52 @@ export default function Study({
     if (!planning || !desktop) return;
     setBusy(true);
     try {
-      // Nacheinander, nicht parallel: die Positionen innerhalb eines Tages
-      // werden beim Anlegen fortlaufend vergeben.
-      await batchDataChanges(async () => {
-        for (const unit of planning) {
-          await scheduleStudyUnit(unit.templateId, unit.day);
-        }
-      });
+      const first = isoDay(new Date());
+      const last = isoDay(new Date(Date.now() + 6 * DAY * 1_000));
+      await applyWeekPlan(
+        first,
+        last,
+        planning.map((unit) => ({
+          template_id: unit.templateId,
+          day: unit.day,
+          planned_min: unit.minutes,
+        }))
+      );
       setPlanning(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Vorgeschlagene Länge einer von Hand geplanten Einheit.
+   *
+   * Sie kommt aus derselben Rechnung wie der Vorschlag: die offene Lücke der
+   * gewählten Bereiche, verteilt auf die verbleibenden Trainingstage. Damit
+   * muss niemand mehr eine Dauer eintippen, die Kiebitz ohnehin misst.
+   */
+  const suggestMinutes = useCallback(
+    (areas: Area[]) => {
+      if (!week || areas.length === 0) return 0;
+      const dayCount = Math.max(1, plan?.trainingDayCount ?? 7);
+      const perDay = areas.reduce((sum, area) => {
+        const entry = week.byArea.find((candidate) => candidate.area === area);
+        if (!entry) return sum;
+        return sum + (entry.gap > 0 ? entry.gap : entry.target) / dayCount;
+      }, 0);
+      return sessionMinutes(perDay);
+    },
+    [week, plan]
+  );
+
+  /** Übernimmt das beobachtete Wochenmittel als verbindliches Budget. */
+  const adoptObservedBudget = async () => {
+    if (!desktop || !state) return;
+    setBusy(true);
+    try {
+      const settings = await getSettings();
+      await setSettings({ ...settings, weekly_minutes: state.observedWeeklyMinutes });
       await load();
     } finally {
       setBusy(false);
@@ -362,7 +416,9 @@ export default function Study({
   const sessionItems = useMemo<SessionItem[]>(() => {
     const items: SessionItem[] = [];
     for (const event of (state?.events ?? []).filter((entry) => entry.day === todayIso)) {
-      const area = templateArea(event.template);
+      // Bei mehreren Bereichen führt der erste in den Trainer · er steht auch
+      // als Erster im Editor und ist damit der, den der Nutzer gemeint hat.
+      const area = templateAreas(event.template)[0] ?? null;
       const done = event.completed || event.auto_done;
       const action = area ? areaAction(area) : null;
       // Für Taktik trägt die Dosis das Band und das Motiv · sonst steht dort
@@ -384,7 +440,7 @@ export default function Study({
         icon: action?.icon ?? Lightbulb,
         label: templateText(event.template, "title", t),
         detail: String(detail),
-        minutes: event.template.duration_min,
+        minutes: eventMinutes(event) || null,
         done,
         auto: !event.completed && event.auto_done,
         action: action ? { label: action.label, run: action.run } : undefined,
@@ -544,7 +600,32 @@ export default function Study({
             </span>
           }
         >
-          <WeekBudgetBar budget={week} />
+          <WeekBudgetBar
+            budget={week}
+            source={
+              state?.budgetSet ? (
+                // Steht ein Budget in den Einstellungen, ist es auf allen
+                // Geräten dasselbe · das ist die halbe Aussage dieser Zeile.
+                t("st.weekBudgetSource", { m: deInt(plan?.weeklyMinutes ?? 0) })
+              ) : (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {t("st.weekBudgetObserved", {
+                    m: deInt(state?.observedWeeklyMinutes ?? 0),
+                  })}
+                  {desktop && (state?.observedWeeklyMinutes ?? 0) >= 30 && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void adoptObservedBudget()}
+                      className="rounded-md border border-line px-2 py-0.5 text-[11.5px] text-accent transition-colors hover:border-accent-dim disabled:opacity-45"
+                    >
+                      {t("st.weekBudgetAdopt", { m: deInt(state?.observedWeeklyMinutes ?? 0) })}
+                    </button>
+                  )}
+                </span>
+              )
+            }
+          />
         </Card>
       )}
 
@@ -624,116 +705,102 @@ export default function Study({
         </Card>
       </div>
 
-      {/* Budget und Spielhygiene */}
-      {plan && (
-        <div className="mt-4 grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
-          <Card
-            title={
-              <span className="flex items-center gap-2">
-                <Gauge size={14} className="text-accent" /> {t("plan.allocTitle")}
-              </span>
-            }
-            className="min-[1100px]:col-span-2"
-          >
-            <AllocationBars allocation={plan.allocation} weeklyMinutes={plan.weeklyMinutes} />
-            {!plan.budgetFromSettings && (
-              <p className="mt-2 text-[11.5px] leading-relaxed text-ink3">
-                {t("plan.budgetObserved")}
-              </p>
-            )}
-          </Card>
-
-          <Card
-            title={
-              <span className="flex items-center gap-2">
-                <Timer size={14} className="text-gold" /> {t("plan.hygieneTitle")}
-              </span>
-            }
-          >
-            {plan.hygiene.length > 0 ? (
-              <ul className="flex flex-col gap-2">
-                {plan.hygiene.map((tip) => (
-                  <li
-                    key={tip.id}
-                    className="rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
-                  >
-                    {/* Der Formattipp trägt Zeitformate als Rohwerte · dieselbe
-                        Übersetzung wie in den Befunden. */}
-                    {t(tip.key, localizeFindingParams(tip.params, t, locale))}
-                  </li>
-                ))}
-              </ul>
+      {/* Plan · die nächsten sieben Tage. Der Vorschlag steht in derselben
+          Karte wie die Plantafel: er füllt genau die Lücken, die sie zeigt. */}
+      <StudyPlanner
+        desktop={desktop}
+        suggestMinutes={suggestMinutes}
+        proposal={
+          desktop && plan ? (
+            planning == null ? (
+              <button
+                type="button"
+                onClick={proposePlan}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+              >
+                <CalendarPlus size={15} /> {t("plan.proposeWeek")}
+              </button>
             ) : (
-              <p className="py-2 text-[12.5px] leading-relaxed text-ink3">
-                {t("plan.hygieneEmpty")}
-              </p>
-            )}
-          </Card>
-        </div>
-      )}
-
-      {/* Wochenplan-Vorschlag */}
-      {desktop && plan && (
-        <div className="mt-4">
-          {planning == null ? (
-            <button
-              type="button"
-              onClick={proposePlan}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-3 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
-            >
-              {/* Steht schon etwas in der Woche, füllt der Vorschlag nur die
-                  fehlenden Bereiche auf · das sagt auch die Beschriftung. */}
-              <CalendarPlus size={15} />{" "}
-              {(state?.events.length ?? 0) > 0 ? t("st.proposeTopUp") : t("plan.proposeWeek")}
-            </button>
-          ) : (
-            <Card title={t("plan.proposalTitle")}>
-              {planning.length === 0 ? (
-                <p className="text-[12.5px] leading-relaxed text-ink3">{t("plan.proposalEmpty")}</p>
-              ) : (
-                <>
-                  <p className="mb-3 text-[12.5px] leading-relaxed text-ink3">
-                    {t("plan.proposalNote", { n: planning.length, m: plan.weeklyMinutes })}
+              <div className="rounded-xl border border-accent-dim bg-panel2 p-3">
+                <div className="mb-2 text-[13px] font-medium text-ink">
+                  {t("plan.proposalTitle")}
+                </div>
+                {planning.length === 0 ? (
+                  <p className="text-[12.5px] leading-relaxed text-ink3">
+                    {t("plan.proposalEmpty")}
                   </p>
-                  <ul className="mb-3 flex flex-col gap-1.5">
-                    {planning.map((unit, index) => (
-                      <li
-                        key={`${unit.day}-${unit.templateId}-${index}`}
-                        className="flex items-baseline justify-between gap-3 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px]"
-                      >
-                        <span className="tabular-nums text-ink3">{unit.day}</span>
-                        <span className="min-w-0 flex-1 truncate text-ink2">
-                          {unit.templateTitle}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-ink3">
-                          {t("plan.minutes", { m: unit.minutes })}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {planning.length > 0 && (
-                  <Button onClick={applyPlan} disabled={busy}>
-                    {t("plan.proposalApply")}
-                  </Button>
+                ) : (
+                  <>
+                    <p className="mb-3 text-[12.5px] leading-relaxed text-ink3">
+                      {t("plan.proposalNote", { n: planning.length, m: plan.weeklyMinutes })}
+                    </p>
+                    <ul className="mb-3 flex flex-col gap-1.5">
+                      {planning.map((unit, index) => (
+                        <li
+                          key={`${unit.day}-${unit.templateId}-${index}`}
+                          className="flex items-baseline justify-between gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px]"
+                          style={{ borderLeftColor: AREA_COLOR[unit.area], borderLeftWidth: 3 }}
+                        >
+                          <span className="tabular-nums text-ink3">{unit.day}</span>
+                          <span className="min-w-0 flex-1 truncate text-ink2">
+                            {unit.templateTitle}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-ink3">
+                            {t("plan.minutes", { m: unit.minutes })}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setPlanning(null)}
-                  className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink3 transition-colors hover:text-ink"
-                >
-                  {t("common.cancel")}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {planning.length > 0 && (
+                    <Button onClick={applyPlan} disabled={busy}>
+                      {t("plan.proposalApply")}
+                    </Button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPlanning(null)}
+                    className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink3 transition-colors hover:text-ink"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                </div>
               </div>
-            </Card>
-          )}
-        </div>
-      )}
+            )
+          ) : undefined
+        }
+      />
 
-      {/* Wochenkalender: Ist-Minuten, Fälligkeiten und geplante Einheiten. */}
-      <StudyPlanner desktop={desktop} />
+      {/* Spielhygiene · kein Trainingsinhalt, sondern *wie* gespielt wird. */}
+      {plan && (
+        <Card
+          className="mt-4"
+          title={
+            <span className="flex items-center gap-2">
+              <Timer size={14} className="text-gold" /> {t("plan.hygieneTitle")}
+            </span>
+          }
+        >
+          {plan.hygiene.length > 0 ? (
+            <ul className="grid gap-2 min-[900px]:grid-cols-2">
+              {plan.hygiene.map((tip) => (
+                <li
+                  key={tip.id}
+                  className="rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
+                >
+                  {/* Der Formattipp trägt Zeitformate als Rohwerte · dieselbe
+                      Übersetzung wie in den Befunden. */}
+                  {t(tip.key, localizeFindingParams(tip.params, t, locale))}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-2 text-[12.5px] leading-relaxed text-ink3">{t("plan.hygieneEmpty")}</p>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

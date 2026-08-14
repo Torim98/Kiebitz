@@ -293,7 +293,13 @@ pub fn start_server(app: &tauri::AppHandle) -> Result<(), String> {
                         continue;
                     }
                 };
-                handle_sync(&mut conn, &req_data)
+                let result = handle_sync(&mut conn, &req_data);
+                // Hat das Handy ein neues Wochenbudget mitgebracht, gilt es
+                // auch hier sofort · nicht erst nach dem nächsten Start.
+                if result.is_ok() && !req_data.prefs.is_empty() {
+                    settings::refresh_study_prefs(&app, &conn);
+                }
+                result
             };
             match result.and_then(|r| serde_json::to_string(&r).map_err(|e| e.to_string())) {
                 Ok(json) => respond_json(request, 200, json),

@@ -365,7 +365,7 @@ pub fn run() {
                 ),
             );
 
-            let loaded = settings::load(app.handle());
+            let mut loaded = settings::load(app.handle());
             // Konfigurierter DB-Pfad, mit Fallback auf den Standardort, falls
             // er nicht erreichbar ist (z. B. Nextcloud-Ordner nicht gemountet).
             let mut db_file = loaded
@@ -384,6 +384,9 @@ pub fn run() {
                 }
             };
             db::init(&conn).map_err(std::io::Error::other)?;
+            // Das Trainingsprogramm steht in der Datenbank und reist mit dem
+            // Sync · es überschreibt hier die Kopie aus der settings.json.
+            settings::adopt_study_prefs(&conn, &mut loaded);
             app.manage(settings::SettingsState(std::sync::Mutex::new(loaded)));
             app.manage(db::Db(std::sync::Mutex::new(conn)));
             app.manage(analysis::DbPath(std::sync::Mutex::new(db_file)));
@@ -496,6 +499,7 @@ pub fn run() {
             study::save_study_template,
             study::delete_study_template,
             study::schedule_study_unit,
+            study::apply_week_plan,
             study::repeat_study_unit,
             study::move_study_unit,
             study::complete_study_unit,

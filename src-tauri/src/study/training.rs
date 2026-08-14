@@ -140,11 +140,13 @@ fn game_load_between(conn: &Connection, from: i64, to: i64) -> Result<(i64, i64)
 /// Fertigwerden der Engine ist Rechenarbeit und darf kein Ist-Budget erzeugen.
 fn completed_analysis_load(conn: &Connection, from: i64, to: i64) -> Result<(i64, i64), String> {
     conn.query_row(
-        "SELECT COUNT(*), COALESCE(SUM(t.duration_min), 0) * 100
+        "SELECT COUNT(*), COALESCE(SUM(COALESCE(NULLIF(e.planned_min, 0), t.duration_min)), 0) * 100
            FROM study_events e JOIN study_templates t ON t.id = e.template_id
           WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
             AND e.completed_ts >= ?1 AND e.completed_ts < ?2
-            AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+            AND (t.areas LIKE '%analysis%'
+                         OR LOWER(t.tool) LIKE '%analys%'
+                         OR LOWER(t.title) LIKE '%analys%')",
         params![from, to],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )
@@ -224,11 +226,13 @@ fn training_program_from_conn(
     {
         let mut stmt = conn
             .prepare(
-                "SELECT e.completed_ts, t.duration_min
+                "SELECT e.completed_ts, COALESCE(NULLIF(e.planned_min, 0), t.duration_min)
                    FROM study_events e JOIN study_templates t ON t.id = e.template_id
                   WHERE e.completed = 1 AND e.deleted = 0 AND t.deleted = 0
                     AND e.completed_ts >= ?1
-                    AND (LOWER(t.tool) LIKE '%analys%' OR LOWER(t.title) LIKE '%analys%')",
+                    AND (t.areas LIKE '%analysis%'
+                         OR LOWER(t.tool) LIKE '%analys%'
+                         OR LOWER(t.title) LIKE '%analys%')",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt

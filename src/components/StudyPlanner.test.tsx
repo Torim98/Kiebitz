@@ -9,21 +9,24 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 const TEMPLATE = {
   id: 3,
   title: "Tactics",
-  duration_min: 20,
+  duration_min: 0,
   tool: "Kiebitz Puzzles",
   description: "15–20 puzzles",
+  area: "tactics",
+  areas: ["tactics"],
+  builtin: "tactics",
+  i18n_key: "",
 };
+
+/** Eine eigene Einheit · nur die darf gelöscht werden. */
+const OWN_TEMPLATE = { ...TEMPLATE, id: 7, title: "Kalkulation", builtin: "", i18n_key: "" };
 
 function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function mondayOf(date: Date): Date {
-  const day = date.getUTCDay() || 7;
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - day + 1));
-}
-
-const monday = isoDay(mondayOf(new Date()));
+/** Die Plantafel beginnt heute, nicht am Montag. */
+const today = isoDay(new Date());
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -33,9 +36,20 @@ beforeEach(() => {
         return Promise.resolve({ locale: "de" });
       case "study_calendar":
         return Promise.resolve({
-          templates: [TEMPLATE],
+          templates: [TEMPLATE, OWN_TEMPLATE],
           events: [],
-          days: [{ day: monday, puzzle_attempts: 4, puzzle_solved: 4, endgame_attempts: 0, rep_reviews: 1, game_reviews: 0, actual_minutes: 7, due_reviews: 2 }],
+          days: [
+            {
+              day: today,
+              puzzle_attempts: 4,
+              puzzle_solved: 4,
+              endgame_attempts: 0,
+              rep_reviews: 1,
+              game_reviews: 0,
+              actual_minutes: 7,
+              due_reviews: 2,
+            },
+          ],
         });
       case "schedule_study_unit":
         return Promise.resolve();
@@ -47,7 +61,7 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-/** Die Vorlagen sind standardmäßig eingeklappt. */
+/** Die Einheiten sind standardmäßig eingeklappt. */
 async function openLibrary() {
   fireEvent.click(await screen.findByRole("button", { name: /Lerneinheiten/ }));
 }
@@ -64,19 +78,28 @@ function pointToDay(day: string) {
   });
 }
 
-describe("Week calendar", () => {
-  it("shows actual minutes and reviews due per day", async () => {
-    render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+describe("Plantafel", () => {
+  it("stellt gemessene Minuten neben die geplanten", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
 
-    expect(await screen.findByText(/7 Min. Ist/)).toBeTruthy();
+    expect(await screen.findByText(/7 von 0 Min\./)).toBeTruthy();
+    expect(await screen.findByText(/2 fällig/)).toBeTruthy();
   });
 
-  it("schedules a dragged template on the day under the pointer", async () => {
-    render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+  it("plant eine gezogene Einheit auf den Tag unter dem Zeiger, mit Länge aus dem Budget", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop suggestMinutes={() => 25} />
+      </LocaleProvider>
+    );
     await openLibrary();
     const grip = (await screen.findAllByLabelText("Einheit ziehen"))[0];
 
-    pointToDay(monday);
+    pointToDay(today);
     fireEvent.pointerDown(grip, { clientX: 10, clientY: 10, pointerType: "mouse", button: 0 });
     fireEvent.pointerMove(window, { clientX: 200, clientY: 300 });
     fireEvent.pointerUp(window, { clientX: 200, clientY: 300 });
@@ -84,15 +107,20 @@ describe("Week calendar", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("schedule_study_unit", {
         templateId: TEMPLATE.id,
-        day: monday,
+        day: today,
         repeatRule: null,
         until: null,
+        plannedMin: 25,
       })
     );
   });
 
-  it("plans a weekly series when the library repeat is set", async () => {
-    render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+  it("plant eine Serie, wenn das Raster in der Liste gesetzt ist", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
     await openLibrary();
 
     fireEvent.change(await screen.findByLabelText("Wiederholung"), {
@@ -110,15 +138,52 @@ describe("Week calendar", () => {
     });
   });
 
-  it("ignores a click that never moved", async () => {
-    render(<LocaleProvider><StudyPlanner desktop /></LocaleProvider>);
+  it("ignoriert einen Klick, der sich nie bewegt hat", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
     await openLibrary();
     const grip = (await screen.findAllByLabelText("Einheit ziehen"))[0];
 
-    pointToDay(monday);
+    pointToDay(today);
     fireEvent.pointerDown(grip, { clientX: 10, clientY: 10, pointerType: "mouse", button: 0 });
     fireEvent.pointerUp(window, { clientX: 12, clientY: 11 });
 
     expect(invokeMock).not.toHaveBeenCalledWith("schedule_study_unit", expect.anything());
+  });
+
+  it("lässt die Standardeinheiten stehen und nur eigene löschen", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
+    await openLibrary();
+
+    // Zwei Einheiten, aber nur eine davon trägt einen Papierkorb.
+    const own = document.querySelector('[data-study-template="7"]');
+    const builtin = document.querySelector('[data-study-template="3"]');
+    expect(own?.querySelector('[aria-label="Löschen"]')).toBeTruthy();
+    expect(builtin?.querySelector('[aria-label="Löschen"]')).toBeNull();
+  });
+
+  it("fragt im Editor nach Bereichen statt nach einer Dauer", async () => {
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
+    fireEvent.click(await screen.findByLabelText("Lerneinheit hinzufügen"));
+
+    expect(await screen.findByText("Bereiche")).toBeTruthy();
+    // Kein Dauerfeld mehr · die Länge kommt aus dem Wochenbudget.
+    expect(screen.queryByText(/Dauer \(Min\.\)/)).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    // Alle fünf Kategorien stehen zur Wahl.
+    for (const area of ["Spielen", "Taktik", "Eröffnung", "Endspiel", "Analyse"]) {
+      expect(screen.getByRole("button", { name: area })).toBeTruthy();
+    }
   });
 });

@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   GripVertical,
   Pencil,
   Plus,
@@ -18,11 +17,13 @@ import {
   completeStudyUnit,
   deleteStudyTemplate,
   deleteStudyUnit,
+  eventMinutes,
   getStudyCalendar,
   moveStudyUnit,
   repeatStudyUnit,
   saveStudyTemplate,
   scheduleStudyUnit,
+  templateAreas,
   templateText,
   AREAS,
   AREA_COLOR,
@@ -36,23 +37,22 @@ import {
   type StudyTemplate,
   type StudyTemplateInput,
 } from "../lib/study";
-import { templateArea } from "../lib/plan";
 import { onDataChange } from "../lib/changes";
 import { isoDay } from "../lib/dates";
+import { deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 
 const DAY_MS = 86_400_000;
 const EMPTY_TEMPLATE: StudyTemplateInput = {
   title: "",
-  duration_min: 20,
   tool: "",
   description: "",
-  area: "",
+  areas: [],
 };
 
-function mondayOf(date: Date): Date {
-  const day = date.getUTCDay() || 7;
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - day + 1));
+/** UTC-Mitternacht des Tages, in dem `date` liegt. */
+function dayStart(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 const REPEAT_LABEL: Record<Exclude<RepeatRule, "">, Key> = {
@@ -90,9 +90,7 @@ function RepeatForm({
   onDeleteSeries?: () => void;
 }) {
   const t = useI18n().t;
-  const [rule, setRule] = useState<Exclude<RepeatRule, "">>(
-    current === "" ? "weekly" : current
-  );
+  const [rule, setRule] = useState<Exclude<RepeatRule, "">>(current === "" ? "weekly" : current);
   const [until, setUntil] = useState(() => defaultUntil(day, current === "" ? "weekly" : current));
 
   return (
@@ -179,12 +177,32 @@ function dayAtPoint(x: number, y: number): string | null {
   return cell?.dataset.studyDay ?? null;
 }
 
-export default function StudyPlanner({ desktop }: { desktop: boolean }) {
+/**
+ * Die Plantafel: sieben Tage ab heute.
+ *
+ * Jede Zeile ist ein Tag, und sie beantwortet dieselbe Frage wie die
+ * Wochenleiste oben, nur für diesen einen Tag: der obere Balken ist der Plan,
+ * nach Bereichen eingefärbt, der untere die gemessene Zeit. Die Einheiten
+ * selbst stehen erst da, wenn man den Tag aufklappt · vorher waren sieben
+ * dauerhaft ausgeklappte Tageskästen die halbe Seite, und die Antwort auf
+ * „wann mache ich was?" ging darin unter.
+ */
+export default function StudyPlanner({
+  desktop,
+  /** Der Wochenvorschlag · er gehört in dieselbe Karte wie der Plan. */
+  proposal,
+  /** Vorgeschlagene Länge einer von Hand geplanten Einheit, aus dem Budget. */
+  suggestMinutes,
+}: {
+  desktop: boolean;
+  proposal?: ReactNode;
+  suggestMinutes?: (areas: Area[]) => number;
+}) {
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
-  // Der Kalender ist der Hauptinhalt; die Vorlagen bleiben bis zum Aufklappen aus dem Weg.
+  // Der Plan ist der Hauptinhalt; die Einheiten bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [windowStart, setWindowStart] = useState(() => dayStart(new Date()));
   const [calendar, setCalendar] = useState<StudyCalendar>({ templates: [], events: [], days: [] });
   const [planningDay, setPlanningDay] = useState(() => isoDay(new Date()));
   const [editing, setEditing] = useState<StudyTemplateInput | null>(null);
@@ -193,30 +211,70 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   /** Termin, für den gerade das Wiederholungsraster eingestellt wird. */
   const [repeating, setRepeating] = useState<number | null>(null);
-  /** Raster für die nächste Planung aus der Vorlagen-Bibliothek. */
+  /** Raster für die nächste Planung aus der Einheiten-Liste. */
   const [planRepeat, setPlanRepeat] = useState<RepeatRule>("");
+  const today = isoDay(new Date());
+  /** Aufgeklappte Tage · heute ist es von selbst. */
+  const [open, setOpen] = useState<Set<string>>(() => new Set([today]));
 
   const days = useMemo(
-    () => [...Array(7)].map((_, index) => new Date(weekStart.getTime() + index * DAY_MS)),
-    [weekStart]
+    () => [...Array(7)].map((_, index) => new Date(windowStart.getTime() + index * DAY_MS)),
+    [windowStart]
   );
   const previewCalendar = useMemo<StudyCalendar>(() => {
-    // Die Vorschau zeigt dieselben Startvorlagen wie eine frische Installation ·
-    // über i18n_key stehen sie auch hier in der Sprache der Oberfläche.
+    // Die Vorschau zeigt dieselben Standardeinheiten wie eine frische
+    // Installation · über i18n_key stehen sie in der Sprache der Oberfläche.
+    const seed = (
+      id: number,
+      title: string,
+      tool: string,
+      description: string,
+      area: Area,
+      key: string
+    ): StudyTemplate => ({
+      id,
+      title,
+      duration_min: 0,
+      tool,
+      description,
+      area,
+      areas: [area],
+      builtin: area,
+      i18n_key: key,
+    });
     const templates: StudyTemplate[] = [
-      { id: 1, title: "Opening training", duration_min: 20, tool: "Kiebitz Repertoire", description: "Reinforce the first 8–10 moves and the ideas behind them.", area: "openings", i18n_key: "st.seed.openings" },
-      { id: 2, title: "Endgame training", duration_min: 20, tool: "Kiebitz Endgames", description: "Train queen, rook, and fundamental pawn endings.", area: "endgames", i18n_key: "st.seed.endgames" },
-      { id: 3, title: "Tactics", duration_min: 20, tool: "Kiebitz Puzzles", description: "15–20 puzzles: forks, pins, skewers, and discovered attacks.", area: "tactics", i18n_key: "st.seed.tactics" },
-      { id: 4, title: "Game + analysis", duration_min: 40, tool: "Lichess + Kiebitz Analysis", description: "Play rapid, review yourself, then understand the three biggest errors.", area: "play", i18n_key: "st.seed.play" },
+      seed(1, "Opening training", "Kiebitz Repertoire", "Reinforce the first 8–10 moves and the ideas behind them.", "openings", "st.seed.openings"),
+      seed(2, "Endgame training", "Kiebitz Endgames", "Train queen, rook, and fundamental pawn endings.", "endgames", "st.seed.endgames"),
+      seed(3, "Tactics", "Kiebitz Puzzles", "15–20 puzzles: forks, pins, skewers, and discovered attacks.", "tactics", "st.seed.tactics"),
+      seed(4, "Playing", "Lichess / chess.com", "Play deliberately, not on the side.", "play", "st.seed.play"),
+      seed(5, "Game review", "Kiebitz Analysis", "Review yourself first, then the three biggest engine mistakes.", "analysis", "st.seed.analysis"),
     ];
-    const today = isoDay(new Date());
     const demoMinutes = [24, 0, 16, 40, 10, 19, 0];
+    const demoPlanned: [number, number, number][] = [
+      [0, 3, 15],
+      [1, 1, 20],
+      [2, 4, 40],
+      [2, 5, 25],
+      [4, 3, 15],
+      [5, 1, 20],
+      [6, 2, 20],
+    ];
     return {
       templates,
-      events: [
-        { id: 1, template_id: 3, day: isoDay(days[2]), position: 0, completed: true, completed_ts: 1, auto_done: false, repeat_rule: "weekly", series_key: "preview-tactics", template: templates[2] },
-        { id: 2, template_id: 4, day: isoDay(days[5]), position: 0, completed: false, completed_ts: 0, auto_done: false, repeat_rule: "", series_key: "", template: templates[3] },
-      ],
+      events: demoPlanned.map(([index, templateId, minutes], position) => ({
+        id: position + 1,
+        template_id: templateId,
+        day: isoDay(days[index]),
+        position,
+        completed: index === 0,
+        completed_ts: index === 0 ? 1 : 0,
+        auto_done: false,
+        repeat_rule: "" as RepeatRule,
+        series_key: "",
+        planned_min: minutes,
+        source: "plan" as const,
+        template: templates[templateId - 1],
+      })),
       days: days.map((date, index) => {
         const day = isoDay(date);
         const past = day <= today;
@@ -232,9 +290,8 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
         };
       }),
     };
-  }, [days]);
+  }, [days, today]);
   const visibleCalendar = desktop ? calendar : previewCalendar;
-  const today = isoDay(new Date());
 
   const refreshRef = useRef<{ key: string; request: Promise<void> } | null>(null);
   const refresh = useCallback(() => {
@@ -283,9 +340,20 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
    */
   const removeUnit = (event: StudyEvent) => mutate(() => deleteStudyUnit(event.id));
 
+  /** Länge einer neu geplanten Einheit · aus dem Budget, nicht aus einer Eingabe. */
+  const minutesFor = useCallback(
+    (template: StudyTemplate) => suggestMinutes?.(templateAreas(template)) ?? 0,
+    [suggestMinutes]
+  );
+
   const dropOnDay = (day: string, payload: DragPayload) => {
     if (!desktop) return;
-    if (payload.kind === "template") void mutate(() => scheduleStudyUnit(payload.id, day));
+    if (payload.kind === "template") {
+      const template = visibleCalendar.templates.find((entry) => entry.id === payload.id);
+      void mutate(() =>
+        scheduleStudyUnit(payload.id, day, "", undefined, template ? minutesFor(template) : 0)
+      );
+    }
     if (payload.kind === "event") {
       const position = visibleCalendar.events.filter((event) => event.day === day).length;
       void mutate(() => moveStudyUnit(payload.id, day, position));
@@ -333,6 +401,37 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
     if (await mutate(() => saveStudyTemplate(editing))) setEditing(null);
   };
 
+  const toggleDay = (day: string) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+
+  // Gemeinsame Skala aller sieben Zeilen · sonst sähe ein 20-Minuten-Tag neben
+  // einem 90-Minuten-Tag genauso voll aus.
+  const rows = useMemo(
+    () =>
+      days.map((date) => {
+        const day = isoDay(date);
+        const events = visibleCalendar.events.filter((event) => event.day === day);
+        const metrics = (visibleCalendar.days ?? []).find((entry) => entry.day === day);
+        return {
+          date,
+          day,
+          events,
+          planned: events.reduce((sum, event) => sum + eventMinutes(event), 0),
+          measured: metrics?.actual_minutes ?? 0,
+          due:
+            (metrics?.due_reviews ?? 0) +
+            events.filter((event) => !event.completed && !event.auto_done).length,
+        };
+      }),
+    [days, visibleCalendar]
+  );
+  const scale = Math.max(30, ...rows.map((row) => Math.max(row.planned, row.measured)));
+
   return (
     <Card
       className="mt-4"
@@ -345,18 +444,21 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setWeekStart(new Date(weekStart.getTime() - 7 * DAY_MS))}
+            onClick={() => setWindowStart(new Date(windowStart.getTime() - 7 * DAY_MS))}
             aria-label={t("st.prevWeek")}
             className="rounded-lg border border-line p-1.5 text-ink3 hover:text-ink"
           >
             <ChevronLeft size={15} />
           </button>
-          <Button onClick={() => setWeekStart(mondayOf(new Date()))} className="!px-2.5 !py-1.5 !text-[12px]">
+          <Button
+            onClick={() => setWindowStart(dayStart(new Date()))}
+            className="!px-2.5 !py-1.5 !text-[12px]"
+          >
             {t("st.currentWeek")}
           </Button>
           <button
             type="button"
-            onClick={() => setWeekStart(new Date(weekStart.getTime() + 7 * DAY_MS))}
+            onClick={() => setWindowStart(new Date(windowStart.getTime() + 7 * DAY_MS))}
             aria-label={t("st.nextWeek")}
             className="rounded-lg border border-line p-1.5 text-ink3 hover:text-ink"
           >
@@ -372,221 +474,256 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
           </div>
         )}
 
+        {proposal}
+
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <div className="text-[13px] font-medium text-ink">
-              {days[0].toLocaleDateString(locale, { day: "2-digit", month: "long", timeZone: "UTC" })}
+              {days[0].toLocaleDateString(locale, {
+                day: "2-digit",
+                month: "long",
+                timeZone: "UTC",
+              })}
               {" – "}
-              {days[6].toLocaleDateString(locale, { day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" })}
+              {days[6].toLocaleDateString(locale, {
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+                timeZone: "UTC",
+              })}
             </div>
             <div className="text-[11.5px] text-ink3">{t("st.calendarHint")}</div>
           </div>
 
-          {/* Die Woche steht als Agenda untereinander · auch am Desktop.
-              Das frühere Sieben-Spalten-Raster brauchte 760 px, war nur quer
-              scrollend lesbar und hielt jeden Tag auf 300 px Höhe, ob er etwas
-              enthielt oder nicht. Die Tageszellen behalten data-study-day,
-              damit das Ziehen zwischen Tagen unverändert funktioniert. */}
-          <div className="flex flex-col gap-2">
-              {days.map((date) => {
-                const day = isoDay(date);
-                const events = visibleCalendar.events.filter((event) => event.day === day);
-                const metrics = (visibleCalendar.days ?? []).find((entry) => entry.day === day);
-                const isToday = day === today;
-                const future = day > today;
-                const actualMinutes = metrics?.actual_minutes ?? 0;
-                const plannedMinutes = events.reduce(
-                  (sum, event) => sum + event.template.duration_min,
-                  0
-                );
-                const due =
-                  (metrics?.due_reviews ?? 0)
-                  + events.filter((event) => !event.completed && !event.auto_done).length;
-                // Leere vergangene Tage tragen nichts bei und blähen die Liste
-                // auf · sie schrumpfen auf eine Zeile.
-                const collapsed = events.length === 0 && !isToday && due === 0;
-                return (
-                  <div
-                    key={day}
-                    data-study-day={day}
-                    className={`rounded-xl border p-2.5 transition-colors ${
-                      drag?.over === day
-                        ? "border-accent bg-accent-soft/60"
-                        : isToday
-                          ? "border-accent-dim bg-accent-soft/30"
-                          : "border-line bg-panel2"
-                    }`}
+          <div className="flex flex-col gap-1.5">
+            {rows.map((row) => {
+              const isToday = row.day === today;
+              const future = row.day > today;
+              const expanded = open.has(row.day);
+              return (
+                <div
+                  key={row.day}
+                  data-study-day={row.day}
+                  className={`rounded-xl border transition-colors ${
+                    drag?.over === row.day
+                      ? "border-accent bg-accent-soft/60"
+                      : isToday
+                        ? "border-accent-dim bg-accent-soft/25"
+                        : "border-line bg-panel2"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleDay(row.day)}
+                    aria-expanded={expanded}
+                    className="flex w-full items-center gap-3 px-2.5 py-2 text-left"
                   >
-                    <div
-                      className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 ${
-                        collapsed ? "" : "border-b border-line pb-2"
+                    <ChevronDown
+                      size={14}
+                      className={`shrink-0 text-ink3 transition-transform ${
+                        expanded ? "" : "-rotate-90"
                       }`}
-                    >
-                      <div className="text-[11px] uppercase tracking-wide text-ink3">
-                        {date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })}
-                      </div>
-                      <div
-                        className={`text-[14px] font-semibold ${isToday ? "text-accent" : "text-ink"}`}
+                    />
+                    <span className="flex w-[58px] shrink-0 items-baseline gap-1.5">
+                      <span className="text-[11px] uppercase tracking-wide text-ink3">
+                        {row.date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })}
+                      </span>
+                      <span
+                        className={`text-[13.5px] font-semibold ${isToday ? "text-accent" : "text-ink"}`}
                       >
-                        {date.getUTCDate()}
-                      </div>
-                      {/* Ist gegen Geplant · der Balken beantwortet für den Tag
-                          dieselbe Frage wie die Wochenleiste für die Woche. */}
-                      {plannedMinutes > 0 && !future && (
-                        <div
-                          className="h-1.5 w-16 shrink-0 self-center overflow-hidden rounded-full bg-panel3"
-                          title={`${t("st.actualMinutes", { n: actualMinutes })} · ${t("st.dayPlanned", { m: plannedMinutes })}`}
-                        >
-                          <div
-                            className="h-full rounded-full bg-accent"
+                        {row.date.getUTCDate()}
+                      </span>
+                    </span>
+
+                    {/* Oben der Plan nach Bereichen, darunter die gemessene
+                        Zeit · dieselbe Sprache wie die Wochenleiste. */}
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="flex h-1.5 overflow-hidden rounded-full bg-panel3">
+                        {row.events.map((event) => (
+                          <span
+                            key={event.id}
+                            title={`${templateText(event.template, "title", t)} · ${t("plan.minutes", { m: eventMinutes(event) })}`}
                             style={{
-                              width: `${Math.min(100, Math.round((actualMinutes / plannedMinutes) * 100))}%`,
+                              width: `${(eventMinutes(event) / scale) * 100}%`,
+                              background:
+                                AREA_COLOR[templateAreas(event.template)[0] ?? "play"] ??
+                                "var(--color-ink3)",
+                              opacity: event.completed || event.auto_done ? 0.45 : 1,
                             }}
                           />
-                        </div>
+                        ))}
+                      </span>
+                      {!future && (
+                        <span className="flex h-1.5 overflow-hidden rounded-full bg-panel3">
+                          <span
+                            className="block h-full rounded-full bg-accent"
+                            style={{ width: `${Math.min(100, (row.measured / scale) * 100)}%` }}
+                          />
+                        </span>
                       )}
-                      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10.5px]">
-                        {!future && (
-                          <span className={actualMinutes > 0 ? "text-ink2" : "text-ink3"}>
-                            {t("st.actualMinutes", { n: actualMinutes })}
-                          </span>
-                        )}
-                        {plannedMinutes > 0 && (
-                          <span className="text-ink3">
-                            {t("st.dayPlanned", { m: plannedMinutes })}
-                          </span>
-                        )}
-                        {(future || isToday) && due > 0 && (
-                          <span className="text-gold">{t("st.due", { n: due })}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div
-                      className={`gap-2 ${
-                        collapsed ? "hidden" : "mt-2 grid min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3"
-                      }`}
-                    >
-                      {events.map((event) => {
-                        const area = templateArea(event.template);
+                    </span>
+
+                    <span className="flex shrink-0 flex-col items-end text-[10.5px] leading-tight">
+                      {/* Ein leerer künftiger Tag sagt „nichts geplant" schon
+                          über den leeren Balken · eine 0 daneben ist Lärm. */}
+                      {(!future || row.planned > 0) && (
+                        <span className="tabular-nums text-ink2">
+                          {future
+                            ? t("st.dayPlanned", { m: deInt(row.planned) })
+                            : t("st.dayActualPlanned", {
+                                a: deInt(row.measured),
+                                m: deInt(row.planned),
+                              })}
+                        </span>
+                      )}
+                      {(future || isToday) && row.due > 0 && (
+                        <span className="text-gold">{t("st.due", { n: deInt(row.due) })}</span>
+                      )}
+                    </span>
+                  </button>
+
+                  {expanded && (
+                    <div className="grid gap-2 px-2.5 pb-2.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3">
+                      {row.events.map((event) => {
+                        const areas = templateAreas(event.template);
                         const done = event.completed || event.auto_done;
                         return (
-                        <div
-                          key={event.id}
-                          data-study-unit={event.id}
-                          // Der farbige Streifen links nennt den Bereich, ohne
-                          // eine Zeile dafür zu verbrauchen.
-                          style={area ? { borderLeftColor: AREA_COLOR[area], borderLeftWidth: 3 } : undefined}
-                          className={`rounded-lg border p-2 ${
-                            drag?.kind === "event" && drag.id === event.id ? "opacity-40" : ""
-                          } ${done ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
-                        >
-                          <div className="flex items-start gap-1.5">
-                            <span
-                              onPointerDown={(pointerEvent) =>
-                                startDrag(pointerEvent, {
-                                  kind: "event",
-                                  id: event.id,
-                                  label: templateText(event.template, "title", t),
-                                })
-                              }
-                              className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
-                              aria-label={t("st.dragUnit")}
-                            >
-                              <GripVertical size={12} />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className={`text-[11.5px] font-medium leading-tight ${done ? "text-ink3 line-through" : "text-ink"}`}>
-                                {templateText(event.template, "title", t)}
-                              </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
-                                <span>{event.template.duration_min} min</span>
-                                {area && <span>{t(AREA_KEY[area])}</span>}
-                                {/* Von der gemessenen Zeit erfüllt · das
-                                    unterscheidet sich von Hand abgehakt und
-                                    soll auch so aussehen. */}
-                                {!event.completed && event.auto_done && (
-                                  <span className="text-accent">{t("st.doneMeasured")}</span>
-                                )}
-                                {event.repeat_rule && (
-                                  <span
-                                    className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
-                                    title={t("st.repeatSeries")}
-                                  >
-                                    <Repeat size={9} /> {t(REPEAT_LABEL[event.repeat_rule])}
-                                  </span>
-                                )}
+                          <div
+                            key={event.id}
+                            data-study-unit={event.id}
+                            // Der farbige Streifen links nennt den Bereich, ohne
+                            // eine Zeile dafür zu verbrauchen.
+                            style={
+                              areas[0]
+                                ? { borderLeftColor: AREA_COLOR[areas[0]], borderLeftWidth: 3 }
+                                : undefined
+                            }
+                            className={`rounded-lg border p-2 ${
+                              drag?.kind === "event" && drag.id === event.id ? "opacity-40" : ""
+                            } ${done ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
+                          >
+                            <div className="flex items-start gap-1.5">
+                              <span
+                                onPointerDown={(pointerEvent) =>
+                                  startDrag(pointerEvent, {
+                                    kind: "event",
+                                    id: event.id,
+                                    label: templateText(event.template, "title", t),
+                                  })
+                                }
+                                className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
+                                aria-label={t("st.dragUnit")}
+                              >
+                                <GripVertical size={12} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div
+                                  className={`text-[11.5px] font-medium leading-tight ${done ? "text-ink3 line-through" : "text-ink"}`}
+                                >
+                                  {templateText(event.template, "title", t)}
+                                </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
+                                  {eventMinutes(event) > 0 && (
+                                    <span className="tabular-nums">
+                                      {t("plan.minutes", { m: deInt(eventMinutes(event)) })}
+                                    </span>
+                                  )}
+                                  {areas.map((area) => (
+                                    <span key={area}>{t(AREA_KEY[area])}</span>
+                                  ))}
+                                  {/* Von der gemessenen Zeit erfüllt · das
+                                      unterscheidet sich von Hand abgehakt und
+                                      soll auch so aussehen. */}
+                                  {!event.completed && event.auto_done && (
+                                    <span className="text-accent">{t("st.doneMeasured")}</span>
+                                  )}
+                                  {event.repeat_rule && (
+                                    <span
+                                      className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
+                                      title={t("st.repeatSeries")}
+                                    >
+                                      <Repeat size={9} /> {t(REPEAT_LABEL[event.repeat_rule])}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="mt-2 flex justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => void mutate(() => completeStudyUnit(event.id, !event.completed))}
-                              disabled={!desktop}
-                              className={`rounded-md p-1 ${event.completed ? "bg-accent-soft text-accent" : "text-ink3 hover:bg-panel2 hover:text-accent"}`}
-                              aria-label={event.completed ? t("st.markOpen") : t("st.markDone")}
-                            ><Check size={12} /></button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setRepeating((current) => (current === event.id ? null : event.id))
-                              }
-                              disabled={!desktop}
-                              aria-expanded={repeating === event.id}
-                              className={`rounded-md p-1 ${
-                                repeating === event.id || event.repeat_rule
-                                  ? "bg-accent-soft text-accent"
-                                  : "text-ink3 hover:bg-panel2 hover:text-accent"
-                              }`}
-                              aria-label={t("st.repeatSet")}
-                              title={t("st.repeatSet")}
-                            ><Repeat size={12} /></button>
-                            <button
-                              type="button"
-                              onClick={() => void removeUnit(event)}
-                              disabled={!desktop}
-                              className="rounded-md p-1 text-ink3 hover:bg-panel2 hover:text-loss"
-                              aria-label={t("common.delete")}
-                            ><Trash2 size={12} /></button>
-                          </div>
-                          {repeating === event.id && (
-                            <RepeatForm
-                              day={event.day}
-                              current={event.repeat_rule}
-                              busy={busy}
-                              onCancel={() => setRepeating(null)}
-                              onApply={async (rule, until) => {
-                                if (await mutate(() => repeatStudyUnit(event.id, rule, until))) {
-                                  setRepeating(null);
+                            <div className="mt-2 flex justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void mutate(() => completeStudyUnit(event.id, !event.completed))
                                 }
-                              }}
-                              onDeleteSeries={
-                                event.series_key
-                                  ? async () => {
-                                      if (
-                                        await mutate(() =>
-                                          deleteStudyUnit(event.id, "series")
-                                        )
-                                      ) {
-                                        setRepeating(null);
+                                disabled={!desktop}
+                                className={`rounded-md p-1 ${event.completed ? "bg-accent-soft text-accent" : "text-ink3 hover:bg-panel2 hover:text-accent"}`}
+                                aria-label={event.completed ? t("st.markOpen") : t("st.markDone")}
+                              >
+                                <Check size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRepeating((current) =>
+                                    current === event.id ? null : event.id
+                                  )
+                                }
+                                disabled={!desktop}
+                                aria-expanded={repeating === event.id}
+                                className={`rounded-md p-1 ${
+                                  repeating === event.id || event.repeat_rule
+                                    ? "bg-accent-soft text-accent"
+                                    : "text-ink3 hover:bg-panel2 hover:text-accent"
+                                }`}
+                                aria-label={t("st.repeatSet")}
+                                title={t("st.repeatSet")}
+                              >
+                                <Repeat size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void removeUnit(event)}
+                                disabled={!desktop}
+                                className="rounded-md p-1 text-ink3 hover:bg-panel2 hover:text-loss"
+                                aria-label={t("common.delete")}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            {repeating === event.id && (
+                              <RepeatForm
+                                day={event.day}
+                                current={event.repeat_rule}
+                                busy={busy}
+                                onCancel={() => setRepeating(null)}
+                                onApply={async (rule, until) => {
+                                  if (await mutate(() => repeatStudyUnit(event.id, rule, until))) {
+                                    setRepeating(null);
+                                  }
+                                }}
+                                onDeleteSeries={
+                                  event.series_key
+                                    ? async () => {
+                                        if (await mutate(() => deleteStudyUnit(event.id, "series"))) {
+                                          setRepeating(null);
+                                        }
                                       }
-                                    }
-                                  : undefined
-                              }
-                            />
-                          )}
-                        </div>
+                                    : undefined
+                                }
+                              />
+                            )}
+                          </div>
                         );
                       })}
-                      {events.length === 0 && (
+                      {row.events.length === 0 && (
                         <div className="rounded-lg border border-dashed border-line px-2 py-2 text-center text-[10.5px] text-ink3">
                           {t("st.dropHere")}
                         </div>
                       )}
                     </div>
-                  </div>
-                );
-              })}
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
         </div>
@@ -599,9 +736,14 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
               aria-expanded={libraryOpen}
               className="flex items-center gap-2 text-left"
             >
-              <ChevronDown size={15} className={`text-ink3 transition-transform ${libraryOpen ? "" : "-rotate-90"}`} />
+              <ChevronDown
+                size={15}
+                className={`text-ink3 transition-transform ${libraryOpen ? "" : "-rotate-90"}`}
+              />
               <span>
-                <span className="block text-[13px] font-medium text-ink">{t("st.unitsLibrary")}</span>
+                <span className="block text-[13px] font-medium text-ink">
+                  {t("st.unitsLibrary")}
+                </span>
                 <span className="block text-[11.5px] text-ink3">{t("st.dragHint")}</span>
               </span>
             </button>
@@ -647,118 +789,190 @@ export default function StudyPlanner({ desktop }: { desktop: boolean }) {
 
           {libraryOpen && (
             <div className="mt-3 grid gap-2 min-[700px]:grid-cols-2 min-[1200px]:grid-cols-4">
-              {visibleCalendar.templates.map((template) => (
-                <div key={template.id} className="group rounded-lg border border-line bg-panel p-3 hover:border-line2">
-                  <div className="flex items-start gap-2">
-                    <span
-                      onPointerDown={(pointerEvent) =>
-                        startDrag(pointerEvent, {
-                          kind: "template",
-                          id: template.id,
-                          label: templateText(template, "title", t),
-                        })
-                      }
-                      className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
-                      aria-label={t("st.dragUnit")}
-                    >
-                      <GripVertical size={15} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-ink">
-                        {templateText(template, "title", t)}
+              {visibleCalendar.templates.map((template) => {
+                const areas = templateAreas(template);
+                return (
+                  <div
+                    key={template.id}
+                    data-study-template={template.id}
+                    className="group rounded-lg border border-line bg-panel p-3 hover:border-line2"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span
+                        onPointerDown={(pointerEvent) =>
+                          startDrag(pointerEvent, {
+                            kind: "template",
+                            id: template.id,
+                            label: templateText(template, "title", t),
+                          })
+                        }
+                        className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
+                        aria-label={t("st.dragUnit")}
+                      >
+                        <GripVertical size={15} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12.5px] font-medium text-ink">
+                          {templateText(template, "title", t)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {areas.map((area) => (
+                            <span
+                              key={area}
+                              className="rounded border border-line2 px-1 text-[10px]"
+                              style={{ color: AREA_COLOR[area] }}
+                            >
+                              {t(AREA_KEY[area])}
+                            </span>
+                          ))}
+                          {areas.length === 0 && (
+                            <span className="text-[10px] text-ink3">{t("st.areaNone")}</span>
+                          )}
+                        </div>
+                        {template.description && (
+                          <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">
+                            {templateText(template, "desc", t)}
+                          </p>
+                        )}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-ink3">
-                        <span className="flex items-center gap-1"><Clock3 size={11} /> {template.duration_min} min</span>
-                        {template.tool && <span>{templateText(template, "tool", t)}</span>}
-                      </div>
-                      {template.description && (
-                        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">
-                          {templateText(template, "desc", t)}
-                        </p>
+                    </div>
+                    <div className="mt-2 flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        // Bearbeitet wird der Text, der auf dem Bildschirm
+                        // steht · bei einer Standardeinheit ist das die Übersetzung.
+                        onClick={() =>
+                          setEditing({
+                            id: template.id,
+                            title: templateText(template, "title", t),
+                            tool: templateText(template, "tool", t),
+                            description: templateText(template, "desc", t),
+                            areas,
+                          })
+                        }
+                        disabled={!desktop}
+                        className="rounded-md p-1.5 text-ink3 hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label={t("common.edit")}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      {/* Die fünf Standardeinheiten bleiben · an ihnen plant
+                          der Wochenvorschlag. */}
+                      {!template.builtin && (
+                        <button
+                          type="button"
+                          onClick={() => void mutate(() => deleteStudyTemplate(template.id))}
+                          disabled={!desktop}
+                          className="rounded-md p-1.5 text-ink3 hover:bg-panel2 hover:text-loss disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label={t("common.delete")}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       )}
+                      <Button
+                        disabled={busy || !desktop || !planningDay}
+                        onClick={() =>
+                          void mutate(() =>
+                            scheduleStudyUnit(
+                              template.id,
+                              planningDay,
+                              planRepeat,
+                              planRepeat ? defaultUntil(planningDay, planRepeat) : undefined,
+                              minutesFor(template)
+                            )
+                          )
+                        }
+                        className="ml-1 !px-2.5 !py-1.5 !text-[11.5px]"
+                      >
+                        {planRepeat ? <Repeat size={12} /> : <Plus size={12} />} {t("st.plan")}
+                      </Button>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-end gap-1">
-                    <button
-                      type="button"
-                      // Bearbeitet wird der Text, der auf dem Bildschirm
-                      // steht · bei einer Startvorlage ist das die Übersetzung.
-                      onClick={() =>
-                        setEditing({
-                          id: template.id,
-                          title: templateText(template, "title", t),
-                          duration_min: template.duration_min,
-                          tool: templateText(template, "tool", t),
-                          description: templateText(template, "desc", t),
-                          area: template.area,
-                        })
-                      }
-                      disabled={!desktop}
-                      className="rounded-md p-1.5 text-ink3 hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={t("common.edit")}
-                    ><Pencil size={13} /></button>
-                    <button
-                      type="button"
-                      onClick={() => void mutate(() => deleteStudyTemplate(template.id))}
-                      disabled={!desktop}
-                      className="rounded-md p-1.5 text-ink3 hover:bg-panel2 hover:text-loss disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label={t("common.delete")}
-                    ><Trash2 size={13} /></button>
-                    <Button
-                      disabled={busy || !desktop || !planningDay}
-                      onClick={() =>
-                        void mutate(() =>
-                          scheduleStudyUnit(
-                            template.id,
-                            planningDay,
-                            planRepeat,
-                            planRepeat ? defaultUntil(planningDay, planRepeat) : undefined
-                          )
-                        )
-                      }
-                      className="ml-1 !px-2.5 !py-1.5 !text-[11.5px]"
-                    >
-                      {planRepeat ? <Repeat size={12} /> : <Plus size={12} />} {t("st.plan")}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
         {editing && (
           <div className="rounded-xl border border-accent-dim bg-panel2 p-4">
-            <div className="mb-3 text-[13px] font-medium text-ink">{editing.id ? t("st.editUnit") : t("st.newUnit")}</div>
-            <div className="grid gap-3 min-[700px]:grid-cols-[1fr_120px_1fr_1fr]">
-              <label className="text-[11px] text-ink3">{t("st.unitTitle")}<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
-              <label className="text-[11px] text-ink3">{t("st.duration")}<input type="number" min={5} max={480} value={editing.duration_min} onChange={(event) => setEditing({ ...editing, duration_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
-              {/* Der Bereich entscheidet, auf welches Budget die Einheit
-                  einzahlt und woher der Wochenplan sie nimmt · früher wurde er
-                  aus dem Titel geraten, und zwar nur auf Deutsch und Englisch. */}
-              <label className="text-[11px] text-ink3">{t("st.unitArea")}
-                <select
-                  value={editing.area}
-                  onChange={(event) => setEditing({ ...editing, area: event.target.value as Area | "" })}
-                  className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
-                >
-                  <option value="">{t("st.areaNone")}</option>
-                  {AREAS.map((area) => (
-                    <option key={area} value={area}>{t(AREA_KEY[area])}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-[11px] text-ink3">{t("st.tool")}<input value={editing.tool} onChange={(event) => setEditing({ ...editing, tool: event.target.value })} className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" /></label>
+            <div className="mb-3 text-[13px] font-medium text-ink">
+              {editing.id ? t("st.editUnit") : t("st.newUnit")}
             </div>
-            <label className="mt-3 block text-[11px] text-ink3">{t("st.description")}<textarea rows={3} value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} className="mt-1 w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] leading-relaxed text-ink focus:border-accent-dim focus:outline-none" /></label>
+            <div className="grid gap-3 min-[700px]:grid-cols-2">
+              <label className="text-[11px] text-ink3">
+                {t("st.unitTitle")}
+                <input
+                  value={editing.title}
+                  onChange={(event) => setEditing({ ...editing, title: event.target.value })}
+                  className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+                />
+              </label>
+              <label className="text-[11px] text-ink3">
+                {t("st.tool")}
+                <input
+                  value={editing.tool}
+                  onChange={(event) => setEditing({ ...editing, tool: event.target.value })}
+                  className="mt-1 w-full rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+                />
+              </label>
+            </div>
+            {/* Bereiche statt Dauer: worauf die Einheit einzahlt, entscheidet
+                der Nutzer · wie lang sie wird, das Wochenbudget. */}
+            <div className="mt-3">
+              <div className="text-[11px] text-ink3">{t("st.unitAreas")}</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {AREAS.map((area) => {
+                  const active = editing.areas.includes(area);
+                  return (
+                    <button
+                      key={area}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() =>
+                        setEditing({
+                          ...editing,
+                          areas: active
+                            ? editing.areas.filter((entry) => entry !== area)
+                            : [...editing.areas, area],
+                        })
+                      }
+                      className={`rounded-md border px-2.5 py-1 text-[12px] transition-colors ${
+                        active
+                          ? "border-accent-dim bg-accent-soft text-accent"
+                          : "border-line text-ink3 hover:text-ink"
+                      }`}
+                    >
+                      {t(AREA_KEY[area])}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-ink3">{t("st.unitAreasNote")}</p>
+            </div>
+            <label className="mt-3 block text-[11px] text-ink3">
+              {t("st.description")}
+              <textarea
+                rows={3}
+                value={editing.description}
+                onChange={(event) => setEditing({ ...editing, description: event.target.value })}
+                className="mt-1 w-full resize-y rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px] leading-relaxed text-ink focus:border-accent-dim focus:outline-none"
+              />
+            </label>
             <div className="mt-3 flex justify-end gap-2">
               <Button onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
-              <Button primary disabled={busy || !editing.title.trim()} onClick={() => void saveTemplate()}>{t("common.save")}</Button>
+              <Button primary disabled={busy || !editing.title.trim()} onClick={() => void saveTemplate()}>
+                {t("common.save")}
+              </Button>
             </div>
           </div>
         )}
 
-        {error && <div className="rounded-lg border border-loss/40 bg-loss/10 px-3 py-2 text-[12px] text-loss">{error}</div>}
+        {error && (
+          <div className="rounded-lg border border-loss/40 bg-loss/10 px-3 py-2 text-[12px] text-loss">
+            {error}
+          </div>
+        )}
       </div>
 
       {/* Zieh-Vorschau am Zeiger; pointer-events aus, damit elementFromPoint die
