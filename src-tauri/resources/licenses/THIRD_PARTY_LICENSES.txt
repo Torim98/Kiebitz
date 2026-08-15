@@ -16,14 +16,14 @@ shipped alongside this one.
 Where a library offers a choice of licenses, one has been selected; the
 full set it was offered under is shown as "offered".
 
-Components: 65 npm packages, 578 Rust crates.
+Components: 66 npm packages, 621 Rust crates.
 
 
 ============================================================================
 INDEX
 ============================================================================
 
-npm packages (65)
+npm packages (66)
 ----------------------------------------------------------------------------
   @babel/runtime 7.29.7 — MIT
   @fontsource-variable/inter 5.3.0 — OFL-1.1
@@ -32,6 +32,7 @@ npm packages (65)
   @react-dnd/shallowequal 4.0.2 — MIT
   @tauri-apps/api 2.11.1 — Apache-2.0 OR MIT
   @tauri-apps/plugin-barcode-scanner 2.4.5 — MIT OR Apache-2.0
+  @tauri-apps/plugin-deep-link 2.4.9 — MIT OR Apache-2.0
   @tauri-apps/plugin-dialog 2.7.2 — MIT OR Apache-2.0
   @tauri-apps/plugin-notification 2.3.3 — MIT OR Apache-2.0
   @tauri-apps/plugin-opener 2.5.4 — MIT OR Apache-2.0
@@ -91,9 +92,10 @@ npm packages (65)
   tiny-invariant 1.3.3 — MIT
   victory-vendor 36.9.2 — MIT AND ISC
 
-Rust crates (578)
+Rust crates (621)
 ----------------------------------------------------------------------------
   adler2 2.0.1 — 0BSD OR MIT OR Apache-2.0
+  aes 0.8.4 — MIT OR Apache-2.0
   aho-corasick 1.1.5 — Unlicense OR MIT
   alloc-no-stdlib 2.0.4 — BSD-3-Clause
   alloc-stdlib 0.2.4 — BSD-3-Clause
@@ -107,6 +109,7 @@ Rust crates (578)
   async-broadcast 0.7.2 — MIT OR Apache-2.0
   async-channel 2.5.0 — Apache-2.0 OR MIT
   async-executor 1.14.0 — Apache-2.0 OR MIT
+  async-fs 2.2.0 — Apache-2.0 OR MIT
   async-io 2.6.0 — Apache-2.0 OR MIT
   async-lock 3.4.2 — Apache-2.0 OR MIT
   async-process 2.5.0 — Apache-2.0 OR MIT
@@ -128,6 +131,7 @@ Rust crates (578)
   bitflags 1.3.2 — MIT/Apache-2.0
   bitflags 2.13.1 — MIT OR Apache-2.0
   block-buffer 0.10.4 — MIT OR Apache-2.0
+  block-padding 0.3.3 — MIT OR Apache-2.0
   block2 0.6.2 — MIT
   blocking 1.6.2 — Apache-2.0 OR MIT
   brotli 8.0.4 — BSD-3-Clause AND MIT
@@ -143,19 +147,25 @@ Rust crates (578)
   cargo_metadata 0.19.2 — MIT
   cargo_toml 0.22.3 — Apache-2.0 OR MIT
   cargo-platform 0.1.9 — MIT OR Apache-2.0
+  cbc 0.1.2 — MIT OR Apache-2.0
   cc 1.4.2 — MIT OR Apache-2.0
   cesu8 1.1.0 — Apache-2.0/MIT
   cfb 0.7.3 — MIT
+  cfg_aliases 0.2.2 — MIT
   cfg-expr 0.15.8 — MIT OR Apache-2.0
   cfg-if 1.0.4 — MIT OR Apache-2.0
   chrono 0.4.45 — MIT OR Apache-2.0
   chunked_transfer 1.5.0 — MIT OR Apache-2.0
+  cipher 0.4.4 — MIT OR Apache-2.0
   cmake 0.1.58 — MIT OR Apache-2.0
   combine 4.6.7 — MIT
   concurrent-queue 2.5.0 — Apache-2.0 OR MIT
+  const-random 0.1.18 — MIT OR Apache-2.0
+  const-random-macro 0.1.16 — MIT OR Apache-2.0
   convert_case 0.4.0 — MIT
   cookie 0.18.2 — MIT OR Apache-2.0
   core-foundation 0.10.1 — MIT OR Apache-2.0
+  core-foundation 0.9.4 — MIT OR Apache-2.0
   core-foundation-sys 0.8.7 — MIT OR Apache-2.0
   core-graphics 0.25.0 — MIT OR Apache-2.0
   core-graphics-types 0.2.0 — MIT OR Apache-2.0
@@ -163,6 +173,7 @@ Rust crates (578)
   crc32fast 1.5.0 — MIT OR Apache-2.0
   crossbeam-channel 0.5.16 — MIT OR Apache-2.0
   crossbeam-utils 0.8.22 — MIT OR Apache-2.0
+  crunchy 0.2.4 — MIT
   crypto-common 0.1.7 — MIT OR Apache-2.0
   cssparser 0.36.0 — MPL-2.0
   cssparser-macros 0.6.1 — MPL-2.0
@@ -174,6 +185,7 @@ Rust crates (578)
   darling_core 0.23.0 — MIT
   darling_macro 0.23.0 — MIT
   dbus 0.9.12 — Apache-2.0/MIT
+  dbus-secret-service 4.1.0 — MIT OR Apache-2.0
   defmt 1.1.1 — MIT OR Apache-2.0
   defmt-macros 1.1.1 — MIT OR Apache-2.0
   defmt-parser 1.0.0 — MIT OR Apache-2.0
@@ -189,6 +201,7 @@ Rust crates (578)
   displaydoc 0.2.7 — MIT OR Apache-2.0
   dlopen2 0.8.2 — MIT
   dlopen2_derive 0.4.3 — MIT
+  dlv-list 0.5.2 — MIT OR Apache-2.0
   dom_query 0.27.0 — MIT
   dpi 0.1.2 — Apache-2.0 AND MIT
   dtoa 1.0.11 — MIT OR Apache-2.0
@@ -256,6 +269,7 @@ Rust crates (578)
   gtk-sys 0.18.2 — MIT
   gtk3-macros 0.18.2 — MIT
   hashbrown 0.12.3 — MIT OR Apache-2.0
+  hashbrown 0.14.5 — MIT OR Apache-2.0
   hashbrown 0.15.5 — MIT OR Apache-2.0
   hashbrown 0.17.1 — MIT OR Apache-2.0
   hashlink 0.10.0 — MIT OR Apache-2.0
@@ -263,6 +277,8 @@ Rust crates (578)
   heck 0.5.0 — MIT OR Apache-2.0
   hermit-abi 0.5.2 — MIT OR Apache-2.0
   hex 0.4.3 — MIT OR Apache-2.0
+  hkdf 0.12.4 — MIT OR Apache-2.0
+  hmac 0.12.1 — MIT OR Apache-2.0
   html5ever 0.38.0 — MIT OR Apache-2.0
   http 1.5.0 — MIT OR Apache-2.0
   http-body 1.1.0 — MIT
@@ -288,6 +304,7 @@ Rust crates (578)
   indexmap 1.9.3 — Apache-2.0 OR MIT
   indexmap 2.14.0 — Apache-2.0 OR MIT
   infer 0.19.0 — MIT
+  inout 0.1.4 — MIT OR Apache-2.0
   ipnet 2.12.1 — MIT OR Apache-2.0
   is-docker 0.2.0 — MIT
   is-wsl 0.4.0 — MIT
@@ -310,6 +327,7 @@ Rust crates (578)
   json-patch 3.0.1 — MIT/Apache-2.0
   jsonptr 0.6.3 — MIT OR Apache-2.0
   keyboard-types 0.7.0 — MIT OR Apache-2.0
+  keyring 3.6.3 — MIT OR Apache-2.0
   libappindicator 0.9.0 — Apache-2.0 OR MIT
   libappindicator-sys 0.9.0 — Apache-2.0 OR MIT
   libc 0.2.189 — MIT OR Apache-2.0
@@ -333,11 +351,18 @@ Rust crates (578)
   ndk 0.9.0 — MIT OR Apache-2.0
   ndk-sys 0.6.0+11769913 — MIT OR Apache-2.0
   new_debug_unreachable 1.0.6 — MIT
+  nix 0.29.0 — MIT
   notify-rust 4.18.0 — MIT OR Apache-2.0
+  num 0.4.3 — MIT OR Apache-2.0
   num_enum 0.7.6 — BSD-3-Clause OR MIT OR Apache-2.0
   num_enum_derive 0.7.6 — BSD-3-Clause OR MIT OR Apache-2.0
   num_threads 0.1.7 — MIT OR Apache-2.0
+  num-bigint 0.4.8 — MIT OR Apache-2.0
+  num-complex 0.4.6 — MIT OR Apache-2.0
   num-conv 0.2.2 — MIT OR Apache-2.0
+  num-integer 0.1.47 — MIT OR Apache-2.0
+  num-iter 0.1.46 — MIT OR Apache-2.0
+  num-rational 0.4.2 — MIT OR Apache-2.0
   num-traits 0.2.19 — MIT OR Apache-2.0
   objc2 0.6.4 — MIT
   objc2-app-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
@@ -361,6 +386,7 @@ Rust crates (578)
   open 5.4.1 — MIT
   openssl-probe 0.2.1 — MIT OR Apache-2.0
   option-ext 0.2.0 — MPL-2.0
+  ordered-multimap 0.7.3 — MIT
   ordered-stream 0.2.0 — MIT OR Apache-2.0
   osakit 0.3.1 — MIT OR Apache-2.0
   owlchess 0.4.1 — MIT
@@ -401,7 +427,9 @@ Rust crates (578)
   quote 1.0.47 — MIT OR Apache-2.0
   r-efi 5.3.0 — MIT OR Apache-2.0 OR LGPL-2.1-or-later
   r-efi 6.0.0 — MIT OR Apache-2.0 OR LGPL-2.1-or-later
+  rand 0.8.7 — MIT OR Apache-2.0
   rand 0.9.5 — MIT OR Apache-2.0
+  rand_chacha 0.3.1 — MIT OR Apache-2.0
   rand_chacha 0.9.0 — MIT OR Apache-2.0
   rand_core 0.6.4 — MIT OR Apache-2.0
   rand_core 0.9.5 — MIT OR Apache-2.0
@@ -420,6 +448,7 @@ Rust crates (578)
   ring 0.16.20 — see below
   ring 0.17.14 — Apache-2.0 AND ISC
   rusqlite 0.33.0 — MIT
+  rust-ini 0.21.3 — MIT
   rustc_version 0.4.1 — MIT OR Apache-2.0
   rustc-hash 2.1.3 — Apache-2.0 OR MIT
   rustix 1.1.4 — Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
@@ -442,6 +471,8 @@ Rust crates (578)
   schemars_derive 0.8.22 — MIT
   scopeguard 1.2.0 — MIT OR Apache-2.0
   sct 0.7.1 — Apache-2.0 OR ISC OR MIT
+  secret-service 4.0.0 — MIT OR Apache-2.0
+  security-framework 2.11.1 — MIT OR Apache-2.0
   security-framework 3.7.0 — MIT OR Apache-2.0
   security-framework-sys 2.17.0 — MIT OR Apache-2.0
   selectors 0.36.1 — MPL-2.0
@@ -460,6 +491,7 @@ Rust crates (578)
   serialize-to-javascript 0.1.2 — MIT OR Apache-2.0
   serialize-to-javascript-impl 0.1.2 — MIT OR Apache-2.0
   servo_arc 0.4.3 — MIT OR Apache-2.0
+  sha1 0.10.7 — MIT OR Apache-2.0
   sha2 0.10.9 — MIT OR Apache-2.0
   shlex 2.0.1 — MIT OR Apache-2.0
   signal-hook-registry 1.4.8 — MIT OR Apache-2.0
@@ -475,6 +507,7 @@ Rust crates (578)
   soup3-sys 0.5.0 — MIT
   spin 0.5.2 — MIT
   stable_deref_trait 1.2.1 — MIT OR Apache-2.0
+  static_assertions 1.1.0 — MIT OR Apache-2.0
   string_cache 0.9.0 — MIT OR Apache-2.0
   string_cache_codegen 0.6.1 — MIT OR Apache-2.0
   strsim 0.11.1 — MIT
@@ -496,6 +529,7 @@ Rust crates (578)
   tauri-macros 2.6.3 — Apache-2.0 OR MIT
   tauri-plugin 2.6.3 — Apache-2.0 OR MIT
   tauri-plugin-barcode-scanner 2.4.5 — Apache-2.0 OR MIT
+  tauri-plugin-deep-link 2.4.9 — Apache-2.0 OR MIT
   tauri-plugin-dialog 2.7.2 — Apache-2.0 OR MIT
   tauri-plugin-fs 2.5.1 — Apache-2.0 OR MIT
   tauri-plugin-log 2.9.0 — Apache-2.0 OR MIT
@@ -517,6 +551,7 @@ Rust crates (578)
   time-core 0.1.9 — MIT OR Apache-2.0
   time-macros 0.2.32 — MIT OR Apache-2.0
   tiny_http 0.12.0 — MIT OR Apache-2.0
+  tiny-keccak 2.0.2 — CC0-1.0
   tinystr 0.8.3 — Unicode-3.0
   tinyvec 1.12.0 — Zlib OR Apache-2.0 OR MIT
   tinyvec_macros 0.1.1 — MIT OR Apache-2.0 OR Zlib
@@ -624,6 +659,7 @@ Rust crates (578)
   windows-link 0.1.3 — MIT OR Apache-2.0
   windows-link 0.2.1 — MIT OR Apache-2.0
   windows-numerics 0.2.0 — MIT OR Apache-2.0
+  windows-registry 0.5.3 — MIT OR Apache-2.0
   windows-result 0.3.4 — MIT OR Apache-2.0
   windows-result 0.4.1 — MIT OR Apache-2.0
   windows-strings 0.4.2 — MIT OR Apache-2.0
@@ -648,11 +684,15 @@ Rust crates (578)
   x11 2.21.0 — MIT
   x11-dl 2.21.0 — MIT
   xattr 1.6.1 — MIT OR Apache-2.0
+  xdg-home 1.3.0 — MIT
   yasna 0.5.2 — MIT OR Apache-2.0
   yoke 0.8.3 — Unicode-3.0
   yoke-derive 0.8.2 — Unicode-3.0
+  zbus 4.4.0 — MIT
   zbus 5.19.0 — MIT
+  zbus_macros 4.4.0 — MIT
   zbus_macros 5.19.0 — MIT
+  zbus_names 3.0.0 — MIT
   zbus_names 4.3.4 — MIT
   zcheapstr 1.1.0 — MIT
   zerocopy 0.8.56 — BSD-2-Clause OR Apache-2.0 OR MIT
@@ -660,6 +700,7 @@ Rust crates (578)
   zerofrom 0.1.8 — Unicode-3.0
   zerofrom-derive 0.1.7 — Unicode-3.0
   zeroize 1.9.0 — Apache-2.0 OR MIT
+  zeroize_derive 1.5.0 — Apache-2.0 OR MIT
   zerotrie 0.2.4 — Unicode-3.0
   zerovec 0.11.6 — Unicode-3.0
   zerovec-derive 0.11.3 — Unicode-3.0
@@ -668,8 +709,11 @@ Rust crates (578)
   zstd 0.13.3 — MIT
   zstd-safe 7.2.4 — MIT OR Apache-2.0
   zstd-sys 2.0.16+zstd.1.5.7 — MIT/Apache-2.0
+  zvariant 4.2.0 — MIT
   zvariant 5.14.0 — MIT
+  zvariant_derive 4.2.0 — MIT
   zvariant_derive 5.14.0 — MIT
+  zvariant_utils 2.1.0 — MIT
   zvariant_utils 4.0.0 — MIT
 
 
@@ -2288,6 +2332,138 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ----------------------------------------------------------------------------
+CC0-1.0
+----------------------------------------------------------------------------
+
+Applies to:
+  tiny-keccak 2.0.2 (cargo)
+      Copyright (c) debris
+      https://github.com/debris/tiny-keccak
+
+Creative Commons Legal Code
+
+CC0 1.0 Universal
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+    HEREUNDER.
+
+Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
+and subsequent owner(s) (each and all, an "owner") of an original work of
+authorship and/or a database (each, a "Work").
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+These owners may contribute to the Commons to promote the ideal of a free
+culture and the further production of creative, cultural and scientific
+works, or to gain reputation or greater distribution for their Work in
+part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any
+expectation of additional consideration or compensation, the person
+associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+is an owner of Copyright and Related Rights in the Work, voluntarily
+elects to apply CC0 to the Work and publicly distribute the Work under its
+terms, with knowledge of his or her Copyright and Related Rights in the
+Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be
+protected by copyright and related or neighboring rights ("Copyright and
+Related Rights"). Copyright and Related Rights include, but are not
+limited to, the following:
+
+  i. the right to reproduce, adapt, distribute, perform, display,
+     communicate, and translate a Work;
+ ii. moral rights retained by the original author(s) and/or performer(s);
+iii. publicity and privacy rights pertaining to a person's image or
+     likeness depicted in a Work;
+ iv. rights protecting against unfair competition in regards to a Work,
+     subject to the limitations in paragraph 4(a), below;
+  v. rights protecting the extraction, dissemination, use and reuse of data
+     in a Work;
+ vi. database rights (such as those arising under Directive 96/9/EC of the
+     European Parliament and of the Council of 11 March 1996 on the legal
+     protection of databases, and under any national implementation
+     thereof, including any amended or successor version of such
+     directive); and
+vii. other similar, equivalent or corresponding rights throughout the
+     world based on applicable law or treaty, and any national
+     implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention
+of, applicable law, Affirmer hereby overtly, fully, permanently,
+irrevocably and unconditionally waives, abandons, and surrenders all of
+Affirmer's Copyright and Related Rights and associated claims and causes
+of action, whether now known or unknown (including existing as well as
+future claims and causes of action), in the Work (i) in all territories
+worldwide, (ii) for the maximum duration provided by applicable law or
+treaty (including future time extensions), (iii) in any current or future
+medium and for any number of copies, and (iv) for any purpose whatsoever,
+including without limitation commercial, advertising or promotional
+purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+member of the public at large and to the detriment of Affirmer's heirs and
+successors, fully intending that such Waiver shall not be subject to
+revocation, rescission, cancellation, termination, or any other legal or
+equitable action to disrupt the quiet enjoyment of the Work by the public
+as contemplated by Affirmer's express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason
+be judged legally invalid or ineffective under applicable law, then the
+Waiver shall be preserved to the maximum extent permitted taking into
+account Affirmer's express Statement of Purpose. In addition, to the
+extent the Waiver is so judged Affirmer hereby grants to each affected
+person a royalty-free, non transferable, non sublicensable, non exclusive,
+irrevocable and unconditional license to exercise Affirmer's Copyright and
+Related Rights in the Work (i) in all territories worldwide, (ii) for the
+maximum duration provided by applicable law or treaty (including future
+time extensions), (iii) in any current or future medium and for any number
+of copies, and (iv) for any purpose whatsoever, including without
+limitation commercial, advertising or promotional purposes (the
+"License"). The License shall be deemed effective as of the date CC0 was
+applied by Affirmer to the Work. Should any part of the License for any
+reason be judged legally invalid or ineffective under applicable law, such
+partial invalidity or ineffectiveness shall not invalidate the remainder
+of the License, and in such case Affirmer hereby affirms that he or she
+will not (i) exercise any of his or her remaining Copyright and Related
+Rights in the Work or (ii) assert any associated claims and causes of
+action with respect to the Work, in either case contrary to Affirmer's
+express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+
+ a. No trademark or patent rights held by Affirmer are waived, abandoned,
+    surrendered, licensed or otherwise affected by this document.
+ b. Affirmer offers the Work as-is and makes no representations or
+    warranties of any kind concerning the Work, express, implied,
+    statutory or otherwise, including without limitation warranties of
+    title, merchantability, fitness for a particular purpose, non
+    infringement, or the absence of latent or other defects, accuracy, or
+    the present or absence of errors, whether or not discoverable, all to
+    the greatest extent permissible under applicable law.
+ c. Affirmer disclaims responsibility for clearing rights of other persons
+    that may apply to the Work or any use thereof, including without
+    limitation any person's Copyright and Related Rights in the Work.
+    Further, Affirmer disclaims responsibility for obtaining any necessary
+    consents, permissions or other rights required for any use of the
+    Work.
+ d. Affirmer understands and acknowledges that Creative Commons is not a
+    party to this document and has no duty or obligation with respect to
+    this CC0 or use of the Work.
+
+
+----------------------------------------------------------------------------
 CDLA-Permissive-2.0
 ----------------------------------------------------------------------------
 
@@ -3299,6 +3475,9 @@ Applies to:
   adler2 2.0.1 (cargo)  [offered: 0BSD OR MIT OR Apache-2.0]
       Copyright (c) Jonas Schievink
       https://github.com/oyvindln/adler2
+  aes 0.8.4 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2018 Artyom Pavlov
+      https://github.com/RustCrypto/block-ciphers
   aho-corasick 1.1.5 (cargo)  [offered: Unlicense OR MIT]
       Copyright (c) 2015 Andrew Gallant
       https://github.com/BurntSushi/aho-corasick
@@ -3333,6 +3512,9 @@ Applies to:
   async-executor 1.14.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/async-executor
+  async-fs 2.2.0 (cargo)  [offered: Apache-2.0 OR MIT]
+      Copyright (c) Stjepan Glavina
+      https://github.com/smol-rs/async-fs
   async-io 2.6.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/async-io
@@ -3390,6 +3572,9 @@ Applies to:
   block-buffer 0.10.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2018-2019 The RustCrypto Project Developers
       https://github.com/RustCrypto/utils
+  block-padding 0.3.3 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2018-2019 The RustCrypto Project Developers
+      https://github.com/RustCrypto/utils
   block2 0.6.2 (cargo)
       Copyright (c) Mads Marquart
       https://github.com/madsmtm/objc2
@@ -3425,6 +3610,10 @@ Applies to:
       https://github.com/oli-obk/cargo_metadata
   cargo-platform 0.1.9 (cargo)  [offered: MIT OR Apache-2.0]
       https://github.com/rust-lang/cargo
+  cbc 0.1.2 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2018-2022 RustCrypto Developers
+      Copyright (c) 2018 Artyom Pavlov
+      https://github.com/RustCrypto/block-modes
   cc 1.4.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/cc-rs
@@ -3434,6 +3623,9 @@ Applies to:
   cfb 0.7.3 (cargo)
       Copyright (c) 2017 Matthew D. Steele
       https://github.com/mdsteele/rust-cfb
+  cfg_aliases 0.2.2 (cargo)
+      Copyright (c) 2020 Katharos Technology
+      https://github.com/katharostech/cfg_aliases
   cfg-expr 0.15.8 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2019 Embark Studios
       https://github.com/EmbarkStudios/cfg-expr
@@ -3444,6 +3636,9 @@ Applies to:
       Copyright (c) 2015 The tiny-http Contributors
       Copyright (c) 2015 The rust-chunked-transfer Contributors
       https://github.com/frewsxcv/rust-chunked-transfer
+  cipher 0.4.4 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016-2020 RustCrypto Developers
+      https://github.com/RustCrypto/traits
   cmake 0.1.58 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rust-lang/cmake-rs
@@ -3453,6 +3648,12 @@ Applies to:
   concurrent-queue 2.5.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) Stjepan Glavina
       https://github.com/smol-rs/concurrent-queue
+  const-random 0.1.18 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 Amanieu d'Antras
+      https://github.com/tkaitchuck/constrandom
+  const-random-macro 0.1.16 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 Amanieu d'Antras
+      https://github.com/tkaitchuck/constrandom
   convert_case 0.4.0 (cargo)
       Copyright (c) David Purdum
       https://github.com/rutrum/convert-case
@@ -3461,6 +3662,9 @@ Applies to:
       Copyright (c) 2014 Alex Crichton
       https://github.com/SergioBenitez/cookie-rs
   core-foundation 0.10.1 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2012-2013 Mozilla Foundation
+      https://github.com/servo/core-foundation-rs
+  core-foundation 0.9.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2012-2013 Mozilla Foundation
       https://github.com/servo/core-foundation-rs
   core-foundation-sys 0.8.7 (cargo)  [offered: MIT OR Apache-2.0]
@@ -3484,6 +3688,9 @@ Applies to:
   crossbeam-utils 0.8.22 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2019 The Crossbeam Project Developers
       https://github.com/crossbeam-rs/crossbeam
+  crunchy 0.2.4 (cargo)
+      Copyright 2017-2023 Eira Fransham
+      https://github.com/eira-fransham/crunchy
   crypto-common 0.1.7 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2021 RustCrypto Developers
       https://github.com/RustCrypto/traits
@@ -3511,6 +3718,9 @@ Applies to:
   dbus 0.9.12 (cargo)  [offered: Apache-2.0/MIT]
       Copyright (c) 2014-2018 David Henningsson <diwic@ubuntu.com> and other contributors
       https://github.com/diwic/dbus-rs
+  dbus-secret-service 4.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 secret-service Developers
+      https://github.com/brotskydotcom/dbus-secret-service.git
   defmt 1.1.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Ferrous Systems
       https://github.com/knurling-rs/defmt
@@ -3556,6 +3766,9 @@ Applies to:
   dlopen2_derive 0.4.3 (cargo)
       Copyright (c) Szymon Wieloch
       https://github.com/OpenByteDev/dlopen2
+  dlv-list 0.5.2 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2022 Scott Godwin
+      https://github.com/sgodwincs/dlv-list-rs
   dtoa 1.0.11 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) David Tolnay
       https://github.com/dtolnay/dtoa
@@ -3750,6 +3963,9 @@ Applies to:
   hashbrown 0.12.3 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Amanieu d'Antras
       https://github.com/rust-lang/hashbrown
+  hashbrown 0.14.5 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 Amanieu d'Antras
+      https://github.com/rust-lang/hashbrown
   hashbrown 0.15.5 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 Amanieu d'Antras
       https://github.com/rust-lang/hashbrown
@@ -3769,6 +3985,13 @@ Applies to:
       Copyright (c) 2013-2014 The Rust Project Developers
       Copyright (c) 2015-2020 The rust-hex Developers
       https://github.com/KokaKiwi/rust-hex
+  hkdf 0.12.4 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2015-2018 Vlad Filippov
+      Copyright (c) 2018-2021 RustCrypto Developers
+      https://github.com/RustCrypto/KDFs/
+  hmac 0.12.1 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2017 Artyom Pavlov
+      https://github.com/RustCrypto/MACs
   html5ever 0.38.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The html5ever Project Developers
       https://github.com/servo/html5ever
@@ -3823,6 +4046,10 @@ Applies to:
   infer 0.19.0 (cargo)
       Copyright (c) 2019 Bojan
       https://github.com/bojand/infer
+  inout 0.1.4 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2022 The RustCrypto Project Developers
+      Copyright (c) 2022 Artyom Pavlov
+      https://github.com/RustCrypto/utils
   ipnet 2.12.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright 2017 Juniper Networks, Inc
       https://github.com/krisprice/ipnet
@@ -3889,6 +4116,9 @@ Applies to:
   keyboard-types 0.7.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 Pyfisch
       https://github.com/pyfisch/keyboard-types
+  keyring 3.6.3 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 keyring Developers
+      https://github.com/hwchen/keyring-rs.git
   libappindicator 0.9.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017-2021 qDot
       Copyright (c) 2021 Tauri Apps Contributors
@@ -3950,9 +4180,15 @@ Applies to:
   new_debug_unreachable 1.0.6 (cargo)
       Copyright (c) 2015 Jonathan Reem
       https://github.com/mbrubeck/rust-debug-unreachable
+  nix 0.29.0 (cargo)
+      Copyright (c) 2015 Carl Lerche + nix-rust Authors
+      https://github.com/nix-rust/nix
   notify-rust 4.18.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 Hendrik Sollich
       https://github.com/hoodie/notify-rust
+  num 0.4.3 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num
   num_enum 0.7.6 (cargo)  [offered: BSD-3-Clause OR MIT OR Apache-2.0]
       Copyright (c) Daniel Wagner-Hall
       https://github.com/illicitonion/num_enum
@@ -3962,9 +4198,24 @@ Applies to:
   num_threads 0.1.7 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2021 Jacob Pratt
       https://github.com/jhpratt/num_threads
+  num-bigint 0.4.8 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num-bigint
+  num-complex 0.4.6 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num-complex
   num-conv 0.2.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Jacob Pratt
       https://github.com/jhpratt/num-conv
+  num-integer 0.1.47 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num-integer
+  num-iter 0.1.46 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num-iter
+  num-rational 0.4.2 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-num/num-rational
   num-traits 0.2.19 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-num/num-traits
@@ -4016,6 +4267,9 @@ Applies to:
   openssl-probe 0.2.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2014 Alex Crichton
       https://github.com/rustls/openssl-probe
+  ordered-multimap 0.7.3 (cargo)
+      Copyright (c) 2018 sgodwincs
+      https://github.com/sgodwincs/ordered-multimap-rs
   ordered-stream 0.2.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Daniel De Graaf
       https://github.com/danieldg/ordered-stream
@@ -4128,7 +4382,15 @@ Applies to:
       https://github.com/r-efi/r-efi
   r-efi 6.0.0 (cargo)  [offered: MIT OR Apache-2.0 OR LGPL-2.1-or-later]
       https://github.com/r-efi/r-efi
+  rand 0.8.7 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright 2018 Developers of the Rand project
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-random/rand
   rand 0.9.5 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright 2018 Developers of the Rand project
+      Copyright (c) 2014 The Rust Project Developers
+      https://github.com/rust-random/rand
+  rand_chacha 0.3.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright 2018 Developers of the Rand project
       Copyright (c) 2014 The Rust Project Developers
       https://github.com/rust-random/rand
@@ -4180,6 +4442,9 @@ Applies to:
   rusqlite 0.33.0 (cargo)
       Copyright (c) 2014-2021 The rusqlite developers
       https://github.com/rusqlite/rusqlite
+  rust-ini 0.21.3 (cargo)
+      Copyright (c) 2014 Y. T. CHUNG
+      https://github.com/zonyitoo/rust-ini
   rustc_version 0.4.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2016 The Rust Project Developers
       https://github.com/djc/rustc-version-rs
@@ -4239,6 +4504,12 @@ Applies to:
   sct 0.7.1 (cargo)  [offered: Apache-2.0 OR ISC OR MIT]
       Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
       https://github.com/rustls/sct.rs
+  secret-service 4.0.0 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2016 secret-service Developers
+      https://github.com/hwchen/secret-service-rs.git
+  security-framework 2.11.1 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2015 Steven Fackler
+      https://github.com/kornelski/rust-security-framework
   security-framework 3.7.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015 Steven Fackler
       https://github.com/kornelski/rust-security-framework
@@ -4290,6 +4561,11 @@ Applies to:
   servo_arc 0.4.3 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) The Servo Project Developers
       https://github.com/servo/stylo
+  sha1 0.10.7 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2006-2009 Graydon Hoare
+      Copyright (c) 2009-2013 Mozilla Foundation
+      Copyright (c) 2016 Artyom Pavlov
+      https://github.com/RustCrypto/hashes
   sha2 0.10.9 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2006-2009 Graydon Hoare
       Copyright (c) 2009-2013 Mozilla Foundation
@@ -4334,6 +4610,9 @@ Applies to:
   stable_deref_trait 1.2.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2017 Robert Grosse
       https://github.com/storyyeller/stable_deref_trait
+  static_assertions 1.1.0 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) 2017 Nikolai Vazquez
+      https://github.com/nvzqz/static-assertions-rs
   string_cache 0.9.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2012-2013 Mozilla Foundation
       https://github.com/servo/string-cache
@@ -4385,6 +4664,9 @@ Applies to:
       Copyright (c) Tauri Programme within The Commons Conservancy
       https://github.com/tauri-apps/tauri
   tauri-plugin-barcode-scanner 2.4.5 (cargo)  [offered: Apache-2.0 OR MIT]
+      Copyright (c) 2017 - Present Tauri Apps Contributors
+      https://github.com/tauri-apps/plugins-workspace
+  tauri-plugin-deep-link 2.4.9 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017 - Present Tauri Apps Contributors
       https://github.com/tauri-apps/plugins-workspace
   tauri-plugin-dialog 2.7.2 (cargo)  [offered: Apache-2.0 OR MIT]
@@ -4751,6 +5033,9 @@ Applies to:
   windows-numerics 0.2.0 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Microsoft Corporation
       https://github.com/microsoft/windows-rs
+  windows-registry 0.5.3 (cargo)  [offered: MIT OR Apache-2.0]
+      Copyright (c) Microsoft Corporation
+      https://github.com/microsoft/windows-rs
   windows-result 0.3.4 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Microsoft Corporation
       https://github.com/microsoft/windows-rs
@@ -4817,15 +5102,27 @@ Applies to:
   xattr 1.6.1 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) 2015 Steven Allen
       https://github.com/Stebalien/xattr
+  xdg-home 1.3.0 (cargo)
+      Copyright (c) Zeeshan Ali Khan
+      https://github.com/zeenix/xdg-home
   yasna 0.5.2 (cargo)  [offered: MIT OR Apache-2.0]
       Copyright (c) Masaki Hara
       https://github.com/qnighy/yasna.rs
+  zbus 4.4.0 (cargo)
+      Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+      https://github.com/dbus2/zbus/
   zbus 5.19.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
+  zbus_macros 4.4.0 (cargo)
+      Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+      https://github.com/dbus2/zbus/
   zbus_macros 5.19.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
+  zbus_names 3.0.0 (cargo)
+      Copyright (c) Zeeshan Ali Khan
+      https://github.com/dbus2/zbus/
   zbus_names 4.3.4 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
@@ -4841,6 +5138,9 @@ Applies to:
   zeroize 1.9.0 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2018-2026 The RustCrypto Project Developers
       https://github.com/RustCrypto/utils
+  zeroize_derive 1.5.0 (cargo)  [offered: Apache-2.0 OR MIT]
+      Copyright (c) 2019-2026 The RustCrypto Project Developers
+      https://github.com/RustCrypto/utils
   zmij 1.0.23 (cargo)
       Copyright (c) David Tolnay
       https://github.com/dtolnay/zmij
@@ -4853,12 +5153,21 @@ Applies to:
   zstd-sys 2.0.16+zstd.1.5.7 (cargo)  [offered: MIT/Apache-2.0]
       Copyright (c) 2016 Alexandre Bury
       https://github.com/gyscos/zstd-rs
+  zvariant 4.2.0 (cargo)
+      Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+      https://github.com/dbus2/zbus/
   zvariant 5.14.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
+  zvariant_derive 4.2.0 (cargo)
+      Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
+      https://github.com/dbus2/zbus/
   zvariant_derive 5.14.0 (cargo)
       Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
       https://github.com/z-galaxy/zbus/
+  zvariant_utils 2.1.0 (cargo)
+      Copyright (c) Zeeshan Ali Khan
+      https://github.com/dbus2/zbus/
   zvariant_utils 4.0.0 (cargo)
       Copyright (c) Zeeshan Ali Khan
       https://github.com/z-galaxy/zbus/
@@ -5023,6 +5332,8 @@ MIT
 
 Applies to:
   @tauri-apps/plugin-barcode-scanner 2.4.5 (npm)  [offered: MIT OR Apache-2.0]
+      https://github.com/tauri-apps/plugins-workspace
+  @tauri-apps/plugin-deep-link 2.4.9 (npm)  [offered: MIT OR Apache-2.0]
       https://github.com/tauri-apps/plugins-workspace
   @tauri-apps/plugin-dialog 2.7.2 (npm)  [offered: MIT OR Apache-2.0]
       https://github.com/tauri-apps/plugins-workspace
