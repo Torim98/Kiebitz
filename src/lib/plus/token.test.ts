@@ -148,6 +148,15 @@ describe("verifyEntitlementToken", () => {
     });
   });
 
+  it("rejects an entitlement issued for a different signed-in account", async () => {
+    const { jwks, privateKey, kid } = await keyPair();
+    const token = await signToken(privateKey, kid, defaultClaims({ sub: "acc_other" }));
+
+    await expect(verifyEntitlementToken(token, jwks, NOW, "acc_1")).rejects.toMatchObject({
+      reason: "unexpected_subject",
+    });
+  });
+
   it("rejects an expired token so the app falls back to free offline", async () => {
     const { jwks, privateKey, kid } = await keyPair();
     const seconds = Math.floor(NOW / 1000);

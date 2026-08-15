@@ -114,7 +114,8 @@ function subtleCrypto(): SubtleCrypto {
 export async function verifyEntitlementToken(
   token: string,
   jwks: JsonWebKeySet,
-  now: number = Date.now()
+  now: number = Date.now(),
+  expectedSubject?: string
 ): Promise<EntitlementClaims> {
   const parts = token.split(".");
   if (parts.length !== 3) throw new EntitlementTokenError("malformed_token");
@@ -153,6 +154,9 @@ export async function verifyEntitlementToken(
   if (claims.iss !== ENTITLEMENT_ISSUER) throw new EntitlementTokenError("unexpected_issuer");
   if (claims.aud !== ENTITLEMENT_AUDIENCE) throw new EntitlementTokenError("unexpected_audience");
   if (!claims.sub) throw new EntitlementTokenError("missing_subject");
+  if (expectedSubject !== undefined && claims.sub !== expectedSubject) {
+    throw new EntitlementTokenError("unexpected_subject");
+  }
   const nowSeconds = Math.floor(now / 1000);
   if (claims.exp <= nowSeconds - CLOCK_SKEW_SECONDS) throw new EntitlementTokenError("expired");
   if (claims.iat > nowSeconds + CLOCK_SKEW_SECONDS) throw new EntitlementTokenError("issued_in_future");

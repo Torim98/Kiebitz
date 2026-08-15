@@ -188,7 +188,12 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
       fetchEntitlement(token),
       fetchJwks(),
     ]);
-    const claims = await verifyEntitlementToken(entitlement.entitlement_token, jwks, Date.now());
+    const claims = await verifyEntitlementToken(
+      entitlement.entitlement_token,
+      jwks,
+      Date.now(),
+      account.id
+    );
     const cached: CachedEntitlement = {
       token: entitlement.entitlement_token,
       fetched_at: Date.now(),

@@ -61,7 +61,13 @@ export function usePlus(): PlusView {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onFocus = () => void refreshEntitlement().catch(() => {});
+    // Nach Checkout oder Portal kann `refresh_after` des vorherigen Tokens
+    // noch viele Stunden in der Zukunft liegen. Beim tatsächlichen Zurück-
+    // kehren in die App muss deshalb genau diese Schranke übergangen werden.
+    const onFocus = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshEntitlement({ force: true }).catch(() => {});
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
