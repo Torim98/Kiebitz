@@ -85,6 +85,9 @@ android {
         targetSdk = androidPin("targetSdk")
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        // Für den Widget-Layouttest: Er baut jede angemeldete Widgetgröße auf
+        // einem Gerät wirklich auf und misst nach, ob der Inhalt hineinpasst.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
         if (releaseSigningConfigured) {
@@ -162,6 +165,7 @@ dependencies {
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
+    androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }
 

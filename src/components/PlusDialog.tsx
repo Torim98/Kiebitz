@@ -6,7 +6,7 @@
  * Preis: Preise stehen in Stripe beziehungsweise Google Play und werden im
  * Checkout genannt, nicht im App-Code.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { openExternal } from "../lib/ext";
@@ -30,6 +30,8 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(
     () =>
@@ -50,6 +52,44 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  /**
+   * Der Dialog nennt sich modal · dann muss er es auch sein.
+   *
+   * Beim Öffnen wandert der Fokus hinein, der Tabulator bleibt drin, und beim
+   * Schließen kehrt er dorthin zurück, wo er herkam. Ohne das landet die
+   * Tastatur nach einem Klick auf eine gesperrte Vorschau wieder am Seitenanfang
+   * und muss sich den Weg zurück suchen.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const stops = Array.from(
+        panel.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]")
+      ).filter((element) => element.tabIndex >= 0 && !element.hasAttribute("disabled"));
+      if (stops.length === 0) return;
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (opener && document.contains(opener)) opener.focus();
+    };
   }, [open]);
 
   if (!open) return null;
@@ -101,7 +141,10 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
         if (event.target === event.currentTarget) setOpen(false);
       }}
     >
-      <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+      <div
+        ref={panelRef}
+        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50"
+      >
         <div className="flex items-start gap-3 border-b border-line px-5 py-4">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
             <Sparkles size={18} />
@@ -115,6 +158,7 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
             </h2>
           </div>
           <button
+            ref={closeRef}
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("common.close")}

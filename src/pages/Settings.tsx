@@ -91,7 +91,7 @@ import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
 import AppTour from "../components/AppTour";
 import PlusSection from "./settings/PlusSection";
-import { PlusBadge } from "../components/PlusLock";
+import { PlusBadgeButton } from "../components/PlusLock";
 import { usePlusGate } from "../lib/plus/usePlus";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { Button, Chip } from "../components/ui";
@@ -1223,23 +1223,28 @@ export default function SettingsPage({
               {/* Der Sync selbst bleibt frei · nur das automatische Anstoßen
                   im Hintergrund gehört zu Plus. Von Hand synchronisieren kann
                   jede Installation weiterhin. */}
-              <label
-                className={`mt-3 flex items-center gap-3 ${
-                  autoSyncGate.unlocked ? "cursor-pointer" : "cursor-default"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={draft.sync_auto && autoSyncGate.unlocked}
-                  disabled={!autoSyncGate.unlocked && !autoSyncGate.pending}
-                  onChange={(e) => patch({ sync_auto: e.target.checked })}
-                  className="h-4 w-4 accent-[#22c08a] disabled:opacity-45"
-                />
-                <span className="text-[13px] text-ink">{t("set.syncAutoToggle")}</span>
+              {/* Der Hinweis steht neben dem Schalter, nicht in seiner
+                  Beschriftung: In einem `label` würde jeder Klick auf den
+                  Hinweis zusätzlich den Schalter treffen. */}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <label
+                  className={`flex items-center gap-3 ${
+                    autoSyncGate.unlocked ? "cursor-pointer" : "cursor-default"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={draft.sync_auto && autoSyncGate.unlocked}
+                    disabled={!autoSyncGate.unlocked && !autoSyncGate.pending}
+                    onChange={(e) => patch({ sync_auto: e.target.checked })}
+                    className="h-4 w-4 accent-[#22c08a] disabled:opacity-45"
+                  />
+                  <span className="text-[13px] text-ink">{t("set.syncAutoToggle")}</span>
+                </label>
                 {!autoSyncGate.unlocked && !autoSyncGate.pending && (
-                  <PlusBadge feature="automatic_lan_sync" />
+                  <PlusBadgeButton feature="automatic_lan_sync" />
                 )}
-              </label>
+              </div>
               <p className="mt-1 text-[12px] leading-relaxed text-ink3">
                 {t("set.syncAutoNote")}
               </p>

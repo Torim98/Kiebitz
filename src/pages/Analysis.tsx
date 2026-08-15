@@ -901,9 +901,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   }}
                 >
                   <ListChecks size={14} /> {t("an.nextTen", { n: unanalyzed.length })}
-                  {!batchGate.unlocked && !batchGate.pending && (
-                    <PlusBadge feature="background_analysis" />
-                  )}
+                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
                 </Button>
               )}
               {unanalyzed.length > 10 && (
@@ -922,9 +920,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   }}
                 >
                   {t("an.analyzeAll")}
-                  {!batchGate.unlocked && !batchGate.pending && (
-                    <PlusBadge feature="background_analysis" />
-                  )}
+                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
                 </Button>
               )}
             </>

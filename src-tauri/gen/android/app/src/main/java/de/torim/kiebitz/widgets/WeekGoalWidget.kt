@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
@@ -14,21 +15,19 @@ import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.provideContent
-import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
-import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
-import androidx.glance.layout.width
 import de.torim.kiebitz.R
 
 /**
  * „Wochenziel".
  *
  * Die Woche als eine Zahl: gemessene Minuten gegen das Budget, was noch offen
- * ist und an wie vielen Tagen trainiert wurde. Auf der breiten Fläche stehen
- * Rest und Tage nebeneinander statt untereinander.
+ * ist und an wie vielen Tagen trainiert wurde. Der Rest steht in der Kopfzeile
+ * neben dem Namen · zwei Kennzahlen untereinander passen unter den Balken nur
+ * in Schriften, die niedrig bauen, und das ist keine Eigenschaft, auf die sich
+ * ein Layout stützen darf.
  */
 class WeekGoalWidget : GlanceAppWidget() {
   override val sizeMode = SizeMode.Responsive(setOf(MEDIUM, LARGE))
@@ -56,6 +55,8 @@ private fun WeekContent(context: Context, state: WidgetState) {
   when (state) {
     is WidgetState.Empty -> WidgetPlaceholder(
       context,
+      context,
+      context.getString(R.string.widget_week_name),
       context.getString(R.string.widget_week_name),
       context.getString(R.string.widget_empty_no_data),
       WidgetLinks.STUDY,
@@ -63,6 +64,8 @@ private fun WeekContent(context: Context, state: WidgetState) {
 
     is WidgetState.Unreadable -> WidgetPlaceholder(
       context,
+      context,
+      context.getString(R.string.widget_week_name),
       context.getString(R.string.widget_week_name),
       context.getString(R.string.widget_error_body),
       WidgetLinks.STUDY,
@@ -80,45 +83,35 @@ private fun WeekReady(context: Context, snapshot: WidgetSnapshot) {
   val budget = snapshot.budgetMinutes
   val fraction = if (budget > 0) snapshot.trainedMinutes.toFloat() / budget else 0f
 
+  val remaining = strings.getString(R.string.widget_week_remaining, snapshot.remainingMinutes)
+  val days = if (snapshot.targetDays > 0) {
+    strings.getString(R.string.widget_week_days, snapshot.trainedDays, snapshot.targetDays)
+  } else {
+    strings.getString(R.string.widget_week_days_open, snapshot.trainedDays)
+  }
+
   Column(
     modifier = widgetSurface().clickable(
       actionStartActivity(openAppIntent(context, WidgetLinks.STUDY))
     ),
   ) {
-    WidgetTitle(strings.getString(R.string.widget_week_name))
+    // Der Rest der Woche steht neben dem Namen statt unter dem Balken. Auf
+    // 110 dp Höhe reicht es sonst nicht für beide Kennzahlen · und in
+    // arabischer Schrift, die höher baut, für keine von beiden.
+    WidgetHeader(strings.getString(R.string.widget_week_name), remaining)
     Spacer(modifier = GlanceModifier.height(2.dp))
     WidgetHeadline(
       if (budget > 0) {
         strings.getString(R.string.widget_week_ratio, snapshot.trainedMinutes, budget)
       } else {
         strings.getString(R.string.widget_minutes, snapshot.trainedMinutes)
-      }
+      },
+      fontSize = 18.sp,
     )
-    Spacer(modifier = GlanceModifier.height(8.dp))
+    Spacer(modifier = GlanceModifier.height(6.dp))
     WidgetProgress(fraction, width = if (size.width >= 240.dp) 240 else 130)
-    Spacer(modifier = GlanceModifier.height(8.dp))
-
-    val remaining = strings.getString(R.string.widget_week_remaining, snapshot.remainingMinutes)
-    val days = if (snapshot.targetDays > 0) {
-      strings.getString(R.string.widget_week_days, snapshot.trainedDays, snapshot.targetDays)
-    } else {
-      strings.getString(R.string.widget_week_days_open, snapshot.trainedDays)
-    }
-
-    if (size.width >= 240.dp) {
-      Row(
-        modifier = GlanceModifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Vertical.CenterVertically,
-      ) {
-        WidgetCaption(remaining)
-        Spacer(modifier = GlanceModifier.width(12.dp))
-        WidgetCaption(days)
-      }
-    } else {
-      WidgetCaption(remaining)
-      Spacer(modifier = GlanceModifier.height(2.dp))
-      WidgetCaption(days)
-    }
+    Spacer(modifier = GlanceModifier.height(6.dp))
+    WidgetCaption(days)
   }
 }
 

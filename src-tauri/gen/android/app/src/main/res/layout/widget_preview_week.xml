@@ -20,7 +20,7 @@
         android:layout_marginTop="2dp"
         android:text="@string/widget_preview_week_ratio"
         android:textColor="@color/widget_preview_ink"
-        android:textSize="20sp"
+        android:textSize="18sp"
         android:textStyle="bold" />
 
     <View

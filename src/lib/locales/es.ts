@@ -1421,6 +1421,7 @@ export const es: Record<Key, string> = {
   "plus.providerPlay": "Google Play",
   "plus.providerManual": "Concedido directamente",
   "plus.badge": "Con Plus",
+  "plus.badgeExplain": "Con Plus · muestra qué incluye Kiebitz Plus",
   "plus.previewHint": "Vista previa · toca para ver qué incluye Kiebitz Plus.",
   "plus.dialogLead": "Kiebitz Free sigue siendo plenamente utilizable. Plus desbloquea las funciones que trabajan de forma continua:",
   "plus.requested": "Entre ellas está «{f}».",

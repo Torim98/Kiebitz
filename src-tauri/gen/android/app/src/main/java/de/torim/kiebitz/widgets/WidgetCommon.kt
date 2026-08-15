@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.LocalSize
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
@@ -19,10 +20,14 @@ import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
+import androidx.glance.semantics.contentDescription
+import androidx.glance.semantics.semantics
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.torim.kiebitz.MainActivity
@@ -34,6 +39,10 @@ import de.torim.kiebitz.R
  * Alles hier ist Darstellung: Farben aus dem Systemthema (dynamisch ab
  * Android 12, sonst das mitgelieferte Schema), Ziele mit mindestens 48 dp und
  * Aktionen, die per Deep Link die passende App-Seite öffnen.
+ *
+ * Die Flächen sind klein und die Schrift skaliert mit den Systemeinstellungen ·
+ * jede Zeile muss deshalb in ihr Feld gerechnet werden, nicht geschätzt. Was
+ * nicht sicher hineinpasst, gehört auf dieser Größe nicht ins Widget.
  */
 
 /** Deep Links der Widget-Aktionen · dieselben Ziele wie in der App-Navigation. */
@@ -49,6 +58,24 @@ object WidgetLinks {
 /** Mindestgröße eines antippbaren Ziels. */
 val TOUCH_TARGET = 48.dp
 
+/**
+ * Ab hier ist die Fläche nur noch ein Ziel hoch.
+ *
+ * Darunter passt keine Überschrift über einen Inhalt: 48 dp sind der Knopf
+ * selbst. Die kleinen Größen bekommen deshalb kein gestauchtes großes Layout,
+ * sondern ein eigenes.
+ */
+val COMPACT_HEIGHT = 72.dp
+
+/** Ab hier ist Platz für einen erklärenden Fließtext neben dem Ziel. */
+private val ROOMY_HEIGHT = 130.dp
+
+/** Ab hier trägt eine Zeile auch einen längeren Satz · darunter nur ein Wortpaar. */
+private val WIDE_WIDTH = 200.dp
+
+@Composable
+fun isCompact(): Boolean = LocalSize.current.height < COMPACT_HEIGHT
+
 fun openAppIntent(context: Context, link: String): Intent =
   Intent(context, MainActivity::class.java).apply {
     action = Intent.ACTION_VIEW
@@ -57,20 +84,20 @@ fun openAppIntent(context: Context, link: String): Intent =
   }
 
 @Composable
-fun widgetSurface(): GlanceModifier =
+fun widgetSurface(horizontal: Dp = 12.dp, vertical: Dp = 8.dp): GlanceModifier =
   GlanceModifier
     .fillMaxSize()
     .background(GlanceTheme.colors.widgetBackground)
     .cornerRadius(16.dp)
-    .padding(12.dp)
+    .padding(horizontal = horizontal, vertical = vertical)
 
 @Composable
-fun WidgetTitle(text: String) {
+fun WidgetTitle(text: String, fontSize: TextUnit = 12.sp) {
   Text(
     text = text,
     style = TextStyle(
       color = GlanceTheme.colors.onSurfaceVariant,
-      fontSize = 12.sp,
+      fontSize = fontSize,
       fontWeight = FontWeight.Medium,
     ),
     maxLines = 1,
@@ -78,30 +105,54 @@ fun WidgetTitle(text: String) {
 }
 
 @Composable
-fun WidgetHeadline(text: String, color: ColorProvider = GlanceTheme.colors.onSurface) {
+fun WidgetHeadline(
+  text: String,
+  color: ColorProvider = GlanceTheme.colors.onSurface,
+  fontSize: TextUnit = 20.sp,
+) {
   Text(
     text = text,
-    style = TextStyle(color = color, fontSize = 20.sp, fontWeight = FontWeight.Bold),
+    style = TextStyle(color = color, fontSize = fontSize, fontWeight = FontWeight.Bold),
     maxLines = 1,
   )
 }
 
 @Composable
-fun WidgetBody(text: String, maxLines: Int = 2) {
+fun WidgetBody(text: String, maxLines: Int = 2, fontSize: TextUnit = 13.sp) {
   Text(
     text = text,
-    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 13.sp),
+    style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = fontSize),
     maxLines = maxLines,
   )
 }
 
 @Composable
-fun WidgetCaption(text: String) {
+fun WidgetCaption(text: String, fontSize: TextUnit = 11.sp) {
   Text(
     text = text,
-    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 11.sp),
+    style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = fontSize),
     maxLines = 1,
   )
+}
+
+/**
+ * Kopfzeile aus Name und einer kurzen Kennzahl.
+ *
+ * Beides in einer Zeile statt untereinander · auf 110 dp Höhe ist jede
+ * eingesparte Zeile eine, die der Inhalt behalten darf.
+ */
+@Composable
+fun WidgetHeader(title: String, trailing: String? = null) {
+  Row(
+    modifier = GlanceModifier.fillMaxWidth(),
+    verticalAlignment = Alignment.Vertical.CenterVertically,
+  ) {
+    WidgetTitle(title)
+    if (trailing != null) {
+      Spacer(modifier = GlanceModifier.defaultWeight())
+      WidgetCaption(trailing)
+    }
+  }
 }
 
 /**
@@ -137,12 +188,34 @@ fun WidgetProgress(fraction: Float, width: Int) {
  * Was ein Widget zeigt, solange es nichts zu zeigen gibt.
  *
  * Kein leeres Rechteck und keine Fehlernummer · eine Zeile, die sagt, was
- * fehlt, und ein Ziel, das die App öffnet.
+ * fehlt, und ein Ziel, das die App öffnet. Auf 48 dp bleibt für den Unterschied
+ * zwischen „noch kein Stand" und „Stand unlesbar" kein Platz und auch kein
+ * Nutzen: Beides führt zur selben Handlung.
  */
 @Composable
-fun WidgetPlaceholder(context: Context, title: String, body: String, link: String) {
+fun WidgetPlaceholder(
+  context: Context,
+  strings: Context,
+  title: String,
+  shortTitle: String,
+  body: String,
+  link: String,
+) {
+  val open = actionStartActivity(openAppIntent(context, link))
+  if (isCompact()) {
+    Column(
+      modifier = widgetSurface(horizontal = 8.dp, vertical = 5.dp)
+        .clickable(open)
+        .semantics { contentDescription = "$title · $body" },
+      verticalAlignment = Alignment.Vertical.CenterVertically,
+    ) {
+      WidgetTitle(shortTitle)
+      WidgetCaption(strings.getString(R.string.widget_open_app), fontSize = 10.sp)
+    }
+    return
+  }
   Column(
-    modifier = widgetSurface().clickable(actionStartActivity(openAppIntent(context, link))),
+    modifier = widgetSurface().clickable(open),
     verticalAlignment = Alignment.Vertical.CenterVertically,
   ) {
     WidgetTitle(title)
@@ -157,30 +230,74 @@ fun WidgetPlaceholder(context: Context, title: String, body: String, link: Strin
  * Ohne gültiges Plus bleibt die Widget-Konfiguration erhalten · gezeigt wird
  * aber nichts aus den Trainingsdaten, sondern nur der Hinweis samt Einstieg in
  * den kostenlosen Test.
+ *
+ * Drei Fassungen, damit der Einstieg nie abgeschnitten wird: Auf 48 dp ist die
+ * ganze Fläche der Knopf und trägt seinen Namen selbst; darüber kommt ein
+ * eigenes 48-dp-Ziel dazu; erst auf der hohen Fläche auch die Begründung.
  */
 @Composable
 fun WidgetPlusPreview(context: Context, strings: Context) {
-  Column(
-    modifier = widgetSurface().clickable(actionStartActivity(openAppIntent(context, WidgetLinks.PLUS))),
-    verticalAlignment = Alignment.Vertical.CenterVertically,
-  ) {
-    WidgetTitle(strings.getString(R.string.widget_plus_title))
+  val open = actionStartActivity(openAppIntent(context, WidgetLinks.PLUS))
+  val title = strings.getString(R.string.widget_plus_title)
+  val cta = strings.getString(R.string.widget_plus_cta)
+
+  if (isCompact()) {
+    Column(
+      modifier = GlanceModifier
+        .fillMaxSize()
+        .background(GlanceTheme.colors.primaryContainer)
+        .cornerRadius(16.dp)
+        .padding(horizontal = 8.dp, vertical = 5.dp)
+        .clickable(open)
+        .semantics { contentDescription = "$title · $cta" },
+      verticalAlignment = Alignment.Vertical.CenterVertically,
+      horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
+    ) {
+      Text(
+        text = title,
+        style = TextStyle(
+          color = GlanceTheme.colors.onPrimaryContainer,
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Medium,
+        ),
+        maxLines = 1,
+      )
+      Text(
+        text = strings.getString(R.string.widget_plus_cta_short),
+        style = TextStyle(color = GlanceTheme.colors.onPrimaryContainer, fontSize = 10.sp),
+        maxLines = 1,
+      )
+    }
+    return
+  }
+
+  // Auf zwei Spalten Breite passt „7 Tage kostenlos testen" nicht in einen
+  // Knopf · dort steht die kurze Fassung. Ein halber Satz mit Auslassung wäre
+  // an genau der Stelle, an der jemand sich entscheidet, das falsche Angebot.
+  val wide = LocalSize.current.width >= WIDE_WIDTH
+
+  Column(modifier = widgetSurface().clickable(open)) {
+    WidgetTitle(title)
     Spacer(modifier = GlanceModifier.height(4.dp))
-    WidgetBody(strings.getString(R.string.widget_plus_body))
-    Spacer(modifier = GlanceModifier.height(8.dp))
+    if (LocalSize.current.height >= ROOMY_HEIGHT) {
+      WidgetBody(strings.getString(R.string.widget_plus_body), fontSize = 11.sp)
+      Spacer(modifier = GlanceModifier.height(6.dp))
+    }
     Row(
       modifier = GlanceModifier
+        .fillMaxWidth()
         .height(TOUCH_TARGET)
         .background(GlanceTheme.colors.primaryContainer)
         .cornerRadius(12.dp)
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = if (wide) 12.dp else 6.dp),
       verticalAlignment = Alignment.Vertical.CenterVertically,
+      horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
     ) {
       Text(
-        text = strings.getString(R.string.widget_plus_cta),
+        text = if (wide) cta else strings.getString(R.string.widget_plus_cta_short),
         style = TextStyle(
           color = GlanceTheme.colors.onPrimaryContainer,
-          fontSize = 13.sp,
+          fontSize = if (wide) 13.sp else 12.sp,
           fontWeight = FontWeight.Medium,
         ),
         maxLines = 1,
@@ -189,15 +306,21 @@ fun WidgetPlusPreview(context: Context, strings: Context) {
   }
 }
 
-/** Quadratisches Ziel des Schnellstarts · Beschriftung plus 48-dp-Fläche. */
+/** Ziel des Schnellstarts · Beschriftung auf einer Fläche von mindestens 48 dp. */
 @Composable
-fun QuickAction(context: Context, label: String, link: String, modifier: GlanceModifier) {
+fun QuickAction(
+  context: Context,
+  label: String,
+  link: String,
+  modifier: GlanceModifier,
+  fontSize: TextUnit = 12.sp,
+  horizontalPadding: Dp = 8.dp,
+) {
   Column(
     modifier = modifier
-      .height(TOUCH_TARGET)
       .background(GlanceTheme.colors.secondaryContainer)
       .cornerRadius(12.dp)
-      .padding(horizontal = 8.dp)
+      .padding(horizontal = horizontalPadding)
       .clickable(actionStartActivity(openAppIntent(context, link))),
     verticalAlignment = Alignment.Vertical.CenterVertically,
     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
@@ -206,7 +329,7 @@ fun QuickAction(context: Context, label: String, link: String, modifier: GlanceM
       text = label,
       style = TextStyle(
         color = GlanceTheme.colors.onSecondaryContainer,
-        fontSize = 12.sp,
+        fontSize = fontSize,
         fontWeight = FontWeight.Medium,
       ),
       maxLines = 1,

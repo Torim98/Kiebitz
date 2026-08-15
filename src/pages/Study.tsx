@@ -739,7 +739,7 @@ export default function Study({
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
               >
                 <CalendarPlus size={15} /> {t("plan.proposeWeek")}
-                {!planGate.unlocked && !planGate.pending && <PlusBadge feature="adaptive_plan" />}
+                {!planGate.unlocked && !planGate.pending && <PlusBadge />}
               </button>
             ) : (
               <div className="rounded-xl border border-accent-dim bg-panel2 p-3">

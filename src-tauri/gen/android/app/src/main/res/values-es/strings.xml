@@ -1,6 +1,7 @@
 <resources>
     <string name="widget_today_name">Entrenar hoy</string>
     <string name="widget_today_description">La próxima unidad, las tareas pendientes y el progreso del día.</string>
+    <string name="widget_today_short">Hoy</string>
     <string name="widget_week_name">Objetivo semanal</string>
     <string name="widget_week_description">Minutos entrenados, presupuesto semanal y días de entrenamiento.</string>
     <string name="widget_quick_name">Inicio rápido</string>
@@ -8,6 +9,7 @@
 
     <string name="widget_empty_no_data">Abre Kiebitz una vez para que el widget tenga algo que mostrar.</string>
     <string name="widget_error_body">No hay datos legibles. Al abrir Kiebitz se actualizan.</string>
+    <string name="widget_open_app">Abrir Kiebitz</string>
     <string name="widget_today_clear">Hoy no hay nada planificado.</string>
     <string name="widget_open_tasks">%1$d pendientes</string>
     <string name="widget_progress">%1$d de %2$d min</string>
@@ -25,6 +27,7 @@
     <string name="widget_plus_title">Kiebitz Plus</string>
     <string name="widget_plus_body">Los widgets forman parte de Plus. Tus datos siguen en el dispositivo.</string>
     <string name="widget_plus_cta">Prueba 7 días gratis</string>
+    <string name="widget_plus_cta_short">Prueba gratis</string>
 
     <string name="widget_preview_unit">Táctica · 20 min</string>
     <string name="widget_preview_progress">12 de 30 min</string>

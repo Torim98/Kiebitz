@@ -1447,6 +1447,7 @@ export const de = {
   "plus.providerPlay": "Google Play",
   "plus.providerManual": "Direkt vergeben",
   "plus.badge": "Mit Plus",
+  "plus.badgeExplain": "Mit Plus · zeigt, was Kiebitz Plus enthält",
   "plus.previewHint": "Vorschau · antippen zeigt, was Kiebitz Plus enthält.",
   "plus.dialogLead": "Kiebitz Free bleibt vollständig nutzbar. Plus schaltet die Funktionen frei, die dauerhaft mitlaufen:",
   "plus.requested": "Dazu gehört „{f}“.",

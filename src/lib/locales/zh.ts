@@ -1421,6 +1421,7 @@ export const zh: Record<Key, string> = {
   "plus.providerPlay": "Google Play",
   "plus.providerManual": "直接授予",
   "plus.badge": "属于 Plus",
+  "plus.badgeExplain": "属于 Plus · 看看 Kiebitz Plus 都包含什么",
   "plus.previewHint": "预览 · 点一下看看 Kiebitz Plus 都包含什么。",
   "plus.dialogLead": "Kiebitz Free 仍可完整使用。Plus 解锁的是那些持续替你运转的功能：",
   "plus.requested": "其中就包括「{f}」。",
