@@ -233,9 +233,11 @@ describe("Settings loading", () => {
     expect(order).toEqual([
       "set.language",
       "set.tour",
+      "plus.title",
       "set.accounts",
       "set.sound",
       "set.notify",
+      "set.widgets",
       "set.sync",
       "set.updates",
       "set.adsPrivacy",

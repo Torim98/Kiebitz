@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("rust")
 }
 
@@ -151,6 +152,10 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
+    // Homescreen-Widgets. Glance ist der aktuelle Weg zu App-Widgets und
+    // bringt responsive Größen, dynamische Farben und Deep-Link-Aktionen mit.
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    implementation("androidx.glance:glance-material3:1.1.1")
     // Aktuelle, unterstützte SDK-Linien; UMP wird vor der ersten Anzeigenanfrage
     // ausgeführt und stellt den nachträglichen Datenschutzdialog bereit.
     implementation("com.google.android.gms:play-services-ads:24.9.0")

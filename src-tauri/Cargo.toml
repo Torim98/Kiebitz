@@ -50,6 +50,8 @@ zstd = "0.13.3"
 # Sync-Client: Zertifikats-Pinning im QR-Pairing.
 rustls = "0.23"
 sha2 = "0.10"
+# Anmelde-Deep-Link `kiebitz://auth?code=…` aus dem Magic-Link der E-Mail.
+tauri-plugin-deep-link = "2"
 
 # Signierte Desktop-Auto-Updates laufen über den Tauri-Updater. Android-
 # Sideload-Builds prüfen denselben Release-Feed; Play-Builds kompilieren diesen
@@ -62,6 +64,17 @@ sha2 = "0.10"
 # qrcode: erzeugt den Pairing-QR (Desktop-Hub zeigt ihn, das Handy scannt).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+# Konto- und Entitlement-Token gehören in den Schlüsselspeicher des Systems,
+# nicht in eine Datei. Die drei Stores sind je Zielsystem aktiv; die
+# Secret-Service-Anbindung läuft bewusst über zbus statt libdbus, damit ein
+# Linux-Build keine C-Bibliothek voraussetzt.
+keyring = { version = "3.6", features = [
+    "apple-native",
+    "windows-native",
+    "async-secret-service",
+    "crypto-rust",
+    "async-io",
+] }
 qrcode = { version = "0.14", default-features = false }
 # Sync-Server (Desktop als Hub) — HTTPS mit dauerhaftem selbstsigniertem Zertifikat.
 tiny_http = { version = "0.12", features = ["ssl-rustls"] }

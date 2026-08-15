@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { syncNow } from "./sync";
 import { onDataChange } from "./changes";
+import { featureUnlocked } from "./plus/store";
 
 export type SyncPhase = "idle" | "syncing" | "error";
 
@@ -250,7 +251,12 @@ export const autoSync = new AutoSyncManager({ run: () => syncNow() });
 export function configureAutoSync(
   opts: { isMobile: boolean; syncAuto: boolean; syncHost: string; lastSync?: number }
 ): void {
-  const active = opts.isMobile && opts.syncAuto && opts.syncHost.trim() !== "";
+  // Das automatische Anstoßen gehört zu Kiebitz Plus; koppeln und von Hand
+  // synchronisieren bleiben frei. Die Prüfung steht hier und nicht nur an der
+  // Bedienoberfläche, damit ein alter gespeicherter Schalter nach dem Ablauf
+  // von Plus nicht weiterläuft.
+  const entitled = featureUnlocked("automatic_lan_sync");
+  const active = opts.isMobile && opts.syncAuto && entitled && opts.syncHost.trim() !== "";
   autoSync.setActive(active, opts.lastSync);
 }
 

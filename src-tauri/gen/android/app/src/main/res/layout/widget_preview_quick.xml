@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vorschau im Widget-Auswahldialog · statisches Abbild ohne echte Daten. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_preview_surface"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_quick_name"
+        android:textColor="@color/widget_preview_ink_muted"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/widget_preview_chip"
+            android:gravity="center"
+            android:text="@string/widget_quick_puzzles"
+            android:textColor="@color/widget_preview_ink"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/widget_preview_chip"
+            android:gravity="center"
+            android:text="@string/widget_quick_repertoire"
+            android:textColor="@color/widget_preview_ink"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/widget_preview_chip"
+            android:gravity="center"
+            android:text="@string/widget_quick_endgames"
+            android:textColor="@color/widget_preview_ink"
+            android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@drawable/widget_preview_chip"
+            android:gravity="center"
+            android:text="@string/widget_quick_analysis"
+            android:textColor="@color/widget_preview_ink"
+            android:textSize="12sp" />
+    </LinearLayout>
+</LinearLayout>

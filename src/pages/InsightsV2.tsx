@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BookOpen, CalendarClock, Clock, Gauge, GraduationCap } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  CalendarClock,
+  Clock,
+  Gauge,
+  GraduationCap,
+  Sparkles,
+} from "lucide-react";
 import { useMobileShell } from "../components/MobileShell";
+import { PlusLock } from "../components/PlusLock";
+import { usePlusGate } from "../lib/plus/usePlus";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { listGameSummaries, type GameSummary } from "../lib/db";
@@ -51,6 +61,7 @@ export default function InsightsV2({
   const desktop = backend.mode === "desktop";
 
   const [tab, setTab] = useState<InsightTab>("overview");
+  const deepGate = usePlusGate("full_insights");
   const [records, setRecords] = useState<GameSummary[]>([]);
   const [errors, setErrors] = useState<PhaseErrors[]>([]);
   const [deep, setDeep] = useState<DeepInsights | null>(null);
@@ -162,6 +173,9 @@ export default function InsightsV2({
           >
             <Icon size={14} className={`shrink-0 ${tab === id ? "text-accent" : ""}`} />
             <span className="max-w-full truncate">{t(key)}</span>
+            {id !== "overview" && !deepGate.unlocked && !deepGate.pending && (
+              <Sparkles size={11} className="shrink-0 text-accent" />
+            )}
           </button>
         ))}
       </nav>
@@ -190,44 +204,51 @@ export default function InsightsV2({
               onOpenGame={(gameId) => openAnalysis(gameId)}
             />
           )}
-          {tab === "strength" && (
-            <Strength
-              deep={deepData}
-              live={live}
-              errors={analysisErrors}
-              findings={findingsFor(findings, "strength")}
-              onAction={onAction}
-            />
-          )}
-          {tab === "time" && (
-            <Time deep={deepData} findings={findingsFor(findings, "time")} onAction={onAction} />
-          )}
-          {tab === "openings" && (
-            <Openings
-              deep={deepData}
-              live={live}
-              findings={findingsFor(findings, "openings")}
-              onAction={onAction}
-              desktop={desktop}
-              onOpenRepertoire={() => go("repertoire")}
-            />
-          )}
-          {tab === "patterns" && (
-            <Patterns
-              deep={deepData}
-              live={live}
-              findings={findingsFor(findings, "patterns")}
-              onAction={onAction}
-            />
-          )}
-          {tab === "training" && (
-            <Training
-              deep={deepData}
-              puzzles={puzzleData}
-              findings={findingsFor(findings, "training")}
-              onAction={onAction}
-              desktop={desktop}
-            />
+          {/* Die Übersicht ist die grundlegende Statistik und bleibt frei.
+              Die fünf Tiefenseiten sind „Vollständige Insights" · gesperrt
+              stehen sie als Vorschau da, nicht als leere Seite. */}
+          {tab !== "overview" && (
+            <PlusLock feature="full_insights">
+              {tab === "strength" && (
+                <Strength
+                  deep={deepData}
+                  live={live}
+                  errors={analysisErrors}
+                  findings={findingsFor(findings, "strength")}
+                  onAction={onAction}
+                />
+              )}
+              {tab === "time" && (
+                <Time deep={deepData} findings={findingsFor(findings, "time")} onAction={onAction} />
+              )}
+              {tab === "openings" && (
+                <Openings
+                  deep={deepData}
+                  live={live}
+                  findings={findingsFor(findings, "openings")}
+                  onAction={onAction}
+                  desktop={desktop}
+                  onOpenRepertoire={() => go("repertoire")}
+                />
+              )}
+              {tab === "patterns" && (
+                <Patterns
+                  deep={deepData}
+                  live={live}
+                  findings={findingsFor(findings, "patterns")}
+                  onAction={onAction}
+                />
+              )}
+              {tab === "training" && (
+                <Training
+                  deep={deepData}
+                  puzzles={puzzleData}
+                  findings={findingsFor(findings, "training")}
+                  onAction={onAction}
+                  desktop={desktop}
+                />
+              )}
+            </PlusLock>
           )}
         </>
       )}

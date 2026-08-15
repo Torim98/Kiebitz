@@ -14,6 +14,7 @@
     "notification:allow-request-permission",
     "notification:allow-batch",
     "notification:allow-cancel",
-    "notification:allow-get-pending"
+    "notification:allow-get-pending",
+    "deep-link:default"
   ]
 }

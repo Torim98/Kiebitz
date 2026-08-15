@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  „Heute trainieren" · 2×1 als Mindestgröße, 4×2 als Vorgabe beim Ablegen.
+  Kein updatePeriodMillis: Die App stößt das Neuzeichnen an, wenn sich etwas
+  geändert hat. Ein Takt im Hintergrund kostet Akku und brächte nichts.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="300dp"
+    android:maxResizeHeight="200dp"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_today_description"
+    android:previewLayout="@layout/widget_preview_today"
+    android:initialLayout="@layout/glance_default_loading_layout" />

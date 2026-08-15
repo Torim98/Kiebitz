@@ -54,6 +54,9 @@ import {
 } from "../lib/effect";
 import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "../lib/week";
 import { Button, Card } from "../components/ui";
+import { PlusBadge } from "../components/PlusLock";
+import { openPlusDialog } from "../lib/plus/dialog";
+import { usePlusGate } from "../lib/plus/usePlus";
 import StudyPlanner from "../components/StudyPlanner";
 import StudyFocusCard from "../components/StudyFocusCard";
 import WeekBudgetBar from "../components/WeekBudgetBar";
@@ -108,6 +111,8 @@ export default function Study({
   const [state, setState] = useState<StudyState | null>(null);
   const [planning, setPlanning] = useState<PlannedUnit[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const planGate = usePlusGate("adaptive_plan");
+  const focusGate = usePlusGate("focus_cycles");
 
   const loadRef = useRef<Promise<void> | null>(null);
   const loadFresh = useCallback(async () => {
@@ -224,6 +229,12 @@ export default function Study({
 
   const startFocus = async (area: Area, metricKey: string | undefined, label: string) => {
     if (!desktop || !metricKey) return;
+    // Fokuszyklen messen die Wirkung über Wochen · eine Plus-Funktion. Der
+    // Vorschlag selbst bleibt sichtbar, nur das Starten führt in die Erklärung.
+    if (!focusGate.unlocked && !focusGate.pending) {
+      openPlusDialog("focus_cycles");
+      return;
+    }
     setBusy(true);
     try {
       const settings = await getSettings().catch(() => null);
@@ -713,12 +724,22 @@ export default function Study({
         proposal={
           desktop && plan ? (
             planning == null ? (
+              // Der adaptive Wochenvorschlag gehört zu Kiebitz Plus. Von Hand
+              // planen, verschieben und abhaken bleibt frei · gesperrt ist nur,
+              // dass Kiebitz die Woche selbst zusammenstellt.
               <button
                 type="button"
-                onClick={proposePlan}
+                onClick={() => {
+                  if (!planGate.unlocked && !planGate.pending) {
+                    openPlusDialog("adaptive_plan");
+                    return;
+                  }
+                  proposePlan();
+                }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
               >
                 <CalendarPlus size={15} /> {t("plan.proposeWeek")}
+                {!planGate.unlocked && !planGate.pending && <PlusBadge feature="adaptive_plan" />}
               </button>
             ) : (
               <div className="rounded-xl border border-accent-dim bg-panel2 p-3">

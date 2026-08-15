@@ -12,6 +12,7 @@ import {
   Flame,
   Lightbulb,
   SkipForward,
+  Sparkles,
   Target,
   X,
 } from "lucide-react";
@@ -38,6 +39,8 @@ import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { Button, Card, Chip, Spark } from "../components/ui";
+import { openPlusDialog } from "../lib/plus/dialog";
+import { usePlusGate } from "../lib/plus/usePlus";
 import { dateLocale, deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 import { DailyGoal, ImportView, PuzzleLoading } from "./puzzles/PuzzleSetup";
@@ -181,6 +184,8 @@ function TrainerView({
   // Vorbelegt aus dem Trainingsplan ("schwächstes Motiv, Band 1420–1580").
   const [theme, setTheme] = useState<string>(initialTheme);
   const [source, setSource] = useState<"all" | "lichess" | "own">("all");
+  // Aufgaben aus den eigenen Fehlern gehören zu Kiebitz Plus.
+  const ownPuzzleGate = usePlusGate("personal_puzzles");
   // Ein aus dem Plan mitgebrachtes Band bleibt aktiv, bis der Nutzer es
   // aufhebt · sonst wäre die Dosis nach der ersten Aufgabe wieder vergessen.
   const [band, setBand] = useState<{ min: number; max: number } | null>(
@@ -617,16 +622,28 @@ function TrainerView({
 
           <Card title={t("pz.filter")}>
             <div className="mb-3 flex flex-wrap gap-2 border-b border-line pb-3">
+              {/* Aufgaben aus den eigenen verpassten Zügen sind eine
+                  Plus-Funktion. Der Filter bleibt sichtbar und erklärt sich
+                  beim Antippen · verschwinden wäre der schlechtere Weg. */}
               {(["all", "own", "lichess"] as const).map((value) => (
                 <Chip
                   key={value}
                   active={source === value}
                   onClick={() => {
+                    if (value === "own" && !ownPuzzleGate.unlocked && !ownPuzzleGate.pending) {
+                      openPlusDialog("personal_puzzles");
+                      return;
+                    }
                     setSource(value);
                     load(theme, value);
                   }}
                 >
-                  {t(value === "all" ? "pz.sourceAll" : value === "own" ? "pz.sourceOwn" : "pz.sourceLichess")}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t(value === "all" ? "pz.sourceAll" : value === "own" ? "pz.sourceOwn" : "pz.sourceLichess")}
+                    {value === "own" && !ownPuzzleGate.unlocked && !ownPuzzleGate.pending && (
+                      <Sparkles size={11} className="text-accent" />
+                    )}
+                  </span>
                 </Chip>
               ))}
             </div>

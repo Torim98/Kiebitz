@@ -18,6 +18,7 @@ import {
   HardDriveDownload,
   Globe,
   FolderOpen,
+  LayoutGrid,
   LifeBuoy,
   Loader2,
   ExternalLink,
@@ -28,6 +29,7 @@ import {
   Scale,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   Trash2,
   UserRound,
   Volume2,
@@ -88,10 +90,15 @@ import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
 import AppTour from "../components/AppTour";
+import PlusSection from "./settings/PlusSection";
+import { PlusBadge } from "../components/PlusLock";
+import { usePlusGate } from "../lib/plus/usePlus";
+import { openPlusDialog } from "../lib/plus/dialog";
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/format";
 import { errorMessage } from "../lib/errors";
 import { showAdPrivacyOptions } from "../lib/ads";
+import { publishWidgetSnapshot } from "../lib/widgets";
 import {
   Field,
   NumberField,
@@ -154,6 +161,29 @@ export default function SettingsPage({
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+
+  // Automatische lokale LAN-Synchronisierung ist eine Plus-Funktion. Das
+  // Koppeln, der Hub und „Jetzt synchronisieren" bleiben frei · gesperrt ist
+  // nur, dass Kiebitz das im Hintergrund von selbst tut.
+  const autoSyncGate = usePlusGate("automatic_lan_sync");
+
+  // Homescreen-Widgets · die Einrichtung ist zugleich einer der drei
+  // strategischen Einstiege in den kostenlosen Test.
+  const widgetGate = usePlusGate("widgets");
+  const [widgetBusy, setWidgetBusy] = useState(false);
+  const [widgetMsg, setWidgetMsg] = useState<string | null>(null);
+  const refreshWidgets = async () => {
+    setWidgetBusy(true);
+    setWidgetMsg(null);
+    try {
+      await publishWidgetSnapshot();
+      setWidgetMsg(t("set.widgetsRefreshed"));
+    } catch (e) {
+      setWidgetMsg(errorMessage(e));
+    } finally {
+      setWidgetBusy(false);
+    }
+  };
 
   // Die Tour aus der Ersteinrichtung, hier auf Zuruf. Sie hält keinen Zustand
   // und ändert nichts · deshalb reicht ein Schalter, kein Speichern.
@@ -722,6 +752,16 @@ export default function SettingsPage({
       ),
     },
     {
+      // Konto und Freischaltung stehen vor den Schachkonten: Wer nach „Plus"
+      // sucht, sucht hier, und der Trial-Einstieg gehört an eine Stelle, die
+      // man ohne Suchen findet.
+      id: "plus",
+      icon: Sparkles,
+      title: t("plus.title"),
+      summary: t("plus.summary"),
+      content: <PlusSection />,
+    },
+    {
       id: "accounts",
       icon: UserRound,
       title: t("set.accounts"),
@@ -1017,6 +1057,51 @@ export default function SettingsPage({
         ),
     },
     {
+      // Homescreen-Widgets · ausdrücklich nur Android. Für den Desktop sind
+      // keine geplant, und das steht hier auch so.
+      id: "widgets",
+      icon: LayoutGrid,
+      title: t("set.widgets"),
+      summary: t("set.widgetsSummary"),
+      content: android ? (
+        <>
+          <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.widgetsNote")}</p>
+          <ul className="mt-3 flex flex-col gap-1.5 text-[12.5px] text-ink2">
+            {(["set.widgetToday", "set.widgetWeek", "set.widgetQuick"] as const).map((key) => (
+              <li key={key} className="flex items-baseline gap-2">
+                <span className="text-accent">·</span>
+                {t(key)}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.widgetsHowTo")}</p>
+          {!widgetGate.unlocked && !widgetGate.pending && (
+            <div className="mt-3 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-accent">
+              {t("plus.previewHint")}
+              <div className="mt-2">
+                <Button primary onClick={() => openPlusDialog("widgets")}>
+                  <Sparkles size={14} /> {t("plus.startTrial")}
+                </Button>
+              </div>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button onClick={refreshWidgets} disabled={widgetBusy}>
+              {widgetBusy ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              {t("set.widgetsRefresh")}
+            </Button>
+            {widgetMsg && <span className="text-[12px] text-ink3">{widgetMsg}</span>}
+          </div>
+        </>
+      ) : (
+        <p className="text-[12.5px] leading-relaxed text-ink3">{t("set.widgetsDesktop")}</p>
+      ),
+    },
+    {
       id: "sync",
       icon: Smartphone,
       title: t("set.sync"),
@@ -1135,14 +1220,25 @@ export default function SettingsPage({
                   />
                 </Field>
               </div>
-              <label className="mt-3 flex cursor-pointer items-center gap-3">
+              {/* Der Sync selbst bleibt frei · nur das automatische Anstoßen
+                  im Hintergrund gehört zu Plus. Von Hand synchronisieren kann
+                  jede Installation weiterhin. */}
+              <label
+                className={`mt-3 flex items-center gap-3 ${
+                  autoSyncGate.unlocked ? "cursor-pointer" : "cursor-default"
+                }`}
+              >
                 <input
                   type="checkbox"
-                  checked={draft.sync_auto}
+                  checked={draft.sync_auto && autoSyncGate.unlocked}
+                  disabled={!autoSyncGate.unlocked && !autoSyncGate.pending}
                   onChange={(e) => patch({ sync_auto: e.target.checked })}
-                  className="h-4 w-4 accent-[#22c08a]"
+                  className="h-4 w-4 accent-[#22c08a] disabled:opacity-45"
                 />
                 <span className="text-[13px] text-ink">{t("set.syncAutoToggle")}</span>
+                {!autoSyncGate.unlocked && !autoSyncGate.pending && (
+                  <PlusBadge feature="automatic_lan_sync" />
+                )}
               </label>
               <p className="mt-1 text-[12px] leading-relaxed text-ink3">
                 {t("set.syncAutoNote")}

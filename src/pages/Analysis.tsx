@@ -43,6 +43,9 @@ import { BOARD_WIDTH } from "../lib/boardLayout";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
 import { Button, Card, ExtLink, ResultBadge } from "../components/ui";
+import { PlusBadge } from "../components/PlusLock";
+import { openPlusDialog } from "../lib/plus/dialog";
+import { usePlusGate } from "../lib/plus/usePlus";
 import { de } from "../lib/format";
 import { evalLabel, winProb } from "../lib/evaluation";
 import { fenAfter } from "../lib/position";
@@ -308,6 +311,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   // 1.000 Partien rechnet, hat nie ein Partie-Review ersetzt, aber wer eine
   // Stunde lang durch seine Fehler blättert, hat sie auch nicht angesammelt.
   useTrainingSession("analysis", desktop);
+  const batchGate = usePlusGate("background_analysis");
 
   const [games, setGames] = useState<GameSummary[]>([]);
   const [game, setGame] = useState<GameRecord | null>(null);
@@ -878,9 +882,16 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
                 </Button>
               )}
+              {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
+                  Historie ist die automatische Hintergrundanalyse und damit
+                  eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
               {unanalyzed.length > 0 && (
                 <Button
                   onClick={() => {
+                    if (!batchGate.unlocked) {
+                      openPlusDialog("background_analysis");
+                      return;
+                    }
                     setNotice(null);
                     setRunning(true);
                     startAnalysis({ limit: 10 }).catch((e) => {
@@ -890,11 +901,18 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   }}
                 >
                   <ListChecks size={14} /> {t("an.nextTen", { n: unanalyzed.length })}
+                  {!batchGate.unlocked && !batchGate.pending && (
+                    <PlusBadge feature="background_analysis" />
+                  )}
                 </Button>
               )}
               {unanalyzed.length > 10 && (
                 <Button
                   onClick={() => {
+                    if (!batchGate.unlocked) {
+                      openPlusDialog("background_analysis");
+                      return;
+                    }
                     setNotice(null);
                     setRunning(true);
                     startAnalysis({}).catch((e) => {
@@ -904,6 +922,9 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                   }}
                 >
                   {t("an.analyzeAll")}
+                  {!batchGate.unlocked && !batchGate.pending && (
+                    <PlusBadge feature="background_analysis" />
+                  )}
                 </Button>
               )}
             </>

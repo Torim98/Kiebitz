@@ -1,0 +1,170 @@
+/**
+ * Die gemeinsame Erklärung zu Kiebitz Plus.
+ *
+ * Jede gesperrte Funktion öffnet diesen einen Dialog. Er sagt, was Plus
+ * enthält, was gerade angefragt wurde und wie man es bekommt · und zwar ohne
+ * Preis: Preise stehen in Stripe beziehungsweise Google Play und werden im
+ * Checkout genannt, nicht im App-Code.
+ */
+import { useEffect, useState } from "react";
+import { Check, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
+import { useT } from "../lib/i18n";
+import { openExternal } from "../lib/ext";
+import { errorMessage } from "../lib/errors";
+import { onPlusDialog } from "../lib/plus/dialog";
+import {
+  FEATURE_DESC_KEY,
+  FEATURE_NAME_KEY,
+  FEATURE_ORDER,
+} from "../lib/plus/labels";
+import { pollAfterReturn, startCheckout } from "../lib/plus/store";
+import { usePlus } from "../lib/plus/usePlus";
+import { isPlusOnlyFeature, type PlusFeature } from "../lib/plus/types";
+import { Button } from "./ui";
+
+export default function PlusDialog({ openSettings }: { openSettings?: () => void }) {
+  const t = useT();
+  const plus = usePlus();
+  const [requested, setRequested] = useState<PlusFeature | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      onPlusDialog((feature) => {
+        setRequested(feature);
+        setError(null);
+        setNotice(null);
+        setOpen(true);
+      }),
+    []
+  );
+
+  // Escape schließt · derselbe Griff wie bei den übrigen Dialogen der App.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  if (!open) return null;
+
+  const buy = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await startCheckout();
+      openExternal(session.checkout_url);
+      // Der Webhook trifft asynchron ein · ab jetzt kurz nachfragen.
+      pollAfterReturn();
+      setNotice(
+        session.trial_days > 0
+          ? t("plus.checkoutTrial", { n: session.trial_days })
+          : t("plus.checkoutOpened")
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cta = plus.isPlus ? null : plus.signedIn ? (
+    <Button primary onClick={buy} disabled={busy}>
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+      {plus.trialEligible ? t("plus.startTrial") : t("plus.subscribe")}
+    </Button>
+  ) : (
+    <Button
+      primary
+      onClick={() => {
+        setOpen(false);
+        openSettings?.();
+      }}
+    >
+      <ExternalLink size={14} /> {t("plus.openSettings")}
+    </Button>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="plus-dialog-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+            <Sparkles size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+              Kiebitz
+            </div>
+            <h2 id="plus-dialog-title" className="text-[16px] font-semibold">
+              {t("plus.title")}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label={t("common.close")}
+            className="-mr-1 rounded p-1 text-ink3 transition-colors hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          {requested && isPlusOnlyFeature(requested) && (
+            <p className="mb-3 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2 text-[12.5px] text-accent">
+              {t("plus.requested", { f: t(FEATURE_NAME_KEY[requested]) })}
+            </p>
+          )}
+          <p className="text-[13px] leading-relaxed text-ink2">{t("plus.dialogLead")}</p>
+          <ul className="mt-4 flex flex-col gap-2.5">
+            {FEATURE_ORDER.map((feature) => (
+              <li key={feature} className="flex gap-2.5">
+                <Check size={15} className="mt-0.5 shrink-0 text-accent" />
+                <span className="min-w-0">
+                  <span className="block text-[13px] text-ink">{t(FEATURE_NAME_KEY[feature])}</span>
+                  <span className="block text-[12px] leading-relaxed text-ink3">
+                    {t(FEATURE_DESC_KEY[feature])}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-[12px] leading-relaxed text-ink3">{t("plus.localFirst")}</p>
+          {!plus.signedIn && (
+            <p className="mt-2 text-[12px] leading-relaxed text-ink3">{t("plus.signInFirst")}</p>
+          )}
+          {notice && (
+            <p className="mt-3 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2 text-[12.5px] text-accent">
+              {notice}
+            </p>
+          )}
+          {error && (
+            <p className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
+          <Button onClick={() => setOpen(false)}>{t("common.close")}</Button>
+          {cta}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,33 @@
+<resources>
+    <string name="widget_today_name">S\'entraîner aujourd\'hui</string>
+    <string name="widget_today_description">La prochaine séance, les tâches ouvertes et la progression du jour.</string>
+    <string name="widget_week_name">Objectif de la semaine</string>
+    <string name="widget_week_description">Minutes travaillées, budget hebdomadaire et jours d\'entraînement.</string>
+    <string name="widget_quick_name">Démarrage rapide</string>
+    <string name="widget_quick_description">Ouvrir directement les problèmes, le répertoire, les finales ou l\'analyse.</string>
+
+    <string name="widget_empty_no_data">Ouvrez Kiebitz une fois pour que le widget ait quelque chose à montrer.</string>
+    <string name="widget_error_body">Aucune donnée lisible. Ouvrir Kiebitz la rafraîchit.</string>
+    <string name="widget_today_clear">Rien de prévu aujourd\'hui.</string>
+    <string name="widget_open_tasks">%1$d en attente</string>
+    <string name="widget_progress">%1$d sur %2$d min</string>
+    <string name="widget_minutes">%1$d min</string>
+    <string name="widget_week_ratio">%1$d / %2$d min</string>
+    <string name="widget_week_remaining">%1$d min restantes</string>
+    <string name="widget_week_days">%1$d jours sur %2$d</string>
+    <string name="widget_week_days_open">%1$d jours travaillés</string>
+
+    <string name="widget_quick_puzzles">Problèmes</string>
+    <string name="widget_quick_repertoire">Répertoire</string>
+    <string name="widget_quick_endgames">Finales</string>
+    <string name="widget_quick_analysis">Analyse</string>
+
+    <string name="widget_plus_title">Kiebitz Plus</string>
+    <string name="widget_plus_body">Les widgets font partie de Plus. Vos données restent sur l\'appareil.</string>
+    <string name="widget_plus_cta">Essayer 7 jours gratuitement</string>
+
+    <string name="widget_preview_unit">Tactique · 20 min</string>
+    <string name="widget_preview_progress">12 sur 30 min</string>
+    <string name="widget_preview_week_ratio">95 / 180 min</string>
+    <string name="widget_preview_week_days">3 jours sur 5</string>
+</resources>

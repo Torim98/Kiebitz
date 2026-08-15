@@ -1,0 +1,33 @@
+<resources>
+    <string name="widget_today_name">تدرّب اليوم</string>
+    <string name="widget_today_description">الوحدة التالية والمهام المفتوحة وتقدّم اليوم.</string>
+    <string name="widget_week_name">هدف الأسبوع</string>
+    <string name="widget_week_description">الدقائق المُتدرَّبة وميزانية الأسبوع وأيام التدريب.</string>
+    <string name="widget_quick_name">بداية سريعة</string>
+    <string name="widget_quick_description">افتح الألغاز أو المرجع أو النهايات أو التحليل مباشرة.</string>
+
+    <string name="widget_empty_no_data">افتح Kiebitz مرة واحدة كي يجد المكوّن ما يعرضه.</string>
+    <string name="widget_error_body">لا توجد بيانات قابلة للقراءة. فتح Kiebitz يحدّثها.</string>
+    <string name="widget_today_clear">لا شيء مخطّط لليوم.</string>
+    <string name="widget_open_tasks">%1$d مفتوحة</string>
+    <string name="widget_progress">%1$d من %2$d دقيقة</string>
+    <string name="widget_minutes">%1$d دقيقة</string>
+    <string name="widget_week_ratio">%1$d / %2$d دقيقة</string>
+    <string name="widget_week_remaining">بقيت %1$d دقيقة</string>
+    <string name="widget_week_days">%1$d من %2$d أيام</string>
+    <string name="widget_week_days_open">%1$d أيام تدريب</string>
+
+    <string name="widget_quick_puzzles">الألغاز</string>
+    <string name="widget_quick_repertoire">المرجع</string>
+    <string name="widget_quick_endgames">النهايات</string>
+    <string name="widget_quick_analysis">التحليل</string>
+
+    <string name="widget_plus_title">Kiebitz Plus</string>
+    <string name="widget_plus_body">المكوّنات جزء من Plus. تبقى بياناتك على الجهاز.</string>
+    <string name="widget_plus_cta">جرّب 7 أيام مجانًا</string>
+
+    <string name="widget_preview_unit">تكتيك · 20 دقيقة</string>
+    <string name="widget_preview_progress">12 من 30 دقيقة</string>
+    <string name="widget_preview_week_ratio">95 / 180 دقيقة</string>
+    <string name="widget_preview_week_days">3 من 5 أيام</string>
+</resources>

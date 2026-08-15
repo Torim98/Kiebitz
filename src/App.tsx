@@ -43,6 +43,10 @@ import {
 } from "./components/MobileShell";
 import type { EndgameCategory } from "./data/endgames";
 import AdBanner from "./components/AdBanner";
+import PlusDialog from "./components/PlusDialog";
+import { installDeepLinks } from "./lib/plus/deepLink";
+import { startWidgetSnapshots } from "./lib/widgets";
+import { usePlus } from "./lib/plus/usePlus";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
@@ -135,6 +139,11 @@ export default function App() {
   const t = useT();
   const storeCapture = isStoreCapture();
   const [gameCount, setGameCount] = useState<number | null>(null);
+  const plus = usePlus();
+  // Werbefreiheit ist eine Plus-Funktion · solange der Zustand noch geladen
+  // wird, bleibt die Anzeige, wie sie war. Ein kurzes Auf- und Zuklappen des
+  // Banners wäre auffälliger als eine halbe Sekunde später zu verschwinden.
+  const showAds = !plus.has("no_ads");
 
   useEffect(() => preloadLikelyPages(page), [page]);
 
@@ -291,6 +300,25 @@ export default function App() {
       stopImport();
     };
   }, [backend.mode]);
+
+  // Deep Links: `kiebitz://auth?code=…` aus dem Magic-Link der E-Mail und
+  // `kiebitz://open?page=…` von den Android-Widgets. Die Einlösung der
+  // Anmeldung passiert im Hintergrund; sichtbar wird sie dort, wo der
+  // Kontostatus steht.
+  useEffect(() => {
+    if (backend.mode !== "desktop") return;
+    return installDeepLinks({
+      onSignedIn: () => logEvent("info", "plus", "Anmeldung über Deep-Link abgeschlossen"),
+      onError: () => logEvent("warn", "plus", "Anmeldelink konnte nicht eingelöst werden"),
+      onOpenPage: (page) => goTo(page),
+    });
+  }, [backend.mode, goTo]);
+
+  // Datenstand der Android-Widgets · nur dort gibt es welche.
+  useEffect(() => {
+    if (backend.mode !== "desktop" || backend.info?.platform !== "android") return;
+    return startWidgetSnapshots();
+  }, [backend.mode, backend.info?.platform]);
 
   // Toast für den Auto-Update-Lauf beim Start (der Neustart soll nicht
   // kommentarlos passieren); Fehler zeigt die Settings-Seite.
@@ -479,6 +507,7 @@ export default function App() {
 
   const overlays = (
     <>
+      <PlusDialog openSettings={() => navigate("settings")} />
       {onboarding && (
         <Suspense fallback={null}>
           <Onboarding
@@ -558,7 +587,7 @@ export default function App() {
           <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
             {mainContent}
           </main>
-          <AdBanner android={backend.info?.platform === "android"} />
+          {showAds && <AdBanner android={backend.info?.platform === "android"} />}
         </div>
         {!rail && (
           <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={false} />
@@ -617,7 +646,7 @@ export default function App() {
         {mainContent}
       </main>
 
-      <AdBanner android={false} />
+      {showAds && <AdBanner android={false} />}
       </div>
 
       {overlays}

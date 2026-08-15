@@ -63,9 +63,11 @@ export function NumberField({
 export type SectionId =
   | "language"
   | "tour"
+  | "plus"
   | "accounts"
   | "sound"
   | "notify"
+  | "widgets"
   | "sync"
   | "updates"
   | "privacy"

@@ -1,0 +1,33 @@
+<resources>
+    <string name="widget_today_name">आज का अभ्यास</string>
+    <string name="widget_today_description">अगली इकाई, बचे हुए काम और दिन की प्रगति।</string>
+    <string name="widget_week_name">साप्ताहिक लक्ष्य</string>
+    <string name="widget_week_description">अभ्यास के मिनट, साप्ताहिक बजट और अभ्यास के दिन।</string>
+    <string name="widget_quick_name">झटपट शुरुआत</string>
+    <string name="widget_quick_description">पहेलियाँ, रेपर्टवार, अंतिम-खेल या विश्लेषण सीधे खोलें।</string>
+
+    <string name="widget_empty_no_data">विजेट को दिखाने के लिए Kiebitz एक बार खोलिए।</string>
+    <string name="widget_error_body">कोई पढ़ने योग्य डेटा नहीं। Kiebitz खोलने पर यह ताज़ा हो जाता है।</string>
+    <string name="widget_today_clear">आज कुछ भी नियोजित नहीं है।</string>
+    <string name="widget_open_tasks">%1$d बाक़ी</string>
+    <string name="widget_progress">%2$d में से %1$d मिनट</string>
+    <string name="widget_minutes">%1$d मिनट</string>
+    <string name="widget_week_ratio">%1$d / %2$d मिनट</string>
+    <string name="widget_week_remaining">%1$d मिनट बाक़ी</string>
+    <string name="widget_week_days">%2$d में से %1$d दिन</string>
+    <string name="widget_week_days_open">%1$d दिन अभ्यास</string>
+
+    <string name="widget_quick_puzzles">पहेलियाँ</string>
+    <string name="widget_quick_repertoire">रेपर्टवार</string>
+    <string name="widget_quick_endgames">अंतिम-खेल</string>
+    <string name="widget_quick_analysis">विश्लेषण</string>
+
+    <string name="widget_plus_title">Kiebitz Plus</string>
+    <string name="widget_plus_body">विजेट Plus का हिस्सा हैं। आपका डेटा उपकरण पर ही रहता है।</string>
+    <string name="widget_plus_cta">7 दिन मुफ़्त आज़माएँ</string>
+
+    <string name="widget_preview_unit">रणनीति · 20 मिनट</string>
+    <string name="widget_preview_progress">30 में से 12 मिनट</string>
+    <string name="widget_preview_week_ratio">95 / 180 मिनट</string>
+    <string name="widget_preview_week_days">5 में से 3 दिन</string>
+</resources>

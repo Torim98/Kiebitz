@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dieselben Vorschauen im dunklen Systemthema. -->
+    <color name="widget_preview_surface">#FF161917</color>
+    <color name="widget_preview_chip">#FF242A27</color>
+    <color name="widget_preview_ink">#FFE9EFEB</color>
+    <color name="widget_preview_ink_muted">#FF9AA8A2</color>
+    <color name="widget_preview_accent">#FF22C08A</color>
+</resources>

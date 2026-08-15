@@ -4,6 +4,7 @@ import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import InsightsV2 from "./InsightsV2";
 import { demoDeepInsights } from "./insights/demo";
+import { grantPlus } from "../test/plus";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -62,6 +63,9 @@ const page = () => <InsightsV2 go={noop} openPuzzles={noop} openAnalysis={noop} 
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
+  // Die Tiefenseiten gehören zu Kiebitz Plus · hier geht es um ihren Inhalt,
+  // nicht um das Gate davor. Das prüft plus/store.test.ts.
+  grantPlus();
   invokeMock.mockImplementation((command: string) => {
     if (command === "app_info")
       return Promise.resolve({ version: "0.4.4", backend: "tauri", platform: "windows" });

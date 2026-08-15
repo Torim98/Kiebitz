@@ -4,6 +4,7 @@ import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import Study from "./Study";
 import { demoDeepInsights } from "./insights/demo";
+import { grantPlus } from "../test/plus";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
@@ -173,6 +174,9 @@ function renderStudy(
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
+  // Wochenvorschlag und Fokuszyklen gehören zu Kiebitz Plus · hier geht es um
+  // ihr Verhalten, nicht um das Gate davor.
+  grantPlus();
 });
 
 afterEach(cleanup);

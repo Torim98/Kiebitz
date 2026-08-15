@@ -10,6 +10,7 @@ mod engine;
 mod insights;
 mod legal;
 mod live;
+mod plus;
 mod puzzles;
 mod reminder;
 mod rep_pgn;
@@ -21,6 +22,7 @@ mod sync;
 #[cfg(windows)]
 mod titlebar;
 mod updater;
+mod widgets;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -324,6 +326,20 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_opener::init())?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
+            // Anmeldung per Magic-Link: Die API bietet nach dem Bestätigen
+            // `kiebitz://auth?code=…` an, das Betriebssystem reicht die URL an
+            // diese Instanz weiter. Android registriert das Schema über den
+            // Intent-Filter im Manifest; auf dem Desktop übernimmt das der
+            // Installer, und die Laufzeitregistrierung deckt zusätzlich
+            // portable Starts und die Entwicklung ab.
+            app.handle().plugin(tauri_plugin_deep_link::init())?;
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register("kiebitz") {
+                    log::warn!("Deep-Link-Schema nicht registriert: {e}");
+                }
+            }
             // Windows verwirft Toasts unbekannter Absender · AppUserModelID
             // registrieren, bevor die erste Erinnerung ansteht.
             #[cfg(windows)]
@@ -345,6 +361,14 @@ pub fn run() {
             // Google-Code, weil AdSense in Desktopsoftware nicht zulässig ist.
             #[cfg(target_os = "android")]
             app.handle().plugin(ads::init())?;
+
+            // Konto- und Entitlement-Token liegen auf Android im Keystore.
+            #[cfg(target_os = "android")]
+            app.handle().plugin(plus::init())?;
+
+            // Homescreen-Widgets · nur Android, und ausdrücklich nur dort.
+            #[cfg(target_os = "android")]
+            app.handle().plugin(widgets::init())?;
 
             // Die Play-In-App-Review-API existiert nur im Play-Build. Der
             // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
@@ -490,6 +514,10 @@ pub fn run() {
             settings::restore_database,
             settings::db_info,
             settings::factory_reset,
+            plus::plus_secret_get,
+            plus::plus_secret_set,
+            plus::plus_secret_delete,
+            widgets::widget_snapshot_write,
             chessdb::chessdb_query,
             endgame::endgame_move,
             endgame::endgame_record,
