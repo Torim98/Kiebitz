@@ -905,7 +905,7 @@ export const en: Record<Key, string> = {
   "set.adsPrivacyOpened": "The privacy options were opened.",
   "set.adsPrivacyUnavailable": "No additional privacy dialog is currently required for this device.",
   "set.supportSummary": "Feedback, crashes, feature requests and the log",
-  "set.supportNote": "Feedback, a crash report or an idea · the same address as the form on the website. Kiebitz never sends anything on its own; you decide what leaves the device.",
+  "set.supportNote": "Feedback, a crash report or an idea. Kiebitz never sends anything on its own; you decide what leaves the device.",
   "set.supportOpen": "Write feedback",
   "set.supportCrash": "Report a crash",
   "set.supportShake": "Shake the device firmly to come straight here.",

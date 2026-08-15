@@ -21,7 +21,7 @@ export interface LogEntry {
 export type ReportType = "feedback" | "crash" | "feature";
 
 /** Empfänger und Endpunkt sind dieselben wie im Formular der Website. */
-export const FEEDBACK_ADDRESS = "kiebitz.chess@gmail.com";
+export const FEEDBACK_ADDRESS = "support@kiebitz.dev";
 const FEEDBACK_ENDPOINT = `https://formsubmit.co/ajax/${FEEDBACK_ADDRESS}`;
 
 /**
