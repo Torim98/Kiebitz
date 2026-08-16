@@ -300,7 +300,30 @@ pub fn run() {
     if reminder::run_headless("de.torim.kiebitz") {
         return;
     }
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    // Muss vor allen anderen Plugins stehen · und vor allem vor dem
+    // Deep-Link-Plugin.
+    //
+    // Klickt jemand den Anmeldelink, während Kiebitz schon läuft, startet
+    // Windows einen zweiten Prozess und übergibt ihm die URL als Argument. Die
+    // laufende Instanz erfährt davon nichts, und der zweite Prozess stritte
+    // sich mit ihr um dieselbe SQLite-Datei. Diese Weiche gibt die URL an die
+    // offene Instanz weiter und beendet den Zweitstart; das Fenster kommt nach
+    // vorn, damit sichtbar wird, dass etwas passiert ist.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder
         .setup(|app| {
             // Das Fenster startet unsichtbar (tauri.conf.json) · erst einfärben,
             // dann zeigen, sonst blitzt beim Start die blaue Systemtitelleiste

@@ -16,7 +16,7 @@ shipped alongside this one.
 Where a library offers a choice of licenses, one has been selected; the
 full set it was offered under is shown as "offered".
 
-Components: 66 npm packages, 621 Rust crates.
+Components: 66 npm packages, 622 Rust crates.
 
 
 ============================================================================
@@ -92,7 +92,7 @@ npm packages (66)
   tiny-invariant 1.3.3 — MIT
   victory-vendor 36.9.2 — MIT AND ISC
 
-Rust crates (621)
+Rust crates (622)
 ----------------------------------------------------------------------------
   adler2 2.0.1 — 0BSD OR MIT OR Apache-2.0
   aes 0.8.4 — MIT OR Apache-2.0
@@ -535,6 +535,7 @@ Rust crates (621)
   tauri-plugin-log 2.9.0 — Apache-2.0 OR MIT
   tauri-plugin-notification 2.3.3 — Apache-2.0 OR MIT
   tauri-plugin-opener 2.5.4 — Apache-2.0 OR MIT
+  tauri-plugin-single-instance 2.4.3 — Apache-2.0 OR MIT
   tauri-plugin-updater 2.10.1 — Apache-2.0 OR MIT
   tauri-runtime 2.11.3 — Apache-2.0 OR MIT
   tauri-runtime-wry 2.11.4 — Apache-2.0 OR MIT
@@ -4683,6 +4684,9 @@ Applies to:
       https://github.com/tauri-apps/plugins-workspace
   tauri-plugin-opener 2.5.4 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017 - Present Tauri Apps Contributors
+      https://github.com/tauri-apps/plugins-workspace
+  tauri-plugin-single-instance 2.4.3 (cargo)  [offered: Apache-2.0 OR MIT]
+      Copyright (c) 2017 - Present The Tauri Programme in the Commons Conservancy
       https://github.com/tauri-apps/plugins-workspace
   tauri-plugin-updater 2.10.1 (cargo)  [offered: Apache-2.0 OR MIT]
       Copyright (c) 2017 - Present Tauri Apps Contributors

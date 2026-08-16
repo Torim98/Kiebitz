@@ -64,6 +64,12 @@ tauri-plugin-deep-link = "2"
 # qrcode: erzeugt den Pairing-QR (Desktop-Hub zeigt ihn, das Handy scannt).
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+# Ohne dieses Plugin erreicht der Anmelde-Deep-Link eine bereits laufende App
+# unter Windows und Linux nie: Das Betriebssystem startet dort einen zweiten
+# Prozess mit der URL im Aufruf, statt sie der offenen Instanz zu geben. Die
+# Feature-Flagge `deep-link` reicht sie an das Deep-Link-Plugin weiter, sodass
+# `onOpenUrl` in der laufenden Instanz auslöst.
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # Konto- und Entitlement-Token gehören in den Schlüsselspeicher des Systems,
 # nicht in eine Datei. Die drei Stores sind je Zielsystem aktiv; die
 # Secret-Service-Anbindung läuft bewusst über zbus statt libdbus, damit ein

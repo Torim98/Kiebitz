@@ -131,17 +131,21 @@ export function PlusLock({
 
   return (
     <div className={`relative ${className}`}>
+      {/* Die Vorschau soll zeigen, dass es hier etwas gibt, und wie viel · nicht
+          aber, was darin steht. Bei schwacher Dämpfung liest man die Zahlen noch,
+          und dann ist die Sperre keine. Form und Anordnung bleiben erkennbar,
+          die Werte werden zu Flächen. */}
       <div
         ref={previewRef}
         aria-hidden="true"
-        className="pointer-events-none select-none opacity-40 blur-[1.5px]"
+        className="pointer-events-none select-none opacity-25 blur-[3px]"
       >
         {children}
       </div>
       <button
         type="button"
         onClick={() => openPlusDialog(feature)}
-        className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-panel/45 text-center transition-colors hover:bg-panel/30"
+        className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-xl bg-panel/60 text-center transition-colors hover:bg-panel/50"
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft px-3 py-1 text-[12px] font-medium text-accent">
           <Sparkles size={12} aria-hidden="true" /> {label ?? t("plus.badge")}
