@@ -620,7 +620,7 @@ export default function App() {
             <Bird size={17} />
           </span>
           <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
-          <PlanBadge compact />
+          <PlanBadge />
         </div>
         <button
           onClick={() => setNavOpen(true)}

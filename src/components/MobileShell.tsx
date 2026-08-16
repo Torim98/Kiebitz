@@ -91,7 +91,7 @@ export function MobileAppBar({
       </span>
       {/* Welches Modell gerade gilt, gehört neben die Marke · nicht erst in die
           Einstellungen, wo man es suchen müsste. */}
-      <PlanBadge compact />
+      <PlanBadge />
       <button
         onClick={onSettings}
         aria-label={t("nav.settings")}

@@ -1,11 +1,10 @@
 /**
  * Das Abzeichen darf nie das falsche Modell behaupten.
  *
- * Zwei Fälle sind dabei heikler als der Normalfall: der Moment, in dem der
- * Zustand noch geladen wird — dort wäre ein voreiliges „Free" eine falsche
- * Auskunft an jemanden, der gerade bezahlt hat — und der Testzeitraum, der in
- * der schmalen App-Leiste zwar auf „Plus" verkürzt wird, für Vorlesewerkzeuge
- * aber vollständig lesbar bleiben muss.
+ * Heikel ist vor allem der Moment, in dem der Zustand noch geladen wird — dort
+ * wäre ein voreiliges „Free" eine falsche Auskunft an jemanden, der gerade
+ * bezahlt hat. Der Testzeitraum dagegen ist bewusst kein Fall mehr: Wer testet,
+ * hat Plus, und genau das steht dann auch da.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -41,18 +40,11 @@ describe("PlanBadge", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("spells out the trial where there is room", () => {
+  it("calls the trial Plus, without a second word", () => {
     plus.isPlus = true;
     plus.isTrial = true;
     render(<PlanBadge />);
-    expect(screen.getByText("Plus · Test")).toBeTruthy();
-  });
-
-  it("shortens the trial in the app bar but keeps it in the accessible name", () => {
-    plus.isPlus = true;
-    plus.isTrial = true;
-    render(<PlanBadge compact />);
     expect(screen.getByText("Plus")).toBeTruthy();
-    expect(screen.getByLabelText("Aktuelles Modell: Plus · Test")).toBeTruthy();
+    expect(screen.getByLabelText("Aktuelles Modell: Plus")).toBeTruthy();
   });
 });
