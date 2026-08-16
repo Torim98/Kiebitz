@@ -20,7 +20,11 @@ import { signInWithCode } from "./store";
  */
 export function parseAuthDeepLink(raw: string): string | null {
   const value = raw.trim();
-  if (!/^kiebitz:\/\/auth(\?|$)/i.test(value)) return null;
+  // Der Schrägstrich ist nicht optional aus Höflichkeit: Chromium kanonisiert
+  // `kiebitz://auth?code=…` zu `kiebitz://auth/?code=…`, bevor Windows die URL
+  // an die App reicht. Ohne diese Toleranz verwirft der Parser jeden Link, der
+  // aus einem Browser kommt · und das sind alle aus der E-Mail.
+  if (!/^kiebitz:\/\/auth\/?(\?|$)/i.test(value)) return null;
   const query = value.slice(value.indexOf("?") + 1);
   if (!value.includes("?")) return null;
   const code = new URLSearchParams(query).get("code");
@@ -62,7 +66,8 @@ export type OpenPage = (typeof OPEN_PAGES)[number];
  */
 export function parseOpenDeepLink(raw: string): OpenPage | null {
   const value = raw.trim();
-  if (!/^kiebitz:\/\/open\?/i.test(value)) return null;
+  // Auch hier der kanonisierte Schrägstrich · siehe parseAuthDeepLink.
+  if (!/^kiebitz:\/\/open\/?\?/i.test(value)) return null;
   const page = new URLSearchParams(value.slice(value.indexOf("?") + 1)).get("page");
   return (OPEN_PAGES as readonly string[]).includes(page ?? "") ? (page as OpenPage) : null;
 }

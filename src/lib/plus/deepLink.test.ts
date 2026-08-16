@@ -13,6 +13,17 @@ describe("parseAuthDeepLink", () => {
     );
   });
 
+  it("reads the code out of the form a browser hands over", () => {
+    // Chromium kanonisiert `kiebitz://auth?code=…` zu `kiebitz://auth/?code=…`.
+    // Genau diese Form kommt aus der E-Mail, und nur diese hatte nie geklappt.
+    expect(parseAuthDeepLink("kiebitz://auth/?code=abcdef0123456789ABCDEF")).toBe(
+      "abcdef0123456789ABCDEF"
+    );
+    expect(
+      firstAuthCode(["kiebitz://auth/?code=abcdef0123456789ABCDEF"])
+    ).toBe("abcdef0123456789ABCDEF");
+  });
+
   it("ignores the pairing link that shares the same scheme", () => {
     expect(
       parseAuthDeepLink("kiebitz://sync?host=192.168.1.5:47323&code=123456&fingerprint=00")
@@ -42,6 +53,7 @@ describe("parseAuthDeepLink", () => {
 describe("parseOpenDeepLink", () => {
   it("maps a widget link to a page", () => {
     expect(parseOpenDeepLink("kiebitz://open?page=puzzles")).toBe("puzzles");
+    expect(parseOpenDeepLink("kiebitz://open/?page=puzzles")).toBe("puzzles");
     expect(parseOpenDeepLink("kiebitz://open?page=settings&section=plus")).toBe("settings");
   });
 
