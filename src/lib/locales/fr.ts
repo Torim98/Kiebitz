@@ -1376,7 +1376,7 @@ export const fr: Record<Key, string> = {
   "plus.title": "Kiebitz Plus",
   "plus.summary": "Compte, abonnement et fonctions débloquées",
   "plus.localFirst": "Kiebitz reste local-first. Le compte ne sert qu’à la connexion, à la facturation et au déblocage signé ; parties, analyses, données d’entraînement et réglages restent sur vos appareils.",
-  "plus.signedOutLead": "La connexion se fait sans mot de passe : vous recevez un lien à usage unique par e-mail, et il ouvre Kiebitz.",
+  "plus.signedOutLead": "L’achat se fait en deux temps : connectez-vous d’abord — sans mot de passe, vous recevez un lien à usage unique par e-mail qui ouvre Kiebitz. Le bouton pour s’abonner à Kiebitz Plus apparaît ensuite ici ; le paiement se fait dans le navigateur.",
   "plus.emailLabel": "Adresse e-mail",
   "plus.sendLink": "Envoyer le lien",
   "plus.resend": "Renvoyer",

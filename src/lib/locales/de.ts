@@ -1402,7 +1402,7 @@ export const de = {
   "plus.title": "Kiebitz Plus",
   "plus.summary": "Konto, Abonnement und freigeschaltete Funktionen",
   "plus.localFirst": "Kiebitz bleibt local-first. Das Konto trägt allein die Anmeldung, die Abrechnung und die signierte Freischaltung; Partien, Analysen, Trainingsdaten und Einstellungen bleiben auf deinen Geräten.",
-  "plus.signedOutLead": "Die Anmeldung läuft ohne Passwort: Du bekommst einen einmaligen Link per E-Mail, und der öffnet Kiebitz.",
+  "plus.signedOutLead": "Der Kauf läuft in zwei Schritten: Zuerst anmelden — ohne Passwort, du bekommst einen einmaligen Link per E-Mail, und der öffnet Kiebitz. Danach erscheint hier der Knopf, mit dem du Kiebitz Plus abonnierst; bezahlt wird im Browser.",
   "plus.emailLabel": "E-Mail-Adresse",
   "plus.sendLink": "Link senden",
   "plus.resend": "Erneut senden",

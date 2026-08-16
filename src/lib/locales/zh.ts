@@ -1376,7 +1376,7 @@ export const zh: Record<Key, string> = {
   "plus.title": "Kiebitz Plus",
   "plus.summary": "账号、订阅与已解锁的功能",
   "plus.localFirst": "Kiebitz 依旧本地优先。账号只承担登录、计费和签名解锁；对局、分析、训练数据和设置都留在你的设备上。",
-  "plus.signedOutLead": "登录不需要密码：你会收到一封含一次性链接的邮件，点开它就会打开 Kiebitz。",
+  "plus.signedOutLead": "购买分两步：先登录——不需要密码，你会收到一封含一次性链接的邮件，点开它就会打开 Kiebitz。随后这里会出现订阅 Kiebitz Plus 的按钮；付款在浏览器中完成。",
   "plus.emailLabel": "电子邮箱",
   "plus.sendLink": "发送链接",
   "plus.resend": "重新发送",

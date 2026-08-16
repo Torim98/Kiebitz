@@ -1381,7 +1381,7 @@ export const en: Record<Key, string> = {
   "plus.title": "Kiebitz Plus",
   "plus.summary": "Account, subscription and unlocked features",
   "plus.localFirst": "Kiebitz stays local-first. The account only carries sign-in, billing and the signed unlock; games, analyses, training data and settings stay on your devices.",
-  "plus.signedOutLead": "Signing in works without a password: you get a one-time link by email, and it opens Kiebitz.",
+  "plus.signedOutLead": "Buying takes two steps: sign in first — no password needed, you get a one-time link by email and it opens Kiebitz. The button to subscribe to Kiebitz Plus then appears here; payment happens in your browser.",
   "plus.emailLabel": "Email address",
   "plus.sendLink": "Send link",
   "plus.resend": "Send again",
