@@ -5,8 +5,16 @@
  * Free-Funktionen dürfen niemals von einem Konto, einem Netz oder einem
  * Provider abhängen · das ist die wichtigste Zusage dieser Datei.
  */
-import { describe, expect, it } from "vitest";
-import { featureUnlocked, type PlusState } from "./store";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  featureUnlocked,
+  requestSignInLink,
+  resetPlusStore,
+  signInWithCode,
+  startCheckout,
+  type PlusState,
+} from "./store";
+import { resetSecretFallback } from "./storage";
 import { FREE_FEATURES, PLUS_ONLY_FEATURES, type EntitlementClaims } from "./types";
 
 const NOW_SECONDS = Math.floor(Date.now() / 1000);
@@ -90,5 +98,75 @@ describe("featureUnlocked", () => {
     for (const feature of PLUS_ONLY_FEATURES) {
       expect(featureUnlocked(feature, full)).toBe(true);
     }
+  });
+});
+
+/**
+ * Die Sprache reist von der Oberfläche bis in den Rumpf des Aufrufs.
+ *
+ * Zwischen `useI18n()` und der API liegen zwei Ebenen; geprüft wird deshalb
+ * nicht die Weitergabe an die nächste Funktion, sondern das, was am Ende
+ * tatsächlich über die Leitung geht.
+ */
+describe("the selected language reaches the API", () => {
+  const fetchMock = vi.fn();
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  beforeEach(() => {
+    resetPlusStore();
+    resetSecretFallback();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetPlusStore();
+    resetSecretFallback();
+  });
+
+  function bodyOf(path: string): unknown {
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith(path));
+    if (!call) throw new Error(`no request to ${path}`);
+    return JSON.parse(call[1].body);
+  }
+
+  it("sends the language along with the magic link request", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ accepted: true }, 202));
+
+    await requestSignInLink("  Someone@Example.com  ", "fr");
+
+    expect(bodyOf("/v1/auth/magic-link/request")).toEqual({
+      email: "Someone@Example.com",
+      client: "app",
+      locale: "fr",
+    });
+  });
+
+  it("sends the language along with the checkout", async () => {
+    // Die Aktualisierung nach der Anmeldung scheitert hier absichtlich am
+    // fehlenden signierten Token · für den Checkout zählt nur die Sitzung.
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).endsWith("/v1/auth/magic-link/consume")
+          ? jsonResponse({ access_token: "session-token" }, 201)
+          : jsonResponse({}, 200)
+      )
+    );
+    await signInWithCode("one-time-code");
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      jsonResponse({ checkout_url: "https://checkout.stripe.com/x", trial_days: 7 }, 201)
+    );
+
+    await startCheckout("hi");
+
+    expect(bodyOf("/v1/billing/stripe/checkout")).toEqual({ locale: "hi" });
   });
 });

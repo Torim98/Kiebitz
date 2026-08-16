@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Check, ExternalLink, Loader2, Sparkles, X } from "lucide-react";
-import { useT } from "../lib/i18n";
+import { useI18n, useT } from "../lib/i18n";
 import { openExternal } from "../lib/ext";
 import { errorMessage } from "../lib/errors";
 import { onPlusDialog } from "../lib/plus/dialog";
@@ -25,6 +25,9 @@ import { Button } from "./ui";
 export default function PlusDialog({ openSettings }: { openSettings?: () => void }) {
   const t = useT();
   const plus = usePlus();
+  // Der Checkout und die spätere Vertragsbestätigung folgen der Sprache, in
+  // der dieser Dialog gerade steht.
+  const { locale } = useI18n();
   const [requested, setRequested] = useState<PlusFeature | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -98,7 +101,7 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
     setBusy(true);
     setError(null);
     try {
-      const session = await startCheckout();
+      const session = await startCheckout(locale);
       openExternal(session.checkout_url);
       // Der Webhook trifft asynchron ein · ab jetzt kurz nachfragen.
       pollAfterReturn();

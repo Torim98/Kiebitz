@@ -25,6 +25,7 @@ import {
   logoutSession,
   requestMagicLink,
 } from "./api";
+import type { Locale } from "../i18n";
 import { deleteSecret, readSecret, writeSecret } from "./storage";
 import { claimsStillValid, verifyEntitlementToken } from "./token";
 import {
@@ -224,13 +225,18 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
   }
 }
 
-/** Magic-Link anfordern; erst nach der Sperrzeit wieder möglich. */
-export async function requestSignInLink(email: string): Promise<void> {
+/**
+ * Magic-Link anfordern; erst nach der Sperrzeit wieder möglich.
+ *
+ * `locale` reicht die Oberfläche durch · der Store kennt die Spracheinstellung
+ * nicht und soll sie auch nicht erraten.
+ */
+export async function requestSignInLink(email: string, locale: Locale): Promise<void> {
   const now = Date.now();
   if (now < state.resendAllowedAt) {
     throw new PlusApiError(429, "rate_limited", "resend locked");
   }
-  await requestMagicLink(email.trim());
+  await requestMagicLink(email.trim(), locale);
   setState({ resendAllowedAt: now + RESEND_LOCKOUT_SECONDS * 1000, error: null });
 }
 
@@ -258,9 +264,9 @@ export async function deletePlusAccount(): Promise<void> {
   await clearSession();
 }
 
-export function startCheckout(): Promise<CheckoutSession> {
+export function startCheckout(locale: Locale): Promise<CheckoutSession> {
   if (!sessionToken) throw new PlusApiError(401, "authentication_required", "not signed in");
-  return createCheckout(sessionToken);
+  return createCheckout(sessionToken, locale);
 }
 
 export function startPortal(): Promise<{ portal_url: string }> {

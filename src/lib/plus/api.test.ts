@@ -37,15 +37,29 @@ describe("requestMagicLink", () => {
   it("asks for an app link and never sends a session", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ accepted: true }, 202));
 
-    await requestMagicLink("Someone@Example.com ");
+    await requestMagicLink("Someone@Example.com ", "de");
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(`${API_ORIGIN}/v1/auth/magic-link/request`);
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ email: "Someone@Example.com", client: "app" });
+    expect(JSON.parse(init.body)).toEqual({
+      email: "Someone@Example.com",
+      client: "app",
+      locale: "de",
+    });
     // Die App authentifiziert sich per Bearer · Cookies gehören der Website.
     expect(init.credentials).toBe("omit");
     expect(init.headers.Authorization).toBeUndefined();
+  });
+
+  // Ohne diese Angabe fiele die API auf Accept-Language und damit auf die
+  // Sprache des Betriebssystems zurück · die Mail käme in der falschen.
+  it("carries whichever language Kiebitz is set to", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ accepted: true }, 202));
+
+    await requestMagicLink("someone@example.com", "ar");
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).locale).toBe("ar");
   });
 });
 
@@ -88,9 +102,25 @@ describe("createCheckout", () => {
       jsonResponse({ checkout_url: "https://checkout.stripe.com/x", trial_days: 7 }, 201)
     );
 
-    const session = await createCheckout("token");
+    const session = await createCheckout("token", "en");
 
     expect(session).toEqual({ checkout_url: "https://checkout.stripe.com/x", trial_days: 7 });
+  });
+
+  // Dieselbe Sprache bestimmt die Stripe-Seite und die Vertragsbestätigung,
+  // die Stripe später auslöst · sie muss vollständig im Rumpf stehen.
+  it("sends nothing but the selected language", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ checkout_url: "https://checkout.stripe.com/x", trial_days: 0 }, 201)
+    );
+
+    await createCheckout("session-token", "zh");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_ORIGIN}/v1/billing/stripe/checkout`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ locale: "zh" });
+    expect(init.headers.Authorization).toBe("Bearer session-token");
   });
 
   it("surfaces an existing subscription as its own code", async () => {
@@ -98,7 +128,7 @@ describe("createCheckout", () => {
       jsonResponse({ error: { code: "stripe_subscription_exists", message: "" } }, 409)
     );
 
-    const error = await createCheckout("token").catch((e) => e);
+    const error = await createCheckout("token", "en").catch((e) => e);
 
     expect(error.code).toBe("stripe_subscription_exists");
   });

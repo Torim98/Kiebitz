@@ -8,6 +8,7 @@
  * Die App authentifiziert sich mit `Authorization: Bearer <token>`. Das
  * Cookie-/CSRF-Modell gilt ausschließlich für die Website.
  */
+import type { Locale } from "../i18n";
 import type {
   AppSession,
   CheckoutSession,
@@ -100,11 +101,19 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 /**
  * Magic-Link anfordern. Der Link öffnet `kiebitz://auth?code=…`; ein zweiter
  * Aufruf für dieselbe Adresse entwertet den vorherigen Link.
+ *
+ * `locale` ist die in Kiebitz eingestellte Sprache, nicht die des
+ * Betriebssystems: Wer die App auf Französisch bedient, soll die Mail auf
+ * Französisch bekommen, auch auf einem englischen Windows.
  */
-export function requestMagicLink(email: string, signal?: AbortSignal): Promise<{ accepted: boolean }> {
+export function requestMagicLink(
+  email: string,
+  locale: Locale,
+  signal?: AbortSignal
+): Promise<{ accepted: boolean }> {
   return apiRequest<{ accepted: boolean }>("/v1/auth/magic-link/request", {
     method: "POST",
-    body: { email: email.trim(), client: "app" },
+    body: { email: email.trim(), client: "app", locale },
     signal,
   });
 }
@@ -134,9 +143,19 @@ export function logoutSession(token: string, signal?: AbortSignal): Promise<void
   return apiRequest<void>("/v1/auth/logout", { method: "POST", token, signal });
 }
 
-export function createCheckout(token: string, signal?: AbortSignal): Promise<CheckoutSession> {
+/**
+ * Checkout eröffnen. Die Sprache bestimmt sowohl die Stripe-Seite als auch die
+ * spätere Vertragsbestätigung · deshalb reist sie mit, statt dass der Server
+ * aus einem Accept-Language-Kopf raten muss.
+ */
+export function createCheckout(
+  token: string,
+  locale: Locale,
+  signal?: AbortSignal
+): Promise<CheckoutSession> {
   return apiRequest<CheckoutSession>("/v1/billing/stripe/checkout", {
     method: "POST",
+    body: { locale },
     token,
     signal,
   });

@@ -22,7 +22,7 @@ import {
 import { Button } from "../../components/ui";
 import { dateLocale } from "../../lib/format";
 import { errorMessage } from "../../lib/errors";
-import { useT } from "../../lib/i18n";
+import { useI18n, useT } from "../../lib/i18n";
 import { openExternal } from "../../lib/ext";
 import { PlusApiError, renewingProvidersOf } from "../../lib/plus/api";
 import { PLAY_SUBSCRIPTIONS_URL, PROVIDER_KEY, maskEmail } from "../../lib/plus/labels";
@@ -62,7 +62,11 @@ function formatDate(iso: number | null, locale: string): string | null {
 export default function PlusSection() {
   const t = useT();
   const plus = usePlus();
+  // Zwei verschiedene Dinge: `locale` formatiert Datum und Uhrzeit, `uiLocale`
+  // ist die in Kiebitz gewählte Sprache und bestimmt, worin Anmeldemail,
+  // Stripe-Seite und Vertragsbestätigung verfasst werden.
   const locale = dateLocale();
+  const { locale: uiLocale } = useI18n();
 
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
@@ -99,7 +103,7 @@ export default function PlusSection() {
     setError(null);
     setMessage(null);
     try {
-      await requestSignInLink(address);
+      await requestSignInLink(address, uiLocale);
       if (!mounted.current) return;
       setSentTo(address);
     } catch (e) {
@@ -119,7 +123,7 @@ export default function PlusSection() {
     setError(null);
     setMessage(null);
     try {
-      const session = await startCheckout();
+      const session = await startCheckout(uiLocale);
       openExternal(session.checkout_url);
       pollAfterReturn();
       setMessage(
