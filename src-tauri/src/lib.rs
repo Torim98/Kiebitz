@@ -300,7 +300,6 @@ pub fn run() {
     if reminder::run_headless("de.torim.kiebitz") {
         return;
     }
-    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
 
     // Muss vor allen anderen Plugins stehen · und vor allem vor dem
@@ -321,6 +320,62 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }));
+    }
+
+    // Alle Plugins gehören an den Builder, nicht in den Setup-Hook · auf Android
+    // hängt sonst die App beim Start schwarz.
+    //
+    // Tauri baut in `setup()` zuerst die Fenster aus der Konfiguration und ruft
+    // erst danach unseren Hook auf. Der WebView lädt zu diesem Zeitpunkt schon
+    // seine Startseite und fragt dabei aus dem Android-UI-Thread heraus per JNI
+    // in Rust zurück (`shouldOverride`). `register_android_plugin` schickt
+    // seinerseits Arbeit auf genau diesen UI-Thread und wartet blockierend auf
+    // das Ergebnis. Beide warten dann aufeinander: Der UI-Thread kommt nicht aus
+    // dem Callback, unser Thread nicht aus der Registrierung, die Seite wird nie
+    // geladen — sichtbar bleibt die Hintergrundfarbe des Fensters.
+    //
+    // Am Builder registrierte Plugins richtet Tauri dagegen in `build()` ein,
+    // bevor das erste Fenster existiert. Dann ist der UI-Thread frei und die
+    // Registrierung kehrt sofort zurück.
+    builder = builder
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        // Anmeldung per Magic-Link: Die API bietet nach dem Bestätigen
+        // `kiebitz://auth?code=…` an, das Betriebssystem reicht die URL an
+        // diese Instanz weiter. Android registriert das Schema über den
+        // Intent-Filter im Manifest; auf dem Desktop übernimmt das der
+        // Installer, und die Laufzeitregistrierung im Setup deckt zusätzlich
+        // portable Starts und die Entwicklung ab.
+        .plugin(tauri_plugin_deep_link::init());
+
+    // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.
+    #[cfg(mobile)]
+    {
+        builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        builder = builder
+            // Android rendert Werbung als native Google-AdView über dem vom
+            // React-Layout reservierten Platz. Desktop verwendet keinen
+            // Google-Code, weil AdSense in Desktopsoftware nicht zulässig ist.
+            .plugin(ads::init())
+            // Konto- und Entitlement-Token liegen auf Android im Keystore.
+            .plugin(plus::init())
+            // Homescreen-Widgets · nur Android, und ausdrücklich nur dort.
+            .plugin(widgets::init())
+            // Kiebitz Plus auf Android kauft man über Google Play, nicht über
+            // Stripe · so verlangt es Google für digitale Inhalte in der App.
+            .plugin(billing::init());
+        // Die Play-In-App-Review-API existiert nur im Play-Build. Der
+        // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
+        // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
+        #[cfg(feature = "play-store")]
+        {
+            builder = builder.plugin(review::init());
+        }
     }
 
     builder
@@ -347,16 +402,6 @@ pub fn run() {
                     log::warn!("Log-Plugin nicht registriert: {e}");
                 }
             }
-            app.handle().plugin(tauri_plugin_opener::init())?;
-            app.handle().plugin(tauri_plugin_dialog::init())?;
-            app.handle().plugin(tauri_plugin_notification::init())?;
-            // Anmeldung per Magic-Link: Die API bietet nach dem Bestätigen
-            // `kiebitz://auth?code=…` an, das Betriebssystem reicht die URL an
-            // diese Instanz weiter. Android registriert das Schema über den
-            // Intent-Filter im Manifest; auf dem Desktop übernimmt das der
-            // Installer, und die Laufzeitregistrierung deckt zusätzlich
-            // portable Starts und die Entwicklung ab.
-            app.handle().plugin(tauri_plugin_deep_link::init())?;
             #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -375,35 +420,6 @@ pub fn run() {
                     .ok()
                     .map(|d| d.join("icons/icon.ico")),
             );
-
-            // QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops.
-            #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
-
-            // Android rendert Werbung als native Google-AdView über dem vom
-            // React-Layout reservierten Platz. Desktop verwendet keinen
-            // Google-Code, weil AdSense in Desktopsoftware nicht zulässig ist.
-            #[cfg(target_os = "android")]
-            app.handle().plugin(ads::init())?;
-
-            // Konto- und Entitlement-Token liegen auf Android im Keystore.
-            #[cfg(target_os = "android")]
-            app.handle().plugin(plus::init())?;
-
-            // Homescreen-Widgets · nur Android, und ausdrücklich nur dort.
-            #[cfg(target_os = "android")]
-            app.handle().plugin(widgets::init())?;
-
-            // Kiebitz Plus auf Android kauft man über Google Play, nicht über
-            // Stripe · so verlangt es Google für digitale Inhalte in der App.
-            #[cfg(target_os = "android")]
-            app.handle().plugin(billing::init())?;
-
-            // Die Play-In-App-Review-API existiert nur im Play-Build. Der
-            // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
-            // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
-            #[cfg(all(target_os = "android", feature = "play-store"))]
-            app.handle().plugin(review::init())?;
 
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
