@@ -161,6 +161,27 @@ export function createCheckout(
   });
 }
 
+/**
+ * Ein Google-Play-Kauf dem Konto zuordnen.
+ *
+ * Der Client schickt nur das Token. Ob daraus Plus wird, prüft die API gegen
+ * Google · eine App, die sich selbst freischalten könnte, wäre keine
+ * Freischaltung. Antwort ist 204, der neue Stand kommt aus dem nächsten
+ * Entitlement.
+ */
+export function verifyGooglePlayPurchase(
+  token: string,
+  purchaseToken: string,
+  signal?: AbortSignal
+): Promise<void> {
+  return apiRequest<void>("/v1/purchases/google-play/verify", {
+    method: "POST",
+    body: { purchase_token: purchaseToken },
+    token,
+    signal,
+  });
+}
+
 export function createPortalSession(token: string, signal?: AbortSignal): Promise<PortalSession> {
   return apiRequest<PortalSession>("/v1/billing/stripe/portal", {
     method: "POST",

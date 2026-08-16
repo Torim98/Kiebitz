@@ -24,7 +24,9 @@ import {
   fetchJwks,
   logoutSession,
   requestMagicLink,
+  verifyGooglePlayPurchase,
 } from "./api";
+import { acknowledgePurchase, playPurchaseTokens, purchasePlus } from "./billing";
 import type { Locale } from "../i18n";
 import { deleteSecret, readSecret, writeSecret } from "./storage";
 import { claimsStillValid, verifyEntitlementToken } from "./token";
@@ -267,6 +269,58 @@ export async function deletePlusAccount(): Promise<void> {
 export function startCheckout(locale: Locale): Promise<CheckoutSession> {
   if (!sessionToken) throw new PlusApiError(401, "authentication_required", "not signed in");
   return createCheckout(sessionToken, locale);
+}
+
+/**
+ * Kiebitz Plus über Google Play kaufen.
+ *
+ * Die Reihenfolge ist die ganze Sicherheit dieser Funktion: kaufen, von der
+ * API gegen Google prüfen lassen, erst dann gegenüber Google bestätigen. Wer
+ * zuerst bestätigt und danach prüft, verschenkt die einzige Rückholung, die
+ * Google vorsieht · ein unbestätigter Kauf wird nach drei Tagen erstattet.
+ */
+export async function purchaseWithGooglePlay(): Promise<"purchased" | "pending" | "cancelled"> {
+  if (!sessionToken) throw new PlusApiError(401, "authentication_required", "not signed in");
+  const accountId = state.account?.id ?? "";
+  const outcome = await purchasePlus(accountId);
+  if (outcome.state === "cancelled" || !outcome.purchase_token) return "cancelled";
+
+  await verifyGooglePlayPurchase(sessionToken, outcome.purchase_token);
+  if (outcome.state === "purchased") {
+    // Scheitert nur die Bestätigung, ist Plus trotzdem zugeordnet · das
+    // Wiederherstellen holt sie beim nächsten Mal nach.
+    await acknowledgePurchase(outcome.purchase_token).catch(() => {});
+  }
+  await refreshEntitlement({ force: true });
+  return outcome.state;
+}
+
+/**
+ * Vorhandene Play-Käufe erneut zuordnen.
+ *
+ * Nach einem Gerätewechsel, einer Neuinstallation oder einer abgebrochenen
+ * Zuordnung kennt Google den Kauf weiterhin. Gibt die Zahl der Käufe zurück,
+ * die die API angenommen hat.
+ *
+ * Ein einzelnes Token, das die API zurückweist, bricht den Vorgang nicht ab:
+ * In einem Play-Konto können Abos anderer Apps oder abgelaufene Käufe liegen,
+ * und deretwegen soll ein gültiger Kauf daneben nicht liegen bleiben.
+ */
+export async function restoreGooglePlayPurchases(): Promise<number> {
+  if (!sessionToken) throw new PlusApiError(401, "authentication_required", "not signed in");
+  const tokens = await playPurchaseTokens();
+  let restored = 0;
+  for (const purchaseToken of tokens) {
+    try {
+      await verifyGooglePlayPurchase(sessionToken, purchaseToken);
+      await acknowledgePurchase(purchaseToken).catch(() => {});
+      restored += 1;
+    } catch {
+      // Nicht unser Produkt oder nicht mehr gültig · der nächste Kauf zählt.
+    }
+  }
+  if (restored > 0) await refreshEntitlement({ force: true });
+  return restored;
 }
 
 export function startPortal(): Promise<{ portal_url: string }> {

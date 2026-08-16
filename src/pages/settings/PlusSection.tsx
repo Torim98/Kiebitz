@@ -26,11 +26,14 @@ import { useI18n, useT } from "../../lib/i18n";
 import { openExternal } from "../../lib/ext";
 import { PlusApiError, renewingProvidersOf } from "../../lib/plus/api";
 import { PLAY_SUBSCRIPTIONS_URL, PROVIDER_KEY, maskEmail } from "../../lib/plus/labels";
+import { billingAvailable } from "../../lib/plus/billing";
 import {
   deletePlusAccount,
   pollAfterReturn,
+  purchaseWithGooglePlay,
   refreshEntitlement,
   requestSignInLink,
+  restoreGooglePlayPurchases,
   signOut,
   startCheckout,
   startPortal,
@@ -73,7 +76,18 @@ export default function PlusSection() {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"checkout" | "portal" | "logout" | "delete" | null>(null);
+  const [busy, setBusy] = useState<
+    "checkout" | "portal" | "logout" | "delete" | "restore" | null
+  >(null);
+  /**
+   * Steht Google Play Billing bereit? `null`, solange das noch offen ist.
+   *
+   * Google verlangt für digitale Inhalte innerhalb der App seinen eigenen
+   * Bezahlweg. Wo Play antwortet, verschwindet der Stripe-Checkout deshalb
+   * vollständig · beide nebeneinander anzubieten wäre der klassische
+   * Ablehnungsgrund im Review.
+   */
+  const [playBilling, setPlayBilling] = useState<boolean | null>(null);
   const [showEmail, setShowEmail] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [blockedProviders, setBlockedProviders] = useState<string[]>([]);
@@ -81,6 +95,12 @@ export default function PlusSection() {
   const mounted = useRef(true);
   useEffect(() => () => {
     mounted.current = false;
+  }, []);
+
+  useEffect(() => {
+    void billingAvailable().then((available) => {
+      if (mounted.current) setPlayBilling(available);
+    });
   }, []);
 
   const trialUntil = useMemo(
@@ -118,21 +138,50 @@ export default function PlusSection() {
     }
   };
 
+  /**
+   * Kaufen · über Google Play, wo es Google Play gibt, sonst über Stripe.
+   *
+   * Die Play-Seite nennt Preis, Testzeitraum und Kündigung selbst. Kiebitz
+   * verspricht deshalb vorher keinen Testzeitraum: Ob dieses Play-Konto ihn
+   * noch bekommt, weiß nur Google.
+   */
   const openCheckout = async () => {
     setBusy("checkout");
     setError(null);
     setMessage(null);
     try {
-      const session = await startCheckout(uiLocale);
-      openExternal(session.checkout_url);
-      pollAfterReturn();
-      setMessage(
-        session.trial_days > 0
-          ? t("plus.checkoutTrial", { n: session.trial_days })
-          : t("plus.checkoutOpened")
-      );
+      if (playBilling) {
+        const outcome = await purchaseWithGooglePlay();
+        if (!mounted.current) return;
+        if (outcome === "pending") setMessage(t("plus.purchasePending"));
+      } else {
+        const session = await startCheckout(uiLocale);
+        openExternal(session.checkout_url);
+        pollAfterReturn();
+        setMessage(
+          session.trial_days > 0
+            ? t("plus.checkoutTrial", { n: session.trial_days })
+            : t("plus.checkoutOpened")
+        );
+      }
     } catch (e) {
-      setError(errorMessage(e));
+      if (mounted.current) setError(errorMessage(e));
+    } finally {
+      if (mounted.current) setBusy(null);
+    }
+  };
+
+  /** Der Weg zurück nach Gerätewechsel, Neuinstallation oder Abbruch. */
+  const restorePurchases = async () => {
+    setBusy("restore");
+    setError(null);
+    setMessage(null);
+    try {
+      const restored = await restoreGooglePlayPurchases();
+      if (!mounted.current) return;
+      setMessage(restored > 0 ? t("plus.restored") : t("plus.restoreNone"));
+    } catch (e) {
+      if (mounted.current) setError(errorMessage(e));
     } finally {
       if (mounted.current) setBusy(null);
     }
@@ -332,14 +381,29 @@ export default function PlusSection() {
           )}
 
           <div className="flex flex-wrap gap-2">
-            {!plus.isPlus && (
+            {/* Solange offen ist, welcher Bezahlweg gilt, erscheint keiner ·
+                ein Knopf, der gleich seine Beschriftung wechselt, ist
+                schlimmer als ein Knopf, der einen Moment später kommt. */}
+            {!plus.isPlus && playBilling !== null && (
               <Button primary onClick={openCheckout} disabled={busy === "checkout"}>
                 {busy === "checkout" ? (
                   <Loader2 size={14} className="animate-spin" />
                 ) : (
                   <Sparkles size={14} />
                 )}
-                {plus.trialEligible ? t("plus.startTrial") : t("plus.subscribe")}
+                {/* Über Google Play nennt die Play-Seite den Testzeitraum ·
+                    was Kiebitz über die Berechtigung weiß, gilt nur für Stripe. */}
+                {!playBilling && plus.trialEligible ? t("plus.startTrial") : t("plus.subscribe")}
+              </Button>
+            )}
+            {playBilling && (
+              <Button onClick={restorePurchases} disabled={busy === "restore"}>
+                {busy === "restore" ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                {t("plus.restore")}
               </Button>
             )}
             {providers.includes("stripe") && (

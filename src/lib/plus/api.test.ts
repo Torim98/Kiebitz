@@ -13,6 +13,7 @@ import {
   fetchEntitlement,
   renewingProvidersOf,
   requestMagicLink,
+  verifyGooglePlayPurchase,
 } from "./api";
 
 const fetchMock = vi.fn();
@@ -131,6 +132,22 @@ describe("createCheckout", () => {
     const error = await createCheckout("token", "en").catch((e) => e);
 
     expect(error.code).toBe("stripe_subscription_exists");
+  });
+});
+
+describe("verifyGooglePlayPurchase", () => {
+  // Der Client schickt das Token und sonst nichts · was daraus für die
+  // Berechtigung folgt, prüft die API gegen Google.
+  it("hands the purchase token to the API and nothing else", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await verifyGooglePlayPurchase("session-token", "play-purchase-token");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API_ORIGIN}/v1/purchases/google-play/verify`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ purchase_token: "play-purchase-token" });
+    expect(init.headers.Authorization).toBe("Bearer session-token");
   });
 });
 

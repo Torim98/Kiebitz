@@ -142,6 +142,43 @@ Notes:
   release (see below). Stockfish upgrades change the pins once and then run
   `npm run pins:sync`; workflows and local scripts read those pins directly.
 
+## Kiebitz Plus on Android
+
+Google requires its own payment flow for digital content bought inside the app,
+so on Android Kiebitz Plus is sold through **Google Play Billing**. Wherever
+Play answers, the Stripe checkout disappears from the interface entirely —
+offering both side by side is the classic reason a review is rejected. Stripe
+stays the route on desktop and on the website.
+
+The pieces:
+
+```text
+src-tauri/gen/android/.../BillingPlugin.kt   purchase, restore, acknowledge
+src-tauri/src/billing.rs                     Tauri bridge; a no-op off Android
+src/lib/plus/billing.ts                      the JS side and the product id
+src/lib/plus/store.ts                         purchaseWithGooglePlay, restoreGooglePlayPurchases
+```
+
+The order inside `purchaseWithGooglePlay` is the security of the whole flow:
+buy, let the API verify the token against Google, and only then acknowledge to
+Google. Acknowledging first would give away the one refund Google performs by
+itself — an unacknowledged purchase is refunded after three days, which is
+exactly what should happen if the purchase could not be linked to an account.
+A pending payment is therefore linked but deliberately not acknowledged.
+
+The client never decides what Plus means. It hands over a token; the entitlement
+comes back signed from the API.
+
+`PLUS_PRODUCT_ID` in `src/lib/plus/billing.ts` must match the subscription's
+product id in the Play Console. The price lives in Play and nowhere in the code.
+Whether a trial is offered is Google's decision, which is why the Android button
+never promises one — the Play sheet states the actual offer.
+
+Restoring is the way back after a device change, a reinstall, or a purchase that
+never got linked: Google still knows the purchase and the tokens are sent for
+verification again. A foreign or expired token in the same Play account is
+stepped over rather than aborting the run.
+
 ## Android build (APK)
 
 The Android app reuses the same Rust core and React frontend. A tagged release

@@ -6,10 +6,24 @@
  * Provider abhängen · das ist die wichtigste Zusage dieser Datei.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Der native Teil braucht Google Play und ein Gerät · hier zählt, was die
+// Reihenfolge daraus macht.
+vi.mock("./billing", () => ({
+  PLUS_PRODUCT_ID: "kiebitz_plus",
+  billingAvailable: vi.fn(async () => true),
+  purchasePlus: vi.fn(),
+  playPurchaseTokens: vi.fn(),
+  acknowledgePurchase: vi.fn(),
+}));
+
+import { acknowledgePurchase, playPurchaseTokens, purchasePlus } from "./billing";
 import {
   featureUnlocked,
+  purchaseWithGooglePlay,
   requestSignInLink,
   resetPlusStore,
+  restoreGooglePlayPurchases,
   signInWithCode,
   startCheckout,
   type PlusState,
@@ -168,5 +182,110 @@ describe("the selected language reaches the API", () => {
     await startCheckout("hi");
 
     expect(bodyOf("/v1/billing/stripe/checkout")).toEqual({ locale: "hi" });
+  });
+});
+
+/**
+ * Der Play-Kauf.
+ *
+ * Die Reihenfolge ist hier keine Stilfrage: Ein gegenüber Google bestätigter
+ * Kauf lässt sich nicht mehr automatisch erstatten. Wer bestätigt, bevor die
+ * API den Kauf einem Konto zuordnen konnte, hat für Geld nichts geliefert und
+ * merkt es erst im Support.
+ */
+describe("buying through Google Play", () => {
+  const fetchMock = vi.fn();
+  /** Was in welcher Reihenfolge passiert ist. */
+  let order: string[];
+
+  beforeEach(async () => {
+    resetPlusStore();
+    resetSecretFallback();
+    order = [];
+    fetchMock.mockReset();
+    vi.mocked(purchasePlus).mockReset();
+    vi.mocked(playPurchaseTokens).mockReset();
+    vi.mocked(acknowledgePurchase).mockReset();
+    vi.mocked(acknowledgePurchase).mockImplementation(async (token: string) => {
+      order.push(`acknowledge:${token}`);
+      return true;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Eine Sitzung herstellen · die Aktualisierung danach scheitert bewusst am
+    // fehlenden signierten Token und ändert daran nichts.
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).endsWith("/v1/auth/magic-link/consume")
+          ? new Response(JSON.stringify({ access_token: "session-token" }), { status: 201 })
+          : new Response("{}", { status: 200 })
+      )
+    );
+    await signInWithCode("one-time-code");
+
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((url: string, init: RequestInit) => {
+      if (String(url).endsWith("/v1/purchases/google-play/verify")) {
+        const body = JSON.parse(String(init.body)) as { purchase_token: string };
+        order.push(`verify:${body.purchase_token}`);
+        // Ein fremdes Token weist die API zurück · das darf den Rest nicht
+        // aufhalten.
+        return Promise.resolve(
+          body.purchase_token === "foreign"
+            ? new Response(JSON.stringify({ error: { code: "invalid_purchase_token" } }), { status: 400 })
+            : new Response(null, { status: 204 })
+        );
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetPlusStore();
+    resetSecretFallback();
+  });
+
+  it("lets the API confirm the purchase before Google is told to keep the money", async () => {
+    vi.mocked(purchasePlus).mockResolvedValue({ state: "purchased", purchase_token: "tok" });
+
+    expect(await purchaseWithGooglePlay()).toBe("purchased");
+
+    expect(order).toEqual(["verify:tok", "acknowledge:tok"]);
+  });
+
+  it("does not acknowledge a payment Google has not settled yet", async () => {
+    vi.mocked(purchasePlus).mockResolvedValue({ state: "pending", purchase_token: "tok" });
+
+    expect(await purchaseWithGooglePlay()).toBe("pending");
+
+    // Zugeordnet ja, bestätigt nein: Bleibt die Zahlung aus, soll Google den
+    // Kauf von selbst zurücknehmen.
+    expect(order).toEqual(["verify:tok"]);
+  });
+
+  it("treats a cancelled dialog as nothing having happened", async () => {
+    vi.mocked(purchasePlus).mockResolvedValue({ state: "cancelled", purchase_token: null });
+
+    expect(await purchaseWithGooglePlay()).toBe("cancelled");
+
+    expect(order).toEqual([]);
+  });
+
+  it("restores what belongs to this account and steps over what does not", async () => {
+    vi.mocked(playPurchaseTokens).mockResolvedValue(["foreign", "mine"]);
+
+    expect(await restoreGooglePlayPurchases()).toBe(1);
+
+    // Das zurückgewiesene Token wird nicht bestätigt, das gültige schon · und
+    // ein fremdes Abo im selben Play-Konto hält den Vorgang nicht auf.
+    expect(order).toEqual(["verify:foreign", "verify:mine", "acknowledge:mine"]);
+  });
+
+  it("reports no purchase rather than pretending to have found one", async () => {
+    vi.mocked(playPurchaseTokens).mockResolvedValue([]);
+
+    expect(await restoreGooglePlayPurchases()).toBe(0);
+    expect(order).toEqual([]);
   });
 });

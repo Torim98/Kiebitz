@@ -1,5 +1,6 @@
 mod ads;
 mod analysis;
+mod billing;
 mod build_info;
 mod chess;
 mod chessdb;
@@ -370,6 +371,11 @@ pub fn run() {
             #[cfg(target_os = "android")]
             app.handle().plugin(widgets::init())?;
 
+            // Kiebitz Plus auf Android kauft man über Google Play, nicht über
+            // Stripe · so verlangt es Google für digitale Inhalte in der App.
+            #[cfg(target_os = "android")]
+            app.handle().plugin(billing::init())?;
+
             // Die Play-In-App-Review-API existiert nur im Play-Build. Der
             // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
             // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
@@ -518,6 +524,10 @@ pub fn run() {
             plus::plus_secret_set,
             plus::plus_secret_delete,
             widgets::widget_snapshot_write,
+            billing::billing_available,
+            billing::billing_purchase,
+            billing::billing_restore,
+            billing::billing_acknowledge,
             chessdb::chessdb_query,
             endgame::endgame_move,
             endgame::endgame_record,

@@ -17,7 +17,8 @@ import {
   FEATURE_NAME_KEY,
   FEATURE_ORDER,
 } from "../lib/plus/labels";
-import { pollAfterReturn, startCheckout } from "../lib/plus/store";
+import { billingAvailable } from "../lib/plus/billing";
+import { pollAfterReturn, purchaseWithGooglePlay, startCheckout } from "../lib/plus/store";
 import { usePlus } from "../lib/plus/usePlus";
 import { isPlusOnlyFeature, type PlusFeature } from "../lib/plus/types";
 import { Button } from "./ui";
@@ -33,6 +34,8 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Wo Google Play antwortet, laeuft der Kauf dort · siehe PlusSection.
+  const [playBilling, setPlayBilling] = useState<boolean | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
@@ -46,6 +49,16 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
       }),
     []
   );
+
+  useEffect(() => {
+    let alive = true;
+    void billingAvailable().then((available) => {
+      if (alive) setPlayBilling(available);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Escape schließt · derselbe Griff wie bei den übrigen Dialogen der App.
   useEffect(() => {
@@ -101,6 +114,11 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
     setBusy(true);
     setError(null);
     try {
+      if (playBilling) {
+        const outcome = await purchaseWithGooglePlay();
+        if (outcome === "pending") setNotice(t("plus.purchasePending"));
+        return;
+      }
       const session = await startCheckout(locale);
       openExternal(session.checkout_url);
       // Der Webhook trifft asynchron ein · ab jetzt kurz nachfragen.
@@ -117,10 +135,10 @@ export default function PlusDialog({ openSettings }: { openSettings?: () => void
     }
   };
 
-  const cta = plus.isPlus ? null : plus.signedIn ? (
+  const cta = plus.isPlus || playBilling === null ? null : plus.signedIn ? (
     <Button primary onClick={buy} disabled={busy}>
       {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-      {plus.trialEligible ? t("plus.startTrial") : t("plus.subscribe")}
+      {!playBilling && plus.trialEligible ? t("plus.startTrial") : t("plus.subscribe")}
     </Button>
   ) : (
     <Button

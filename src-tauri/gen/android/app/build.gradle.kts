@@ -155,6 +155,10 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
+    // Kiebitz Plus auf Android. Google Play verlangt für digitale Inhalte
+    // innerhalb der App seinen eigenen Bezahlweg; der Stripe-Checkout bleibt
+    // deshalb Desktop und Website vorbehalten.
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
     // Homescreen-Widgets. Glance ist der aktuelle Weg zu App-Widgets und
     // bringt responsive Größen, dynamische Farben und Deep-Link-Aktionen mit.
     implementation("androidx.glance:glance-appwidget:1.1.1")
