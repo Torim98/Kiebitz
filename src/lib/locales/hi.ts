@@ -1391,7 +1391,6 @@ export const hi: Record<Key, string> = {
   "plus.refresh": "ताज़ा करें",
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
-  "plus.planTrial": "Plus · परीक्षण",
   "plus.planLabel": "मौजूदा योजना: {p}",
   "plus.statusLabel": "स्थिति",
   "plus.statusGrace": "भुगतान लंबित · Plus फ़िलहाल चलता रहेगा।",

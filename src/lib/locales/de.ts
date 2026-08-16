@@ -1417,7 +1417,6 @@ export const de = {
   "plus.refresh": "Aktualisieren",
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
-  "plus.planTrial": "Plus · Test",
   "plus.planLabel": "Aktuelles Modell: {p}",
   "plus.statusLabel": "Status",
   "plus.statusGrace": "Zahlung offen · Plus läuft vorerst weiter.",

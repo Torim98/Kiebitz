@@ -244,11 +244,10 @@ export default function PlusSection() {
     }
   };
 
-  const planLabel = plus.isPlus
-    ? plus.isTrial
-      ? t("plus.planTrial")
-      : t("plus.planPlus")
-    : t("plus.planFree");
+  // Nur das Modell, wie im Abzeichen der Hülle: Wer testet, hat Plus. Wie lange
+  // noch, steht zwei Zeilen tiefer als eigene Angabe · dort, wo man es sucht,
+  // und nicht als zweites Wort in einer Pille.
+  const planLabel = plus.isPlus ? t("plus.planPlus") : t("plus.planFree");
 
   if (plus.loading) {
     return (

@@ -1391,7 +1391,6 @@ export const fr: Record<Key, string> = {
   "plus.refresh": "Actualiser",
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
-  "plus.planTrial": "Plus · essai",
   "plus.planLabel": "Formule actuelle : {p}",
   "plus.statusLabel": "Statut",
   "plus.statusGrace": "Paiement en attente · Plus continue pour l’instant.",
