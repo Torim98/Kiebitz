@@ -1392,6 +1392,7 @@ export const ar: Record<Key, string> = {
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
   "plus.planTrial": "‏Plus · تجربة",
+  "plus.planLabel": "الخطة الحالية: {p}",
   "plus.statusLabel": "الحالة",
   "plus.statusGrace": "دفعة معلّقة · يستمر Plus مؤقتًا.",
   "plus.trialUntilLabel": "تستمر التجربة حتى",

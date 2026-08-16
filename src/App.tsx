@@ -43,6 +43,7 @@ import {
 } from "./components/MobileShell";
 import type { EndgameCategory } from "./data/endgames";
 import AdBanner from "./components/AdBanner";
+import PlanBadge from "./components/PlanBadge";
 import PlusDialog from "./components/PlusDialog";
 import { installDeepLinks } from "./lib/plus/deepLink";
 import { startWidgetSnapshots } from "./lib/widgets";
@@ -378,8 +379,11 @@ export default function App() {
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
           <Bird size={20} />
         </span>
-        <div>
-          <div className="text-[15px] font-semibold tracking-tight">Kiebitz</div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+            <PlanBadge />
+          </div>
           <div className="text-[11px] text-ink3">{t("app.tagline")}</div>
         </div>
       </div>
@@ -616,6 +620,7 @@ export default function App() {
             <Bird size={17} />
           </span>
           <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+          <PlanBadge compact />
         </div>
         <button
           onClick={() => setNavOpen(true)}

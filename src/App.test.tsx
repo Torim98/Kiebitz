@@ -96,11 +96,13 @@ describe("mobile navigation", () => {
     const header = container.querySelector("header") as HTMLElement;
     const bar = within(header);
     // Die Marke steht auf jedem Tab; auf dem Start ergänzt sie der Claim.
-    expect(header.textContent).toBe("Kiebitz · Zug um Zugvogel");
+    expect(header.textContent).toContain("Kiebitz · Zug um Zugvogel");
+    // Daneben steht das Modell · ohne Konto ist das Free.
+    expect(bar.getByLabelText("Aktuelles Modell: Free")).toBeTruthy();
     expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Partien" }));
-    expect(header.textContent).toBe("Kiebitz · Partien");
+    expect(header.textContent).toContain("Kiebitz · Partien");
     // Hauptziele erreicht man über die Leiste · dort ist kein Pfeil nötig.
     expect(bar.queryByRole("button", { name: "Zurück" })).toBeNull();
   });
@@ -192,7 +194,9 @@ describe("back navigation", () => {
     render(<LocaleProvider><App /></LocaleProvider>);
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Partien" }));
-    expect(pageTitle()).toBe("Games");
+    // Die Seiten werden nachgeladen · erst abwarten, dann prüfen. Ohne das
+    // hängt der Test daran, ob ein früherer ihn zufällig vorgewärmt hat.
+    await waitFor(() => expect(pageTitle()).toBe("Games"));
     expect(window.history.state).toEqual({ kd: 2 });
 
     window.history.back();

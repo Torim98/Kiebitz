@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import { useT, type Key } from "../lib/i18n";
 import type { PageId } from "../lib/nav";
+import PlanBadge from "./PlanBadge";
 
 export interface NavItem {
   id: PageId;
@@ -88,6 +89,9 @@ export function MobileAppBar({
         <span className="font-semibold">Kiebitz</span>
         <span className="text-ink3"> · {title ?? t("app.tagline")}</span>
       </span>
+      {/* Welches Modell gerade gilt, gehört neben die Marke · nicht erst in die
+          Einstellungen, wo man es suchen müsste. */}
+      <PlanBadge compact />
       <button
         onClick={onSettings}
         aria-label={t("nav.settings")}

@@ -1397,6 +1397,7 @@ export const en: Record<Key, string> = {
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
   "plus.planTrial": "Plus · trial",
+  "plus.planLabel": "Current plan: {p}",
   "plus.statusLabel": "Status",
   "plus.statusGrace": "Payment outstanding · Plus keeps running for now.",
   "plus.trialUntilLabel": "Trial runs until",

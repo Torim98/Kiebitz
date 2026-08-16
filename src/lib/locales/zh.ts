@@ -1392,6 +1392,7 @@ export const zh: Record<Key, string> = {
   "plus.planFree": "Free",
   "plus.planPlus": "Plus",
   "plus.planTrial": "Plus · 试用",
+  "plus.planLabel": "当前方案：{p}",
   "plus.statusLabel": "状态",
   "plus.statusGrace": "有一笔付款未完成 · Plus 暂时继续有效。",
   "plus.trialUntilLabel": "试用截止",
