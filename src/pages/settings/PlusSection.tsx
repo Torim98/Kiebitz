@@ -308,23 +308,28 @@ export default function PlusSection() {
               {plus.isPlus && <Sparkles size={11} />}
               {planLabel}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink2">
-              {plus.account
-                ? showEmail
-                  ? plus.account.email
-                  : maskEmail(plus.account.email)
-                : t("plus.accountUnknown")}
+            {/* Auf schmalen Geräten bekommt die Adresse eine eigene Zeile ·
+                zwischen Abzeichen und Knopf blieben sonst zehn Zeichen übrig,
+                und eine Adresse, die man nicht lesen kann, ist keine. */}
+            <span className="order-last flex min-w-0 basis-full items-center gap-1.5 min-[560px]:order-none min-[560px]:basis-auto min-[560px]:flex-1">
+              <span className="min-w-0 flex-1 break-all text-[12.5px] text-ink2 min-[560px]:truncate min-[560px]:break-normal">
+                {plus.account
+                  ? showEmail
+                    ? plus.account.email
+                    : maskEmail(plus.account.email)
+                  : t("plus.accountUnknown")}
+              </span>
+              {plus.account && (
+                <button
+                  type="button"
+                  onClick={() => setShowEmail((value) => !value)}
+                  aria-label={showEmail ? t("plus.hideEmail") : t("plus.showEmail")}
+                  className="shrink-0 rounded p-1 text-ink3 transition-colors hover:text-ink"
+                >
+                  {showEmail ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              )}
             </span>
-            {plus.account && (
-              <button
-                type="button"
-                onClick={() => setShowEmail((value) => !value)}
-                aria-label={showEmail ? t("plus.hideEmail") : t("plus.showEmail")}
-                className="rounded p-1 text-ink3 transition-colors hover:text-ink"
-              >
-                {showEmail ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            )}
             <Button
               onClick={() => void refreshEntitlement({ force: true })}
               disabled={plus.refreshing}
