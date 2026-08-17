@@ -158,7 +158,13 @@ dependencies {
     // Kiebitz Plus auf Android. Google Play verlangt für digitale Inhalte
     // innerhalb der App seinen eigenen Bezahlweg; der Stripe-Checkout bleibt
     // deshalb Desktop und Website vorbehalten.
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
+    //
+    // Play verlangt ab dem 31.08.2026 mindestens 8.0.0 und wirft ältere Versionen
+    // im Upload zurück. Die 9er-Linie ist die aktuelle und verschiebt die nächste
+    // Zwangsmigration am weitesten nach hinten. Ohne `-ktx`: Der Plugin-Code
+    // nutzt ausschließlich die Callback-API, und das ktx-Artefakt trägt
+    // Kotlin-Metadaten neuer als der hier gepinnte Compiler (2.1.21) lesen kann.
+    implementation("com.android.billingclient:billing:9.1.0")
     // Homescreen-Widgets. Glance ist der aktuelle Weg zu App-Widgets und
     // bringt responsive Größen, dynamische Farben und Deep-Link-Aktionen mit.
     implementation("androidx.glance:glance-appwidget:1.1.1")

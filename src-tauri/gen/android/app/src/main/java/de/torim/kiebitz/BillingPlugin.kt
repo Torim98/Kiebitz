@@ -68,6 +68,11 @@ class BillingPlugin(private val activity: Activity) : Plugin(activity) {
       .enablePendingPurchases(
         PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
       )
+      // Seit Billing 8 kann die Bibliothek die Verbindung selbst wiederherstellen,
+      // wenn der Play Store sie abreißt · etwa bei seinem eigenen Update. Das
+      // erspart dem nächsten Aufruf den Fehlschlag, den `withConnection` sonst
+      // erst beim übernächsten Versuch ausbügeln würde.
+      .enableAutoServiceReconnection()
       .build()
   }
 
@@ -139,15 +144,22 @@ class BillingPlugin(private val activity: Activity) : Plugin(activity) {
         )
         .build()
 
-      client.queryProductDetailsAsync(query) { result, products ->
+      client.queryProductDetailsAsync(query) { result, details ->
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
           invoke.reject(result.describe())
           return@queryProductDetailsAsync
         }
-        val product = products.firstOrNull()
+        val product = details.productDetailsList.firstOrNull()
         val offerToken = product?.bestOfferToken()
         if (product == null || offerToken == null) {
-          invoke.reject("Kiebitz Plus ist in diesem Play-Konto nicht verfügbar.")
+          // Seit Billing 8 sagt Google pro Produkt, warum es fehlt · dieser
+          // Code ist das Einzige, womit ein Support-Fall später etwas anfangen
+          // kann, wenn das Abo in der Console falsch steht.
+          val reason = details.unfetchedProductList
+            .firstOrNull()
+            ?.let { " (Status ${it.statusCode})" }
+            .orEmpty()
+          invoke.reject("Kiebitz Plus ist in diesem Play-Konto nicht verfügbar.$reason")
           return@queryProductDetailsAsync
         }
 
@@ -192,6 +204,9 @@ class BillingPlugin(private val activity: Activity) : Plugin(activity) {
     withConnection(invoke) {
       val query = QueryPurchasesParams.newBuilder()
         .setProductType(BillingClient.ProductType.SUBS)
+        // `includeSuspendedSubscriptions` bleibt aus: Ein pausiertes Abo oder
+        // eines mit abgelehnter Zahlung soll Plus gerade nicht wiederherstellen.
+        // Ohne das Kennzeichen liefert Google solche Käufe erst gar nicht.
         .build()
       client.queryPurchasesAsync(query) { result, purchases ->
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
@@ -200,7 +215,9 @@ class BillingPlugin(private val activity: Activity) : Plugin(activity) {
         }
         val tokens = JSONArray()
         for (purchase in purchases) {
-          if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+          if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+            !purchase.isSuspended
+          ) {
             tokens.put(purchase.purchaseToken)
           }
         }
