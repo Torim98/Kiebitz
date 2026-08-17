@@ -63,6 +63,15 @@ export interface Settings {
   focus_cycle_days: number;
   /** Wurde die Ersteinrichtung durchlaufen? */
   onboarded: boolean;
+  /** Einwilligung in die pseudonyme Nutzungsstatistik (ab Werk aus). */
+  analytics_enabled: boolean;
+  /**
+   * Kennung dieser Installation für die Statistik (leer = keine).
+   *
+   * Das Backend löscht sie, sobald die Einwilligung zurückgenommen wird · ein
+   * gesetzter Wert bedeutet also immer, dass eingewilligt ist.
+   */
+  analytics_installation_id: string;
 }
 
 /** Wochentage aus der Bitmaske · Index 0 = Montag. */

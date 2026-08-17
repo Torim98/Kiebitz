@@ -119,6 +119,8 @@ const androidSettings = {
   goal_date: "",
   focus_cycle_days: 14,
   onboarded: true,
+  analytics_enabled: false,
+  analytics_installation_id: "",
 } satisfies Settings;
 
 const sectionLoads = [dbInfo, puzzleStats, syncInfo, legalDocuments].map((fn) => vi.mocked(fn));

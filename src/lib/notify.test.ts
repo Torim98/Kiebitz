@@ -59,6 +59,8 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     goal_date: "",
     focus_cycle_days: 14,
     onboarded: true,
+    analytics_enabled: false,
+    analytics_installation_id: "",
     ...overrides,
   };
 }

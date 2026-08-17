@@ -94,6 +94,17 @@ pub struct Settings {
     pub focus_cycle_days: u32,
     /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
     pub onboarded: bool,
+    /// Einwilligung in die pseudonyme Nutzungsstatistik. Ab Werk aus: Ohne
+    /// ausdrückliches Ja wird kein Lebenszeichen gesendet, und die API weist
+    /// eines ohne Einwilligungskopf ohnehin ab.
+    pub analytics_enabled: bool,
+    /// Kennung dieser Installation für die Statistik (leer = noch keine).
+    ///
+    /// Gerätelokal und bewusst nicht im Sync: Zwei gekoppelte Geräte sind zwei
+    /// Installationen. Sie wird erst erzeugt, wenn eingewilligt wurde, und
+    /// bleibt danach stabil · wechselte sie bei jedem Start, zählte jeder Start
+    /// als neue Installation. Die API sieht ohnehin nur ihren HMAC.
+    pub analytics_installation_id: String,
 }
 
 /// "YYYY-MM-DD" oder leer · alles andere wird verworfen, statt später in
@@ -114,6 +125,29 @@ fn normalize_day(value: &str) -> String {
     };
     if ok(0..4, 1970, 2999) && ok(5..7, 1, 12) && ok(8..10, 1, 31) {
         value.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Eine UUID in Kleinschreibung oder leer.
+///
+/// Die API prüft das Format ihrerseits und lehnt ab, was ihr nicht gefällt;
+/// hier steht dieselbe Prüfung, damit gar nichts Unbrauchbares gespeichert wird
+/// und der Fehler nicht erst als abgewiesenes Lebenszeichen auffällt.
+fn normalize_installation_id(value: &str) -> String {
+    let value = value.trim().to_lowercase();
+    let groups = [8usize, 4, 4, 4, 12];
+    let parts: Vec<&str> = value.split('-').collect();
+    if parts.len() != groups.len() {
+        return String::new();
+    }
+    let shaped = parts
+        .iter()
+        .zip(groups)
+        .all(|(part, len)| part.len() == len && part.bytes().all(|b| b.is_ascii_hexdigit()));
+    if shaped {
+        value
     } else {
         String::new()
     }
@@ -183,6 +217,8 @@ impl Default for Settings {
             goal_date: String::new(),
             focus_cycle_days: 14,
             onboarded: false,
+            analytics_enabled: false,
+            analytics_installation_id: String::new(),
         }
     }
 }
@@ -328,6 +364,16 @@ fn normalize(mut s: Settings) -> Settings {
         .filter(|c| c.is_ascii_hexdigit())
         .collect::<String>()
         .to_lowercase();
+    // Die Statistik-Kennung existiert nur, solange eingewilligt ist. Wer die
+    // Einwilligung zurücknimmt, lässt keine Kennung zurück, die beim nächsten
+    // Ja wieder auftauchte · das Zurücknehmen wäre sonst nur halb wahr. Die
+    // Regel steht hier und nicht in der Oberfläche, damit sie für jeden Weg
+    // gilt, der Einstellungen schreibt.
+    s.analytics_installation_id = if s.analytics_enabled {
+        normalize_installation_id(&s.analytics_installation_id)
+    } else {
+        String::new()
+    };
     s
 }
 

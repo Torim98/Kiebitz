@@ -3,7 +3,9 @@
  *
  * Nur Konto, Abrechnung und Freischaltung laufen hierüber. Es werden keine
  * Partien, Analysen, Trainingsdaten oder Einstellungen übertragen; die Aufrufe
- * unten sind vollständig, mehr Endpunkte kennt die App nicht.
+ * unten sind vollständig, mehr Endpunkte kennt die App nicht. Die einzige
+ * Ausnahme ist das Lebenszeichen der Statistik in `lib/analytics.ts` · es hängt
+ * an keinem Konto und benutzt von hier nur `apiRequest`.
  *
  * Die App authentifiziert sich mit `Authorization: Bearer <token>`. Das
  * Cookie-/CSRF-Modell gilt ausschließlich für die Website.
@@ -43,6 +45,8 @@ interface RequestOptions {
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
+  /** Zusätzliche Köpfe · bislang nur der Einwilligungskopf der Statistik. */
+  headers?: Record<string, string>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -59,6 +63,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers.Authorization = `Bearer ${token}`;
+  Object.assign(headers, options.headers);
 
   let response: Response;
   try {

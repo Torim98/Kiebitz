@@ -92,12 +92,13 @@ import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../li
 import AppTour from "../components/AppTour";
 import PlusSection from "./settings/PlusSection";
 import { PlusBadgeButton } from "../components/PlusLock";
-import { usePlusGate } from "../lib/plus/usePlus";
+import { usePlus, usePlusGate } from "../lib/plus/usePlus";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/format";
 import { errorMessage } from "../lib/errors";
 import { showAdPrivacyOptions } from "../lib/ads";
+import { forgetHeartbeatDay, reportDailyHeartbeat } from "../lib/analytics";
 import { publishWidgetSnapshot } from "../lib/widgets";
 import {
   Field,
@@ -165,6 +166,9 @@ export default function SettingsPage({
   // Automatische lokale LAN-Synchronisierung ist eine Plus-Funktion. Das
   // Koppeln, der Hub und „Jetzt synchronisieren" bleiben frei · gesperrt ist
   // nur, dass Kiebitz das im Hintergrund von selbst tut.
+  // Für die Stufe im Lebenszeichen der Statistik · dieselbe Quelle, aus der
+  // auch die Freischaltungen unten kommen.
+  const plus = usePlus();
   const autoSyncGate = usePlusGate("automatic_lan_sync");
 
   // Homescreen-Widgets · die Einrichtung ist zugleich einer der drei
@@ -336,6 +340,18 @@ export default function SettingsPage({
       });
       // Erinnerungen laufen über das Betriebssystem · Planung nachziehen.
       await applyReminderSchedule();
+      // Die Einwilligung greift sofort. Der Tagesriegel fällt bei jedem
+      // Speichern: Wurde die Einwilligung zurückgenommen und neu erteilt, gilt
+      // eine neue Kennung, für die heute noch nichts gemeldet wurde.
+      forgetHeartbeatDay();
+      if (applied.analytics_enabled && backend.info) {
+        void reportDailyHeartbeat({
+          platform: backend.info.platform ?? "",
+          distribution: backend.info.distribution ?? "",
+          version: backend.info.version,
+          plus: plus.isPlus,
+        }).catch(() => {});
+      }
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
     } catch (e) {
@@ -1424,6 +1440,25 @@ export default function SettingsPage({
               {adPrivacyMsg && (
                 <p className="mt-2 text-[12px] leading-relaxed text-ink3">{adPrivacyMsg}</p>
               )}
+            </div>
+          )}
+          {draft && (
+            <div className="mt-5 border-t border-line pt-4">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={draft.analytics_enabled}
+                  onChange={(e) => patch({ analytics_enabled: e.target.checked })}
+                  className="h-4 w-4 accent-[#22c08a]"
+                />
+                <span className="text-[13px] text-ink">{t("set.analyticsToggle")}</span>
+              </label>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+                {t("set.analyticsNote")}
+              </p>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+                {t("set.analyticsWithdraw")}
+              </p>
             </div>
           )}
         </>
