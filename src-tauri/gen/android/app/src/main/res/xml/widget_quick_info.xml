@@ -14,4 +14,4 @@
     android:updatePeriodMillis="0"
     android:description="@string/widget_quick_description"
     android:previewLayout="@layout/widget_preview_quick"
-    android:initialLayout="@layout/glance_default_loading_layout" />
+    android:initialLayout="@layout/widget_loading" />

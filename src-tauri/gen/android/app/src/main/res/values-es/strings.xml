@@ -3,21 +3,22 @@
     <string name="widget_today_description">La próxima unidad, las tareas pendientes y el progreso del día.</string>
     <string name="widget_today_short">Hoy</string>
     <string name="widget_week_name">Objetivo semanal</string>
+    <string name="widget_week_short">Semana</string>
     <string name="widget_week_description">Minutos entrenados, presupuesto semanal y días de entrenamiento.</string>
     <string name="widget_quick_name">Inicio rápido</string>
     <string name="widget_quick_description">Abre directamente ejercicios, repertorio, finales o análisis.</string>
 
-    <string name="widget_empty_no_data">Abre Kiebitz una vez para que el widget tenga algo que mostrar.</string>
-    <string name="widget_error_body">No hay datos legibles. Al abrir Kiebitz se actualizan.</string>
+    <string name="widget_empty_no_data">Aún no hay datos.</string>
+    <string name="widget_error_body">Datos no legibles.</string>
     <string name="widget_open_app">Abrir Kiebitz</string>
     <string name="widget_today_clear">Hoy no hay nada planificado.</string>
     <string name="widget_open_tasks">%1$d pendientes</string>
-    <string name="widget_progress">%1$d de %2$d min</string>
     <string name="widget_minutes">%1$d min</string>
-    <string name="widget_week_ratio">%1$d / %2$d min</string>
+    <string name="widget_ratio">%1$d / %2$d min</string>
     <string name="widget_week_remaining">Faltan %1$d min</string>
     <string name="widget_week_days">%1$d de %2$d días</string>
     <string name="widget_week_days_open">%1$d días entrenados</string>
+    <string name="widget_week_none">Esta semana aún no hay entrenamiento.</string>
 
     <string name="widget_quick_puzzles">Ejercicios</string>
     <string name="widget_quick_repertoire">Repertorio</string>
@@ -30,7 +31,8 @@
     <string name="widget_plus_cta_short">Prueba gratis</string>
 
     <string name="widget_preview_unit">Táctica · 20 min</string>
-    <string name="widget_preview_progress">12 de 30 min</string>
+    <string name="widget_preview_progress">12 / 30 min</string>
+    <string name="widget_preview_open">2 pendientes</string>
     <string name="widget_preview_week_ratio">95 / 180 min</string>
     <string name="widget_preview_week_days">3 de 5 días</string>
 </resources>

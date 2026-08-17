@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Die Fläche eines Widgets · dieselbe Karte wie in der App: warmes Schwarz,
+  eine haarfeine Linie als Rand, weiche Ecken.
+
+  Als Zeichnung und nicht als Farbe plus `cornerRadius()`: Glance rundet Ecken
+  erst ab Android 12, darunter bliebe ein Rechteck stehen. Ein Rand ließe sich
+  überhaupt nicht setzen.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="20dp" />
+    <solid android:color="@color/widget_surface" />
+    <stroke android:width="1dp" android:color="@color/widget_line" />
+</shape>

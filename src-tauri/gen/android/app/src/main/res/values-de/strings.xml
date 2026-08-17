@@ -3,21 +3,22 @@
     <string name="widget_today_description">Die nächste Einheit, offene Aufgaben und der Tagesfortschritt.</string>
     <string name="widget_today_short">Heute</string>
     <string name="widget_week_name">Wochenziel</string>
+    <string name="widget_week_short">Woche</string>
     <string name="widget_week_description">Trainierte Minuten, Wochenbudget und Trainingstage.</string>
     <string name="widget_quick_name">Schnellstart</string>
     <string name="widget_quick_description">Puzzles, Repertoire, Endspiele oder Analyse direkt öffnen.</string>
 
-    <string name="widget_empty_no_data">Öffne Kiebitz einmal, damit das Widget etwas zeigen kann.</string>
-    <string name="widget_error_body">Kein lesbarer Stand. Ein Öffnen von Kiebitz frischt ihn auf.</string>
+    <string name="widget_empty_no_data">Noch kein Datenstand.</string>
+    <string name="widget_error_body">Datenstand nicht lesbar.</string>
     <string name="widget_open_app">Kiebitz öffnen</string>
     <string name="widget_today_clear">Für heute ist nichts geplant.</string>
     <string name="widget_open_tasks">%1$d offen</string>
-    <string name="widget_progress">%1$d von %2$d min</string>
     <string name="widget_minutes">%1$d min</string>
-    <string name="widget_week_ratio">%1$d / %2$d min</string>
+    <string name="widget_ratio">%1$d / %2$d min</string>
     <string name="widget_week_remaining">%1$d min offen</string>
     <string name="widget_week_days">%1$d von %2$d Tagen</string>
     <string name="widget_week_days_open">%1$d Tage trainiert</string>
+    <string name="widget_week_none">Diese Woche noch nichts trainiert.</string>
 
     <string name="widget_quick_puzzles">Puzzles</string>
     <string name="widget_quick_repertoire">Repertoire</string>
@@ -30,7 +31,8 @@
     <string name="widget_plus_cta_short">Gratis testen</string>
 
     <string name="widget_preview_unit">Taktik · 20 min</string>
-    <string name="widget_preview_progress">12 von 30 min</string>
+    <string name="widget_preview_progress">12 / 30 min</string>
+    <string name="widget_preview_open">2 offen</string>
     <string name="widget_preview_week_ratio">95 / 180 min</string>
     <string name="widget_preview_week_days">3 von 5 Tagen</string>
 </resources>

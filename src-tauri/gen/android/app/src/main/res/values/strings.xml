@@ -8,21 +8,22 @@
     <string name="widget_today_description">The next unit, open tasks and the day\'s progress.</string>
     <string name="widget_today_short">Today</string>
     <string name="widget_week_name">Weekly goal</string>
+    <string name="widget_week_short">Week</string>
     <string name="widget_week_description">Minutes trained, weekly budget and training days.</string>
     <string name="widget_quick_name">Quick start</string>
     <string name="widget_quick_description">Open puzzles, repertoire, endgames or analysis right away.</string>
 
-    <string name="widget_empty_no_data">Open Kiebitz once so the widget has something to show.</string>
-    <string name="widget_error_body">No readable data. Opening Kiebitz refreshes it.</string>
+    <string name="widget_empty_no_data">No data yet.</string>
+    <string name="widget_error_body">Data not readable.</string>
     <string name="widget_open_app">Open Kiebitz</string>
     <string name="widget_today_clear">Nothing planned for today.</string>
     <string name="widget_open_tasks">%1$d open</string>
-    <string name="widget_progress">%1$d of %2$d min</string>
     <string name="widget_minutes">%1$d min</string>
-    <string name="widget_week_ratio">%1$d / %2$d min</string>
+    <string name="widget_ratio">%1$d / %2$d min</string>
     <string name="widget_week_remaining">%1$d min left</string>
     <string name="widget_week_days">%1$d of %2$d days</string>
     <string name="widget_week_days_open">%1$d days trained</string>
+    <string name="widget_week_none">Nothing trained this week yet.</string>
 
     <string name="widget_quick_puzzles">Puzzles</string>
     <string name="widget_quick_repertoire">Repertoire</string>
@@ -35,7 +36,8 @@
     <string name="widget_plus_cta_short">Try it free</string>
 
     <string name="widget_preview_unit">Tactics · 20 min</string>
-    <string name="widget_preview_progress">12 of 30 min</string>
+    <string name="widget_preview_progress">12 / 30 min</string>
+    <string name="widget_preview_open">2 open</string>
     <string name="widget_preview_week_ratio">95 / 180 min</string>
     <string name="widget_preview_week_days">3 of 5 days</string>
 </resources>

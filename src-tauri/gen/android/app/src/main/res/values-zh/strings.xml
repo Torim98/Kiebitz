@@ -3,21 +3,22 @@
     <string name="widget_today_description">下一个训练单元、待办事项和当天进度。</string>
     <string name="widget_today_short">今天</string>
     <string name="widget_week_name">本周目标</string>
+    <string name="widget_week_short">本周</string>
     <string name="widget_week_description">已训练分钟数、每周预算和训练天数。</string>
     <string name="widget_quick_name">快速开始</string>
     <string name="widget_quick_description">直接打开战术题、开局库、残局或分析。</string>
 
-    <string name="widget_empty_no_data">先打开一次 Kiebitz，小组件才有内容可显示。</string>
-    <string name="widget_error_body">没有可读取的数据。打开 Kiebitz 即可刷新。</string>
+    <string name="widget_empty_no_data">还没有数据。</string>
+    <string name="widget_error_body">数据无法读取。</string>
     <string name="widget_open_app">打开 Kiebitz</string>
     <string name="widget_today_clear">今天没有安排。</string>
     <string name="widget_open_tasks">%1$d 项待办</string>
-    <string name="widget_progress">%1$d / %2$d 分钟</string>
     <string name="widget_minutes">%1$d 分钟</string>
-    <string name="widget_week_ratio">%1$d / %2$d 分钟</string>
+    <string name="widget_ratio">%1$d / %2$d 分钟</string>
     <string name="widget_week_remaining">还差 %1$d 分钟</string>
     <string name="widget_week_days">%2$d 天中的 %1$d 天</string>
     <string name="widget_week_days_open">已训练 %1$d 天</string>
+    <string name="widget_week_none">本周还没有训练。</string>
 
     <string name="widget_quick_puzzles">战术题</string>
     <string name="widget_quick_repertoire">开局库</string>
@@ -30,7 +31,8 @@
     <string name="widget_plus_cta_short">免费试用</string>
 
     <string name="widget_preview_unit">战术 · 20 分钟</string>
-    <string name="widget_preview_progress">30 分钟中的 12 分钟</string>
+    <string name="widget_preview_progress">12 / 30 分钟</string>
+    <string name="widget_preview_open">2 项待办</string>
     <string name="widget_preview_week_ratio">95 / 180 分钟</string>
     <string name="widget_preview_week_days">5 天中的 3 天</string>
 </resources>

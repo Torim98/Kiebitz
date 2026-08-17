@@ -18,6 +18,12 @@ data class WidgetUnit(
   val title: String,
   val minutes: Int,
   val done: Boolean,
+  /**
+   * Lernbereich der Einheit · „tactics", „openings", „endgames", „analysis",
+   * „play" oder leer. Er entscheidet nur über die Farbe des Punktes vor der
+   * Zeile; ein unbekannter Wert ist deshalb kein Fehler, sondern grau.
+   */
+  val area: String,
 )
 
 data class WidgetSnapshot(
@@ -86,6 +92,7 @@ object WidgetSnapshotStore {
             title = unit.optString("title", ""),
             minutes = unit.optInt("minutes", 0),
             done = unit.optBoolean("done", false),
+            area = unit.optString("area", ""),
           )
         )
       }

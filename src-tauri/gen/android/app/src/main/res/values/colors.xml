@@ -7,11 +7,35 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <!-- Widget-Vorschauen im Auswahldialog · das laufende Widget nimmt die
-         Systemfarben (ab Android 12 dynamisch). -->
-    <color name="widget_preview_surface">#FFF1F3F2</color>
-    <color name="widget_preview_chip">#FFDCE5E1</color>
-    <color name="widget_preview_ink">#FF14201B</color>
-    <color name="widget_preview_ink_muted">#FF4C5A54</color>
-    <color name="widget_preview_accent">#FF22C08A</color>
+
+    <!-- ── Widget-Palette ──────────────────────────────────────────────────
+         Dieselben Werte wie die Oberflächen der App (src/index.css). Die
+         Widgets nahmen früher die Systemfarben und sahen dadurch auf jedem
+         Gerät anders und nach nichts aus · ein graues Feld neben dem nächsten.
+         Kiebitz hat genau ein Erscheinungsbild, warmes Schwarz mit einem
+         grünen Akzent, und dieses eine gilt hier auch. Deshalb gibt es keine
+         Nachtfassung: Der Startbildschirm ist Wallpaper, nicht Papier · eine
+         dunkle Karte liegt auf hellem wie dunklem Grund richtig, und die App
+         selbst kennt ebenfalls nur diese eine Fassung. -->
+    <color name="widget_surface">#FF171716</color>
+    <color name="widget_tile">#FF1E1E1D</color>
+    <color name="widget_track">#FF262625</color>
+    <color name="widget_line">#FF292927</color>
+
+    <color name="widget_ink">#FFF2F1EC</color>
+    <color name="widget_ink2">#FFB9B8AE</color>
+    <color name="widget_ink3">#FF8B8A82</color>
+
+    <color name="widget_accent">#FF22C08A</color>
+    <color name="widget_accent_dim">#FF17835E</color>
+    <color name="widget_accent_soft">#FF103528</color>
+
+    <!-- Bereichsfarben des Lernplans · dieselbe Zuordnung wie AREA_COLOR in
+         src/lib/study.ts. Ein Punkt in dieser Farbe sagt am Widget dasselbe
+         wie in der App: woran diese Einheit arbeitet. -->
+    <color name="widget_area_play">#FF22C08A</color>
+    <color name="widget_area_tactics">#FF3987E5</color>
+    <color name="widget_area_openings">#FF9085E9</color>
+    <color name="widget_area_endgames">#FFD9A028</color>
+    <color name="widget_area_analysis">#FF81B64C</color>
 </resources>

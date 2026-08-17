@@ -11,7 +11,14 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { getSettings, type Settings } from "./settings";
-import { getStudyCalendar, studyData, type StudyCalendar, type StudyData } from "./study";
+import {
+  getStudyCalendar,
+  studyData,
+  templateAreas,
+  type Area,
+  type StudyCalendar,
+  type StudyData,
+} from "./study";
 import { localDay } from "./notify";
 import { onDataChange } from "./changes";
 import { featureUnlocked, subscribePlus } from "./plus/store";
@@ -24,6 +31,12 @@ export interface WidgetUnit {
   /** Geplante Minuten (0 = keine Vorgabe). */
   minutes: number;
   done: boolean;
+  /**
+   * Erster Lernbereich der Einheit ("" = keiner). Das Widget färbt damit den
+   * Punkt vor der Zeile · dieselbe Zuordnung wie AREA_COLOR im Wochenbudget,
+   * damit auf dem Startbildschirm dasselbe gilt wie in der App.
+   */
+  area: Area | "";
 }
 
 export interface WidgetSnapshot {
@@ -100,6 +113,7 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
       title: event.template.title,
       minutes: event.planned_min > 0 ? event.planned_min : event.template.duration_min,
       done: event.completed || event.auto_done,
+      area: templateAreas(event.template)[0] ?? "",
     }));
 
   const puzzlesLeft = Math.max(0, settings.puzzle_goal - data.today_puzzle_attempts);

@@ -3,21 +3,22 @@
     <string name="widget_today_description">अगली इकाई, बचे हुए काम और दिन की प्रगति।</string>
     <string name="widget_today_short">आज</string>
     <string name="widget_week_name">साप्ताहिक लक्ष्य</string>
+    <string name="widget_week_short">सप्ताह</string>
     <string name="widget_week_description">अभ्यास के मिनट, साप्ताहिक बजट और अभ्यास के दिन।</string>
     <string name="widget_quick_name">झटपट शुरुआत</string>
     <string name="widget_quick_description">पहेलियाँ, रेपर्टवार, अंतिम-खेल या विश्लेषण सीधे खोलें।</string>
 
-    <string name="widget_empty_no_data">विजेट को दिखाने के लिए Kiebitz एक बार खोलिए।</string>
-    <string name="widget_error_body">कोई पढ़ने योग्य डेटा नहीं। Kiebitz खोलने पर यह ताज़ा हो जाता है।</string>
+    <string name="widget_empty_no_data">अभी कोई डेटा नहीं।</string>
+    <string name="widget_error_body">डेटा पढ़ा नहीं जा सका।</string>
     <string name="widget_open_app">Kiebitz खोलिए</string>
     <string name="widget_today_clear">आज कुछ भी नियोजित नहीं है।</string>
     <string name="widget_open_tasks">%1$d बाक़ी</string>
-    <string name="widget_progress">%2$d में से %1$d मिनट</string>
     <string name="widget_minutes">%1$d मिनट</string>
-    <string name="widget_week_ratio">%1$d / %2$d मिनट</string>
+    <string name="widget_ratio">%1$d / %2$d मिनट</string>
     <string name="widget_week_remaining">%1$d मिनट बाक़ी</string>
     <string name="widget_week_days">%2$d में से %1$d दिन</string>
     <string name="widget_week_days_open">%1$d दिन अभ्यास</string>
+    <string name="widget_week_none">इस सप्ताह अभी कोई अभ्यास नहीं।</string>
 
     <string name="widget_quick_puzzles">पहेलियाँ</string>
     <string name="widget_quick_repertoire">रेपर्टवार</string>
@@ -30,7 +31,8 @@
     <string name="widget_plus_cta_short">मुफ़्त आज़माएँ</string>
 
     <string name="widget_preview_unit">रणनीति · 20 मिनट</string>
-    <string name="widget_preview_progress">30 में से 12 मिनट</string>
+    <string name="widget_preview_progress">12 / 30 मिनट</string>
+    <string name="widget_preview_open">2 बाक़ी</string>
     <string name="widget_preview_week_ratio">95 / 180 मिनट</string>
     <string name="widget_preview_week_days">5 में से 3 दिन</string>
 </resources>

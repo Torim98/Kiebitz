@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Der erste Augenblick nach dem Ablegen und nach einem Neustart des Geräts,
+  bevor Glance gezeichnet hat. Vorher stand hier das graue Feld von Glance ·
+  jetzt dieselbe Karte wie danach, mit dem Zeichen darin. Der Übergang ist
+  damit ein Auftauchen von Inhalt und kein Wechsel der Oberfläche.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_surface">
+
+    <ImageView
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_widget_bird"
+        android:contentDescription="@null" />
+</FrameLayout>

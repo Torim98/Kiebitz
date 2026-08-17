@@ -108,6 +108,8 @@ describe("buildWidgetSnapshot", () => {
     expect(snapshot.day).toBe("2026-08-12");
     expect(snapshot.today.units.map((unit) => unit.title)).toEqual(["Taktik", "Endspiel"]);
     expect(snapshot.today.units[0].done).toBe(false);
+    // Der Bereich reist mit · das Widget färbt danach den Punkt vor der Zeile.
+    expect(snapshot.today.units[0].area).toBe("tactics");
     expect(snapshot.today.plannedMinutes).toBe(50);
     expect(snapshot.today.doneMinutes).toBe(25);
   });
