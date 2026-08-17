@@ -321,11 +321,12 @@ export default function App() {
     return startWidgetSnapshots();
   }, [backend.mode, backend.info?.platform]);
 
-  // Lebenszeichen der Nutzungsstatistik · höchstens eines pro Tag, und nur mit
-  // Einwilligung. Es wartet auf `plus.loading`: Vorher ist der Plus-Stand noch
-  // nicht aus der sicheren Ablage gelesen, und die Stufe stünde als "free" in
-  // der Statistik, obwohl Plus aktiv ist. Der Tagesriegel im Modul verhindert,
-  // dass ein späterer Wechsel ein zweites Lebenszeichen auslöst.
+  // Lebenszeichen der Nutzungsstatistik · höchstens eines pro Tag, und nur
+  // solange sie nicht abgeschaltet ist. Es wartet auf `plus.loading`: Vorher
+  // ist der Plus-Stand noch nicht aus der sicheren Ablage gelesen, und die
+  // Stufe stünde als "free" in der Statistik, obwohl Plus aktiv ist. Der
+  // Tagesriegel im Modul verhindert, dass ein späterer Wechsel ein zweites
+  // Lebenszeichen auslöst.
   const info = backend.info;
   useEffect(() => {
     if (backend.mode !== "desktop" || !info || plus.loading) return;

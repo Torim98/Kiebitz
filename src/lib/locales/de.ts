@@ -925,7 +925,7 @@ export const de = {
   "set.adsPrivacyUnavailable": "Für dieses Gerät ist derzeit kein zusätzlicher Datenschutzdialog erforderlich.",
   "set.analyticsToggle": "Anonyme Nutzungsstatistik senden",
   "set.analyticsNote": "Einmal täglich gehen eine Zufallskennung dieser Installation, das Datum, das Betriebssystem, der Bezugsweg, die App-Version und ob Kiebitz Plus aktiv ist an kiebitz.dev. Keine Partien, keine Analysen, keine Trainingsdaten, kein Name, keine E-Mail-Adresse. Die Kennung wird auf dem Server nur als Prüfsumme gespeichert und lässt sich keinem Konto zuordnen.",
-  "set.analyticsWithdraw": "Ab Werk ist das aus. Beim Abschalten wird die Kennung dieser Installation gelöscht; bei einer späteren Einwilligung entsteht eine neue.",
+  "set.analyticsWithdraw": "Ab Werk ist das an. Beim Abschalten endet die Übertragung und die Kennung dieser Installation wird gelöscht; beim späteren Einschalten entsteht eine neue.",
   "set.supportSummary": "Feedback, Absturz, Wunsch und das Logbuch",
   "set.supportNote": "Feedback, Absturzbericht oder eine Idee · dieselbe Adresse wie im Formular der Website. Kiebitz schickt nichts von sich aus; was rausgeht, entscheidest du.",
   "set.supportOpen": "Rückmeldung schreiben",

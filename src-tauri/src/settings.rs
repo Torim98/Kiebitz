@@ -94,14 +94,19 @@ pub struct Settings {
     pub focus_cycle_days: u32,
     /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
     pub onboarded: bool,
-    /// Einwilligung in die pseudonyme Nutzungsstatistik. Ab Werk aus: Ohne
-    /// ausdrückliches Ja wird kein Lebenszeichen gesendet, und die API weist
-    /// eines ohne Einwilligungskopf ohnehin ab.
+    /// Pseudonyme Nutzungsstatistik · ab Werk an, jederzeit abschaltbar.
+    ///
+    /// Ab Werk aus hieß in der Praxis aus: Ein Schalter, den niemand sucht,
+    /// wird von den wenigen gefunden, die ihn ohnehin gutheißen, und eine Zahl,
+    /// die nur diese wenigen zählt, taugt zu keiner Entscheidung. Deshalb ist
+    /// die Statistik ab Werk an und der Schalter der Weg hinaus, nicht hinein.
+    /// Wer sie abschaltet, bleibt abgeschaltet · dieses Feld ist die einzige
+    /// Stelle, die darüber entscheidet.
     pub analytics_enabled: bool,
     /// Kennung dieser Installation für die Statistik (leer = noch keine).
     ///
     /// Gerätelokal und bewusst nicht im Sync: Zwei gekoppelte Geräte sind zwei
-    /// Installationen. Sie wird erst erzeugt, wenn eingewilligt wurde, und
+    /// Installationen. Sie wird erst beim ersten Lebenszeichen erzeugt und
     /// bleibt danach stabil · wechselte sie bei jedem Start, zählte jeder Start
     /// als neue Installation. Die API sieht ohnehin nur ihren HMAC.
     pub analytics_installation_id: String,
@@ -217,7 +222,8 @@ impl Default for Settings {
             goal_date: String::new(),
             focus_cycle_days: 14,
             onboarded: false,
-            analytics_enabled: false,
+            // Die Statistik ist ab Werk an · sonst zählt sie nur die Neugierigen.
+            analytics_enabled: true,
             analytics_installation_id: String::new(),
         }
     }
@@ -364,11 +370,11 @@ fn normalize(mut s: Settings) -> Settings {
         .filter(|c| c.is_ascii_hexdigit())
         .collect::<String>()
         .to_lowercase();
-    // Die Statistik-Kennung existiert nur, solange eingewilligt ist. Wer die
-    // Einwilligung zurücknimmt, lässt keine Kennung zurück, die beim nächsten
-    // Ja wieder auftauchte · das Zurücknehmen wäre sonst nur halb wahr. Die
-    // Regel steht hier und nicht in der Oberfläche, damit sie für jeden Weg
-    // gilt, der Einstellungen schreibt.
+    // Die Statistik-Kennung existiert nur, solange die Statistik an ist. Wer
+    // sie abschaltet, lässt keine Kennung zurück, die beim späteren Einschalten
+    // wieder auftauchte · das Abschalten wäre sonst nur halb wahr. Die Regel
+    // steht hier und nicht in der Oberfläche, damit sie für jeden Weg gilt, der
+    // Einstellungen schreibt.
     s.analytics_installation_id = if s.analytics_enabled {
         normalize_installation_id(&s.analytics_installation_id)
     } else {
@@ -860,6 +866,41 @@ mod tests {
         assert!(s.chessdb_enabled);
         assert!(s.auto_import);
         assert!(!s.onboarded);
+        // Die Nutzungsstatistik ist ab Werk an, aber noch ohne Kennung: Die
+        // entsteht erst beim ersten Lebenszeichen.
+        assert!(s.analytics_enabled);
+        assert_eq!(s.analytics_installation_id, "");
+    }
+
+    #[test]
+    fn switching_analytics_off_drops_the_installation_id() {
+        let id = "0189f0c2-1b3d-4a5e-8f70-9a1b2c3d4e5f";
+        let on = normalize(Settings {
+            analytics_installation_id: id.to_uppercase(),
+            ..Settings::default()
+        });
+        // Solange die Statistik an ist, bleibt die Kennung · kleingeschrieben.
+        assert_eq!(on.analytics_installation_id, id);
+        let off = normalize(Settings {
+            analytics_enabled: false,
+            analytics_installation_id: id.into(),
+            ..Settings::default()
+        });
+        // Abgeschaltet heißt: keine Kennung, die beim Wiedereinschalten
+        // dieselbe Installation weiterzählte.
+        assert_eq!(off.analytics_installation_id, "");
+    }
+
+    #[test]
+    fn an_old_settings_file_gets_the_new_analytics_default() {
+        // Eine settings.json von vor der Statistik kennt das Feld nicht. Sie
+        // soll dieselbe Vorgabe bekommen wie eine frische Installation, sonst
+        // hinge die Statistik allein an Neuinstallationen.
+        let back: Settings = serde_json::from_str(r#"{"locale":"de"}"#).unwrap();
+        assert!(back.analytics_enabled);
+        // Ein ausdrückliches Nein in der Datei bleibt dagegen ein Nein.
+        let off: Settings = serde_json::from_str(r#"{"analytics_enabled":false}"#).unwrap();
+        assert!(!off.analytics_enabled);
     }
 
     #[test]

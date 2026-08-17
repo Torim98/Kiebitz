@@ -906,7 +906,7 @@ export const es: Record<Key, string> = {
   "set.adsPrivacyUnavailable": "Actualmente no se requiere ningún diálogo de privacidad adicional para este dispositivo.",
   "set.analyticsToggle": "Enviar estadísticas de uso anónimas",
   "set.analyticsNote": "Una vez al día se envían a kiebitz.dev un identificador aleatorio de esta instalación, la fecha, el sistema operativo, la vía de instalación, la versión de la aplicación y si Kiebitz Plus está activo. Ninguna partida, ningún análisis, ningún dato de entrenamiento, ningún nombre, ninguna dirección de correo. El servidor guarda el identificador solo como suma de verificación y no puede vincularlo a una cuenta.",
-  "set.analyticsWithdraw": "De fábrica está desactivado. Al desactivarlo se elimina el identificador de esta instalación; si más adelante vuelves a dar tu consentimiento, se crea uno nuevo.",
+  "set.analyticsWithdraw": "De fábrica está activado. Al desactivarlo se detiene el envío y se elimina el identificador de esta instalación; si más adelante lo vuelves a activar, se crea uno nuevo.",
   "set.supportSummary": "Comentarios, fallos, ideas y el registro",
   "set.supportNote": "Un comentario, un informe de fallo o una idea · la misma dirección que el formulario del sitio web. Kiebitz nunca envía nada por su cuenta; tú decides qué sale del dispositivo.",
   "set.supportOpen": "Escribir un comentario",

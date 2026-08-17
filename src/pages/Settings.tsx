@@ -340,9 +340,9 @@ export default function SettingsPage({
       });
       // Erinnerungen laufen über das Betriebssystem · Planung nachziehen.
       await applyReminderSchedule();
-      // Die Einwilligung greift sofort. Der Tagesriegel fällt bei jedem
-      // Speichern: Wurde die Einwilligung zurückgenommen und neu erteilt, gilt
-      // eine neue Kennung, für die heute noch nichts gemeldet wurde.
+      // Der Schalter greift sofort. Der Tagesriegel fällt bei jedem Speichern:
+      // Wurde die Statistik ab- und wieder angeschaltet, gilt eine neue
+      // Kennung, für die heute noch nichts gemeldet wurde.
       forgetHeartbeatDay();
       if (applied.analytics_enabled && backend.info) {
         void reportDailyHeartbeat({

@@ -114,14 +114,14 @@ describe("Nutzungsstatistik · Nachricht", () => {
 });
 
 describe("Nutzungsstatistik · Versand", () => {
-  it("sendet ohne Einwilligung nichts", async () => {
+  it("sendet nichts, wenn die Statistik abgeschaltet ist", async () => {
     vi.mocked(getSettings).mockResolvedValue(settings({ analytics_enabled: false }));
 
-    expect(await reportDailyHeartbeat(desktop)).toBe("no_consent");
+    expect(await reportDailyHeartbeat(desktop)).toBe("switched_off");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("schickt das Lebenszeichen mit dem Einwilligungskopf", async () => {
+  it("schickt das Lebenszeichen mit dem Kopf, den die API verlangt", async () => {
     expect(await reportDailyHeartbeat(desktop)).toBe("sent");
 
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -167,7 +167,7 @@ describe("Nutzungsstatistik · Versand", () => {
     await expect(reportDailyHeartbeat(desktop)).resolves.toBe("failed");
   });
 
-  it("legt die Kennung erst mit der Einwilligung an und behält sie dann", async () => {
+  it("legt die Kennung erst beim ersten Lebenszeichen an und behält sie dann", async () => {
     vi.mocked(getSettings).mockResolvedValue(settings({ analytics_installation_id: "" }));
 
     expect(await reportDailyHeartbeat(desktop)).toBe("sent");

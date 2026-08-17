@@ -7,10 +7,10 @@
  * Kontokennung und keine Adresse. Der Server sieht die Kennung nur als HMAC und
  * kann sie keinem Konto zuordnen.
  *
- * Gesendet wird ausschließlich mit Einwilligung. Die Einwilligung liegt in den
- * Einstellungen, das Backend löscht die Kennung beim Zurücknehmen, und die API
- * weist eine Anfrage ohne Einwilligungskopf mit 403 ab · drei Stellen, die
- * dasselbe sagen.
+ * Die Statistik ist ab Werk an und in den Einstellungen abschaltbar. Wer sie
+ * abschaltet, sendet nichts mehr: Das Backend löscht dabei die Kennung, und die
+ * API weist eine Anfrage ohne den Kopf, den nur der eingeschaltete Zustand
+ * setzt, mit 403 ab · drei Stellen, die dasselbe sagen.
  *
  * Fehler bleiben still. Ein Lebenszeichen ist nichts, wofür eine Oberfläche
  * einen Hinweis verdient; misslingt es, fehlt eine Zahl in einer Statistik.
@@ -97,11 +97,11 @@ export function heartbeatPayload(context: HeartbeatContext): Heartbeat | null {
 }
 
 /**
- * Sorgt für eine Kennung, sobald eingewilligt ist.
+ * Sorgt für eine Kennung, solange die Statistik an ist.
  *
- * Erzeugt wird sie erst hier · vor der Einwilligung gibt es nichts zu erzeugen.
- * Sie wandert in die Einstellungen und bleibt dort, bis die Einwilligung
- * zurückgenommen wird.
+ * Erzeugt wird sie erst hier · für eine abgeschaltete Statistik gibt es nichts
+ * zu erzeugen. Sie wandert in die Einstellungen und bleibt dort, bis die
+ * Statistik abgeschaltet wird.
  */
 export async function ensureInstallationId(settings: Settings): Promise<string> {
   if (!settings.analytics_enabled) return "";
@@ -113,7 +113,12 @@ export async function ensureInstallationId(settings: Settings): Promise<string> 
   return applied.analytics_installation_id;
 }
 
-export type HeartbeatOutcome = "sent" | "no_consent" | "already_today" | "not_applicable" | "failed";
+export type HeartbeatOutcome =
+  | "sent"
+  | "switched_off"
+  | "already_today"
+  | "not_applicable"
+  | "failed";
 
 export interface HeartbeatOptions {
   /** `platform`, `distribution` und `version` aus `app_info`. */
@@ -143,7 +148,7 @@ export async function reportDailyHeartbeat(options: HeartbeatOptions): Promise<H
   } catch {
     return "not_applicable";
   }
-  if (!settings.analytics_enabled) return "no_consent";
+  if (!settings.analytics_enabled) return "switched_off";
 
   const installationId = await ensureInstallationId(settings).catch(() => "");
   const payload = heartbeatPayload({
@@ -160,6 +165,9 @@ export async function reportDailyHeartbeat(options: HeartbeatOptions): Promise<H
     await apiRequest<void>("/v1/analytics/heartbeat", {
       method: "POST",
       body: payload,
+      // Der Kopf sagt der API, dass die Statistik auf diesem Gerät
+      // eingeschaltet ist · ohne ihn nimmt sie nichts an. Der Name stammt aus
+      // der Zeit des Opt-ins und bleibt, weil er auf der Leitung steht.
       headers: { "X-Kiebitz-Analytics-Consent": "1" },
     });
   } catch (error) {
@@ -174,7 +182,7 @@ export async function reportDailyHeartbeat(options: HeartbeatOptions): Promise<H
   return "sent";
 }
 
-/** Vergisst den Tagesriegel · für den Testknopf und die Rücknahme. */
+/** Vergisst den Tagesriegel · für den Testknopf und das Ab- und Anschalten. */
 export function forgetHeartbeatDay(): void {
   localStorage.removeItem(LAST_SENT_KEY);
 }
