@@ -56,11 +56,11 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   // Endspielbudget: gemessene Zeit am Brett statt vier Minuten je Drill.
   useTrainingSession("endgames", desktop);
 
-  const firstDrill =
+  const [drill, setDrill] = useState<EndgameDrill>(() =>
     (initialCategory && ENDGAME_DRILLS.find((d) => d.category === initialCategory)) ??
-    ENDGAME_DRILLS[0];
-  const [drill, setDrill] = useState<EndgameDrill>(firstDrill);
-  const [fen, setFen] = useState(firstDrill.fen);
+    randomDrill()
+  );
+  const [fen, setFen] = useState(drill.fen);
   const [status, setStatus] = useState<Status>("playing");
   const [endMsg, setEndMsg] = useState<Key | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const [shake, setShake] = useState(false);
   const [stats, setStats] = useState<Record<string, DrillStat>>({});
 
-  const chessRef = useRef(new Chess(firstDrill.fen));
+  const chessRef = useRef(new Chess(drill.fen));
   // Läuft eine Engine-Anfrage noch, während der Drill gewechselt wird,
   // darf ihre Antwort das neue Brett nicht mehr anfassen.
   const runRef = useRef(0);

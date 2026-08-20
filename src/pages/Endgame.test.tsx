@@ -34,8 +34,16 @@ vi.mock("../lib/randomEndgame", () => ({
 }));
 
 vi.mock("../components/Board", () => ({
-  default: ({ onPieceDrop }: { onPieceDrop: (from: string, to: string) => boolean }) => (
-    <button onClick={() => onPieceDrop("a1", "a2")}>make move</button>
+  default: ({
+    fen,
+    onPieceDrop,
+  }: {
+    fen: string;
+    onPieceDrop: (from: string, to: string) => boolean;
+  }) => (
+    <button data-testid="endgame-board" data-fen={fen} onClick={() => onPieceDrop("a1", "a2")}>
+      make move
+    </button>
   ),
 }));
 
@@ -45,6 +53,15 @@ afterEach(() => {
 });
 
 describe("Endgame trainer", () => {
+  it("starts with a random position by default", () => {
+    render(<Endgame />);
+
+    expect(screen.getByText("Random: rook vs. king")).toBeTruthy();
+    expect(screen.getByTestId("endgame-board").getAttribute("data-fen")).toBe(
+      "4k3/8/8/8/8/8/8/R3K3 w - - 0 1"
+    );
+  });
+
   it("keeps a fixed status slot while the engine starts thinking", () => {
     render(<Endgame />);
     fireEvent.click(screen.getByRole("button", { name: "eg.randomStart" }));

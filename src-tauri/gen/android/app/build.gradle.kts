@@ -117,6 +117,7 @@ android {
             manifestPlaceholders["admobAppId"] = releaseAdmobAppId
             buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$releaseAdmobBannerAdUnitId\"")
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
@@ -131,6 +132,10 @@ android {
     }
     buildFeatures {
         buildConfig = true
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     packaging {
         jniLibs {
@@ -151,8 +156,8 @@ rust {
 dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.activity:activity-ktx:1.10.1")
-    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.activity:activity-ktx:1.12.4")
+    implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
     // Kiebitz Plus auf Android. Google Play verlangt für digitale Inhalte
@@ -163,7 +168,7 @@ dependencies {
     // im Upload zurück. Die 9er-Linie ist die aktuelle und verschiebt die nächste
     // Zwangsmigration am weitesten nach hinten. Ohne `-ktx`: Der Plugin-Code
     // nutzt ausschließlich die Callback-API, und das ktx-Artefakt trägt
-    // Kotlin-Metadaten neuer als der hier gepinnte Compiler (2.1.21) lesen kann.
+    // Kotlin-Metadaten neuer als der hier gepinnte Compiler (2.2.21) lesen kann.
     implementation("com.android.billingclient:billing:9.1.0")
     // Homescreen-Widgets. Glance ist der aktuelle Weg zu App-Widgets und
     // bringt responsive Größen, dynamische Farben und Deep-Link-Aktionen mit.
@@ -171,7 +176,7 @@ dependencies {
     implementation("androidx.glance:glance-material3:1.1.1")
     // Aktuelle, unterstützte SDK-Linien; UMP wird vor der ersten Anzeigenanfrage
     // ausgeführt und stellt den nachträglichen Datenschutzdialog bereit.
-    implementation("com.google.android.gms:play-services-ads:24.9.0")
+    implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
