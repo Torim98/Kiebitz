@@ -1453,12 +1453,6 @@ export default function SettingsPage({
                 />
                 <span className="text-[13px] text-ink">{t("set.analyticsToggle")}</span>
               </label>
-              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
-                {t("set.analyticsNote")}
-              </p>
-              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
-                {t("set.analyticsWithdraw")}
-              </p>
             </div>
           )}
         </>

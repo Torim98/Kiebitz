@@ -12,6 +12,8 @@ import {
 import { repDue, repReview, type DueItem, type RepNode } from "../lib/repertoire";
 import Board from "./Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
+import CapturedPieces from "./CapturedPieces";
+import { capturedFromFen } from "../lib/captured";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "./ui";
 import { useT } from "../lib/i18n";
@@ -362,6 +364,7 @@ export default function RepertoireTrainer({
     : t("rep.startPos");
   const expectedLabel = answers.map((a) => a.san).join(" / ");
   const playedSan = played[played.length - 1] ?? expectedLabel;
+  const captured = capturedFromFen(fen);
 
   return (
     <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
@@ -375,6 +378,17 @@ export default function RepertoireTrainer({
             {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
           </span>
         </div>
+        {/* Eine Repertoire-Zeile läuft aus der Grundstellung · was fehlt, wurde
+            wirklich geschlagen, also steht es an der Seite, die es schlug. Ohne
+            Namen bleibt es bei den Figuren allein; in einer Eröffnung ist meist
+            nichts geschlagen, und dann entfällt die Zeile ganz. */}
+        <div className="mb-2 empty:hidden">
+          <CapturedPieces
+            pieces={item.side === "white" ? captured.black : captured.white}
+            color={item.side === "white" ? "white" : "black"}
+            advantage={item.side === "white" ? -captured.diff : captured.diff}
+          />
+        </div>
         <Board
           boardId="rep-train"
           fen={fen}
@@ -387,6 +401,13 @@ export default function RepertoireTrainer({
           shake={shake}
           mouseDrag
         />
+        <div className="mt-2 empty:hidden">
+          <CapturedPieces
+            pieces={item.side === "white" ? captured.white : captured.black}
+            color={item.side === "white" ? "black" : "white"}
+            advantage={item.side === "white" ? captured.diff : -captured.diff}
+          />
+        </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
           <span className="text-[12.5px] text-ink2">{t("rep.lastMove", { move: previousMove })}</span>
           <div className="flex items-center gap-1">

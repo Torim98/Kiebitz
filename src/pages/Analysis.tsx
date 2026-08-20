@@ -40,6 +40,8 @@ import Board from "../components/Board";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition, gameEnd } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
+import CapturedPieces from "../components/CapturedPieces";
+import { capturedFromFen } from "../lib/captured";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
 import { Button, Card, ExtLink, ResultBadge } from "../components/ui";
@@ -725,6 +727,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(storeCapture ? captureBlack : featuredGame.black);
   const topPlayer = orientation === "white" ? blackPlayer : whitePlayer;
   const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
+  // Geschlagene Figuren zur gezeigten Stellung · jede Seite bekommt, was sie
+  // selbst geschlagen hat, und der Führende zusätzlich seinen Vorsprung.
+  const captured = capturedFromFen(fen);
+  const topIsWhite = orientation !== "white";
   const accuracyCells = live ? [
     {
       key: "overall",
@@ -937,8 +943,15 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(400px,528px)_minmax(320px,1fr)] min-[1660px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
         {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
         <div className="min-w-0 min-[1660px]:w-[560px]">
-          <div className="mb-2 flex min-h-[26px] items-center justify-between gap-3 pl-8 text-[12.5px]">
-            <span className="min-w-0 truncate font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</span>
+          <div className="mb-2 flex min-h-[26px] items-start justify-between gap-3 pl-8 text-[12.5px]">
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</div>
+              <CapturedPieces
+                pieces={topIsWhite ? captured.white : captured.black}
+                color={topIsWhite ? "black" : "white"}
+                advantage={topIsWhite ? captured.diff : -captured.diff}
+              />
+            </div>
             {hasClocks && (
               <ClockBadge
                 centiseconds={orientation === "white" ? clockView.black : clockView.white}
@@ -976,8 +989,15 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               />
             </div>
           </div>
-          <div className="mt-2 flex min-h-[26px] items-center justify-between gap-3 pl-8 text-[12.5px]">
-            <span className="min-w-0 truncate font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</span>
+          <div className="mt-2 flex min-h-[26px] items-start justify-between gap-3 pl-8 text-[12.5px]">
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</div>
+              <CapturedPieces
+                pieces={topIsWhite ? captured.black : captured.white}
+                color={topIsWhite ? "white" : "black"}
+                advantage={topIsWhite ? -captured.diff : captured.diff}
+              />
+            </div>
             {hasClocks && (
               <ClockBadge
                 centiseconds={orientation === "white" ? clockView.white : clockView.black}
@@ -995,29 +1015,40 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
               </button>
             </div>
           )}
-          <div className="mt-3 flex items-center justify-between pl-8">
-            <div className="flex gap-1">
-              {scratch && (
-                <Button
-                  onClick={() => {
-                    setScratchSans([]);
-                    setPly(0);
-                    setScratchSelected(null);
-                    setLiveEval(null);
-                    setLiveBestUci(null);
-                  }}
-                  className="mr-1"
-                >
-                  <RotateCcw size={15} /> {t("an.newBoard")}
-                </Button>
-              )}
-              <Button onClick={() => goToPly(0)}><ChevronFirst size={15} /></Button>
-              <Button onClick={() => goToPly((variation?.basePly ?? ply) - 1)}><ChevronLeft size={15} /></Button>
-              <Button onClick={() => goToPly((variation?.basePly ?? ply) + 1)}><ChevronRight size={15} /></Button>
-              <Button onClick={() => goToPly(sans.length)}><ChevronLast size={15} /></Button>
-            </div>
-            <div className="text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
-              {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
+          {/* „Neu“, vier Sprungtasten und die Bewertung passen auf einem Telefon
+              nicht nebeneinander · früher schob das die Bewertung aus dem Bild.
+              „Neu“ ist deshalb ein eigenes Umbruch-Element: reicht die Breite
+              nicht, rückt es allein in die erste Zeile, während Sprungtasten und
+              Bewertung als Paar zusammenbleiben · die Bewertung immer rechts. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 pl-8">
+            {scratch && (
+              <Button
+                onClick={() => {
+                  setScratchSans([]);
+                  setPly(0);
+                  setScratchSelected(null);
+                  setLiveEval(null);
+                  setLiveBestUci(null);
+                }}
+              >
+                <RotateCcw size={15} /> {t("an.newBoard")}
+              </Button>
+            )}
+            {/* Bewusst ohne `min-w-0`: Mit ihm dürfte dieser Block unter seine
+                Inhaltsbreite schrumpfen, und dann bricht die Zeile nie um — sie
+                quetscht sich, und die Bewertung rutscht rechts aus dem Bild.
+                Mit der automatischen Mindestbreite passt entweder alles in eine
+                Zeile, oder „Neu" rückt allein in die erste. */}
+            <div className="flex flex-1 items-center justify-between gap-2">
+              <div className="flex gap-1">
+                <Button onClick={() => goToPly(0)}><ChevronFirst size={15} /></Button>
+                <Button onClick={() => goToPly((variation?.basePly ?? ply) - 1)}><ChevronLeft size={15} /></Button>
+                <Button onClick={() => goToPly((variation?.basePly ?? ply) + 1)}><ChevronRight size={15} /></Button>
+                <Button onClick={() => goToPly(sans.length)}><ChevronLast size={15} /></Button>
+              </div>
+              <div className="shrink-0 text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
+                {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
+              </div>
             </div>
           </div>
         </div>

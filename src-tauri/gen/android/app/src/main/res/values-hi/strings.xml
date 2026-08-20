@@ -17,7 +17,6 @@
     <string name="widget_ratio">%1$d / %2$d मिनट</string>
     <string name="widget_week_remaining">%1$d मिनट बाक़ी</string>
     <string name="widget_week_days">%2$d में से %1$d दिन</string>
-    <string name="widget_week_days_open">%1$d दिन अभ्यास</string>
     <string name="widget_week_none">इस सप्ताह अभी कोई अभ्यास नहीं।</string>
 
     <string name="widget_quick_puzzles">पहेलियाँ</string>
@@ -35,4 +34,28 @@
     <string name="widget_preview_open">2 बाक़ी</string>
     <string name="widget_preview_week_ratio">95 / 180 मिनट</string>
     <string name="widget_preview_week_days">5 में से 3 दिन</string>
+
+    <string name="widget_area_play">खेलना</string>
+    <string name="widget_area_tactics">रणनीति</string>
+    <string name="widget_area_openings">ओपनिंग</string>
+    <string name="widget_area_endgames">अंत्यखेल</string>
+    <string name="widget_area_analysis">विश्लेषण</string>
+
+    <string name="widget_task_units">%1$d नियोजित इकाइयाँ</string>
+    <string name="widget_task_repertoire">%1$d दोहराव बाकी</string>
+    <string name="widget_task_puzzles">लक्ष्य तक %1$d पहेलियाँ</string>
+    <string name="widget_task_endgame">अंत्यखेल अभ्यास</string>
+    <string name="widget_task_analysis">%1$d बाज़ियाँ बिना विश्लेषण</string>
+
+    <string name="widget_week_mix">इस सप्ताह</string>
+    <string name="widget_today_all_clear">आज के लिए सब पूरा।</string>
+
+    <plurals name="widget_streak">
+        <item quantity="one">%1$d दिन लगातार</item>
+        <item quantity="other">%1$d दिन लगातार</item>
+    </plurals>
+    <plurals name="widget_week_days_open">
+        <item quantity="one">%1$d दिन अभ्यास</item>
+        <item quantity="other">%1$d दिन अभ्यास</item>
+    </plurals>
 </resources>

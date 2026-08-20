@@ -119,7 +119,7 @@ const nav: { id: PageId; labelKey: Key; icon: typeof LayoutDashboard }[] = [
 // Die fünf Hauptziele der mobilen Bottom-Navigation · Material 3 lässt für eine
 // Leiste 3 bis 5 Einträge zu. Der Rest bleibt vorerst im Drawer, bis der
 // Training-Hub Repertoire, Endspiele und Puzzles aufnimmt.
-const BOTTOM_NAV: PageId[] = ["dashboard", "games", "study", "analysis", "insights"];
+const BOTTOM_NAV: PageId[] = ["dashboard", "games", "analysis", "study", "insights"];
 const bottomNav = BOTTOM_NAV.map((id) => nav.find((n) => n.id === id)!);
 
 // Ziele, die später unter "Training" einziehen. Sie markieren schon jetzt den

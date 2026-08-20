@@ -33,7 +33,7 @@ import {
   type StudyTemplate,
   type TrainingProgram,
 } from "../lib/study";
-import { getSettings, setSettings, trainingDayList } from "../lib/settings";
+import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
 import { deepInsights, studyMetrics, type MetricWindow } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
@@ -369,19 +369,6 @@ export default function Study({
     [week, plan]
   );
 
-  /** Übernimmt das beobachtete Wochenmittel als verbindliches Budget. */
-  const adoptObservedBudget = async () => {
-    if (!desktop || !state) return;
-    setBusy(true);
-    try {
-      const settings = await getSettings();
-      await setSettings({ ...settings, weekly_minutes: state.observedWeeklyMinutes });
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // ── Tagesplan ──────────────────────────────────────────────────────────────
 
   const dose = plan?.dose ?? null;
@@ -619,21 +606,9 @@ export default function Study({
                 // Geräten dasselbe · das ist die halbe Aussage dieser Zeile.
                 t("st.weekBudgetSource", { m: deInt(plan?.weeklyMinutes ?? 0) })
               ) : (
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {t("st.weekBudgetObserved", {
-                    m: deInt(state?.observedWeeklyMinutes ?? 0),
-                  })}
-                  {desktop && (state?.observedWeeklyMinutes ?? 0) >= 30 && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void adoptObservedBudget()}
-                      className="rounded-md border border-line px-2 py-0.5 text-[11.5px] text-accent transition-colors hover:border-accent-dim disabled:opacity-45"
-                    >
-                      {t("st.weekBudgetAdopt", { m: deInt(state?.observedWeeklyMinutes ?? 0) })}
-                    </button>
-                  )}
-                </span>
+                t("st.weekBudgetObserved", {
+                  m: deInt(state?.observedWeeklyMinutes ?? 0),
+                })
               )
             }
           />

@@ -17,7 +17,6 @@
     <string name="widget_ratio">%1$d / %2$d 分钟</string>
     <string name="widget_week_remaining">还差 %1$d 分钟</string>
     <string name="widget_week_days">%2$d 天中的 %1$d 天</string>
-    <string name="widget_week_days_open">已训练 %1$d 天</string>
     <string name="widget_week_none">本周还没有训练。</string>
 
     <string name="widget_quick_puzzles">战术题</string>
@@ -35,4 +34,26 @@
     <string name="widget_preview_open">2 项待办</string>
     <string name="widget_preview_week_ratio">95 / 180 分钟</string>
     <string name="widget_preview_week_days">5 天中的 3 天</string>
+
+    <string name="widget_area_play">实战</string>
+    <string name="widget_area_tactics">战术</string>
+    <string name="widget_area_openings">开局</string>
+    <string name="widget_area_endgames">残局</string>
+    <string name="widget_area_analysis">分析</string>
+
+    <string name="widget_task_units">%1$d 个计划单元</string>
+    <string name="widget_task_repertoire">%1$d 项待复习</string>
+    <string name="widget_task_puzzles">距目标还有 %1$d 道题</string>
+    <string name="widget_task_endgame">残局训练</string>
+    <string name="widget_task_analysis">%1$d 局未分析</string>
+
+    <string name="widget_week_mix">本周</string>
+    <string name="widget_today_all_clear">今天的任务已全部完成。</string>
+
+    <plurals name="widget_streak">
+        <item quantity="other">连续 %1$d 天</item>
+    </plurals>
+    <plurals name="widget_week_days_open">
+        <item quantity="other">已训练 %1$d 天</item>
+    </plurals>
 </resources>

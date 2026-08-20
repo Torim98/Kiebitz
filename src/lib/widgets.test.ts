@@ -148,6 +148,55 @@ describe("buildWidgetSnapshot", () => {
     expect(buildWidgetSnapshot(base).locale).toBe("de");
   });
 
+  it("breaks the open tasks down so a large tile has something to show", () => {
+    // Eine offene Einheit, vier fällige Wiederholungen, Puzzleziel erreicht,
+    // Endspiel heute schon trainiert · also zwei Posten.
+    expect(buildWidgetSnapshot(base).today.tasks).toEqual([
+      { kind: "units", count: 1, area: "" },
+      { kind: "repertoire", count: 4, area: "openings" },
+    ]);
+
+    // Fehlende Puzzles stehen mit ihrer Anzahl da, das Endspiel ohne · es gibt
+    // dort nichts zu zählen, es steht an oder nicht.
+    const open = buildWidgetSnapshot({
+      ...base,
+      data: data({ today_puzzle_attempts: 3, activity: [] }),
+    });
+    expect(open.today.tasks.map((task) => `${task.kind}:${task.count}`)).toEqual([
+      "units:1",
+      "repertoire:4",
+      "puzzles:7",
+      "endgame:0",
+    ]);
+  });
+
+  it("carries the streak the app header shows", () => {
+    expect(buildWidgetSnapshot(base).today.streakDays).toBe(3);
+  });
+
+  it("splits the week by area, largest first and without empty ones", () => {
+    const load = [
+      // Montag der Woche · Tageslasten sind UTC-Mitternacht in Sekunden.
+      { day_ts: Date.UTC(2026, 7, 10) / 1000, play: 0, tactics: 30, openings: 10, endgames: 0, analysis: 0 },
+      { day_ts: Date.UTC(2026, 7, 12) / 1000, play: 25, tactics: 5, openings: 0, endgames: 0, analysis: 0 },
+      // Vorwoche · zählt nicht mit.
+      { day_ts: Date.UTC(2026, 7, 3) / 1000, play: 99, tactics: 0, openings: 0, endgames: 0, analysis: 0 },
+    ];
+    const snapshot = buildWidgetSnapshot({ ...base, load });
+
+    expect(snapshot.week.byArea).toEqual([
+      { area: "tactics", minutes: 35 },
+      { area: "play", minutes: 25 },
+      { area: "openings", minutes: 10 },
+    ]);
+  });
+
+  it("stays usable when the load is unavailable", () => {
+    // Ohne Tageslasten bleibt der Balken einfarbig · die Momentaufnahme
+    // entsteht trotzdem, statt an einem fehlgeschlagenen Aufruf zu scheitern.
+    expect(buildWidgetSnapshot(base).week.byArea).toEqual([]);
+  });
+
   it("keeps at most three units, so the largest layout still fits", () => {
     const many = calendar(
       ["a", "b", "c", "d", "e"].map((title) => event("2026-08-12", title)),

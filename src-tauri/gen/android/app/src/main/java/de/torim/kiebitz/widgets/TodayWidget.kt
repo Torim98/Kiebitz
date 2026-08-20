@@ -100,7 +100,12 @@ private fun TodayReady(context: Context, snapshot: WidgetSnapshot) {
   // Ein Tag ohne Plan und ohne gemessene Minute hat keine Kennzahl · „0 min"
   // groß hinzuschreiben ist die aufwendigste Art, nichts zu sagen. Dann steht
   // dort der Satz, der zutrifft, und darunter der Weg in die App.
-  val quiet = planned == 0 && snapshot.doneMinutes == 0
+  //
+  // „Ohne Plan" heißt aber nicht „ohne etwas zu tun": fällige Wiederholungen,
+  // fehlende Puzzles und das Endspiel stehen auch dann an. Solange es die gibt,
+  // ist die Kachel nicht leer, sondern zeigt sie · vorher stand hier nur die
+  // Zahl „5 offen" in der Kopfzeile und darunter nichts.
+  val quiet = planned == 0 && snapshot.doneMinutes == 0 && snapshot.tasks.isEmpty()
 
   // 2×1 · 48 dp sind ein Ziel, keine Karte mit Überschrift darüber. Hier stehen
   // nur Angaben, deren Länge feststeht: Der Titel einer Einheit ist frei
@@ -153,13 +158,32 @@ private fun TodayReady(context: Context, snapshot: WidgetSnapshot) {
     HEADER_ROW - 8.dp - (headline.value * lineFactor(snapshot.locale)).dp - 8.dp - 8.dp
   val rows = if (quiet) 0 else ((room - 10.dp) / UNIT_ROW).toInt().coerceIn(0, 3)
   val units = snapshot.units.take(rows)
+  // Was unter dem Balken steht, wenn es keine geplanten Einheiten gibt: die
+  // offenen Aufgaben selbst. Sie belegen dieselben Zeilen und führen jeweils
+  // an ihre eigene Stelle — eine Kachel, die nur „nichts geplant" sagt, ist
+  // der Grund, warum Widgets nichtssagend wirken.
+  val tasks = if (units.isEmpty()) snapshot.tasks.take(rows) else emptyList()
   val foot = room - 6.dp >= 19.dp
 
   Column(
     modifier = widgetSurface(top = surfaceTop(size.height), bottom = surfaceBottom(size.height))
       .clickable(start)
   ) {
-    WidgetHeader(name, if (size.width >= WIDE_WIDTH) open else null)
+    // Neben dem Namen steht, was den Tag am besten beschreibt: die offenen
+    // Aufgaben, solange es welche gibt · sonst die Serie, die auf dem Spiel
+    // steht. Ein erledigter Tag verdient mehr als eine leere Kopfzeile.
+    val badge = when {
+      size.width < WIDE_WIDTH -> null
+      snapshot.openTasks > 0 -> open
+      snapshot.streakDays > 0 ->
+        strings.resources.getQuantityString(
+          R.plurals.widget_streak,
+          snapshot.streakDays,
+          snapshot.streakDays,
+        )
+      else -> null
+    }
+    WidgetHeader(name, badge)
 
     if (quiet) {
       Spacer(modifier = GlanceModifier.defaultWeight())
@@ -184,13 +208,27 @@ private fun TodayReady(context: Context, snapshot: WidgetSnapshot) {
     WidgetHeadline(metric, fontSize = headline)
     Spacer(modifier = GlanceModifier.height(8.dp))
     WidgetProgress(fraction, width = inner)
+    if (units.isEmpty() && tasks.isNotEmpty()) {
+      // Kein Plan, aber offene Aufgaben · sie füllen die Zeilen, die sonst die
+      // Einheiten hätten, und teilen sich wie diese den übrigen Platz.
+      Spacer(modifier = GlanceModifier.height(10.dp))
+      tasks.forEach { task ->
+        WidgetTaskRow(task, strings, modifier = GlanceModifier.fillMaxWidth().defaultWeight())
+      }
+      return@Column
+    }
+
     if (units.isEmpty()) {
-      // Ohne Liste bleibt die nächste Einheit unter dem Balken · und der Block
-      // steht zusammen, statt dass die letzte Zeile allein am unteren Rand
-      // klebt. Der Titel ist selbst gewählt und darf mit Auslassung enden.
+      // Weder Plan noch offene Aufgaben · dann bleibt die nächste Einheit unter
+      // dem Balken, und der Block steht zusammen, statt dass die letzte Zeile
+      // allein am unteren Rand klebt. Der Titel ist selbst gewählt und darf mit
+      // Auslassung enden.
       if (foot) {
         Spacer(modifier = GlanceModifier.height(6.dp))
-        WidgetCaption(next?.title ?: clear, color = WidgetColors.ink2)
+        WidgetCaption(
+          next?.title ?: strings.getString(R.string.widget_today_all_clear),
+          color = WidgetColors.ink2,
+        )
       }
       Spacer(modifier = GlanceModifier.defaultWeight())
       return@Column

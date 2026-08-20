@@ -8,6 +8,7 @@ import {
   minutesOfDay,
   notify,
   reminderBody,
+  reminderMessage,
   type ReminderInput,
 } from "./notify";
 
@@ -72,6 +73,9 @@ function due(overrides: Partial<ReminderInput> = {}): ReminderInput {
     puzzlesLeft: 0,
     endgameDone: true,
     unanalyzed: 0,
+    streakDays: 0,
+    todayMinutes: 0,
+    weekMinutes: 0,
     ...overrides,
   };
 }
@@ -116,6 +120,68 @@ describe("reminder text", () => {
   });
 });
 
+// Mittwoch bzw. Sonntag · der Wochentag entscheidet über die Form der Meldung.
+const WEDNESDAY = new Date(2026, 7, 12, 18, 0);
+const SUNDAY = new Date(2026, 7, 16, 18, 0);
+
+describe("reminder message", () => {
+  it("puts the reason first and the list below it", () => {
+    const message = reminderMessage(
+      t,
+      settings(),
+      due({ repertoire: 14, weekMinutes: 20 }),
+      WEDNESDAY
+    );
+    expect(message?.title).toBe("Kiebitz · Training");
+    expect(message?.lead).toBe("Zeit fürs Training.");
+    expect(message?.detail).toBe("14 Wiederholungen fällig");
+    expect(message?.body).toBe("Zeit fürs Training.\n14 Wiederholungen fällig");
+  });
+
+  it("leads with a streak that would break tonight", () => {
+    const message = reminderMessage(
+      t,
+      settings({ weekly_minutes: 180 }),
+      due({ repertoire: 3, streakDays: 12, todayMinutes: 0, weekMinutes: 90 }),
+      WEDNESDAY
+    );
+    expect(message?.lead).toBe("12 Tage in Folge — heute noch nichts.");
+  });
+
+  it("drops the streak line once the day has minutes on it", () => {
+    // Trainiert ist trainiert · dann steht dort das offene Wochenziel.
+    const message = reminderMessage(
+      t,
+      settings({ weekly_minutes: 180 }),
+      due({ repertoire: 3, streakDays: 12, todayMinutes: 25, weekMinutes: 90 }),
+      WEDNESDAY
+    );
+    expect(message?.lead).toBe("Noch 90 Min. bis zum Wochenziel.");
+  });
+
+  it("reviews the week on sunday, even with nothing left to do", () => {
+    // Unter der Woche schweigt Kiebitz, wenn nichts offen ist · der Rückblick
+    // berichtet aber über die Woche und nicht über diesen Abend.
+    expect(reminderMessage(t, settings(), due(), WEDNESDAY)).toBeNull();
+
+    const review = reminderMessage(
+      t,
+      settings({ weekly_minutes: 180 }),
+      due({ weekMinutes: 145 }),
+      SUNDAY
+    );
+    expect(review?.title).toBe("Kiebitz · Woche");
+    expect(review?.lead).toBe("145 von 180 Min. diese Woche.");
+    expect(review?.detail).toBe("");
+    expect(review?.body).toBe("145 von 180 Min. diese Woche.");
+  });
+
+  it("reviews without a budget too", () => {
+    const review = reminderMessage(t, settings(), due({ weekMinutes: 45 }), SUNDAY);
+    expect(review?.lead).toBe("45 Min. diese Woche trainiert.");
+  });
+});
+
 describe("native notification bridge", () => {
   it("requests Android permission through the native plugin", async () => {
     invokeMock
@@ -154,7 +220,7 @@ describe("native notification bridge", () => {
     });
   });
 
-  it("persists and verifies the inexact daily Android alarm without serializing native pending objects", async () => {
+  it("persists one alarm per weekday and verifies each without serializing native pending objects", async () => {
     invokeMock.mockImplementation((command?: string) => {
       if (!command) return Promise.resolve();
       if (command === "get_settings") {
@@ -174,51 +240,91 @@ describe("native notification bridge", () => {
           today_puzzle_attempts: 2,
           unanalyzed: 1,
           activity: [{ endgame_attempts: 0 }],
+          streak_days: 0,
         });
       }
       if (command === "study_calendar") {
-        return Promise.resolve({ events: [] });
+        return Promise.resolve({ events: [], days: [] });
       }
-      if (command === "plugin:notification|batch") return Promise.resolve([4711]);
+      // Der AlarmManager bestätigt alle sieben · die Prüfung verlangt genau das.
+      if (command === "plugin:notification|batch") {
+        return Promise.resolve([4711, 4712, 4713, 4714, 4715, 4716, 4717]);
+      }
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
     await applyReminderSchedule();
 
-    expect(invokeMock).toHaveBeenCalledWith(
-      "plugin:notification|batch",
-      expect.objectContaining({
-        notifications: [
-          expect.objectContaining({
-            id: 4711,
-            schedule: expect.objectContaining({
-              interval: {
-                interval: { hour: 7, minute: 35 },
-                allowWhileIdle: false,
-              },
-            }),
-            sourceJson: expect.any(String),
-          }),
-        ],
-      })
-    );
     const batchCall = invokeMock.mock.calls.find(
       ([command]) => command === "plugin:notification|batch"
     );
-    const scheduled = batchCall?.[1]?.notifications?.[0];
-    expect(JSON.parse(scheduled.sourceJson)).toEqual(
+    const batch = batchCall?.[1]?.notifications ?? [];
+    // Ein Alarm je Wochentag, `weekday` zählt ab Sonntag = 1 · ein einzelner
+    // täglicher Alarm könnte den Sonntagsrückblick nicht vom Rest trennen.
+    expect(batch.map((entry: { id: number }) => entry.id)).toEqual([
+      4711, 4712, 4713, 4714, 4715, 4716, 4717,
+    ]);
+    expect(
+      batch.map(
+        (entry: { schedule: { interval: { interval: { weekday: number } } } }) =>
+          entry.schedule.interval.interval.weekday
+      )
+    ).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // Der Sonntag trägt den Rückblick, die übrigen sechs die Erinnerung.
+    expect(batch[0].title).toBe("Kiebitz · Woche");
+    expect(batch.slice(1).every((entry: { title: string }) => entry.title === "Kiebitz · Training")).toBe(
+      true
+    );
+
+    expect(batch[1]).toEqual(
       expect.objectContaining({
-        id: 4711,
+        schedule: expect.objectContaining({
+          interval: { interval: { weekday: 2, hour: 7, minute: 35 }, allowWhileIdle: false },
+        }),
+        sourceJson: expect.any(String),
+      })
+    );
+    expect(JSON.parse(batch[1].sourceJson)).toEqual(
+      expect.objectContaining({
+        id: 4712,
         title: expect.any(String),
         body: expect.any(String),
         schedule: {
           interval: {
-            interval: { hour: 7, minute: 35 },
+            interval: { weekday: 2, hour: 7, minute: 35 },
             allowWhileIdle: false,
           },
         },
       })
     );
     expect(invokeMock).not.toHaveBeenCalledWith("plugin:notification|get_pending");
+  });
+
+  it("refuses a week the alarm manager only half accepted", async () => {
+    invokeMock.mockImplementation((command?: string) => {
+      if (!command) return Promise.resolve();
+      if (command === "get_settings") return Promise.resolve(settings());
+      if (command === "app_info") {
+        return Promise.resolve({ version: "test", backend: "tauri", platform: "android" });
+      }
+      if (command === "plugin:notification|cancel") return Promise.resolve();
+      if (command === "plugin:notification|is_permission_granted") return Promise.resolve(true);
+      if (command === "study_data") {
+        return Promise.resolve({
+          due_now: 1,
+          puzzle_goal: 20,
+          today_puzzle_attempts: 0,
+          unanalyzed: 0,
+          activity: [{ endgame_attempts: 0 }],
+          streak_days: 0,
+        });
+      }
+      if (command === "study_calendar") return Promise.resolve({ events: [], days: [] });
+      // Drei fehlen · eine halb angelegte Woche ist schlimmer als keine.
+      if (command === "plugin:notification|batch") return Promise.resolve([4711, 4712, 4713, 4714]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await expect(applyReminderSchedule()).rejects.toThrow(/nicht registriert/);
   });
 });

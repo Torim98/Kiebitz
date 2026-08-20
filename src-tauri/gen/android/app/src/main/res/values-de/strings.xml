@@ -17,7 +17,6 @@
     <string name="widget_ratio">%1$d / %2$d min</string>
     <string name="widget_week_remaining">%1$d min offen</string>
     <string name="widget_week_days">%1$d von %2$d Tagen</string>
-    <string name="widget_week_days_open">%1$d Tage trainiert</string>
     <string name="widget_week_none">Diese Woche noch nichts trainiert.</string>
 
     <string name="widget_quick_puzzles">Puzzles</string>
@@ -35,4 +34,28 @@
     <string name="widget_preview_open">2 offen</string>
     <string name="widget_preview_week_ratio">95 / 180 min</string>
     <string name="widget_preview_week_days">3 von 5 Tagen</string>
+
+    <string name="widget_area_play">Spielen</string>
+    <string name="widget_area_tactics">Taktik</string>
+    <string name="widget_area_openings">Eröffnung</string>
+    <string name="widget_area_endgames">Endspiel</string>
+    <string name="widget_area_analysis">Analyse</string>
+
+    <string name="widget_task_units">%1$d geplante Einheiten</string>
+    <string name="widget_task_repertoire">%1$d Wiederholungen fällig</string>
+    <string name="widget_task_puzzles">%1$d Puzzles bis zum Ziel</string>
+    <string name="widget_task_endgame">Endspieltraining</string>
+    <string name="widget_task_analysis">%1$d Partien ohne Analyse</string>
+
+    <string name="widget_week_mix">Diese Woche</string>
+    <string name="widget_today_all_clear">Für heute ist alles erledigt.</string>
+
+    <plurals name="widget_streak">
+        <item quantity="one">%1$d Tag in Folge</item>
+        <item quantity="other">%1$d Tage in Folge</item>
+    </plurals>
+    <plurals name="widget_week_days_open">
+        <item quantity="one">%1$d Tag trainiert</item>
+        <item quantity="other">%1$d Tage trainiert</item>
+    </plurals>
 </resources>

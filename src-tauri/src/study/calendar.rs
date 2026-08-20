@@ -271,7 +271,14 @@ fn range_index(day: i64, first: i64, len: usize) -> Option<usize> {
 }
 
 /// Aggregates a complete range with a constant number of SQL statements.
-fn study_days(conn: &Connection, first: i64, last: i64, now: i64) -> Result<Vec<StudyDay>, String> {
+/// Gemessene Minuten je Tag · auch die Erinnerung rechnet damit, statt eine
+/// zweite Zählweise danebenzustellen.
+pub(crate) fn study_days(
+    conn: &Connection,
+    first: i64,
+    last: i64,
+    now: i64,
+) -> Result<Vec<StudyDay>, String> {
     let len = ((last - first).div_euclid(86_400) + 1).max(0) as usize;
     let end = first + len as i64 * 86_400;
     let mut totals: Vec<DayTotals> = (0..len).map(|_| DayTotals::default()).collect();

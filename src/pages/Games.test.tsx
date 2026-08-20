@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -90,7 +90,7 @@ afterEach(() => {
 describe("Games page", () => {
   it("loads only a paginated summary and the selected detail", async () => {
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
-    await screen.findByText("Testgegner");
+    await screen.findByRole("button", { name: "Testgegner" });
 
     expect(invokeMock).toHaveBeenCalledWith("list_games_page", {
       request: expect.objectContaining({ offset: 0, limit: 10 }),
@@ -105,7 +105,7 @@ describe("Games page", () => {
     gameDetail = new Promise((resolve) => { resolveDetail = resolve; });
 
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
-    await screen.findByText("Testgegner");
+    await screen.findByRole("button", { name: "Testgegner" });
     const notes = screen.getByPlaceholderText("Gedanken zur Partie festhalten …") as HTMLTextAreaElement;
     expect(notes.value.trim()).toBe("");
 
@@ -118,7 +118,7 @@ describe("Games page", () => {
 
   it("deletes the selected database game after confirmation", async () => {
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
-    expect(await screen.findByText("Testgegner")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Testgegner" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Partie löschen" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
@@ -127,12 +127,12 @@ describe("Games page", () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("delete_game", { id: 1 }));
     expect(await screen.findByText("Keine Partien gefunden.")).toBeTruthy();
-    expect(screen.queryByText("Testgegner")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Testgegner" })).toBeNull();
   });
 
   it("explains PGN player perspective and separates import from export", async () => {
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
-    await screen.findByText("Testgegner");
+    await screen.findByRole("button", { name: "Testgegner" });
     fireEvent.click(screen.getByRole("button", { name: /Import \/ Export/ }));
 
     expect(screen.getByText("PGN importieren")).toBeTruthy();
@@ -143,7 +143,7 @@ describe("Games page", () => {
   it("renders a player-name mismatch as a yellow warning", async () => {
     vi.mocked(openDialog).mockResolvedValue("friend.pgn");
     render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
-    await screen.findByText("Testgegner");
+    await screen.findByRole("button", { name: "Testgegner" });
     fireEvent.click(screen.getByRole("button", { name: /Import \/ Export/ }));
     fireEvent.click(screen.getByRole("button", { name: "Datei wählen" }));
     await screen.findByText("friend.pgn");
@@ -161,18 +161,20 @@ describe("Games page", () => {
         </ShellProvider>
       </LocaleProvider>
     );
-    await screen.findByText("Testgegner");
+    // Der Gegnername steht auf der Seite zweimal — auf der Karte und am
+    // Vorschaubrett · deshalb wird hier auf die Liste eingegrenzt.
+    const list = await screen.findByTestId("games-list");
+    const card = within(list).getByText(/Testgegner/).closest("div")?.parentElement;
 
     // Die achtspaltige Tabelle erzwingt sonst 760 px Breite.
     expect(container.querySelector("table")).toBeNull();
     // Alles Wesentliche steht weiterhin auf der Karte.
-    const card = screen.getByText("Testgegner").closest("div")?.parentElement;
     expect(card?.textContent).toContain("1450");
     expect(card?.textContent).toContain("83,4 %");
     expect(card?.textContent).toContain("Italian Game");
 
     // Antippen wählt die Partie weiterhin aus und öffnet das Detail.
-    fireEvent.click(screen.getByText("Testgegner"));
+    fireEvent.click(within(list).getByText(/Testgegner/));
     expect(await screen.findByRole("button", { name: "Partie löschen" })).toBeTruthy();
   });
 

@@ -125,7 +125,7 @@ describe("mobile navigation", () => {
     const labels = bottomBar()
       .getAllByRole("button")
       .map((b) => b.textContent);
-    expect(labels).toEqual(["Dashboard", "Partien", "Training", "Analyse", "Insights"]);
+    expect(labels).toEqual(["Dashboard", "Partien", "Analyse", "Training", "Insights"]);
     expect(activeTab()).toBe("Dashboard");
 
     fireEvent.click(bottomBar().getByRole("button", { name: "Insights" }));

@@ -2,7 +2,9 @@
 <!--
   Vorschau im Widget-Auswahldialog · ein statisches Abbild dessen, was das
   Widget mit Daten zeigt: dieselbe Karte, dieselbe Kopfzeile mit den
-  Trainingstagen, dieselbe Kennzahl, derselbe Balken.
+  Trainingstagen, dieselbe Kennzahl, derselbe nach Bereichen eingefärbte
+  Balken. Er ist hier von Hand nachgebaut, weil eine Vorschau keine Daten hat ·
+  die Verhältnisse entsprechen den Beispielwerten daneben.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -83,15 +85,34 @@
         android:textSize="20sp"
         android:textStyle="bold" />
 
-    <FrameLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="8dp"
         android:layout_marginTop="6dp"
+        android:orientation="horizontal"
         android:background="@drawable/widget_track">
 
         <View
-            android:layout_width="90dp"
+            android:layout_width="78dp"
             android:layout_height="match_parent"
-            android:background="@drawable/widget_bar" />
-    </FrameLayout>
+            android:background="@drawable/widget_seg_tactics" />
+
+        <View
+            android:layout_width="54dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:background="@drawable/widget_seg_play" />
+
+        <View
+            android:layout_width="30dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:background="@drawable/widget_seg_openings" />
+
+        <View
+            android:layout_width="15dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
+            android:background="@drawable/widget_seg_analysis" />
+    </LinearLayout>
 </LinearLayout>

@@ -74,7 +74,15 @@ class WidgetLayoutTest {
    * Installation nicht offen, es gibt noch gar keinen Datenstand. Beide haben
    * ein eigenes Layout · und deshalb gehören sie geprüft wie die anderen.
    */
-  private enum class State { VOLL, LEER, GESPERRT, OHNE }
+  /**
+   * Datenstände, die geprüft werden.
+   *
+   * `OFFEN` kam dazu, weil genau dieser Stand die großen Kacheln leer aussehen
+   * ließ: kein Lernplan, kein Wochenbudget — aber fällige Wiederholungen und
+   * fehlende Puzzles. Das ist der Alltag, solange niemand einen Plan angelegt
+   * hat, und der Fall gehört in jeder Größe gemessen.
+   */
+  private enum class State { VOLL, OFFEN, LEER, GESPERRT, OHNE }
 
   @Test
   fun todayFitsEverySize() = checkAll(
@@ -369,18 +377,64 @@ class WidgetLayoutTest {
     if (state == State.LEER) {
       return """
         {
-          "version": 1,
+          "version": 2,
           "generatedAt": 1750000000000,
           "day": "2026-08-15",
           "locale": "$locale",
           "plus": true,
-          "today": { "units": [], "openTasks": 2, "doneMinutes": 0, "plannedMinutes": 0 },
+          "today": {
+            "units": [],
+            "openTasks": 0,
+            "tasks": [],
+            "doneMinutes": 0,
+            "plannedMinutes": 0,
+            "streakDays": 0
+          },
           "week": {
             "trainedMinutes": 0,
             "budgetMinutes": 0,
             "remainingMinutes": 0,
             "trainedDays": 0,
-            "targetDays": 0
+            "targetDays": 0,
+            "byArea": []
+          }
+        }
+      """.trimIndent()
+    }
+    // Ohne Plan und ohne Budget, aber mit offenen Aufgaben · die Kachel muss
+    // sich daraus füllen, statt unter der Kennzahl eine Fläche frei zu lassen.
+    if (state == State.OFFEN) {
+      return """
+        {
+          "version": 2,
+          "generatedAt": 1750000000000,
+          "day": "2026-08-15",
+          "locale": "$locale",
+          "plus": true,
+          "today": {
+            "units": [],
+            "openTasks": 12,
+            "tasks": [
+              {"kind":"repertoire","count":11,"area":"openings"},
+              {"kind":"puzzles","count":7,"area":"tactics"},
+              {"kind":"endgame","count":0,"area":"endgames"}
+            ],
+            "doneMinutes": 0,
+            "plannedMinutes": 0,
+            "streakDays": 12
+          },
+          "week": {
+            "trainedMinutes": 17,
+            "budgetMinutes": 0,
+            "remainingMinutes": 0,
+            "trainedDays": 1,
+            "targetDays": 0,
+            "byArea": [
+              {"area":"tactics","minutes":7},
+              {"area":"play","minutes":5},
+              {"area":"analysis","minutes":4},
+              {"area":"endgames","minutes":1}
+            ]
           }
         }
       """.trimIndent()
@@ -394,7 +448,7 @@ class WidgetLayoutTest {
     }.joinToString(",")
     return """
       {
-        "version": 1,
+        "version": 2,
         "generatedAt": 1750000000000,
         "day": "2026-08-15",
         "locale": "$locale",
@@ -402,15 +456,27 @@ class WidgetLayoutTest {
         "today": {
           "units": [$units],
           "openTasks": 2,
+          "tasks": [
+            {"kind":"units","count":2,"area":""},
+            {"kind":"repertoire","count":11,"area":"openings"}
+          ],
           "doneMinutes": 20,
-          "plannedMinutes": 65
+          "plannedMinutes": 65,
+          "streakDays": 9
         },
         "week": {
           "trainedMinutes": 185,
           "budgetMinutes": 240,
           "remainingMinutes": 55,
           "trainedDays": 4,
-          "targetDays": 5
+          "targetDays": 5,
+          "byArea": [
+            {"area":"tactics","minutes":80},
+            {"area":"play","minutes":55},
+            {"area":"openings","minutes":30},
+            {"area":"analysis","minutes":15},
+            {"area":"endgames","minutes":5}
+          ]
         }
       }
     """.trimIndent()

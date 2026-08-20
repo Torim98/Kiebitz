@@ -40,6 +40,34 @@ The offline opening-name lookup is generated from the public
 dataset at commit `51b886249b9e418498d25b6e39b926c3de99c29a`, released under the CC0 1.0
 public domain dedication.
 
+## Chess piece artwork (CC BY-SA 3.0)
+
+The pieces on every board are the **SVG chess pieces** by Wikimedia Commons user
+**en:User:Cburnett**, licensed CC BY-SA 3.0:
+
+<https://commons.wikimedia.org/w/index.php?curid=1499810>
+
+They reach Kiebitz through `react-chessboard`, which embeds this set as its
+default pieces and carries the same attribution. The captured-pieces list next
+to each board draws the *same* artwork rather than a second, look-alike set:
+[`scripts/generate-piece-glyphs.mjs`](scripts/generate-piece-glyphs.mjs) renders
+a real board and copies the drawings into
+[`src/components/pieceGlyphs.ts`](src/components/pieceGlyphs.ts).
+
+Regenerate after updating `react-chessboard`:
+
+```sh
+npm run pieces:sync
+```
+
+CI runs `npm run pieces:check` and fails if the copied drawings no longer match
+the installed `react-chessboard`, so board and capture list cannot drift apart.
+
+Share-alike applies to the artwork, not to Kiebitz' own code: the drawings are
+data the app renders, they are unmodified, and they are attributed here and in
+the generated file. Any change *to the drawings themselves* would have to be
+published under CC BY-SA 3.0 as well.
+
 ## Wooden chess-piece recordings (CC0 1.0)
 
 The short board sounds are edited excerpts from **"chess pieces.wav"** by

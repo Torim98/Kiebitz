@@ -31,6 +31,8 @@ import { getSettings } from "../lib/settings";
 import { tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
+import CapturedPieces from "../components/CapturedPieces";
+import { capturedFromFen } from "../lib/captured";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
 import TagEditor from "../components/TagEditor";
@@ -164,6 +166,10 @@ export default function Games({
     ? toUi(selectedRecord, locale)
     : selectedSummary;
 
+  // Schlussstellung der gewählten Partie · einmal gerechnet, denn sie trägt
+  // sowohl das Brett als auch die beiden Schlaglisten daneben.
+  const previewFen = useMemo(() => (selected ? fenAfter(selected.sans) : ""), [selected]);
+  const previewCaptured = useMemo(() => capturedFromFen(previewFen), [previewFen]);
   useEffect(() => {
     if (!selectedSummary?.dbId) {
       setSelectedRecord(null);
@@ -341,6 +347,19 @@ export default function Games({
   // Ohne hinterlegtes Konto bleibt der eigene Name leer statt auf Demo-Daten
   // zurückzufallen · sonst importierte eine frische Installation fremde Partien.
   const [myUser, setMyUser] = useState(backend.mode === "desktop" ? "" : profile.ccUser);
+
+  // Unten steht immer die eigene Farbe · das Brett ist danach gedreht.
+  const previewSide = (color: "white" | "black", name: string) => ({
+    name,
+    color,
+    captured: color === "white" ? previewCaptured.white : previewCaptured.black,
+    advantage: color === "white" ? previewCaptured.diff : -previewCaptured.diff,
+  });
+  const previewBottom = previewSide(selected?.color ?? "white", myUser);
+  const previewTop = previewSide(
+    selected?.color === "white" ? "black" : "white",
+    selected?.opponent ?? ""
+  );
   useEffect(() => {
     if (backend.mode === "desktop") {
       getSettings()
@@ -527,7 +546,7 @@ export default function Games({
           {mobile ? (
           // Auf Handybreite wird aus jeder Zeile eine Karte · die achtspaltige
           // Tabelle liesse sich sonst nur quer scrollend lesen.
-          <div>
+          <div data-testid="games-list">
             {paged.map((g) => (
               <GameCard
                 key={g.id}
@@ -751,27 +770,46 @@ export default function Games({
         {selected && (
           <div className="flex flex-col gap-4">
             <Card pad={false}>
-              <div className="flex justify-center p-4 pb-3">
-                <Board
-                  boardId="games-preview"
-                  fen={fenAfter(selected.sans)}
-                  width={BOARD_WIDTH}
-                  orientation={selected.color}
-                  silent
-                />
+              {/* Brett mit beiden Namen · darunter jeweils, was diese Seite
+                  geschlagen hat. Die Namen standen früher nur als Paarung unter
+                  dem Brett; einzeln an ihrer Seite tragen sie die Schlagliste. */}
+              <div className="p-4 pb-3">
+                <div className="mx-auto max-w-[528px]">
+                  <div className="mb-2 min-w-0 text-[12.5px]">
+                    <div className="truncate font-semibold text-ink2">{previewTop.name}</div>
+                    <CapturedPieces
+                      pieces={previewTop.captured}
+                      color={previewTop.color === "white" ? "black" : "white"}
+                      advantage={previewTop.advantage}
+                    />
+                  </div>
+                  <Board
+                    boardId="games-preview"
+                    fen={previewFen}
+                    width={BOARD_WIDTH}
+                    orientation={selected.color}
+                    silent
+                  />
+                  <div className="mt-2 min-w-0 text-[12.5px]">
+                    <div className="truncate font-semibold text-ink2">{previewBottom.name}</div>
+                    <CapturedPieces
+                      pieces={previewBottom.captured}
+                      color={previewBottom.color === "white" ? "black" : "white"}
+                      advantage={previewBottom.advantage}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="border-t border-line px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[13.5px] font-medium">
-                    {selected.color === "white"
-                      ? `${myUser} – ${selected.opponent}`
-                      : `${selected.opponent} – ${myUser}`}
+                {/* Die Paarung stand früher hier als eine Zeile · seit beide
+                    Namen am Brett stehen, bliebe davon nur eine Wiederholung.
+                    Der Ausgang gehört trotzdem hierher, zu Eröffnung und Zügen. */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 truncate text-[12px] text-ink3">
+                    {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
+                    {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
                   </div>
                   <ResultBadge result={selected.result} />
-                </div>
-                <div className="mt-1 text-[12px] text-ink3">
-                  {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
-                  {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
                 </div>
                 {selected.analyzed && (
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">

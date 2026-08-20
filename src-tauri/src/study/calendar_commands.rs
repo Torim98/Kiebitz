@@ -479,7 +479,29 @@ fn study_data_from_conn(
         })
         .collect();
 
-    // ── Streak: zusammenhängende Tage mit irgendeiner Lernaktivität ─────────
+    let streak = training_streak(conn, today)?;
+
+    Ok(StudyData {
+        due_now,
+        due_week,
+        unanalyzed,
+        today_puzzle_attempts,
+        puzzle_goal,
+        activity,
+        streak_days: streak,
+    })
+}
+
+/// Zusammenhängende Tage mit irgendeiner Lernaktivität.
+///
+/// Steht hier und nicht in `reminder.rs`, obwohl die Erinnerung sie ebenfalls
+/// braucht: Zwei Zählweisen für dieselbe Serie wären die sicherste Art, beiden
+/// nicht mehr zu glauben · die Zahl im Kopf der App und die in der
+/// Benachrichtigung müssen dieselbe sein.
+///
+/// `today` ist der Tagesindex (Sekunden / 86400, UTC wie überall in diesem
+/// Modul).
+pub(crate) fn training_streak(conn: &Connection, today: i64) -> Result<i64, String> {
     let mut days: BTreeSet<i64> = BTreeSet::new();
     let mut stmt = conn
         .prepare(
@@ -502,23 +524,10 @@ fn study_data_from_conn(
     }
     let mut streak = 0i64;
     // Heute zählt, sobald etwas passiert ist; sonst ab gestern rückwärts.
-    let mut expect = if days.contains(&today) {
-        today
-    } else {
-        today - 1
-    };
+    let mut expect = if days.contains(&today) { today } else { today - 1 };
     while days.contains(&expect) {
         streak += 1;
         expect -= 1;
     }
-
-    Ok(StudyData {
-        due_now,
-        due_week,
-        unanalyzed,
-        today_puzzle_attempts,
-        puzzle_goal,
-        activity,
-        streak_days: streak,
-    })
+    Ok(streak)
 }

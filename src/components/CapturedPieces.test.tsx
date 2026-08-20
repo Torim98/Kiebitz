@@ -1,0 +1,39 @@
+import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach } from "vitest";
+import CapturedPieces from "./CapturedPieces";
+import { PIECE_GLYPH } from "./pieceGlyphs";
+
+afterEach(cleanup);
+
+describe("Schlagliste", () => {
+  it("zeigt je geschlagener Figur eine Zeichnung", () => {
+    const { container } = render(
+      <CapturedPieces pieces={["p", "p", "n"]} color="black" advantage={0} />
+    );
+    expect(container.querySelectorAll("[data-glyph]").length).toBe(3);
+  });
+
+  it("benutzt dieselben Zeichnungen wie das Brett", () => {
+    // Nicht „sieht \u00e4hnlich aus", sondern derselbe Inhalt: sonst h\u00e4tte die App
+    // zwei Figurens\u00e4tze, die bei einem Update auseinanderlaufen.
+    const { container } = render(<CapturedPieces pieces={["n"]} color="white" advantage={0} />);
+    expect(container.querySelector("[data-glyph='wN']")?.innerHTML).toBe(PIECE_GLYPH.wN);
+  });
+
+  it("nennt den Materialvorsprung nur, wenn es einen gibt", () => {
+    const { rerender } = render(
+      <CapturedPieces pieces={["r"]} color="black" advantage={5} />
+    );
+    expect(screen.getByText("+5")).toBeTruthy();
+
+    // Die R\u00fcckstandsseite zeigt ihre Figuren, aber keine negative Zahl.
+    rerender(<CapturedPieces pieces={["p"]} color="white" advantage={-5} />);
+    expect(screen.queryByText(/[+-]5/)).toBeNull();
+  });
+
+  it("entf\u00e4llt ganz, solange nichts geschlagen ist", () => {
+    const { container } = render(<CapturedPieces pieces={[]} color="white" advantage={0} />);
+    expect(container.firstChild).toBeNull();
+  });
+});

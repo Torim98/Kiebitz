@@ -15,6 +15,8 @@
     "bundle:check": "node scripts/check-bundle-size.mjs",
     "pins:sync": "node scripts/generate-stockfish-notice.mjs",
     "pins:check": "node scripts/generate-stockfish-notice.mjs --check && node scripts/check-toolchain-pin-consumers.mjs",
+    "pieces:sync": "node scripts/generate-piece-glyphs.mjs",
+    "pieces:check": "node scripts/generate-piece-glyphs.mjs --check",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",

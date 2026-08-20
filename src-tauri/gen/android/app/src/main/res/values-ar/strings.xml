@@ -17,7 +17,6 @@
     <string name="widget_ratio">%1$d / %2$d دقيقة</string>
     <string name="widget_week_remaining">بقيت %1$d دقيقة</string>
     <string name="widget_week_days">%1$d من %2$d أيام</string>
-    <string name="widget_week_days_open">%1$d أيام تدريب</string>
     <string name="widget_week_none">لا تدريب هذا الأسبوع بعد.</string>
 
     <string name="widget_quick_puzzles">الألغاز</string>
@@ -35,4 +34,36 @@
     <string name="widget_preview_open">2 مفتوحة</string>
     <string name="widget_preview_week_ratio">95 / 180 دقيقة</string>
     <string name="widget_preview_week_days">3 من 5 أيام</string>
+
+    <string name="widget_area_play">اللعب</string>
+    <string name="widget_area_tactics">التكتيك</string>
+    <string name="widget_area_openings">الافتتاحيات</string>
+    <string name="widget_area_endgames">النهايات</string>
+    <string name="widget_area_analysis">التحليل</string>
+
+    <string name="widget_task_units">%1$d وحدات مخططة</string>
+    <string name="widget_task_repertoire">%1$d مراجعات مستحقة</string>
+    <string name="widget_task_puzzles">%1$d ألغاز حتى الهدف</string>
+    <string name="widget_task_endgame">تدريب النهايات</string>
+    <string name="widget_task_analysis">%1$d مباريات دون تحليل</string>
+
+    <string name="widget_week_mix">هذا الأسبوع</string>
+    <string name="widget_today_all_clear">اكتمل كل شيء لليوم.</string>
+
+    <plurals name="widget_streak">
+        <item quantity="zero">%1$d أيام متتالية</item>
+        <item quantity="one">يوم واحد متتالٍ</item>
+        <item quantity="two">يومان متتاليان</item>
+        <item quantity="few">%1$d أيام متتالية</item>
+        <item quantity="many">%1$d يومًا متتاليًا</item>
+        <item quantity="other">%1$d يوم متتالٍ</item>
+    </plurals>
+    <plurals name="widget_week_days_open">
+        <item quantity="zero">%1$d أيام تدريب</item>
+        <item quantity="one">يوم تدريب واحد</item>
+        <item quantity="two">يوما تدريب</item>
+        <item quantity="few">%1$d أيام تدريب</item>
+        <item quantity="many">%1$d يومًا تدريبًا</item>
+        <item quantity="other">%1$d يوم تدريب</item>
+    </plurals>
 </resources>

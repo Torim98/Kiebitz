@@ -87,11 +87,16 @@ private fun WeekReady(context: Context, snapshot: WidgetSnapshot) {
   val days = if (snapshot.targetDays > 0) {
     strings.getString(R.string.widget_week_days, snapshot.trainedDays, snapshot.targetDays)
   } else {
-    strings.getString(R.string.widget_week_days_open, snapshot.trainedDays)
+    strings.resources.getQuantityString(
+      R.plurals.widget_week_days_open,
+      snapshot.trainedDays,
+      snapshot.trainedDays,
+    )
   }
 
   // Eine Woche, in der noch keine Minute gemessen wurde, hat keine Kennzahl.
   val quiet = budget == 0 && snapshot.trainedMinutes == 0
+  val areas = snapshot.byArea
 
   if (isCompact()) {
     Column(
@@ -119,10 +124,12 @@ private fun WeekReady(context: Context, snapshot: WidgetSnapshot) {
       // auch kein leerer Balken, der wie „null Prozent geschafft" aussieht.
       if (size.height >= 46.dp && !quiet) {
         Spacer(modifier = GlanceModifier.height(7.dp))
-        WidgetProgress(
-          fraction,
+        WidgetAreaBar(
+          areas,
+          scale = budget,
           width = innerWidth(size, COMPACT_PADDING),
           height = 6.dp,
+          fallback = fraction,
         )
       }
     }
@@ -142,6 +149,16 @@ private fun WeekReady(context: Context, snapshot: WidgetSnapshot) {
   val footRoom = size.height - surfaceTop(size.height) - surfaceBottom(size.height) -
     HEADER_ROW - 8.dp - (headline.value * lineFactor(snapshot.locale)).dp - 8.dp - 8.dp - 6.dp
   val foot = footRoom >= 19.dp
+
+  // Was der Balken zeigt, steht darunter im Klartext · aber nur, wo wirklich
+  // Platz dafür ist. Vorher endete die Karte hier mit einer Bildunterschrift
+  // und darunter kam eine halbe Kachelhöhe Nichts; die Legende füllt sie mit
+  // der einzigen Auskunft, die diese Woche sonst nirgends gibt: woraus sie
+  // bestand. Eine Zeile bleibt für die Fußzeile reserviert.
+  val legendRoom = footRoom - (if (foot) LEGEND_ROW else 0.dp)
+  val legend = if (quiet) emptyList() else areas.take(
+    (legendRoom / LEGEND_ROW).toInt().coerceIn(0, 4)
+  )
 
   Column(
     modifier = widgetSurface(top = surfaceTop(size.height), bottom = surfaceBottom(size.height))
@@ -192,14 +209,26 @@ private fun WeekReady(context: Context, snapshot: WidgetSnapshot) {
     Spacer(modifier = GlanceModifier.defaultWeight())
     WidgetHeadline(metric, fontSize = headline)
     Spacer(modifier = GlanceModifier.height(8.dp))
-    WidgetProgress(fraction, width = inner)
+    WidgetAreaBar(areas, scale = budget, width = inner, fallback = fraction)
     if (foot) {
       Spacer(modifier = GlanceModifier.height(6.dp))
       WidgetCaption(if (daysAbove) remaining else days)
     }
     Spacer(modifier = GlanceModifier.defaultWeight())
+    legend.forEach { entry ->
+      WidgetAreaRow(entry, strings, modifier = GlanceModifier.fillMaxWidth().defaultWeight())
+    }
   }
 }
+
+/**
+ * Womit eine Legendenzeile veranschlagt wird.
+ *
+ * Reichlich, wie die Einheitszeile im Tages-Widget: In Devanagari und Arabisch
+ * baut dieselbe Schriftgröße höher, und die Zeile, die dadurch nicht mehr
+ * passt, ist immer die unterste.
+ */
+private val LEGEND_ROW = 22.dp
 
 class WeekGoalWidgetReceiver : GlanceAppWidgetReceiver() {
   override val glanceAppWidget: GlanceAppWidget = WeekGoalWidget()

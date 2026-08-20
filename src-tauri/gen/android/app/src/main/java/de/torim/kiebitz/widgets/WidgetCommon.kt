@@ -336,6 +336,146 @@ fun WidgetDays(trained: Int, target: Int, dot: Dp = 7.dp) {
   }
 }
 
+/** Balkensegment eines Lernbereichs · dieselben Farben wie die Punkte. */
+fun areaSegment(area: String): Int = when (area) {
+  "play" -> R.drawable.widget_seg_play
+  "tactics" -> R.drawable.widget_seg_tactics
+  "openings" -> R.drawable.widget_seg_openings
+  "endgames" -> R.drawable.widget_seg_endgames
+  "analysis" -> R.drawable.widget_seg_analysis
+  else -> R.drawable.widget_bar
+}
+
+/**
+ * Der Wochenbalken, nach Bereichen eingefärbt.
+ *
+ * Dasselbe Bild wie im Wochenbudget der App: Ein Balken, dessen Abschnitte
+ * zeigen, *woraus* die Woche bestand. Vorher war er eine einfarbige Fläche, die
+ * nur „so viel Prozent" sagte — und ohne gesetztes Wochenbudget nicht einmal
+ * das, denn dann gibt es kein Prozent. Die Zusammensetzung gibt es immer,
+ * sobald eine Minute gemessen wurde.
+ *
+ * `width` ist die gemessene Innenbreite; die Abschnitte werden daraus
+ * gerechnet, weil Glance keine anteiligen Breiten kennt. `scale` ist die
+ * Bezugsgröße: das Wochenziel, wo eines gesetzt ist, sonst die Summe selbst ·
+ * dann füllt der Balken sich ganz und zeigt reine Zusammensetzung.
+ */
+@Composable
+fun WidgetAreaBar(
+  areas: List<WidgetArea>,
+  scale: Int,
+  width: Dp,
+  height: Dp = 8.dp,
+  /** Anteil für den Fall, dass die Aufteilung fehlt · dann bleibt der Balken einfarbig. */
+  fallback: Float = 0f,
+) {
+  val total = areas.sumOf { it.minutes }
+  if (total <= 0 || areas.isEmpty()) {
+    // Aus einem älteren Datenstand oder wenn die Tageslasten nicht zu holen
+    // waren · der Balken sagt dann weniger, aber nichts Falsches.
+    WidgetProgress(fallback, width, height)
+    return
+  }
+  val basis = if (scale > 0) maxOf(scale, total) else total
+  Row(
+    modifier = GlanceModifier
+      .fillMaxWidth()
+      .height(height)
+      .background(ImageProvider(R.drawable.widget_track))
+  ) {
+    areas.forEachIndexed { index, entry ->
+      // Jeder Abschnitt behält eine sichtbare Kuppe · fünf Minuten Endspiel in
+      // einer langen Woche wären sonst rechnerisch unter einem dp breit und
+      // damit unsichtbar, obwohl sie stattgefunden haben.
+      val share = entry.minutes.toFloat() / basis
+      val segment = (width * share).coerceIn(height, width)
+      if (index > 0) Spacer(modifier = GlanceModifier.width(SEGMENT_GAP).fillMaxHeight())
+      Spacer(
+        modifier = GlanceModifier
+          .width(segment)
+          .fillMaxHeight()
+          .background(ImageProvider(areaSegment(entry.area)))
+      )
+    }
+  }
+}
+
+/** Luft zwischen zwei Abschnitten · gerade so viel, dass die Grenze zu sehen ist. */
+private val SEGMENT_GAP = 2.dp
+
+/**
+ * Eine Zeile der Legende: Farbpunkt, Name des Bereichs, gemessene Minuten.
+ *
+ * Sie erscheint nur, wo die Kachel sie trägt · auf zwei Zellen ist der Balken
+ * die ganze Aussage, auf vier steht darunter, welche Farbe was war.
+ */
+@Composable
+fun WidgetAreaRow(entry: WidgetArea, strings: Context, modifier: GlanceModifier) {
+  Row(modifier = modifier, verticalAlignment = Alignment.Vertical.CenterVertically) {
+    Spacer(
+      modifier = GlanceModifier.size(7.dp).background(ImageProvider(areaDot(entry.area, false)))
+    )
+    Spacer(modifier = GlanceModifier.width(8.dp))
+    Text(
+      text = strings.getString(areaLabel(entry.area)),
+      style = TextStyle(color = WidgetColors.ink2, fontSize = 12.sp),
+      maxLines = 1,
+      modifier = GlanceModifier.defaultWeight(),
+    )
+    Spacer(modifier = GlanceModifier.width(8.dp))
+    WidgetCaption(strings.getString(R.string.widget_minutes, entry.minutes))
+  }
+}
+
+/** Name eines Lernbereichs · dieselben fünf wie im Wochenbudget der App. */
+fun areaLabel(area: String): Int = when (area) {
+  "play" -> R.string.widget_area_play
+  "tactics" -> R.string.widget_area_tactics
+  "openings" -> R.string.widget_area_openings
+  "endgames" -> R.string.widget_area_endgames
+  else -> R.string.widget_area_analysis
+}
+
+/**
+ * Eine offene Aufgabe als Zeile.
+ *
+ * Das ist die Antwort auf die leere Kachel: Wer keine geplanten Einheiten hat,
+ * hat trotzdem fällige Wiederholungen, fehlende Puzzles und ein Endspiel · die
+ * Zahl „5 offen" stand vorher allein in der Kopfzeile, während darunter nichts
+ * war.
+ *
+ * Bewusst nicht einzeln antippbar, so wie die Einheitszeilen daneben: Die
+ * Zeilen teilen sich, was die Karte übrig lässt, und kommen dabei je nach
+ * Größe auf 26 bis 46 dp — also nie auf die 48 dp, die ein Ziel braucht. Ein
+ * Link, den man auf keiner Kachelgröße zuverlässig trifft, ist schlechter als
+ * keiner; angetippt wird die ganze Karte, und die führt in den Lernplan, wo
+ * alle diese Aufgaben nebeneinander stehen.
+ */
+@Composable
+fun WidgetTaskRow(task: WidgetTask, strings: Context, modifier: GlanceModifier) {
+  Row(modifier = modifier, verticalAlignment = Alignment.Vertical.CenterVertically) {
+    Spacer(
+      modifier = GlanceModifier.size(7.dp).background(ImageProvider(areaDot(task.area, false)))
+    )
+    Spacer(modifier = GlanceModifier.width(8.dp))
+    Text(
+      text = taskLabel(task, strings),
+      style = TextStyle(color = WidgetColors.ink, fontSize = 12.sp),
+      maxLines = 1,
+      modifier = GlanceModifier.defaultWeight(),
+    )
+  }
+}
+
+/** Beschriftung einer offenen Aufgabe · mit Anzahl, wo es eine gibt. */
+fun taskLabel(task: WidgetTask, strings: Context): String = when (task.kind) {
+  "units" -> strings.getString(R.string.widget_task_units, task.count)
+  "repertoire" -> strings.getString(R.string.widget_task_repertoire, task.count)
+  "puzzles" -> strings.getString(R.string.widget_task_puzzles, task.count)
+  "endgame" -> strings.getString(R.string.widget_task_endgame)
+  else -> strings.getString(R.string.widget_task_analysis, task.count)
+}
+
 /** Farbpunkt eines Lernbereichs · dieselbe Zuordnung wie im Wochenbudget. */
 fun areaDot(area: String, done: Boolean): Int = when {
   done -> R.drawable.widget_dot_muted

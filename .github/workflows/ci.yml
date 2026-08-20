@@ -35,6 +35,9 @@ jobs:
       - name: Toolchain-Pins prüfen
         run: npm run pins:check
 
+      - name: Figurenzeichnungen prüfen
+        run: npm run pieces:check
+
       # npm run build führt TypeScript und Vite genau einmal aus.
       - name: Typecheck und Produktionsbundle bauen
         run: npm run build

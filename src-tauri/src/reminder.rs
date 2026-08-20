@@ -32,6 +32,38 @@ pub struct DueSummary {
     pub endgame_done: bool,
     /// Partien ohne Auto-Analyse.
     pub unanalyzed: i64,
+    /// Tage in Folge mit gemessenem Training.
+    pub streak_days: i64,
+    /// Heute gemessene Minuten.
+    pub today_minutes: i64,
+    /// Diese Woche gemessene Minuten (Montag bis heute).
+    pub week_minutes: i64,
+}
+
+/// Eine fertige Benachrichtigung · Aufmacher und Aufzählung.
+///
+/// Die Zweiteilung ist der Grund, warum es diesen Typ gibt: Windows kann zwei
+/// Textzeilen, und die erste soll sagen, *warum* die Meldung heute kommt. Eine
+/// bloße Aufzählung sieht auf dem Sperrbildschirm aus wie eine Systemmeldung.
+#[cfg(any(desktop, test))]
+#[derive(Debug, PartialEq)]
+pub struct ReminderMessage {
+    pub title: String,
+    pub lead: String,
+    /// Leer, wenn nichts mehr offen ist · dann trägt der Aufmacher allein.
+    pub detail: String,
+}
+
+#[cfg(any(desktop, test))]
+impl ReminderMessage {
+    /// Beide Zeilen untereinander · für Kanäle mit nur einem Textfeld.
+    pub fn body(&self) -> String {
+        if self.detail.is_empty() {
+            self.lead.clone()
+        } else {
+            format!("{}\n{}", self.lead, self.detail)
+        }
+    }
 }
 
 fn now_ts() -> i64 {
@@ -53,6 +85,8 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
     // my_move-Parität wie in repertoire.rs: Weiß trainiert ungerade Halbzüge.
     let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
     let today = crate::study::iso_day(day_start);
+    // Montag bis heute · derselbe Zeitraum, den auch das Wochenbudget zeigt.
+    let week = crate::study::study_days(conn, week_start(day_start), day_start, now)?;
     Ok(DueSummary {
         study: conn
             .query_row(
@@ -82,7 +116,23 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
             &[],
         )
         .unwrap_or(0),
+        // Serie und gemessene Minuten kommen aus dem Lernplan-Modul und nicht
+        // aus eigenen Abfragen · sonst könnte die Benachrichtigung eine andere
+        // Zahl nennen als der Kopf der App, und beide wären dann verdächtig.
+        streak_days: crate::study::training_streak(conn, day_start / 86_400).unwrap_or(0),
+        today_minutes: week.last().map(|day| day.actual_minutes).unwrap_or(0),
+        week_minutes: week.iter().map(|day| day.actual_minutes).sum(),
     })
+}
+
+/// Montag der laufenden Woche als Tagesbeginn in Sekunden.
+///
+/// Wie `is_week_end` ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist
+/// der Wochentag `(Tage + 3) mod 7` mit Montag = 0.
+#[cfg(any(desktop, test))]
+fn week_start(day_start: i64) -> i64 {
+    let weekday = (day_start.div_euclid(86_400) + 3).rem_euclid(7);
+    day_start - weekday * 86_400
 }
 
 /// Kurztexte der Erinnerung. Bewusst dupliziert statt aus dem Frontend geladen:
@@ -137,8 +187,74 @@ fn template(locale: &str, key: &str) -> &'static str {
             "zh" => "{n} 局未分析",
             _ => "{n} games unanalyzed",
         },
+        // Aufmacher · dieselben Texte wie in src/lib/locales, siehe Modulkopf.
+        "leadPlain" => match locale {
+            "de" => "Zeit fürs Training.",
+            "es" => "Hora de entrenar.",
+            "fr" => "C’est l’heure de s’entraîner.",
+            "hi" => "अभ्यास का समय।",
+            "ar" => "حان وقت التدريب.",
+            "zh" => "该训练了。",
+            _ => "Time to train.",
+        },
+        "leadStreak" => match locale {
+            "de" => "{n} Tage in Folge — heute noch nichts.",
+            "es" => "{n} días seguidos: hoy aún nada.",
+            "fr" => "{n} jours d’affilée — rien encore aujourd’hui.",
+            "hi" => "{n} दिन लगातार — आज अभी कुछ नहीं।",
+            "ar" => "{n} أيام متتالية — لا شيء اليوم بعد.",
+            "zh" => "连续 {n} 天 — 今天还没开始。",
+            _ => "{n} days in a row — nothing yet today.",
+        },
+        "leadWeekOpen" => match locale {
+            "de" => "Noch {n} Min. bis zum Wochenziel.",
+            "es" => "Faltan {n} min para tu meta semanal.",
+            "fr" => "Encore {n} min avant ton objectif hebdomadaire.",
+            "hi" => "साप्ताहिक लक्ष्य तक {n} मिनट बाकी।",
+            "ar" => "يبقى {n} دقيقة لبلوغ هدفك الأسبوعي.",
+            "zh" => "距周目标还差 {n} 分钟。",
+            _ => "{n} min left to your weekly goal.",
+        },
+        "leadWeekReviewOpen" => match locale {
+            "de" => "{n} Min. diese Woche trainiert.",
+            "es" => "{n} min entrenados esta semana.",
+            "fr" => "{n} min travaillées cette semaine.",
+            "hi" => "इस सप्ताह {n} मिनट अभ्यास।",
+            "ar" => "{n} دقيقة تدريب هذا الأسبوع.",
+            "zh" => "本周训练 {n} 分钟。",
+            _ => "{n} min trained this week.",
+        },
         _ => "",
     }
+}
+
+/// Zweistellige Vorlagen · der Wochenrückblick nennt Ist und Soll.
+#[cfg(any(desktop, test))]
+fn week_review(locale: &str, actual: i64, target: i64) -> String {
+    match locale {
+        "de" => format!("{actual} von {target} Min. diese Woche."),
+        "es" => format!("{actual} de {target} min esta semana."),
+        "fr" => format!("{actual} sur {target} min cette semaine."),
+        "hi" => format!("इस सप्ताह {target} में से {actual} मिनट।"),
+        "ar" => format!("{actual} من {target} دقيقة هذا الأسبوع."),
+        "zh" => format!("本周 {actual} / {target} 分钟。"),
+        _ => format!("{actual} of {target} min this week."),
+    }
+}
+
+/// Titel des Wochenrückblicks.
+#[cfg(any(desktop, test))]
+pub fn title_week(locale: &str) -> String {
+    match locale {
+        "de" => "Kiebitz · Woche",
+        "es" => "Kiebitz · la semana",
+        "fr" => "Kiebitz · la semaine",
+        "hi" => "Kiebitz · सप्ताह",
+        "ar" => "Kiebitz · الأسبوع",
+        "zh" => "Kiebitz · 本周",
+        _ => "Kiebitz · the week",
+    }
+    .into()
 }
 
 #[cfg(any(desktop, test))]
@@ -185,6 +301,68 @@ pub fn reminder_body(settings: &Settings, due: &DueSummary) -> Option<String> {
     } else {
         Some(parts.join(" · "))
     }
+}
+
+/// Ist der Zeitpunkt ein Sonntag? Dann tritt der Rückblick an die Stelle der
+/// Erinnerung · dieselbe Regel wie in `notify.ts`.
+///
+/// Ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist Sonntag der Rest 3
+/// der ganzzahligen Tage seit der Epoche. `rem_euclid` hält das auch für
+/// Zeitpunkte vor 1970 richtig.
+#[cfg(any(desktop, test))]
+pub fn is_week_end(now: i64) -> bool {
+    now.div_euclid(86_400).rem_euclid(7) == 3
+}
+
+/// Der Aufmacher · eine Zeile, die sagt, warum die Meldung heute kommt.
+///
+/// Die Rangfolge ist dieselbe wie im Frontend: Rückblick, dann die Serie, die
+/// heute reißen würde, dann das offene Wochenziel, sonst der schlichte Anlass.
+#[cfg(any(desktop, test))]
+pub fn reminder_lead(settings: &Settings, due: &DueSummary, now: i64) -> String {
+    let locale = settings.locale.as_str();
+    let target = settings.weekly_minutes as i64;
+    if is_week_end(now) {
+        return if target > 0 {
+            week_review(locale, due.week_minutes, target)
+        } else {
+            phrase(locale, "leadWeekReviewOpen", due.week_minutes)
+        };
+    }
+    if due.streak_days >= 2 && due.today_minutes == 0 {
+        return phrase(locale, "leadStreak", due.streak_days);
+    }
+    if target > 0 && target > due.week_minutes {
+        return phrase(locale, "leadWeekOpen", target - due.week_minutes);
+    }
+    phrase(locale, "leadPlain", 0)
+}
+
+/// Die fertige Meldung; None = nichts zu sagen.
+///
+/// Am Sonntag ist das anders als unter der Woche: Der Rückblick lohnt sich
+/// auch ohne offene Punkte, denn er berichtet über die Woche und nicht über
+/// diesen Abend.
+#[cfg(any(desktop, test))]
+pub fn reminder_message(
+    settings: &Settings,
+    due: &DueSummary,
+    now: i64,
+) -> Option<ReminderMessage> {
+    let detail = reminder_body(settings, due).unwrap_or_default();
+    let review = is_week_end(now);
+    if detail.is_empty() && !review {
+        return None;
+    }
+    Some(ReminderMessage {
+        title: if review {
+            title_week(&settings.locale)
+        } else {
+            title(&settings.locale)
+        },
+        lead: reminder_lead(settings, due, now),
+        detail,
+    })
 }
 
 // ── Zustellung ───────────────────────────────────────────────────────────────
@@ -238,12 +416,22 @@ fn no_window(command: &mut std::process::Command) {
 
 /// Zeigt eine Systembenachrichtigung. Auf Windows direkt über WinRT, damit ein
 /// Fehlschlag sichtbar wird (das Plugin verschluckt ihn).
+///
+/// Der Text darf zwei Zeilen tragen: Windows setzt `text1` und `text2`
+/// untereinander, und genau dafür ist der Aufmacher da. Ein `\n` im Text
+/// selbst würde die Kachel dagegen einfach länger machen.
 #[cfg(windows)]
 pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
     use tauri_winrt_notification::{Duration, Toast};
-    Toast::new(app_id)
-        .title(title)
-        .text1(body)
+    let (lead, detail) = match body.split_once('\n') {
+        Some((lead, detail)) => (lead, detail),
+        None => (body, ""),
+    };
+    let mut toast = Toast::new(app_id).title(title).text1(lead);
+    if !detail.is_empty() {
+        toast = toast.text2(detail);
+    }
+    toast
         .duration(Duration::Short)
         .show()
         .map_err(|e| format!("Windows lehnt die Benachrichtigung ab: {e}"))
@@ -452,13 +640,17 @@ pub fn run_headless(identifier: &str) -> bool {
     // Erste Wahl: frisch aus der Datenbank. Normal öffnen (WAL braucht
     // Schreibzugriff auf die -shm-Datei), aber ohne `db::init` · der
     // Erinnerungslauf migriert nichts.
+    let now = now_ts();
     let fresh = Connection::open(&db_file)
         .map_err(|e| format!("Datenbank {}: {e}", db_file.display()))
-        .and_then(|conn| collect_due(&conn, now_ts(), settings.puzzle_goal as i64))
-        .map(|due| reminder_body(&settings, &due));
+        .and_then(|conn| collect_due(&conn, now, settings.puzzle_goal as i64))
+        .map(|due| reminder_message(&settings, &due, now));
     let result = match fresh {
         Ok(None) => Ok("nichts fällig".to_string()),
-        Ok(Some(body)) => show(identifier, &title(&settings.locale), &body).map(|()| body),
+        Ok(Some(message)) => {
+            let body = message.body();
+            show(identifier, &message.title, &body).map(|()| body)
+        }
         // Zweite Wahl: der Stand, den die App zuletzt hinterlegt hat. Die
         // Datenbank ist aus einem zweiten Prozess nicht immer lesbar.
         Err(error) => match read_snapshot(&dir) {
@@ -528,6 +720,7 @@ mod tests {
             puzzles_left: 8,
             endgame_done: false,
             unanalyzed: 3,
+            ..DueSummary::default()
         };
         assert_eq!(
             reminder_body(&settings(), &due).unwrap(),
@@ -545,6 +738,98 @@ mod tests {
             reminder_body(&quiet, &due).unwrap(),
             "8 Puzzles bis zum Tagesziel"
         );
+    }
+
+    /// Mittwoch, 12.08.2026, 18:00 UTC · und der Sonntag derselben Woche.
+    const WEDNESDAY: i64 = 1_786_492_800 + 18 * 3_600;
+    const SUNDAY: i64 = WEDNESDAY + 4 * 86_400;
+
+    #[test]
+    fn week_end_is_sunday() {
+        assert!(!is_week_end(WEDNESDAY));
+        assert!(is_week_end(SUNDAY));
+        // Und auch über die Jahresgrenze hinweg, ohne Kalenderbibliothek.
+        assert!(is_week_end(SUNDAY + 7 * 86_400));
+        assert!(!is_week_end(SUNDAY + 86_400));
+    }
+
+    #[test]
+    fn message_puts_the_reason_first() {
+        let due = DueSummary {
+            repertoire: 14,
+            endgame_done: true,
+            ..DueSummary::default()
+        };
+        let quiet = Settings {
+            notify_study: false,
+            notify_puzzles: false,
+            notify_analysis: false,
+            ..settings()
+        };
+        let message = reminder_message(&quiet, &due, WEDNESDAY).unwrap();
+        assert_eq!(message.title, "Kiebitz · Training");
+        assert_eq!(message.lead, "Zeit fürs Training.");
+        assert_eq!(message.detail, "14 Wiederholungen fällig");
+        assert_eq!(
+            message.body(),
+            "Zeit fürs Training.\n14 Wiederholungen fällig"
+        );
+    }
+
+    #[test]
+    fn message_leads_with_a_streak_that_would_break_tonight() {
+        let due = DueSummary {
+            repertoire: 3,
+            endgame_done: true,
+            streak_days: 12,
+            today_minutes: 0,
+            week_minutes: 90,
+            ..DueSummary::default()
+        };
+        let with_budget = Settings {
+            weekly_minutes: 180,
+            ..settings()
+        };
+        assert_eq!(
+            reminder_lead(&with_budget, &due, WEDNESDAY),
+            "12 Tage in Folge — heute noch nichts."
+        );
+
+        // Trainiert ist trainiert · dann steht dort das offene Wochenziel.
+        let started = DueSummary {
+            today_minutes: 25,
+            ..due
+        };
+        assert_eq!(
+            reminder_lead(&with_budget, &started, WEDNESDAY),
+            "Noch 90 Min. bis zum Wochenziel."
+        );
+    }
+
+    #[test]
+    fn sunday_reviews_the_week_even_with_nothing_left() {
+        let done = DueSummary {
+            endgame_done: true,
+            week_minutes: 145,
+            ..DueSummary::default()
+        };
+        // Unter der Woche schweigt Kiebitz · der Rückblick berichtet aber über
+        // die Woche und nicht über diesen Abend.
+        assert!(reminder_message(&settings(), &done, WEDNESDAY).is_none());
+
+        let with_budget = Settings {
+            weekly_minutes: 180,
+            ..settings()
+        };
+        let review = reminder_message(&with_budget, &done, SUNDAY).unwrap();
+        assert_eq!(review.title, "Kiebitz · Woche");
+        assert_eq!(review.lead, "145 von 180 Min. diese Woche.");
+        assert_eq!(review.detail, "");
+        assert_eq!(review.body(), "145 von 180 Min. diese Woche.");
+
+        // Ohne Budget nennt der Rückblick nur das Ist.
+        let open = reminder_message(&settings(), &done, SUNDAY).unwrap();
+        assert_eq!(open.lead, "145 Min. diese Woche trainiert.");
     }
 
     #[test]

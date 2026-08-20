@@ -437,22 +437,15 @@ describe("Study page", () => {
     });
   });
 
-  it("names the source of the weekly target and can adopt the observed average", async () => {
+  it("names the source of the weekly target without offering to adopt it", async () => {
     // Ohne Vorgabe rechnet der Plan mit dem beobachteten Schnitt · und sagt
-    // das auch, denn genau diese Zahl kann sich je Gerät unterscheiden.
+    // das auch, denn genau diese Zahl kann sich je Gerät unterscheiden. Die
+    // Zeile ist reine Auskunft: das Budget wird in den Einstellungen gesetzt.
     mockBackend({ deep: demoDeepInsights() });
     renderStudy();
 
     expect(await screen.findByText(/Kein Wochenbudget gesetzt/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "72 Min. übernehmen" }));
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "set_settings",
-        expect.objectContaining({
-          newSettings: expect.objectContaining({ weekly_minutes: 72 }),
-        })
-      );
-    });
+    expect(screen.queryByRole("button", { name: /\d+ Min\. übernehmen/ })).toBeNull();
   });
 
   it("schedules an editable unit from the week calendar", async () => {

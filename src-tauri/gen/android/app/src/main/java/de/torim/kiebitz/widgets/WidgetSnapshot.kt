@@ -26,6 +26,25 @@ data class WidgetUnit(
   val area: String,
 )
 
+/**
+ * Ein offener Posten des Tages.
+ *
+ * `kind` ist der Schlüssel, nach dem das Widget beschriftet und verlinkt · ein
+ * unbekannter Wert ist kein Fehler, sondern eine Zeile, die übersprungen wird.
+ * `count` ist 0, wo es nichts zu zählen gibt (Endspiel steht an oder nicht).
+ */
+data class WidgetTask(
+  val kind: String,
+  val count: Int,
+  val area: String,
+)
+
+/** Gemessene Minuten eines Lernbereichs in der laufenden Woche. */
+data class WidgetArea(
+  val area: String,
+  val minutes: Int,
+)
+
 data class WidgetSnapshot(
   val generatedAt: Long,
   val day: String,
@@ -33,13 +52,16 @@ data class WidgetSnapshot(
   val plus: Boolean,
   val units: List<WidgetUnit>,
   val openTasks: Int,
+  val tasks: List<WidgetTask>,
   val doneMinutes: Int,
   val plannedMinutes: Int,
+  val streakDays: Int,
   val trainedMinutes: Int,
   val budgetMinutes: Int,
   val remainingMinutes: Int,
   val trainedDays: Int,
   val targetDays: Int,
+  val byArea: List<WidgetArea>,
 )
 
 /** Zustand einer Widget-Anzeige · daraus folgt, was gezeichnet wird. */
@@ -58,7 +80,16 @@ sealed interface WidgetState {
 
 object WidgetSnapshotStore {
   const val FILE_NAME = "kiebitz-widget.json"
-  private const val SUPPORTED_VERSION = 1
+  /**
+   * Formate, die dieses Widget lesen kann.
+   *
+   * Version 1 bleibt dabei, obwohl die App längst 2 schreibt: Nach einem
+   * Update liegt bis zum ersten Start noch die alte Datei da, und ein Widget,
+   * das dafür „Datenstand nicht lesbar" anzeigt, sieht kaputt aus — dabei
+   * fehlen nur die neuen Felder. Der Leser setzt sie leer, und die Kacheln
+   * zeigen so viel, wie in der alten Datei steht.
+   */
+  private val SUPPORTED_VERSIONS = setOf(1, 2)
 
   fun file(context: Context): File = File(context.filesDir, FILE_NAME)
 
@@ -80,7 +111,7 @@ object WidgetSnapshotStore {
 
   fun parse(text: String): WidgetSnapshot? {
     val root = JSONObject(text)
-    if (root.optInt("version", 0) != SUPPORTED_VERSION) return null
+    if (root.optInt("version", 0) !in SUPPORTED_VERSIONS) return null
     val today = root.optJSONObject("today") ?: JSONObject()
     val week = root.optJSONObject("week") ?: JSONObject()
     val unitsJson = today.optJSONArray("units")
@@ -97,6 +128,27 @@ object WidgetSnapshotStore {
         )
       }
     }
+    val tasksJson = today.optJSONArray("tasks")
+    val tasks = buildList {
+      for (index in 0 until (tasksJson?.length() ?: 0)) {
+        val task = tasksJson?.optJSONObject(index) ?: continue
+        add(
+          WidgetTask(
+            kind = task.optString("kind", ""),
+            count = task.optInt("count", 0),
+            area = task.optString("area", ""),
+          )
+        )
+      }
+    }
+    val areasJson = week.optJSONArray("byArea")
+    val byArea = buildList {
+      for (index in 0 until (areasJson?.length() ?: 0)) {
+        val area = areasJson?.optJSONObject(index) ?: continue
+        val minutes = area.optInt("minutes", 0)
+        if (minutes > 0) add(WidgetArea(area = area.optString("area", ""), minutes = minutes))
+      }
+    }
     return WidgetSnapshot(
       generatedAt = root.optLong("generatedAt", 0L),
       day = root.optString("day", ""),
@@ -104,13 +156,16 @@ object WidgetSnapshotStore {
       plus = root.optBoolean("plus", false),
       units = units,
       openTasks = today.optInt("openTasks", 0),
+      tasks = tasks,
       doneMinutes = today.optInt("doneMinutes", 0),
       plannedMinutes = today.optInt("plannedMinutes", 0),
+      streakDays = today.optInt("streakDays", 0),
       trainedMinutes = week.optInt("trainedMinutes", 0),
       budgetMinutes = week.optInt("budgetMinutes", 0),
       remainingMinutes = week.optInt("remainingMinutes", 0),
       trainedDays = week.optInt("trainedDays", 0),
       targetDays = week.optInt("targetDays", 0),
+      byArea = byArea,
     )
   }
 }
