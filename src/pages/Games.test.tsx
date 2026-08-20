@@ -21,6 +21,7 @@ const game = {
   played_ts: 1_784_067_200,
   time_class: "rapid",
   color: "white",
+  my_name: "Tom",
   opponent: "Testgegner",
   opp_elo: 1450,
   my_elo: 1500,
@@ -97,6 +98,20 @@ describe("Games page", () => {
     });
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("game_detail", { id: 1 }));
     expect(invokeMock).not.toHaveBeenCalledWith("list_games_for_export");
+  });
+
+  it("shows both ratings in the preview without captured pieces", async () => {
+    listedGame = {
+      ...game,
+      my_name: "PartieTom",
+      moves: "e4 d5 exd5 Qxd5",
+    };
+
+    const { container } = render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+
+    expect(await screen.findByText("Testgegner (1450)")).toBeTruthy();
+    expect(await screen.findByText("PartieTom (1500)")).toBeTruthy();
+    expect(container.querySelector("[data-captured]")).toBeNull();
   });
 
   it("shows a note once the selected game detail finishes loading", async () => {

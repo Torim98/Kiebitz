@@ -31,8 +31,6 @@ import { getSettings } from "../lib/settings";
 import { tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
-import CapturedPieces from "../components/CapturedPieces";
-import { capturedFromFen } from "../lib/captured";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
 import TagEditor from "../components/TagEditor";
@@ -166,10 +164,8 @@ export default function Games({
     ? toUi(selectedRecord, locale)
     : selectedSummary;
 
-  // Schlussstellung der gewählten Partie · einmal gerechnet, denn sie trägt
-  // sowohl das Brett als auch die beiden Schlaglisten daneben.
+  // Schlussstellung der gewählten Partie · einmal für das Vorschaubrett gerechnet.
   const previewFen = useMemo(() => (selected ? fenAfter(selected.sans) : ""), [selected]);
-  const previewCaptured = useMemo(() => capturedFromFen(previewFen), [previewFen]);
   useEffect(() => {
     if (!selectedSummary?.dbId) {
       setSelectedRecord(null);
@@ -348,18 +344,20 @@ export default function Games({
   // zurückzufallen · sonst importierte eine frische Installation fremde Partien.
   const [myUser, setMyUser] = useState(backend.mode === "desktop" ? "" : profile.ccUser);
 
-  // Unten steht immer die eigene Farbe · das Brett ist danach gedreht.
-  const previewSide = (color: "white" | "black", name: string) => ({
-    name,
-    color,
-    captured: color === "white" ? previewCaptured.white : previewCaptured.black,
-    advantage: color === "white" ? previewCaptured.diff : -previewCaptured.diff,
-  });
-  const previewBottom = previewSide(selected?.color ?? "white", myUser);
-  const previewTop = previewSide(
-    selected?.color === "white" ? "black" : "white",
-    selected?.opponent ?? ""
-  );
+  // Unten steht immer die eigene Farbe · das Brett ist danach gedreht. Wie im
+  // Analysis-Tab hat jede Seite ihre Elo direkt hinter dem Namen. Der konkrete
+  // Partiedatensatz ist die verlässlichste Quelle für den damaligen Eigennamen.
+  const ownName = selectedRecord && selectedRecord.id === selected?.dbId
+    ? selectedRecord.my_name?.trim() || myUser
+    : myUser;
+  const previewBottom = {
+    name: ownName,
+    elo: selected?.myElo ?? 0,
+  };
+  const previewTop = {
+    name: selected?.opponent ?? "",
+    elo: selected?.oppElo ?? 0,
+  };
   useEffect(() => {
     if (backend.mode === "desktop") {
       getSettings()
@@ -770,18 +768,13 @@ export default function Games({
         {selected && (
           <div className="flex flex-col gap-4">
             <Card pad={false}>
-              {/* Brett mit beiden Namen · darunter jeweils, was diese Seite
-                  geschlagen hat. Die Namen standen früher nur als Paarung unter
-                  dem Brett; einzeln an ihrer Seite tragen sie die Schlagliste. */}
+              {/* Brett mit beiden Namen und Elo-Zahlen, analog zur Analyse. */}
               <div className="p-4 pb-3">
                 <div className="mx-auto max-w-[528px]">
                   <div className="mb-2 min-w-0 text-[12.5px]">
-                    <div className="truncate font-semibold text-ink2">{previewTop.name}</div>
-                    <CapturedPieces
-                      pieces={previewTop.captured}
-                      color={previewTop.color === "white" ? "black" : "white"}
-                      advantage={previewTop.advantage}
-                    />
+                    <div className="truncate font-semibold text-ink2">
+                      {previewTop.name}{previewTop.elo > 0 ? ` (${previewTop.elo})` : ""}
+                    </div>
                   </div>
                   <Board
                     boardId="games-preview"
@@ -791,12 +784,9 @@ export default function Games({
                     silent
                   />
                   <div className="mt-2 min-w-0 text-[12.5px]">
-                    <div className="truncate font-semibold text-ink2">{previewBottom.name}</div>
-                    <CapturedPieces
-                      pieces={previewBottom.captured}
-                      color={previewBottom.color === "white" ? "black" : "white"}
-                      advantage={previewBottom.advantage}
-                    />
+                    <div className="truncate font-semibold text-ink2">
+                      {previewBottom.name}{previewBottom.elo > 0 ? ` (${previewBottom.elo})` : ""}
+                    </div>
                   </div>
                 </div>
               </div>
