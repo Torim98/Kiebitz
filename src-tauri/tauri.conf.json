@@ -61,6 +61,10 @@
     }
   },
   "plugins": {
+    "notification": {
+      "icon": "ic_notification",
+      "iconColor": "#22C08A"
+    },
     "deep-link": {
       "mobile": [
         {

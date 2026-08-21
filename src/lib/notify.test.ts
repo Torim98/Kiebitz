@@ -3,6 +3,7 @@ import { translator } from "./i18n";
 import type { Settings } from "./settings";
 import {
   applyReminderSchedule,
+  ensureNotificationChannel,
   ensurePermission,
   localDay,
   minutesOfDay,
@@ -132,7 +133,7 @@ describe("reminder message", () => {
       due({ repertoire: 14, weekMinutes: 20 }),
       WEDNESDAY
     );
-    expect(message?.title).toBe("Kiebitz · Training");
+    expect(message?.title).toBe("Training");
     expect(message?.lead).toBe("Zeit fürs Training.");
     expect(message?.detail).toBe("14 Wiederholungen fällig");
     expect(message?.body).toBe("Zeit fürs Training.\n14 Wiederholungen fällig");
@@ -170,7 +171,7 @@ describe("reminder message", () => {
       due({ weekMinutes: 145 }),
       SUNDAY
     );
-    expect(review?.title).toBe("Kiebitz · Woche");
+    expect(review?.title).toBe("Deine Woche");
     expect(review?.lead).toBe("145 von 180 Min. diese Woche.");
     expect(review?.detail).toBe("");
     expect(review?.body).toBe("145 von 180 Min. diese Woche.");
@@ -210,14 +211,54 @@ describe("native notification bridge", () => {
       if (command === "app_info") {
         return Promise.resolve({ version: "test", backend: "tauri", platform: "android" });
       }
+      if (command === "plugin:notification|create_channel") return Promise.resolve();
       if (command === "plugin:notification|notify") return Promise.resolve();
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    await notify("Kiebitz", "Test");
+    await ensureNotificationChannel(t);
+    await notify("Training", "Zeit fürs Training.\n14 Wiederholungen fällig");
+
+    // Der Kanal heißt wie in den Systemeinstellungen und trägt die Akzentfarbe.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "plugin:notification|create_channel",
+      expect.objectContaining({ id: "training", lightsColor: "#22C08A" })
+    );
+    // Zusammengeklappt eine Zeile, aufgeklappt beide · sonst bricht Android
+    // den Aufmacher mitten im Satz ab.
     expect(invokeMock).toHaveBeenCalledWith("plugin:notification|notify", {
-      options: { title: "Kiebitz", body: "Test" },
+      options: {
+        title: "Training",
+        body: "Zeit fürs Training.",
+        icon: "ic_notification",
+        iconColor: "#22C08A",
+        largeBody: "Zeit fürs Training.\n14 Wiederholungen fällig",
+        autoCancel: true,
+        visibility: 1,
+        channelId: "training",
+      },
     });
+  });
+
+  it("falls back to the default channel when the app cannot create its own", async () => {
+    invokeMock.mockImplementation((command?: string) => {
+      if (!command) return Promise.resolve();
+      if (command === "plugin:notification|is_permission_granted") return Promise.resolve(true);
+      if (command === "app_info") {
+        return Promise.resolve({ version: "test", backend: "tauri", platform: "android" });
+      }
+      if (command === "plugin:notification|notify") return Promise.resolve();
+      // Kein Kanal · Android verwirft eine Meldung stillschweigend, die auf
+      // einen Kanal zeigt, den es nicht gibt.
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await ensureNotificationChannel(t);
+    await notify("Training", "Zeit fürs Training.");
+    const call = invokeMock.mock.calls.find(
+      ([command]) => command === "plugin:notification|notify"
+    );
+    expect(call?.[1].options.channelId).toBeUndefined();
   });
 
   it("persists one alarm per weekday and verifies each without serializing native pending objects", async () => {
@@ -271,8 +312,8 @@ describe("native notification bridge", () => {
       )
     ).toEqual([1, 2, 3, 4, 5, 6, 7]);
     // Der Sonntag trägt den Rückblick, die übrigen sechs die Erinnerung.
-    expect(batch[0].title).toBe("Kiebitz · Woche");
-    expect(batch.slice(1).every((entry: { title: string }) => entry.title === "Kiebitz · Training")).toBe(
+    expect(batch[0].title).toBe("Deine Woche");
+    expect(batch.slice(1).every((entry: { title: string }) => entry.title === "Training")).toBe(
       true
     );
 

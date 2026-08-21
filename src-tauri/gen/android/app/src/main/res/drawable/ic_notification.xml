@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Das Zeichen in der Statusleiste und links neben jeder Benachrichtigung ·
+  derselbe Vogel wie im App-Symbol, in der Kopfzeile der App und auf den
+  Widgets (lucide „bird", ISC). Ohne ihn setzt das Benachrichtigungs-Plugin
+  `android.R.drawable.ic_dialog_info` ein · das runde „i" des Systems, an dem
+  nichts sagt, von wem die Meldung stammt.
+
+  Weiß und nur weiß: Android benutzt von einem kleinen Symbol allein die
+  Deckkraft und färbt es selbst ein · in der Statusleiste weiß, in der Leiste
+  darunter in der Akzentfarbe aus `iconColor` (tauri.conf.json). Eine Farbe im
+  Vektor käme deshalb nie an.
+
+  Der Vogel steht in einer Gruppe auf 0,86 herunterskaliert: Android erwartet
+  im 24-dp-Feld einen Rand, sonst schneidet die Statusleiste die Silhouette an.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="0.86"
+        android:scaleY="0.86">
+        <path
+            android:pathData="M16 7h.01"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="m20 7 2 .5-2 .5"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M10 18v3"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M14 17.75V21"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M7 18a6 6 0 0 0 3.84-10.61"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

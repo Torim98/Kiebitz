@@ -15,6 +15,7 @@
     "notification:allow-batch",
     "notification:allow-cancel",
     "notification:allow-get-pending",
+    "notification:allow-create-channel",
     "deep-link:default"
   ]
 }

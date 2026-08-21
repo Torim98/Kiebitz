@@ -410,16 +410,19 @@ pub fn run() {
                 }
             }
             // Windows verwirft Toasts unbekannter Absender · AppUserModelID
-            // registrieren, bevor die erste Erinnerung ansteht.
+            // registrieren, bevor die erste Erinnerung ansteht. Das Zeichen
+            // daneben ist die PNG neben den Einstellungen: Windows liest für
+            // `IconUri` eine Bilddatei, keine `.ico`, und im Hintergrundlauf
+            // gibt es kein Ressourcenverzeichnis.
             #[cfg(windows)]
-            reminder::register_windows_app_id(
-                &app.handle().config().identifier.clone(),
-                "Kiebitz",
-                app.path()
-                    .resource_dir()
-                    .ok()
-                    .map(|d| d.join("icons/icon.ico")),
-            );
+            {
+                let identifier = app.handle().config().identifier.clone();
+                reminder::register_windows_app_id(
+                    &identifier,
+                    "Kiebitz",
+                    reminder::notify_icon_path(&identifier),
+                );
+            }
 
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;

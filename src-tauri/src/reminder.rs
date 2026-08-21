@@ -246,13 +246,13 @@ fn week_review(locale: &str, actual: i64, target: i64) -> String {
 #[cfg(any(desktop, test))]
 pub fn title_week(locale: &str) -> String {
     match locale {
-        "de" => "Kiebitz · Woche",
-        "es" => "Kiebitz · la semana",
-        "fr" => "Kiebitz · la semaine",
-        "hi" => "Kiebitz · सप्ताह",
-        "ar" => "Kiebitz · الأسبوع",
-        "zh" => "Kiebitz · 本周",
-        _ => "Kiebitz · the week",
+        "de" => "Deine Woche",
+        "es" => "Tu semana",
+        "fr" => "Ta semaine",
+        "hi" => "आपका सप्ताह",
+        "ar" => "أسبوعك",
+        "zh" => "你的一周",
+        _ => "Your week",
     }
     .into()
 }
@@ -265,13 +265,13 @@ fn phrase(locale: &str, key: &str, n: i64) -> String {
 #[cfg(any(desktop, test))]
 pub fn title(locale: &str) -> String {
     match locale {
-        "de" => "Kiebitz · Training",
-        "es" => "Kiebitz · entrenamiento",
-        "fr" => "Kiebitz · entraînement",
-        "hi" => "Kiebitz · अभ्यास",
-        "ar" => "Kiebitz · تدريب",
-        "zh" => "Kiebitz · 训练",
-        _ => "Kiebitz · training",
+        "de" => "Training",
+        "es" => "Entrenamiento",
+        "fr" => "Entraînement",
+        "hi" => "अभ्यास",
+        "ar" => "تدريب",
+        "zh" => "训练",
+        _ => "Training",
     }
     .into()
 }
@@ -414,15 +414,55 @@ fn no_window(command: &mut std::process::Command) {
     command.creation_flags(CREATE_NO_WINDOW);
 }
 
+/// Das Kiebitz-Zeichen für Benachrichtigungen · dieselbe Datei, die auch als
+/// App-Symbol ausgeliefert wird.
+#[cfg(any(desktop, test))]
+const NOTIFY_ICON: &[u8] = include_bytes!("../icons/128x128@2x.png");
+
+/// Pfad zum Zeichen, das eine Benachrichtigung tragen soll.
+///
+/// Windows nimmt für die Kachel *eine Bilddatei*, keine `.ico` und kein Symbol
+/// aus der Anwendung · und der Erinnerungslauf startet ohne Fenster, hat also
+/// auch kein Ressourcenverzeichnis zur Hand. Deshalb legt Kiebitz die PNG
+/// einmal neben seine Einstellungen und benutzt von da an diesen Pfad · in der
+/// laufenden App wie im Hintergrundlauf, unter Windows wie unter Linux.
+#[cfg(any(desktop, test))]
+pub fn notify_icon_path(identifier: &str) -> Option<PathBuf> {
+    let dir = app_dir(identifier)?;
+    let path = dir.join("notification-icon.png");
+    // Größenvergleich statt Byte-Vergleich: er kostet nichts und erkennt den
+    // Fall, der wirklich vorkommt · eine ältere Fassung nach einem Update.
+    let current = std::fs::metadata(&path)
+        .map(|meta| meta.len() == NOTIFY_ICON.len() as u64)
+        .unwrap_or(false);
+    if !current {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, NOTIFY_ICON).ok()?;
+    }
+    Some(path)
+}
+
+/// Android trägt sein Symbol über die Plugin-Konfiguration
+/// (`plugins.notification.icon` → `res/drawable/ic_notification.xml`) · dort
+/// gibt es nichts neben den Einstellungen abzulegen.
+#[cfg(not(any(desktop, test)))]
+pub fn notify_icon_path(_identifier: &str) -> Option<std::path::PathBuf> {
+    None
+}
+
 /// Zeigt eine Systembenachrichtigung. Auf Windows direkt über WinRT, damit ein
 /// Fehlschlag sichtbar wird (das Plugin verschluckt ihn).
 ///
 /// Der Text darf zwei Zeilen tragen: Windows setzt `text1` und `text2`
 /// untereinander, und genau dafür ist der Aufmacher da. Ein `\n` im Text
 /// selbst würde die Kachel dagegen einfach länger machen.
+///
+/// Links davon steht das Kiebitz-Zeichen · ohne `appLogoOverride` zeigt
+/// Windows an dieser Stelle nichts und die Kachel sieht aus wie eine Meldung
+/// des Systems.
 #[cfg(windows)]
 pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
-    use tauri_winrt_notification::{Duration, Toast};
+    use tauri_winrt_notification::{Duration, IconCrop, Toast};
     let (lead, detail) = match body.split_once('\n') {
         Some((lead, detail)) => (lead, detail),
         None => (body, ""),
@@ -430,6 +470,10 @@ pub fn show(app_id: &str, title: &str, body: &str) -> Result<(), String> {
     let mut toast = Toast::new(app_id).title(title).text1(lead);
     if !detail.is_empty() {
         toast = toast.text2(detail);
+    }
+    let icon = notify_icon_path(app_id);
+    if let Some(path) = icon.as_deref().filter(|path| path.exists()) {
+        toast = toast.icon(path, IconCrop::Circular, "Kiebitz");
     }
     toast
         .duration(Duration::Short)
@@ -453,12 +497,15 @@ pub fn notify_now(app: tauri::AppHandle, title: String, body: String) -> Result<
     #[cfg(not(windows))]
     {
         use tauri_plugin_notification::NotificationExt;
-        app.notification()
-            .builder()
-            .title(title)
-            .body(body)
-            .show()
-            .map_err(|e| e.to_string())
+        // Ohne Pfad sucht notify-rust ein Symbol im Icon-Theme unter dem Namen
+        // der ausführbaren Datei · das findet sich nur auf einem installierten
+        // Linux-System und auch dort nicht zuverlässig.
+        let icon = notify_icon_path(&app.config().identifier);
+        let mut builder = app.notification().builder().title(title).body(body);
+        if let Some(path) = icon.as_deref().filter(|path| path.exists()) {
+            builder = builder.icon(path.to_string_lossy());
+        }
+        builder.show().map_err(|e| e.to_string())
     }
 }
 
@@ -621,7 +668,7 @@ pub fn run_headless(identifier: &str) -> bool {
         return false;
     }
     #[cfg(windows)]
-    register_windows_app_id(identifier, "Kiebitz", None);
+    register_windows_app_id(identifier, "Kiebitz", notify_icon_path(identifier));
     let Some(dir) = app_dir(identifier) else {
         return true;
     };
@@ -767,7 +814,7 @@ mod tests {
             ..settings()
         };
         let message = reminder_message(&quiet, &due, WEDNESDAY).unwrap();
-        assert_eq!(message.title, "Kiebitz · Training");
+        assert_eq!(message.title, "Training");
         assert_eq!(message.lead, "Zeit fürs Training.");
         assert_eq!(message.detail, "14 Wiederholungen fällig");
         assert_eq!(
@@ -822,7 +869,7 @@ mod tests {
             ..settings()
         };
         let review = reminder_message(&with_budget, &done, SUNDAY).unwrap();
-        assert_eq!(review.title, "Kiebitz · Woche");
+        assert_eq!(review.title, "Deine Woche");
         assert_eq!(review.lead, "145 von 180 Min. diese Woche.");
         assert_eq!(review.detail, "");
         assert_eq!(review.body(), "145 von 180 Min. diese Woche.");
@@ -883,6 +930,6 @@ mod tests {
             ..DueSummary::default()
         };
         assert_eq!(reminder_body(&english, &due).unwrap(), "5 reviews due");
-        assert_eq!(title("en"), "Kiebitz · training");
+        assert_eq!(title("en"), "Training");
     }
 }

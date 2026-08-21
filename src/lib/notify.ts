@@ -35,10 +35,37 @@ const CHECK_INTERVAL_MS = 60_000;
  */
 const SCHEDULED_IDS = [4711, 4712, 4713, 4714, 4715, 4716, 4717] as const;
 
+/**
+ * Eigener Kanal statt des Plugin-Vorgabekanals „Default".
+ *
+ * Der Kanal ist das, was Android dem Nutzer zeigt: in den Systemeinstellungen
+ * unter der App, als Untertitel der aufgeklappten Meldung und in der Auswahl,
+ * was leise sein soll. „Default" sagt dort nichts · „Trainings-Erinnerungen"
+ * sagt, worum es geht, und macht die Meldung abschaltbar, ohne dass Kiebitz
+ * ganz verstummt.
+ */
+const CHANNEL_ID = "training";
+/** Akzentfarbe der App (--color-accent) · Symbol und Kanallicht tragen sie. */
+const ACCENT = "#22C08A";
+
+/** Steht der Kanal? Sonst bleibt es beim Vorgabekanal (siehe `ensureNotificationChannel`). */
+let channelReady = false;
+
 type NativeNotificationOptions = {
   id?: number;
   title: string;
   body: string;
+  /** Aufgeklappte Fassung (BigTextStyle) · zusammengeklappt bleibt eine Zeile. */
+  largeBody?: string;
+  /** Name eines Drawables in `gen/android/app/src/main/res/drawable`. */
+  icon?: string;
+  /** Färbt Symbol und Absenderzeile in der Benachrichtigungsleiste. */
+  iconColor?: string;
+  channelId?: string;
+  /** Antippen räumt die Meldung weg. */
+  autoCancel?: boolean;
+  /** 1 = auch auf dem Sperrbildschirm lesbar · eine Erinnerung ist nicht privat. */
+  visibility?: number;
   schedule?: ReturnType<typeof Schedule.interval>;
   /**
    * Android's batch command persists this verbatim for pending alarms and
@@ -46,6 +73,60 @@ type NativeNotificationOptions = {
    */
   sourceJson?: string;
 };
+
+/**
+ * Aussehen jeder Android-Meldung an einer Stelle.
+ *
+ * Zusammengeklappt zeigt Android genau eine Zeile · steht dort der ganze Text,
+ * bricht er mitten im Satz ab („2 Tage in Folge — heute noch …"). Deshalb
+ * trägt `body` nur den Aufmacher, und die Aufzählung kommt beim Aufklappen.
+ *
+ * Symbol und Farbe stehen zusätzlich in tauri.conf.json (`plugins.notification`)
+ * als Vorgabe für alles, was das Plugin selbst baut · hier stehen sie an der
+ * Meldung, weil sie so auch den Weg über den AlarmManager und einen Neustart
+ * überstehen: der Alarm wird aus genau diesem Objekt wiederhergestellt.
+ */
+function androidNotification(title: string, body: string): NativeNotificationOptions {
+  const [lead] = body.split("\n");
+  return {
+    title,
+    body: lead,
+    largeBody: body.includes("\n") ? body : undefined,
+    icon: "ic_notification",
+    iconColor: ACCENT,
+    autoCancel: true,
+    visibility: 1,
+    ...(channelReady ? { channelId: CHANNEL_ID } : {}),
+  };
+}
+
+/**
+ * Den Kanal anlegen (idempotent) · Name und Beschreibung in der Sprache der
+ * App, damit die Systemeinstellungen nicht englisch dazwischenfunken.
+ *
+ * Schlägt es fehl, bleibt `channelReady` false und die Meldungen laufen über
+ * den Vorgabekanal weiter: Android verwirft eine Benachrichtigung stillschweigend,
+ * wenn sie auf einen Kanal zeigt, den es nicht gibt.
+ */
+export async function ensureNotificationChannel(t: TFunc): Promise<void> {
+  try {
+    await invoke("plugin:notification|create_channel", {
+      id: CHANNEL_ID,
+      name: t("notify.channel"),
+      description: t("notify.channelHint"),
+      importance: 3,
+      visibility: 1,
+      lights: true,
+      // Das Plugin liest hier `lightsColor` · der JS-Wrapper schickt fälschlich
+      // `lightColor`, deshalb geht der Aufruf hier direkt an das Plugin.
+      lightsColor: ACCENT,
+      vibration: true,
+    });
+    channelReady = true;
+  } catch {
+    channelReady = false;
+  }
+}
 
 /** Was heute noch offen ist · Datenbasis des Erinnerungstexts. */
 export interface ReminderInput {
@@ -287,7 +368,7 @@ async function nativeScheduledNotifications(
 export async function notify(title: string, body: string): Promise<void> {
   if (!(await ensurePermission())) throw new Error("permission-denied");
   if (await isMobile()) {
-    await nativeNotification({ title, body });
+    await nativeNotification(androidNotification(title, body));
     return;
   }
   await invoke("notify_now", { title, body });
@@ -304,6 +385,8 @@ export async function applyReminderSchedule(): Promise<void> {
     if (!settings.notify_enabled) return;
     if (!(await ensurePermission())) return;
     const t = await loadTranslator(settings.locale);
+    // Vor dem Planen · die Alarme tragen den Kanal, den es dann geben muss.
+    await ensureNotificationChannel(t);
     const due = await collectDue().catch(() => null);
     const [hour, minute] = settings.notify_time.split(":").map(Number);
     // Je Wochentag ein Alarm mit dem Text, der an diesem Abend gilt · der
@@ -318,10 +401,12 @@ export async function applyReminderSchedule(): Promise<void> {
       const message = due && reminderMessage(t, settings, due, sample);
       return {
         id,
-        title: message?.title ?? t("notify.title"),
         // Der Alarm trägt den Stand des letzten App-Starts; Details stehen in
         // der App, sobald sie geöffnet wird.
-        body: message?.body ?? t("notify.scheduled"),
+        ...androidNotification(
+          message?.title ?? t("notify.title"),
+          message?.body ?? t("notify.scheduled")
+        ),
         // Eine Trainingserinnerung ist nicht zeitkritisch. `allowWhileIdle=false`
         // hält die Planung batterie- und Play-richtlinienfreundlich; Android darf
         // sie im Doze-Modus auf ein geeignetes Wartungsfenster verschieben.
@@ -351,6 +436,9 @@ export async function applyReminderSchedule(): Promise<void> {
 export async function sendTestReminder(): Promise<void> {
   const settings = await getSettings();
   const t = await loadTranslator(settings.locale);
+  // Der Testknopf ist auf Android oft die erste Meldung überhaupt · ohne
+  // vorher angelegten Kanal käme sie im Vorgabekanal „Default" an.
+  if (await isMobile()) await ensureNotificationChannel(t);
   const now = new Date();
   const message = reminderMessage(t, settings, await collectDue(now), now);
   // Der Testknopf zeigt immer etwas · sonst wäre „nichts passiert" nicht von
