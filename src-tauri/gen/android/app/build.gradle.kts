@@ -190,4 +190,6 @@ kotlin {
     }
 }
 
-apply(from = "tauri.build.gradle.kts")
+// AGP 9 lint requires a real file reference here; a plain string can crash its
+// Kotlin FIR analysis with `findFirCompiledSymbol` before lint reports results.
+apply(from = file("tauri.build.gradle.kts"))

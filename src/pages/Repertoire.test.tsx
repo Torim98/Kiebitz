@@ -146,9 +146,7 @@ describe("Repertoire training", () => {
       mocks.engineMove = uci;
       fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
     }
-    // Der bewusst lazy geladene Eröffnungskatalog kann unter der parallelen
-    // Last der Gesamtsuite länger als die waitFor-Standardsekunde benötigen.
-    await waitFor(() => expect(name.value).toBe("Italian Game"), { timeout: 5_000 });
+    await waitFor(() => expect(name.value).toBe("Italian Game"));
     expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(
       fenAfter(["e4", "e5", "Nf3", "Nc6", "Bc4"])
     );

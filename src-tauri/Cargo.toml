@@ -95,3 +95,13 @@ tauri-winrt-notification = "0.7"
 # QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops per Kamera.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
+
+# Die veröffentlichten Plugin-Crates verweisen unter Gradle 9 auf eine beim
+# Packen ausgelassene consumer-rules.pro. Bis zum nächsten Plugin-Release den
+# offiziellen Tauri-Fix pinnen: https://github.com/tauri-apps/plugins-workspace/commit/db9c5998feff9384f9cbbefcbe0d45937c00a1fc
+[patch.crates-io]
+tauri-plugin-barcode-scanner = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
+tauri-plugin-deep-link = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
+tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
+tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
+tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
