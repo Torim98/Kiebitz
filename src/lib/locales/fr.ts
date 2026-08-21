@@ -170,6 +170,9 @@ export const fr: Record<Key, string> = {
   "games.deleteConfirm": "Supprimer la partie contre {opponent} ? Son analyse, son index de positions et les problèmes générés disparaissent aussi. La suppression est transmise lors de la prochaine synchronisation ; un réimport volontaire, en ligne ou par PGN, peut recréer la partie.",
   "games.deleteMissing": "La partie n'est plus dans la base.",
   "games.deleteFailed": "Impossible de supprimer la partie : {e}",
+  "games.detailTitle": "Détails de la partie",
+  "games.prevGame": "Partie précédente",
+  "games.nextGame": "Partie suivante",
 
   "an.title": "Analyse",
   "an.freeBoard": "Analyse libre",

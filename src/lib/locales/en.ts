@@ -171,6 +171,9 @@ export const en: Record<Key, string> = {
   "games.deleteConfirm": "Delete the game against {opponent}? Its analysis, position index, and generated puzzles are also removed. The deletion is sent during the next device sync; a later intentional online or PGN reimport can create the game again.",
   "games.deleteMissing": "The game is no longer in the database.",
   "games.deleteFailed": "Could not delete the game: {e}",
+  "games.detailTitle": "Game details",
+  "games.prevGame": "Previous game",
+  "games.nextGame": "Next game",
 
   "an.title": "Analysis",
   "an.freeBoard": "Free analysis",

@@ -193,6 +193,74 @@ describe("Games page", () => {
     expect(await screen.findByRole("button", { name: "Partie löschen" })).toBeTruthy();
   });
 
+  it("keeps the detail out of the mobile page until a game is tapped", async () => {
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Games openAnalysis={vi.fn()} />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    const list = await screen.findByTestId("games-list");
+
+    // Ohne Tipp ist die Seite eine reine Liste · Brett, Kennzahlen und Notizen
+    // stehen mobil nicht mehr darunter.
+    expect(screen.queryByTestId("game-detail-sheet")).toBeNull();
+    expect(screen.queryByPlaceholderText("Gedanken zur Partie festhalten …")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Partie löschen" })).toBeNull();
+
+    fireEvent.click(within(list).getByText(/Testgegner/));
+    const sheet = await screen.findByTestId("game-detail-sheet");
+    expect(within(sheet).getByPlaceholderText("Gedanken zur Partie festhalten …")).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Partie löschen" })).toBeTruthy();
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Schließen" }));
+    await waitFor(() => expect(screen.queryByTestId("game-detail-sheet")).toBeNull());
+  });
+
+  it("pages through the result list from inside the detail sheet", async () => {
+    const both = [game, { ...game, id: 2, source_id: "test-game-2", opponent: "Zweitgegner" }];
+    invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
+      if (command === "app_info") {
+        return Promise.resolve({ version: "0.5.0", backend: "tauri", platform: "android" });
+      }
+      if (command === "get_settings") {
+        return Promise.resolve({ locale: "de", cc_user: "Tom", li_user: "Tom", display_name: "Tom" });
+      }
+      if (command === "list_games_page") {
+        return Promise.resolve({
+          items: both.map((g) => ({ ...g, moves: undefined, note: undefined, source_id: undefined, has_moves: true, has_note: false })),
+          total: 2,
+          library_total: 2,
+        });
+      }
+      if (command === "game_detail") return Promise.resolve(both.find((g) => g.id === args?.id));
+      return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
+    });
+
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Games openAnalysis={vi.fn()} />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    const list = await screen.findByTestId("games-list");
+    fireEvent.click(within(list).getByText(/Testgegner/));
+
+    const sheet = await screen.findByTestId("game-detail-sheet");
+    expect(within(sheet).getByText("1 / 2")).toBeTruthy();
+    // Am Anfang der Liste geht es nur vorwärts.
+    expect(within(sheet).getByRole("button", { name: "Vorherige Partie" })).toHaveProperty("disabled", true);
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Nächste Partie" }));
+    await waitFor(() => expect(within(screen.getByTestId("game-detail-sheet")).getByText("2 / 2")).toBeTruthy());
+    // Kopfzeile und Brett tragen den Namen beide.
+    expect(within(screen.getByTestId("game-detail-sheet")).getAllByText(/Zweitgegner/).length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("game-detail-sheet")).getByRole("button", { name: "Nächste Partie" }))
+      .toHaveProperty("disabled", true);
+  });
+
   it("keeps an excluded game individually openable in analysis", async () => {
     listedGame = { ...game, analyzed: false, analysis_excluded: true };
     const openAnalysis = vi.fn();

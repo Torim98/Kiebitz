@@ -178,6 +178,9 @@ export const de = {
   "games.deleteConfirm": "Partie gegen {opponent} wirklich löschen? Analyse, Positionsindex und daraus erzeugte Puzzles werden ebenfalls entfernt. Die Löschung wird beim nächsten Gerätesync übertragen; ein späterer bewusster Online- oder PGN-Reimport kann die Partie neu anlegen.",
   "games.deleteMissing": "Die Partie ist nicht mehr in der Datenbank vorhanden.",
   "games.deleteFailed": "Partie konnte nicht gelöscht werden: {e}",
+  "games.detailTitle": "Partiedetails",
+  "games.prevGame": "Vorherige Partie",
+  "games.nextGame": "Nächste Partie",
 
   // ── Analyse ────────────────────────────────────────────────────────────────
   "an.title": "Analyse",

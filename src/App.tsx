@@ -41,6 +41,7 @@ import {
   ShellProvider,
   useLandscapePhone,
 } from "./components/MobileShell";
+import { SHEET_ROOT_ID } from "./components/MobileSheet";
 import type { EndgameCategory } from "./data/endgames";
 import AdBanner from "./components/AdBanner";
 import PlanBadge from "./components/PlanBadge";
@@ -609,9 +610,18 @@ export default function App() {
             onSettings={() => navigate("settings")}
             settingsActive={page === "settings"}
           />
-          <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-            {mainContent}
-          </main>
+          {/* Der Wrapper spannt genau die Fläche von <main> auf · darin legt
+              sich das Detailblatt (MobileSheet) über den Inhalt, während
+              App-Bar und Navigation scharf und bedienbar bleiben. */}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
+              {mainContent}
+            </main>
+            <div
+              id={SHEET_ROOT_ID}
+              className="pointer-events-none absolute inset-0 z-40 [&>*]:pointer-events-auto"
+            />
+          </div>
           {showAds && <AdBanner android={backend.info?.platform === "android"} />}
         </div>
         {!rail && (

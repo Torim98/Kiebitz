@@ -336,3 +336,39 @@ html[data-store-capture="true"] .board-end-flash {
 [data-shell="mobile"] .page-title {
   display: none;
 }
+
+/* ── Detailblatt der mobilen Shell ───────────────────────────────────────────
+   Das Blatt steigt kurz auf, der Schleier blendet auf · lange genug, um die
+   Herkunft aus der angetippten Karte zu zeigen, kurz genug, um beim Blättern
+   nicht im Weg zu sein.
+
+   Bewusst ohne fill-mode: nach dem Lauf gilt wieder der eigene transform, den
+   die Wischgeste am Element setzt · eine Fuellung wuerde ihn ueberstimmen. */
+@keyframes sheet-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mobile-sheet-panel {
+  animation: sheet-rise 0.18s ease-out;
+}
+
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mobile-sheet-scrim {
+  animation: sheet-fade 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet-panel,
+  .mobile-sheet-scrim {
+    animation: none;
+  }
+}

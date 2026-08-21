@@ -33,6 +33,7 @@ import Board from "../components/Board";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
+import MobileSheet from "../components/MobileSheet";
 import TagEditor from "../components/TagEditor";
 import { de, deInt } from "../lib/format";
 import { fenAfter } from "../lib/position";
@@ -81,6 +82,11 @@ export default function Games({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // Mobil stehen Details und Notizen nicht unter der Liste, sondern kommen auf
+  // Tipp als Blatt in den Vordergrund.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // Beim Blättern über eine Seitengrenze: welche Partie der neuen Seite gilt.
+  const [edgeSelect, setEdgeSelect] = useState<"first" | "last" | null>(null);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -193,6 +199,47 @@ export default function Games({
     ? dateKey.split("-").reverse().join(".")
     : dateKey;
 
+  // Partie auswählen · mobil öffnet derselbe Tipp das Detailblatt.
+  const selectGame = (id: string, openSheet = false) => {
+    setSelectedId(id);
+    setNoteDraft(null);
+    setDeleteError(null);
+    if (openSheet) setSheetOpen(true);
+  };
+
+  // Position der gewählten Partie in der gesamten Trefferliste · das Blatt
+  // blättert darüber hinweg, auch über Seitengrenzen.
+  const selectedIndex = paged.findIndex((g) => g.id === selected?.id);
+  const globalIndex = selectedIndex < 0 ? 0 : (safePage - 1) * pageSize + selectedIndex + 1;
+  const canPrev = globalIndex > 1;
+  const canNext = globalIndex > 0 && globalIndex < totalResults;
+
+  /**
+   * Eine Partie weiter oder zurück. Am Rand der Seite wird geblättert und die
+   * Auswahl nachgezogen, sobald die neue Seite geladen ist · welche Partie das
+   * ist, merkt sich `edgeSelect`.
+   */
+  const stepGame = (delta: 1 | -1) => {
+    const next = selectedIndex + delta;
+    if (selectedIndex >= 0 && next >= 0 && next < paged.length) {
+      selectGame(paged[next].id);
+      return;
+    }
+    if (delta === 1 && safePage < totalPages) {
+      setPage(safePage + 1);
+      setEdgeSelect("first");
+    } else if (delta === -1 && safePage > 1) {
+      setPage(safePage - 1);
+      setEdgeSelect("last");
+    }
+  };
+
+  useEffect(() => {
+    if (!edgeSelect || paged.length === 0) return;
+    selectGame(edgeSelect === "first" ? paged[0].id : paged[paged.length - 1].id);
+    setEdgeSelect(null);
+  }, [edgeSelect, paged]);
+
   // Eingetippte Zielseite übernehmen (auf gültigen Bereich begrenzt).
   const commitPageJump = () => {
     const n = parseInt(pageInput ?? "", 10);
@@ -267,6 +314,7 @@ export default function Games({
       const deleted = await deleteGame(selected.dbId);
       if (!deleted) throw new Error(t("games.deleteMissing"));
       await reload();
+      setSheetOpen(false);
       setSelectedId(null);
       setSelectedRecord(null);
       setNoteDraft(null);
@@ -369,6 +417,125 @@ export default function Games({
         .catch(() => {});
     }
   }, [backend.mode]);
+
+  // ── Detailbausteine ────────────────────────────────────────────────────────
+  // Dieselben drei Blöcke tragen beide Ansichten: auf dem Desktop stehen sie in
+  // zwei Karten neben der Liste, mobil im Blatt über der Liste.
+  const detailBoard = selected && (
+    <div className="mx-auto max-w-[528px]">
+      <div className="mb-2 min-w-0 text-[12.5px]">
+        <div className="truncate font-semibold text-ink2">
+          {previewTop.name}{previewTop.elo > 0 ? ` (${previewTop.elo})` : ""}
+        </div>
+      </div>
+      <Board
+        boardId="games-preview"
+        fen={previewFen}
+        width={BOARD_WIDTH}
+        orientation={selected.color}
+        silent
+      />
+      <div className="mt-2 min-w-0 text-[12.5px]">
+        <div className="truncate font-semibold text-ink2">
+          {previewBottom.name}{previewBottom.elo > 0 ? ` (${previewBottom.elo})` : ""}
+        </div>
+      </div>
+    </div>
+  );
+
+  const detailFacts = selected && (
+    <>
+      {/* Die Paarung stand früher hier als eine Zeile · seit beide
+          Namen am Brett stehen, bliebe davon nur eine Wiederholung.
+          Der Ausgang gehört trotzdem hierher, zu Eröffnung und Zügen. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 truncate text-[12px] text-ink3">
+          {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
+          {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
+        </div>
+        <ResultBadge result={selected.result} />
+      </div>
+      {selected.analyzed && (
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          {([
+            [t("ins.phase.opening"), selected.accuracyOpening],
+            [t("ins.phase.middlegame"), selected.accuracyMiddlegame],
+            [t("ins.phase.endgame"), selected.accuracyEndgame],
+          ] as const).map(([label, value]) => (
+            <div key={label} className="rounded-md bg-panel2 px-1.5 py-1.5">
+              <div className="text-[10px] text-ink3">{label}</div>
+              <div className="text-[12px] font-medium text-ink2">{value == null ? "—" : `${de(value)} %`}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3">
+        <TagEditor
+          key={selected.id}
+          tags={selected.tags}
+          onChange={saveTags}
+          editable={Boolean(selected.dbId)}
+          prefix={selected.analysisExcluded ? <Tag>{t("games.analysisExcludedTag")}</Tag> : undefined}
+        />
+      </div>
+    </>
+  );
+
+  const detailNotes = selected && (
+    <>
+      <textarea
+        key={`${selected.id}-${selectedRecord?.id === selected.dbId ? "detail" : "summary"}`}
+        defaultValue={selected.note ?? ""}
+        onChange={(e) => setNoteDraft(e.target.value)}
+        placeholder={t("games.notesPlaceholder")}
+        rows={4}
+        className="w-full resize-none rounded-lg border border-line bg-panel2 p-3 text-[13px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+      />
+      <div className="mt-3 grid gap-2 min-[480px]:grid-cols-2">
+        {selected.dbId ? (
+          <>
+            <Button primary onClick={saveNote} className="w-full">
+              <Save size={15} />
+              {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
+            </Button>
+            <Button className="w-full" onClick={() => openAnalysis(selected.dbId!)}>
+              {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
+            </Button>
+          </>
+        ) : (
+          <Button primary className="w-full min-[480px]:col-span-2">
+            {selected.analyzed ? t("games.openAnalysis") : t("games.analyzeStockfish")}
+          </Button>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+        {selected.source !== "manual" ? (
+          <ExtLink
+            href={selected.url || (selected.source === "chess.com" ? `https://www.chess.com/games/archive/${myUser}` : `https://lichess.org/@/${myUser}/all`)}
+            label={t("games.original")}
+          />
+        ) : (
+          <span />
+        )}
+        {selected.dbId && (
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => setDeleteConfirmOpen(true)}
+            className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            {deleting ? t("games.deleting") : t("games.delete")}
+          </button>
+        )}
+      </div>
+      {deleteError && (
+        <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+          {deleteError}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
@@ -549,12 +716,10 @@ export default function Games({
               <GameCard
                 key={g.id}
                 game={g}
-                selected={selected?.id === g.id}
-                onClick={() => {
-                  setSelectedId(g.id);
-                  setNoteDraft(null);
-                  setDeleteError(null);
-                }}
+                // Ohne Tipp ist nichts markiert · die Vorauswahl der ersten
+                // Partie hat mobil keine sichtbare Entsprechung mehr.
+                selected={selectedId === g.id}
+                onClick={() => selectGame(g.id, true)}
                 trailing={
                   (g.tags.length > 0 || g.note) && (
                     <span className="flex shrink-0 items-center gap-1">
@@ -600,11 +765,7 @@ export default function Games({
                 return (
                 <tr
                   key={g.id}
-                  onClick={() => {
-                    setSelectedId(g.id);
-                    setNoteDraft(null);
-                    setDeleteError(null);
-                  }}
+                  onClick={() => selectGame(g.id)}
                   className={`cursor-pointer border-b border-line last:border-0 ${
                     selected?.id === g.id ? "bg-panel2" : "hover:bg-panel2/60"
                   }`}
@@ -765,124 +926,89 @@ export default function Games({
         )}
         </div>
 
-        {selected && (
+        {/* Mobil liegt das Detail nicht unter der Liste, sondern kommt auf
+            Tipp als Blatt darüber · siehe unten. */}
+        {!mobile && selected && (
           <div className="flex flex-col gap-4">
             <Card pad={false}>
               {/* Brett mit beiden Namen und Elo-Zahlen, analog zur Analyse. */}
-              <div className="p-4 pb-3">
-                <div className="mx-auto max-w-[528px]">
-                  <div className="mb-2 min-w-0 text-[12.5px]">
-                    <div className="truncate font-semibold text-ink2">
-                      {previewTop.name}{previewTop.elo > 0 ? ` (${previewTop.elo})` : ""}
-                    </div>
-                  </div>
-                  <Board
-                    boardId="games-preview"
-                    fen={previewFen}
-                    width={BOARD_WIDTH}
-                    orientation={selected.color}
-                    silent
-                  />
-                  <div className="mt-2 min-w-0 text-[12.5px]">
-                    <div className="truncate font-semibold text-ink2">
-                      {previewBottom.name}{previewBottom.elo > 0 ? ` (${previewBottom.elo})` : ""}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-line px-4 py-3">
-                {/* Die Paarung stand früher hier als eine Zeile · seit beide
-                    Namen am Brett stehen, bliebe davon nur eine Wiederholung.
-                    Der Ausgang gehört trotzdem hierher, zu Eröffnung und Zügen. */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 truncate text-[12px] text-ink3">
-                    {selected.opening} {selected.eco && `(${selected.eco})`} ·{" "}
-                    {t("games.movesTc", { n: selected.moves, tc: selected.tc })}
-                  </div>
-                  <ResultBadge result={selected.result} />
-                </div>
-                {selected.analyzed && (
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    {([
-                      [t("ins.phase.opening"), selected.accuracyOpening],
-                      [t("ins.phase.middlegame"), selected.accuracyMiddlegame],
-                      [t("ins.phase.endgame"), selected.accuracyEndgame],
-                    ] as const).map(([label, value]) => (
-                      <div key={label} className="rounded-md bg-panel2 px-1.5 py-1.5">
-                        <div className="text-[10px] text-ink3">{label}</div>
-                        <div className="text-[12px] font-medium text-ink2">{value == null ? "—" : `${de(value)} %`}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-3">
-                  <TagEditor
-                    key={selected.id}
-                    tags={selected.tags}
-                    onChange={saveTags}
-                    editable={Boolean(selected.dbId)}
-                    prefix={selected.analysisExcluded ? <Tag>{t("games.analysisExcludedTag")}</Tag> : undefined}
-                  />
-                </div>
-              </div>
+              <div className="p-4 pb-3">{detailBoard}</div>
+              <div className="border-t border-line px-4 py-3">{detailFacts}</div>
             </Card>
 
-            <Card title={t("games.notes")}>
-              <textarea
-                key={`${selected.id}-${selectedRecord?.id === selected.dbId ? "detail" : "summary"}`}
-                defaultValue={selected.note ?? ""}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                placeholder={t("games.notesPlaceholder")}
-                rows={4}
-                className="w-full resize-none rounded-lg border border-line bg-panel2 p-3 text-[13px] leading-relaxed text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-              />
-              <div className="mt-3 grid gap-2 min-[480px]:grid-cols-2">
-                {selected.dbId ? (
-                  <>
-                    <Button primary onClick={saveNote} className="w-full">
-                      <Save size={15} />
-                      {noteSaved ? t("games.noteSaved") : t("games.saveNote")}
-                    </Button>
-                    <Button className="w-full" onClick={() => openAnalysis(selected.dbId!)}>
-                      {selected.analyzed ? t("games.openAnalysis") : t("games.analyze")}
-                    </Button>
-                  </>
-                ) : (
-                  <Button primary className="w-full min-[480px]:col-span-2">
-                    {selected.analyzed ? t("games.openAnalysis") : t("games.analyzeStockfish")}
-                  </Button>
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
-                {selected.source !== "manual" ? (
-                  <ExtLink
-                    href={selected.url || (selected.source === "chess.com" ? `https://www.chess.com/games/archive/${myUser}` : `https://lichess.org/@/${myUser}/all`)}
-                    label={t("games.original")}
-                  />
-                ) : (
-                  <span />
-                )}
-                {selected.dbId && (
-                  <button
-                    type="button"
-                    disabled={deleting}
-                    onClick={() => setDeleteConfirmOpen(true)}
-                    className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    {deleting ? t("games.deleting") : t("games.delete")}
-                  </button>
-                )}
-              </div>
-              {deleteError && (
-                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
-                  {deleteError}
-                </div>
-              )}
-            </Card>
+            <Card title={t("games.notes")}>{detailNotes}</Card>
           </div>
         )}
       </div>
+
+      {/* Detailblatt · mobil die einzige Stelle, an der Brett, Kennzahlen und
+          Notizen zu sehen sind. Gewischt wird über die ganze Trefferliste. */}
+      {mobile && sheetOpen && selected && (
+        <MobileSheet
+          testId="game-detail-sheet"
+          ariaLabel={t("games.detailTitle")}
+          scrollKey={selected.id}
+          onClose={() => setSheetOpen(false)}
+          onPrev={canPrev ? () => stepGame(-1) : undefined}
+          onNext={canNext ? () => stepGame(1) : undefined}
+          title={
+            <div className="flex items-center gap-2">
+              <ResultBadge result={selected.result} />
+              <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">
+                {selected.opponent} <span className="font-normal text-ink3">({selected.oppElo})</span>
+              </span>
+            </div>
+          }
+          subtitle={
+            <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-ink3">
+              <SourceBadge source={selected.source} />
+              <span className="min-w-0 flex-1 truncate">{selected.tc} · {selected.date}</span>
+              <span className="shrink-0 tabular-nums">
+                {selected.accuracy != null ? `${de(selected.accuracy)} %` : "—"}
+              </span>
+            </div>
+          }
+          footer={
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => stepGame(-1)}
+                disabled={!canPrev}
+                aria-label={t("games.prevGame")}
+                className="flex items-center gap-1 rounded-lg px-3 py-2 text-[12.5px] text-ink2 transition-colors hover:text-accent disabled:opacity-35 disabled:hover:text-ink2"
+              >
+                <ChevronLeft size={16} /> {t("games.prev")}
+              </button>
+              <span className="shrink-0 text-[11.5px] tabular-nums text-ink3">
+                {`${deInt(globalIndex)} / ${deInt(totalResults)}`}
+              </span>
+              <button
+                onClick={() => stepGame(1)}
+                disabled={!canNext}
+                aria-label={t("games.nextGame")}
+                className="flex items-center gap-1 rounded-lg px-3 py-2 text-[12.5px] text-ink2 transition-colors hover:text-accent disabled:opacity-35 disabled:hover:text-ink2"
+              >
+                {t("games.next")} <ChevronRight size={16} />
+              </button>
+            </div>
+          }
+        >
+          {/* Auf niedrigen Geräten bekommt das Brett nur so viel Breite, wie
+              es an Höhe geben darf · sonst steht es angeschnitten da und die
+              Kennzahlen darunter wären erst nach einer Wischbewegung zu sehen.
+              Auf üblichen Telefonhöhen bleibt es die volle Blattbreite. */}
+          <div
+            className="mx-auto px-4 pt-4"
+            style={{ maxWidth: "min(100%, max(13rem, calc(100vh - 25.5rem)))" }}
+          >
+            {detailBoard}
+          </div>
+          <div className="mt-3 border-t border-line px-4 py-3">{detailFacts}</div>
+          <div className="border-t border-line px-4 py-3">
+            <div className="mb-2 text-[13px] font-medium text-ink2">{t("games.notes")}</div>
+            {detailNotes}
+          </div>
+        </MobileSheet>
+      )}
 
       {deleteConfirmOpen && selected?.dbId && (
         <div

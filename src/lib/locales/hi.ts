@@ -170,6 +170,9 @@ export const hi: Record<Key, string> = {
   "games.deleteConfirm": "{opponent} के विरुद्ध यह बाज़ी हटाएँ? इसका विश्लेषण, स्थिति सूचकांक और बनी पहेलियाँ भी हट जाएँगी। अगले डिवाइस सिंक पर यह हटाना भेजा जाएगा; बाद में जानबूझकर ऑनलाइन या PGN से दोबारा आयात करने पर बाज़ी फिर बन सकती है।",
   "games.deleteMissing": "यह बाज़ी अब डेटाबेस में नहीं है।",
   "games.deleteFailed": "बाज़ी हटाई नहीं जा सकी: {e}",
+  "games.detailTitle": "बाज़ी का विवरण",
+  "games.prevGame": "पिछली बाज़ी",
+  "games.nextGame": "अगली बाज़ी",
 
   "an.title": "विश्लेषण",
   "an.freeBoard": "मुक्त विश्लेषण",

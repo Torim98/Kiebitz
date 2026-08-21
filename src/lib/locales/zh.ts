@@ -170,6 +170,9 @@ export const zh: Record<Key, string> = {
   "games.deleteConfirm": "删除对阵 {opponent} 的这局棋？其分析、局面索引和生成的战术题也会一并移除。删除会在下次设备同步时传出；日后有意通过在线或 PGN 重新导入，仍可再次创建这局棋。",
   "games.deleteMissing": "该对局已不在数据库中。",
   "games.deleteFailed": "无法删除该对局：{e}",
+  "games.detailTitle": "对局详情",
+  "games.prevGame": "上一局",
+  "games.nextGame": "下一局",
 
   "an.title": "分析",
   "an.freeBoard": "自由分析",

@@ -170,6 +170,9 @@ export const es: Record<Key, string> = {
   "games.deleteConfirm": "¿Eliminar la partida contra {opponent}? También se borran su análisis, su índice de posiciones y los problemas generados. La eliminación se transmite en la próxima sincronización; una reimportación intencionada, en línea o por PGN, puede volver a crear la partida.",
   "games.deleteMissing": "La partida ya no está en la base de datos.",
   "games.deleteFailed": "No se pudo eliminar la partida: {e}",
+  "games.detailTitle": "Detalles de la partida",
+  "games.prevGame": "Partida anterior",
+  "games.nextGame": "Partida siguiente",
 
   "an.title": "Análisis",
   "an.freeBoard": "Análisis libre",
