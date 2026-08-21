@@ -543,6 +543,11 @@ any completed artifacts for diagnosis, rather than publishing a partial release.
 > failed draft release, then run the command again with the same version. If the
 > release is already public, use a new, higher version instead.
 
+> **Emergency rollback:** if a published desktop build is broken, mark its
+> GitHub release as a pre-release (`gh release edit vX.Y.Z --prerelease`). The
+> stable `/releases/latest/` updater feed then falls back to the previous release.
+> An Android release can be halted or withdrawn separately in Google Play Console.
+
 ### What the workflow handles for you
 
 - **Engine**: on Windows it fetches the pinned official Stockfish AVX2
