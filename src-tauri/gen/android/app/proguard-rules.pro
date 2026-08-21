@@ -13,6 +13,22 @@
     *;
 }
 
+# Jetpack Glance 1.1.1 pulls in Room 2.2.5. Room derives the generated
+# `<Database>_Impl` class name and instantiates it through reflection. The
+# dependency's consumer rule keeps the class name, but not its no-argument
+# constructor, so optimized release builds otherwise crash in WorkManager's
+# InitializationProvider before MainActivity starts.
+-keepclassmembers class * extends androidx.room.RoomDatabase {
+    <init>();
+}
+
+# Firebase component discovery reads ML Kit registrar class names from the
+# merged manifest and creates them through reflection. firebase-components
+# keeps the classes, but R8 can still remove their no-argument constructors.
+-keepclassmembers class * implements com.google.firebase.components.ComponentRegistrar {
+    public <init>();
+}
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
