@@ -442,9 +442,9 @@ pub fn notify_icon_path(identifier: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Android trägt sein Symbol über die Plugin-Konfiguration
-/// (`plugins.notification.icon` → `res/drawable/ic_notification.xml`) · dort
-/// gibt es nichts neben den Einstellungen abzulegen.
+/// Android trägt Symbol und Farbe direkt an jeder Benachrichtigung aus dem
+/// Frontend (`notify.ts`) · dort gibt es nichts neben den Einstellungen
+/// abzulegen.
 #[cfg(not(any(desktop, test)))]
 pub fn notify_icon_path(_identifier: &str) -> Option<std::path::PathBuf> {
     None

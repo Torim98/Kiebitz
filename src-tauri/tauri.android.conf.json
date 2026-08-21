@@ -7,11 +7,5 @@
       "resources/licenses/THIRD_PARTY_LICENSES.txt"
     ],
     "createUpdaterArtifacts": false
-  },
-  "plugins": {
-    "notification": {
-      "icon": "ic_notification",
-      "iconColor": "#22C08A"
-    }
   }
 }

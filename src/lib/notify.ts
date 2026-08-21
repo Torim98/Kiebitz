@@ -81,10 +81,12 @@ type NativeNotificationOptions = {
  * bricht er mitten im Satz ab („2 Tage in Folge — heute noch …"). Deshalb
  * trägt `body` nur den Aufmacher, und die Aufzählung kommt beim Aufklappen.
  *
- * Symbol und Farbe stehen zusätzlich in tauri.conf.json (`plugins.notification`)
- * als Vorgabe für alles, was das Plugin selbst baut · hier stehen sie an der
- * Meldung, weil sie so auch den Weg über den AlarmManager und einen Neustart
- * überstehen: der Alarm wird aus genau diesem Objekt wiederhergestellt.
+ * Symbol und Farbe stehen direkt an der Meldung, weil sie so auch den Weg über
+ * den AlarmManager und einen Neustart überstehen: der Alarm wird aus genau
+ * diesem Objekt wiederhergestellt. Eine globale `plugins.notification`-
+ * Konfiguration ist hier absichtlich ausgeschlossen: die gepinnte Plugin-
+ * Version deserialisiert sie beim Start als `()` und beendet sonst Desktop-
+ * wie Android-Builds noch vor dem ersten Fenster.
  */
 function androidNotification(title: string, body: string): NativeNotificationOptions {
   const [lead] = body.split("\n");
