@@ -15,6 +15,7 @@ import {
   FolderOpen,
   Save,
   Search,
+  SlidersHorizontal,
   StickyNote,
   Trash2,
   AlertTriangle,
@@ -42,6 +43,13 @@ import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 type ImportTone = "info" | "success" | "warning" | "error";
+
+/** Ein gesetzter Filter, wie ihn die Pillenzeile zeigt und wieder entfernt. */
+interface ActiveFilter {
+  key: string;
+  label: string;
+  clear: () => void;
+}
 
 /** Gemerkte Seitengröße lesen; beim ersten Öffnen auf 10 (ungültig/leer). */
 function readStoredPageSize(): number {
@@ -87,6 +95,9 @@ export default function Games({
   const [sheetOpen, setSheetOpen] = useState(false);
   // Beim Blättern über eine Seitengrenze: welche Partie der neuen Seite gilt.
   const [edgeSelect, setEdgeSelect] = useState<"first" | "last" | null>(null);
+  // Mobil stehen Quelle und Ergebnis nicht als zwei Chip-Reihen über der
+  // Liste, sondern hinter einer Schaltfläche · siehe Filterblatt unten.
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const [source, setSource] = useState<Source | "alle">(initialFilter?.source ?? "alle");
   const [result, setResult] = useState<Result | "alle">(initialFilter?.result ?? "alle");
@@ -198,6 +209,86 @@ export default function Games({
   const dateFilterLabel = locale === "de" && dateKey
     ? dateKey.split("-").reverse().join(".")
     : dateKey;
+
+  // ── Filterzustand als Liste ────────────────────────────────────────────────
+  // Beide Ansichten zeigen dieselben Filter, nur an anderer Stelle: auf dem
+  // Desktop stehen Quelle und Ergebnis als Chip-Reihen über der Tabelle, mobil
+  // im Filterblatt · dort führt die Pillenzeile alles auf, was gerade gilt.
+  const resultLabels: Record<Result, string> = {
+    win: t("games.wins"),
+    loss: t("games.losses"),
+    draw: t("games.draws"),
+  };
+  const exactFilters: ActiveFilter[] = [];
+  if (dateKey) exactFilters.push({ key: "date", label: t("games.filterDate", { v: dateFilterLabel }), clear: () => setDateKey("") });
+  if (tc) exactFilters.push({ key: "tc", label: t("games.filterMode", { v: tcLabel(tc, locale) }), clear: () => setTc("") });
+  if (opponent) exactFilters.push({ key: "opponent", label: t("games.filterOpponent", { v: opponent }), clear: () => setOpponent("") });
+  if (opening) exactFilters.push({ key: "opening", label: t("games.filterOpening", { v: opening }), clear: () => setOpening("") });
+  const chipFilters: ActiveFilter[] = [];
+  if (source !== "alle") chipFilters.push({ key: "source", label: source, clear: () => setSource("alle") });
+  if (result !== "alle") chipFilters.push({ key: "result", label: resultLabels[result], clear: () => setResult("alle") });
+  const activeFilters = mobile ? [...chipFilters, ...exactFilters] : exactFilters;
+
+  const clearExactFilters = () => {
+    setDateKey("");
+    setTc("");
+    setOpponent("");
+    setOpening("");
+  };
+  const clearAllFilters = () => {
+    clearExactFilters();
+    setSource("alle");
+    setResult("alle");
+  };
+
+  /** Eine Pille je gesetztem Filter · das X entfernt genau diesen. */
+  const filterPills = (filters: ActiveFilter[], clearAll: () => void) => (
+    <div
+      className={`flex items-center gap-2 ${
+        mobile ? "-mx-4 flex-nowrap overflow-x-auto px-4 pb-1" : "flex-wrap"
+      }`}
+    >
+      {filters.map((filter) => (
+        <span
+          key={filter.key}
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft py-1 pl-3 pr-1.5 text-[12px] text-accent"
+        >
+          {filter.label}
+          <button
+            onClick={filter.clear}
+            aria-label={t("games.clearFilter")}
+            className="rounded-full p-0.5 text-accent/70 transition-colors hover:bg-accent/15 hover:text-accent"
+          >
+            <X size={13} />
+          </button>
+        </span>
+      ))}
+      <button
+        onClick={clearAll}
+        className="shrink-0 text-[12px] text-ink3 transition-colors hover:text-accent"
+      >
+        {t("games.clearAll")}
+      </button>
+    </div>
+  );
+
+  const sourceChips = (["alle", "chess.com", "lichess", "manual"] as const).map((s) => (
+    <Chip key={s} active={source === s} onClick={() => setSource(s)}>
+      {s === "alle" ? t("games.allSources") : s}
+    </Chip>
+  ));
+  const resultChips = (
+    [
+      ["alle", t("games.allResults")],
+      ["win", resultLabels.win],
+      ["loss", resultLabels.loss],
+      ["draw", resultLabels.draw],
+    ] as const
+  ).map(([val, label]) => (
+    <Chip key={val} active={result === val} onClick={() => setResult(val)}>
+      {label}
+    </Chip>
+  ));
 
   // Partie auswählen · mobil öffnet derselbe Tipp das Detailblatt.
   const selectGame = (id: string, openSheet = false) => {
@@ -537,9 +628,73 @@ export default function Games({
     </>
   );
 
+  // Import und Export · auf dem Desktop unter der Kopfzeile, mobil unter der
+  // Leiste, aus der die Schaltfläche stammt.
+  const importPanel = backend.mode === "desktop" && importOpen ? (
+    <Card title={t("games.importPanelTitle")} className="mb-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div className="min-w-0">
+          <div className="text-[12.5px] font-medium text-ink2">{t("games.onlineImportTitle")}</div>
+          <div className="mt-0.5 text-[11.5px] text-ink3">{t("games.onlineImportHint")}</div>
+        </div>
+        <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 sm:flex">
+          <Button className="w-full sm:w-auto" onClick={() => !importing && runImport(true)}>
+            <History size={15} /> {t("games.importAll")}
+          </Button>
+          <Button className="w-full sm:w-auto" primary onClick={() => !importing && runImport(false)}>
+            {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {importing ? t("games.importing") : t("games.importLatest")}
+          </Button>
+        </div>
+      </div>
+      <div className="mb-4 border-t border-line" />
+      <div className="mb-3 text-[12.5px] font-medium text-ink2">{t("games.pgnTitle")}</div>
+      <div className="mb-3 grid max-w-md gap-1.5 sm:grid-cols-[auto_minmax(0,14rem)] sm:items-center">
+        <label className="text-[12px] text-ink3" htmlFor="pgn-player">{t("games.pgnPlayer")}</label>
+        <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="min-w-0 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
+      </div>
+      <p className="mb-3 max-w-3xl text-[11.5px] leading-relaxed text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
+      <div className="grid min-w-0 gap-3 min-[900px]:grid-cols-2">
+        <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
+          <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnImportGroup")}</div>
+          <button onClick={choosePgnImport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+            {pgnPath || t("games.pgnChooseImport")}
+          </button>
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-[11.5px] leading-relaxed text-ink2">
+            <input
+              type="checkbox"
+              checked={pgnExcludeFromAnalysis}
+              onChange={(event) => setPgnExcludeFromAnalysis(event.target.checked)}
+              className="mt-0.5 size-3.5 accent-[var(--color-accent)]"
+            />
+            <span>
+              <span className="block font-medium text-ink">{t("games.pgnExcludeAnalysis")}</span>
+              <span className="text-ink3">{t("games.pgnExcludeAnalysisHint")}</span>
+            </span>
+          </label>
+          <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+            <Button className="w-full" onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
+            <Button className="w-full" primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
+          </div>
+        </section>
+        <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
+          <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnExportGroup")}</div>
+          <button onClick={choosePgnExport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
+            {pgnExportPath || t("games.pgnChooseExport")}
+          </button>
+          <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 min-[620px]:grid-cols-3">
+            <Button className="w-full" onClick={choosePgnExport}><FolderOpen size={14} /> {t("games.chooseTarget")}</Button>
+            <Button className="w-full" onClick={() => !pgnBusy && runPgnExport(true)} disabled={!pgnExportPath || !selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
+            <Button className="w-full min-[420px]:col-span-2 min-[620px]:col-span-1" onClick={() => !pgnBusy && runPgnExport(false)} disabled={!pgnExportPath}>{t("games.pgnAll")}</Button>
+          </div>
+        </section>
+      </div>
+    </Card>
+  ) : null;
+
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <header className={`flex flex-wrap items-end justify-between gap-x-4 gap-y-3 ${mobile ? "mb-3" : "mb-5"}`}>
         <div>
           <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("games.title")}</h1>
           <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-ink3">
@@ -553,7 +708,8 @@ export default function Games({
             )}
           </p>
         </div>
-        {backend.mode === "desktop" && (
+        {/* Mobil steht der Import als Symbol in der Suchleiste · siehe unten. */}
+        {backend.mode === "desktop" && !mobile && (
           <Button onClick={() => setImportOpen((open) => !open)}>
             <Download size={15} /> {t("games.manageImports")}
             {importOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -573,137 +729,82 @@ export default function Games({
         </div>
       )}
 
-      {backend.mode === "desktop" && importOpen && (
-        <Card title={t("games.importPanelTitle")} className="mb-4">
-          <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div className="min-w-0">
-              <div className="text-[12.5px] font-medium text-ink2">{t("games.onlineImportTitle")}</div>
-              <div className="mt-0.5 text-[11.5px] text-ink3">{t("games.onlineImportHint")}</div>
-            </div>
-            <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 sm:flex">
-              <Button className="w-full sm:w-auto" onClick={() => !importing && runImport(true)}>
-                <History size={15} /> {t("games.importAll")}
-              </Button>
-              <Button className="w-full sm:w-auto" primary onClick={() => !importing && runImport(false)}>
-                {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                {importing ? t("games.importing") : t("games.importLatest")}
-              </Button>
-            </div>
-          </div>
-          <div className="mb-4 border-t border-line" />
-          <div className="mb-3 text-[12.5px] font-medium text-ink2">{t("games.pgnTitle")}</div>
-          <div className="mb-3 grid max-w-md gap-1.5 sm:grid-cols-[auto_minmax(0,14rem)] sm:items-center">
-            <label className="text-[12px] text-ink3" htmlFor="pgn-player">{t("games.pgnPlayer")}</label>
-            <input id="pgn-player" value={pgnPlayer} onChange={(e) => setPgnPlayer(e.target.value)} className="min-w-0 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none" />
-          </div>
-          <p className="mb-3 max-w-3xl text-[11.5px] leading-relaxed text-ink3">{t("games.pgnHint", { user: pgnPlayer })}</p>
-          <div className="grid min-w-0 gap-3 min-[900px]:grid-cols-2">
-            <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
-              <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnImportGroup")}</div>
-              <button onClick={choosePgnImport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
-                {pgnPath || t("games.pgnChooseImport")}
-              </button>
-              <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-[11.5px] leading-relaxed text-ink2">
-                <input
-                  type="checkbox"
-                  checked={pgnExcludeFromAnalysis}
-                  onChange={(event) => setPgnExcludeFromAnalysis(event.target.checked)}
-                  className="mt-0.5 size-3.5 accent-[var(--color-accent)]"
-                />
-                <span>
-                  <span className="block font-medium text-ink">{t("games.pgnExcludeAnalysis")}</span>
-                  <span className="text-ink3">{t("games.pgnExcludeAnalysisHint")}</span>
-                </span>
-              </label>
-              <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-                <Button className="w-full" onClick={choosePgnImport}><FolderOpen size={14} /> {t("games.chooseFile")}</Button>
-                <Button className="w-full" primary disabled={!pgnPath || pgnBusy} onClick={() => runPgnImport()}><FileUp size={14} /> {t("common.import")}</Button>
-              </div>
-            </section>
-            <section className="min-w-0 rounded-lg border border-line bg-panel2/35 p-3">
-              <div className="mb-2 text-[11.5px] font-medium text-ink2">{t("games.pgnExportGroup")}</div>
-              <button onClick={choosePgnExport} className="w-full min-w-0 truncate rounded-lg border border-line bg-panel2 px-3 py-2 text-left text-[12.5px] text-ink3 hover:border-line2">
-                {pgnExportPath || t("games.pgnChooseExport")}
-              </button>
-              <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 min-[620px]:grid-cols-3">
-                <Button className="w-full" onClick={choosePgnExport}><FolderOpen size={14} /> {t("games.chooseTarget")}</Button>
-                <Button className="w-full" onClick={() => !pgnBusy && runPgnExport(true)} disabled={!pgnExportPath || !selected?.dbId}><FileDown size={14} /> {t("games.pgnSelected")}</Button>
-                <Button className="w-full min-[420px]:col-span-2 min-[620px]:col-span-1" onClick={() => !pgnBusy && runPgnExport(false)} disabled={!pgnExportPath}>{t("games.pgnAll")}</Button>
-              </div>
-            </section>
-          </div>
-        </Card>
-      )}
+      {/* Der Import/Export-Bereich öffnet mobil unter der Leiste, aus der
+          er aufgerufen wird · auf dem Desktop unter seiner Schaltfläche. */}
+      {!mobile && importPanel}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative mr-2">
-          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("games.searchPlaceholder")}
-            className="w-64 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
-          />
-        </div>
-        {(["alle", "chess.com", "lichess", "manual"] as const).map((s) => (
-          <Chip key={s} active={source === s} onClick={() => setSource(s)}>
-            {s === "alle" ? t("games.allSources") : s}
-          </Chip>
-        ))}
-        <span className="mx-1 h-4 w-px bg-line2" />
-        {(
-          [
-            ["alle", t("games.allResults")],
-            ["win", t("games.wins")],
-            ["loss", t("games.losses")],
-            ["draw", t("games.draws")],
-          ] as const
-        ).map(([val, label]) => (
-          <Chip key={val} active={result === val} onClick={() => setResult(val)}>
-            {label}
-          </Chip>
-        ))}
-      </div>
-
-      {(dateKey || tc || opponent || opening) && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {(
-            [
-              [dateKey, t("games.filterDate", { v: dateFilterLabel }), () => setDateKey("")],
-              [tc, t("games.filterMode", { v: tcLabel(tc, locale) }), () => setTc("")],
-              [opponent, t("games.filterOpponent", { v: opponent }), () => setOpponent("")],
-              [opening, t("games.filterOpening", { v: opening }), () => setOpening("")],
-            ] as const
-          )
-            .filter(([val]) => val)
-            .map(([, label, clear]) => (
-              <span
-                key={label}
-                className="flex items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft py-1 pl-3 pr-1.5 text-[12px] text-accent"
-              >
-                {label as string}
-                <button
-                  onClick={clear}
-                  aria-label={t("games.clearFilter")}
-                  className="rounded-full p-0.5 text-accent/70 transition-colors hover:bg-accent/15 hover:text-accent"
-                >
-                  <X size={13} />
-                </button>
-              </span>
-            ))}
+      {/* Mobil ist aus der Suchzeile und den beiden Chip-Reihen eine einzige
+          Leiste geworden: suchen, filtern, importieren · die Filter selbst
+          stehen im Blatt, ihr Zustand als Pillen darunter. Auf dem Desktop
+          bleibt alles sichtbar, dort ist der Platz dafür da. */}
+      {mobile ? (
+        <div className="mb-3 flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("games.searchPlaceholder")}
+              className="w-full rounded-lg border border-line bg-panel py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+            />
+          </div>
           <button
-            onClick={() => {
-              setDateKey("");
-              setTc("");
-              setOpponent("");
-              setOpening("");
-            }}
-            className="text-[12px] text-ink3 transition-colors hover:text-accent"
+            type="button"
+            onClick={() => setFilterOpen(true)}
+            aria-label={t("games.filters")}
+            className={`relative flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition-colors ${
+              activeFilters.length > 0
+                ? "border-accent-dim bg-accent-soft text-accent"
+                : "border-line bg-panel text-ink2"
+            }`}
           >
-            {t("games.clearAll")}
+            <SlidersHorizontal size={17} />
+            {activeFilters.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-[#06251a]">
+                {activeFilters.length}
+              </span>
+            )}
           </button>
+          {backend.mode === "desktop" && (
+            <button
+              type="button"
+              onClick={() => setImportOpen((open) => !open)}
+              aria-label={t("games.manageImports")}
+              aria-expanded={importOpen}
+              className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                importOpen
+                  ? "border-accent-dim bg-accent-soft text-accent"
+                  : "border-line bg-panel text-ink2"
+              }`}
+            >
+              <Download size={17} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="relative mr-2">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("games.searchPlaceholder")}
+              className="w-64 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
+            />
+          </div>
+          {sourceChips}
+          <span className="mx-1 h-4 w-px bg-line2" />
+          {resultChips}
         </div>
       )}
+
+      {activeFilters.length > 0 && (
+        <div className="mb-4">
+          {filterPills(activeFilters, mobile ? clearAllFilters : clearExactFilters)}
+        </div>
+      )}
+
+      {mobile && importPanel}
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px] min-[1500px]:grid-cols-[minmax(0,1fr)_560px]">
         <div className="flex min-w-0 flex-col gap-3">
@@ -941,6 +1042,80 @@ export default function Games({
         )}
       </div>
 
+      {/* Filterblatt · mobil ersetzt es die beiden Chip-Reihen über der Liste.
+          Es schließt nicht bei jeder Auswahl: Quelle und Ergebnis werden oft
+          zusammen gesetzt, und die Trefferzahl im Kopf zeigt sofort, was die
+          Auswahl übrig lässt. */}
+      {mobile && filterOpen && (
+        <MobileSheet
+          testId="games-filter-sheet"
+          ariaLabel={t("games.filters")}
+          onClose={() => setFilterOpen(false)}
+          title={
+            <div className="flex items-center gap-2 text-[14px] font-semibold text-ink">
+              <SlidersHorizontal size={15} className="text-accent" />
+              {t("games.filters")}
+            </div>
+          }
+          subtitle={
+            <div className="mt-1 text-[11.5px] tabular-nums text-ink3">
+              {t("games.filterMatches", { n: deInt(totalResults) })}
+            </div>
+          }
+          footer={
+            <div className="flex items-center justify-between gap-2 px-1">
+              <button
+                onClick={clearAllFilters}
+                disabled={activeFilters.length === 0}
+                className="rounded-lg px-2 py-2 text-[12.5px] text-ink3 transition-colors hover:text-accent disabled:opacity-35 disabled:hover:text-ink3"
+              >
+                {t("games.clearAll")}
+              </button>
+              <Button primary onClick={() => setFilterOpen(false)}>
+                {t("common.done")}
+              </Button>
+            </div>
+          }
+        >
+          <div className="px-4 py-3">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-ink3">
+              {t("games.colSource")}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">{sourceChips}</div>
+          </div>
+          <div className="border-t border-line px-4 py-3">
+            <div className="text-[11px] font-medium uppercase tracking-wider text-ink3">
+              {t("games.colResult")}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">{resultChips}</div>
+          </div>
+          {exactFilters.length > 0 && (
+            <div className="border-t border-line px-4 py-3">
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-ink3">
+                {t("games.filterExact")}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {exactFilters.map((filter) => (
+                  <span
+                    key={filter.key}
+                    className="flex items-center gap-1.5 rounded-full border border-accent-dim bg-accent-soft py-1 pl-3 pr-1.5 text-[12px] text-accent"
+                  >
+                    {filter.label}
+                    <button
+                      onClick={filter.clear}
+                      aria-label={t("games.clearFilter")}
+                      className="rounded-full p-0.5 text-accent/70 transition-colors hover:bg-accent/15 hover:text-accent"
+                    >
+                      <X size={13} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </MobileSheet>
+      )}
+
       {/* Detailblatt · mobil die einzige Stelle, an der Brett, Kennzahlen und
           Notizen zu sehen sind. Gewischt wird über die ganze Trefferliste. */}
       {mobile && sheetOpen && selected && (
@@ -963,9 +1138,20 @@ export default function Games({
             <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-ink3">
               <SourceBadge source={selected.source} />
               <span className="min-w-0 flex-1 truncate">{selected.tc} · {selected.date}</span>
-              <span className="shrink-0 tabular-nums">
+            </div>
+          }
+          /* Die Genauigkeit stand bisher als nackte Zahl am Ende der
+             Untertitelzeile, wo sie mit Modus und Datum um denselben Platz
+             stritt. Als beschrifteter Block rechts im Kopf hat sie eine feste
+             Kante und ist auf einen Blick als Kennzahl zu lesen. */
+          headerRight={
+            <div className="rounded-lg border border-line bg-panel2 px-2.5 py-1">
+              <div className="text-[9.5px] font-medium uppercase tracking-wider text-ink3">
+                {t("games.colAccuracy")}
+              </div>
+              <div className="text-[14px] font-semibold leading-tight tabular-nums text-ink">
                 {selected.accuracy != null ? `${de(selected.accuracy)} %` : "—"}
-              </span>
+              </div>
             </div>
           }
           footer={

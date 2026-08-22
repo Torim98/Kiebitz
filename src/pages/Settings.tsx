@@ -725,7 +725,7 @@ export default function SettingsPage({
   // Die Reihenfolge dieser Liste ist die Reihenfolge auf beiden Plattformen:
   // oben, was man im Alltag anfasst, dahinter die Expertenbereiche. Sie füllt
   // auch die Sprungleiste, damit Verzeichnis und Seite nicht auseinanderlaufen.
-  const sections: Section[] = [
+  const allSections: Section[] = [
     {
       id: "language",
       icon: Globe,
@@ -1079,7 +1079,7 @@ export default function SettingsPage({
       icon: LayoutGrid,
       title: t("set.widgets"),
       summary: t("set.widgetsSummary"),
-      content: android ? (
+      content: (
         <>
           <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.widgetsNote")}</p>
           <ul className="mt-3 flex flex-col gap-1.5 text-[12.5px] text-ink2">
@@ -1113,8 +1113,6 @@ export default function SettingsPage({
             {widgetMsg && <span className="text-[12px] text-ink3">{widgetMsg}</span>}
           </div>
         </>
-      ) : (
-        <p className="text-[12.5px] leading-relaxed text-ink3">{t("set.widgetsDesktop")}</p>
       ),
     },
     {
@@ -1872,6 +1870,11 @@ export default function SettingsPage({
       ),
     },
   ];
+
+  // Homescreen-Widgets gibt es nur unter Android · auf dem Desktop stand hier
+  // bisher nur der Satz, dass es sie hier nicht gibt. Ein Bereich, der nichts
+  // zu bedienen hat, gehört weder in die Seite noch in die Sprungleiste.
+  const sections = allSections.filter((section) => section.id !== "widgets" || android);
 
   if (loading) {
     return (

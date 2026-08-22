@@ -239,7 +239,8 @@ describe("Settings loading", () => {
       "set.accounts",
       "set.sound",
       "set.notify",
-      "set.widgets",
+      // Widgets fehlen bewusst: die Homescreen-Widgets gibt es nur unter
+      // Android · siehe eigener Test weiter unten.
       "set.sync",
       "set.updates",
       "set.adsPrivacy",
@@ -251,6 +252,27 @@ describe("Settings loading", () => {
       "set.about",
       "set.reset",
     ]);
+  });
+
+  // Der Bereich hatte auf dem Desktop nur einen Satz zu sagen: dass es hier
+  // keine Widgets gibt. Ein Bereich ohne Bedienung gehört weder in die Seite
+  // noch in die Sprungleiste.
+  it("shows the widgets section on Android only", async () => {
+    mocks.getSettings.mockResolvedValue(androidSettings);
+    mocks.backend = {
+      mode: "desktop",
+      info: { version: "0.6.0", backend: "tauri", platform: "android" },
+    };
+
+    await act(async () => {
+      render(
+        <ShellProvider mobile>
+          <SettingsPage />
+        </ShellProvider>
+      );
+    });
+
+    expect(screen.getByRole("button", { name: /set\.widgets/ })).toBeTruthy();
   });
 
   it("replays the onboarding tour on demand", async () => {

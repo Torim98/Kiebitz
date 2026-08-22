@@ -451,6 +451,8 @@ mod tests {
             due_ts: 0,
             last_ts,
             created_ts: 0,
+            sort_order: 0,
+            sort_ts: 0,
         };
         apply_rep(&mut conn, &[node("e4", 1, 10, 1), node("e4 e5", 2, 10, 1)]).unwrap();
         let count: i64 = conn
@@ -473,6 +475,52 @@ mod tests {
             })
             .unwrap();
         assert_eq!(reps, 5);
+    }
+
+    /// Die selbst gezogene Reihenfolge hat ihren eigenen Zeitstempel: sie
+    /// wandert unabhängig vom Lernstand, und die jüngere Anordnung gewinnt.
+    /// Gegenstellen ohne das Feld (sort_ts 0) lassen sie in Ruhe.
+    #[test]
+    fn rep_merge_takes_the_younger_order() {
+        let mut conn = mem_db();
+        let node = |path: &str, sort_order: i64, sort_ts: i64| SyncRepNode {
+            side: "white".into(),
+            path: path.into(),
+            name: String::new(),
+            fen_key: format!("fen-{path}"),
+            depth: 1,
+            stability: 1.0,
+            difficulty: 5.0,
+            reps: 1,
+            lapses: 0,
+            due_ts: 0,
+            last_ts: 10,
+            created_ts: 0,
+            sort_order,
+            sort_ts,
+        };
+        let order = |conn: &Connection| -> (i64, i64) {
+            conn.query_row(
+                "SELECT sort_order, sort_ts FROM rep_nodes WHERE san = 'e4'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+
+        // Anlegen bringt die Reihenfolge gleich mit.
+        apply_rep(&mut conn, &[node("e4", 2, 100)]).unwrap();
+        assert_eq!(order(&conn), (2, 100));
+
+        // Jünger gewinnt, älter nicht.
+        apply_rep(&mut conn, &[node("e4", 5, 200)]).unwrap();
+        assert_eq!(order(&conn), (5, 200));
+        apply_rep(&mut conn, &[node("e4", 9, 150)]).unwrap();
+        assert_eq!(order(&conn), (5, 200));
+
+        // Eine ältere Gegenstelle kennt das Feld nicht · sie ordnet nichts um.
+        apply_rep(&mut conn, &[node("e4", 0, 0)]).unwrap();
+        assert_eq!(order(&conn), (5, 200));
     }
 
     #[test]
@@ -783,6 +831,8 @@ mod tests {
             due_ts: 0,
             last_ts,
             created_ts,
+            sort_order: 0,
+            sort_ts: 0,
         };
         // Baum: e4 → e5 → Nf3; alles alt (ts 10).
         apply_rep(

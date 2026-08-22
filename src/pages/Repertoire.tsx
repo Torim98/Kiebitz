@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
 import {
   Check,
@@ -7,6 +7,7 @@ import {
   Download,
   FileUp,
   GraduationCap,
+  GripVertical,
   Lightbulb,
   ListTree,
   Loader2,
@@ -30,6 +31,7 @@ import {
   repList,
   repLookup,
   repNodeGames,
+  repReorder,
   repSetNote,
   repStats,
   type NodeGameStats,
@@ -80,6 +82,19 @@ function moveText(sans: string[]): string {
   return sans.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}.${m}` : m)).join(" ");
 }
 
+/** Eine laufende Ziehbewegung in der Variantenliste. */
+interface DragState {
+  side: "white" | "black";
+  /** Reihenfolge der Seite, wie sie beim Greifen aussah. */
+  keys: string[];
+  from: number;
+  /** Wohin die Linie fiele, wenn jetzt losgelassen wird. */
+  to: number;
+  dy: number;
+  startY: number;
+  rects: { top: number; height: number }[];
+}
+
 interface VariationLine {
   key: string;
   side: "white" | "black";
@@ -90,6 +105,8 @@ interface VariationLine {
   nodeIds?: number[];
   hasNote?: boolean;
   hasTransposition?: boolean;
+  /** Selbst gezogener Platz · 0 oder fehlend heisst "noch nie sortiert". */
+  sortOrder?: number;
 }
 
 /**
@@ -101,14 +118,102 @@ function VariationList({
   selectedLineKey,
   selectedPly,
   onSelect,
+  onReorder,
 }: {
   lines: VariationLine[];
   selectedLineKey: string | null;
   selectedPly: number;
   onSelect: (line: VariationLine, ply: number) => void;
+  /**
+   * Neue Reihenfolge einer Seite · ohne den Handler gibt es keine Griffe
+   * (die Demo-Liste der Web-Vorschau ist fest).
+   */
+  onReorder?: (side: "white" | "black", keys: string[]) => void;
 }) {
   const t = useT();
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [drag, setDrag] = useState<DragState | null>(null);
+
+  /** Schlüssel einer Seite in der gerade sichtbaren Reihenfolge. */
+  const keysOf = (side: "white" | "black") =>
+    lines.filter((line) => line.side === side).map((line) => line.key);
+
+  /** Eine Linie an eine andere Stelle derselben Seite setzen. */
+  const commitMove = (side: "white" | "black", from: number, to: number) => {
+    const keys = keysOf(side);
+    if (from === to || to < 0 || to >= keys.length) return;
+    const next = [...keys];
+    next.splice(to, 0, ...next.splice(from, 1));
+    onReorder?.(side, next);
+  };
+
+  const startDrag = (event: React.PointerEvent<HTMLButtonElement>, line: VariationLine) => {
+    if (!onReorder || drag || event.button !== 0) return;
+    const keys = keysOf(line.side);
+    // Die Zeilenhöhen stehen fest, sobald gegriffen wird · sie unterscheiden
+    // sich je nach Länge der Zugliste, deshalb wird jede einzeln gemessen.
+    const rects = keys.map((key) => {
+      const rect = rowRefs.current.get(key)?.getBoundingClientRect();
+      return { top: rect?.top ?? 0, height: rect?.height ?? 0 };
+    });
+    const from = keys.indexOf(line.key);
+    if (from < 0) return;
+    // Der Zeiger bleibt beim Griff, auch wenn der Finger die Zeile verlässt.
+    // Fehlt die Methode (Testumgebung) oder lehnt der Browser den Zeiger ab,
+    // zieht die Zeile trotzdem · nur eben ohne Fang.
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      /* ohne Zeigerfang weiterziehen */
+    }
+    setDrag({ side: line.side, keys, from, to: from, dy: 0, startY: event.clientY, rects });
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const pointerY = event.clientY;
+    setDrag((state) => {
+      if (!state) return state;
+      const held = state.rects[state.from];
+      const last = state.rects[state.rects.length - 1];
+      // Sichtbar bleibt die Zeile zwischen erster und letzter Linie ihrer
+      // Seite · sonst zieht man sie aus der scrollenden Liste heraus und sieht
+      // nicht mehr, was man in der Hand hat.
+      const dy = Math.max(
+        state.rects[0].top - held.top,
+        Math.min(last.top + last.height - (held.top + held.height), pointerY - state.startY)
+      );
+      // Das Ziel richtet sich nach dem Finger, nicht nach der Zeile: über
+      // welcher Zeile er steht, dorthin fällt die Variante. Am oberen und
+      // unteren Rand ist das der erste bzw. letzte Platz.
+      let to = state.rects.length - 1;
+      if (pointerY < state.rects[0].top) to = 0;
+      else {
+        const hit = state.rects.findIndex((rect) => pointerY < rect.top + rect.height);
+        if (hit >= 0) to = hit;
+      }
+      return { ...state, dy, to };
+    });
+  };
+
+  const endDrag = () => {
+    if (!drag) return;
+    commitMove(drag.side, drag.from, drag.to);
+    setDrag(null);
+  };
+
+  /**
+   * Der Strich, der zeigt, wo die gegriffene Variante landet. Er steht vor der
+   * Zeile mit dem Index `slot`; die Zeilen selbst bleiben stehen, weil sie
+   * unterschiedlich hoch sind und ein Verrutschen der ganzen Liste beim Ziehen
+   * mehr verwirrt als hilft.
+   */
+  const dropMarker = (side: "white" | "black", slot: number) => {
+    if (!drag || drag.side !== side || drag.to === drag.from) return null;
+    const target = drag.to > drag.from ? drag.to + 1 : drag.to;
+    if (target !== slot) return null;
+    return <div aria-hidden="true" className="h-0.5 rounded-full bg-accent" />;
+  };
 
   const selectAndFocus = (line: VariationLine, ply: number) => {
     onSelect(line, ply);
@@ -166,58 +271,97 @@ function VariationList({
               <div className="sticky top-0 z-10 bg-panel/95 px-2 py-1.5 text-[11px] font-medium uppercase tracking-wider text-ink3 backdrop-blur-sm">
                 {side === "white" ? t("common.asWhite") : t("common.asBlack")}
               </div>
-              <div className="space-y-1.5">
-                {sideLines.map((line) => {
+              <div className={`space-y-1.5 ${drag ? "select-none" : ""}`}>
+                {sideLines.map((line, index) => {
                   const active = selectedLineKey === line.key;
                   const globalIndex = lines.findIndex((candidate) => candidate.key === line.key);
+                  const held = drag != null && drag.side === side && drag.from === index;
                   return (
-                    <button
-                      key={line.key}
-                      ref={(element) => {
-                        if (element) optionRefs.current.set(line.key, element);
-                        else optionRefs.current.delete(line.key);
-                      }}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      aria-label={`${line.name}: ${moveText(line.sans)}`}
-                      tabIndex={active || (selectedLineKey == null && globalIndex === 0) ? 0 : -1}
-                      onClick={() => onSelect(line, line.sans.length - 1)}
-                      onKeyDown={(event) => onKeyDown(event, line)}
-                      className={`w-full rounded-lg border px-2.5 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-accent-dim ${
-                        active
-                          ? "border-accent-dim bg-accent-soft text-ink"
-                          : "border-line bg-panel2/60 text-ink2 hover:border-line2 hover:bg-panel2"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{line.name}</span>
-                        {line.hasNote && <Lightbulb aria-hidden="true" size={12} className="shrink-0 text-ink3" />}
-                        {line.hasTransposition && <Shuffle aria-hidden="true" size={12} className="shrink-0 text-gold" />}
-                        {line.due > 0 && (
-                          <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
-                            {line.due}
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px] leading-5">
-                        <span
-                          className={`rounded px-1 ${active && selectedPly === -1 ? "bg-accent text-[#06251a]" : "text-ink3"}`}
+                    <Fragment key={line.key}>
+                      {dropMarker(side, index)}
+                      <div
+                        ref={(element) => {
+                          if (element) rowRefs.current.set(line.key, element);
+                          else rowRefs.current.delete(line.key);
+                        }}
+                        className={`flex items-stretch gap-1 ${held ? "relative z-10" : ""}`}
+                        style={held ? { transform: `translateY(${drag.dy}px)` } : undefined}
+                      >
+                        <button
+                          ref={(element) => {
+                            if (element) optionRefs.current.set(line.key, element);
+                            else optionRefs.current.delete(line.key);
+                          }}
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          aria-label={`${line.name}: ${moveText(line.sans)}`}
+                          tabIndex={active || (selectedLineKey == null && globalIndex === 0) ? 0 : -1}
+                          onClick={() => onSelect(line, line.sans.length - 1)}
+                          onKeyDown={(event) => onKeyDown(event, line)}
+                          className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-accent-dim ${
+                            active
+                              ? "border-accent-dim bg-accent-soft text-ink"
+                              : "border-line bg-panel2/60 text-ink2 hover:border-line2 hover:bg-panel2"
+                          } ${held ? "shadow-lg shadow-black/40" : ""}`}
                         >
-                          {t("rep.startShort")}
-                        </span>
-                        {line.sans.map((san, ply) => (
-                          <span
-                            key={`${ply}:${san}`}
-                            className={`rounded px-1 ${active && selectedPly === ply ? "bg-accent text-[#06251a]" : "bg-panel3/70 text-ink2"}`}
-                          >
-                            {ply % 2 === 0 ? `${ply / 2 + 1}.${san}` : san}
+                          <span className="flex items-center gap-2">
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{line.name}</span>
+                            {line.hasNote && <Lightbulb aria-hidden="true" size={12} className="shrink-0 text-ink3" />}
+                            {line.hasTransposition && <Shuffle aria-hidden="true" size={12} className="shrink-0 text-gold" />}
+                            {line.due > 0 && (
+                              <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-medium text-accent">
+                                {line.due}
+                              </span>
+                            )}
                           </span>
-                        ))}
-                      </span>
-                    </button>
+                          <span className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px] leading-5">
+                            <span
+                              className={`rounded px-1 ${active && selectedPly === -1 ? "bg-accent text-[#06251a]" : "text-ink3"}`}
+                            >
+                              {t("rep.startShort")}
+                            </span>
+                            {line.sans.map((san, ply) => (
+                              <span
+                                key={`${ply}:${san}`}
+                                className={`rounded px-1 ${active && selectedPly === ply ? "bg-accent text-[#06251a]" : "bg-panel3/70 text-ink2"}`}
+                              >
+                                {ply % 2 === 0 ? `${ply / 2 + 1}.${san}` : san}
+                              </span>
+                            ))}
+                          </span>
+                        </button>
+                        {/* Der Griff zieht die Variante an ihren Platz, mit der
+                            Maus wie mit dem Finger; ueber die Tastatur schieben
+                            ihn die Pfeiltasten um eine Position. */}
+                        {onReorder && (
+                          <button
+                            type="button"
+                            aria-label={t("rep.reorderHandle", { name: line.name })}
+                            title={t("rep.reorderHandle", { name: line.name })}
+                            onPointerDown={(event) => startDrag(event, line)}
+                            onPointerMove={moveDrag}
+                            onPointerUp={endDrag}
+                            onPointerCancel={endDrag}
+                            onKeyDown={(event) => {
+                              if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                              event.preventDefault();
+                              commitMove(side, index, index + (event.key === "ArrowUp" ? -1 : 1));
+                            }}
+                            className={`flex w-7 shrink-0 touch-none items-center justify-center rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-accent-dim ${
+                              held
+                                ? "border-accent-dim bg-accent-soft text-accent"
+                                : "border-line bg-panel2/60 text-ink3 hover:border-line2 hover:text-ink2"
+                            }`}
+                          >
+                            <GripVertical aria-hidden="true" size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </Fragment>
                   );
                 })}
+                {dropMarker(side, sideLines.length)}
               </div>
             </div>
           );
@@ -360,7 +504,7 @@ function LiveRepertoire() {
   );
 
   const variationLines = useMemo<VariationLine[]>(() => {
-    return nodes
+    const ordered = nodes
       // Benannte Zwischenlinien bleiben eigene Varianten (z. B. "Italian
       // Game" neben den längeren Fortsetzungen); unbenannte Pfade erscheinen
       // nur an ihrem Endpunkt.
@@ -378,9 +522,33 @@ function LiveRepertoire() {
           due: path.filter((node) => node.my_move && (node.reps === 0 || node.due_ts <= now)).length,
           hasNote: path.some((node) => node.note.trim() !== ""),
           hasTransposition: path.some((node) => twinsOf(node).length > 0),
+          sortOrder: endpoint.sort_order,
         };
       });
+    // Selbst gezogene Reihenfolge zuerst; was nie sortiert wurde (0), haengt
+    // sich hinten an und bleibt dort in der Reihenfolge des Anlegens.
+    return ordered.sort(
+      (a, b) => (a.sortOrder || Number.MAX_SAFE_INTEGER) - (b.sortOrder || Number.MAX_SAFE_INTEGER)
+    );
   }, [children, nodes, now, pathNodes, twinsOf]);
+
+  /**
+   * Neue Reihenfolge einer Seite speichern. Das Backend bekommt die Endpunkte
+   * als Id-Liste; danach steht sie in `sort_order` und der Sync traegt sie zum
+   * anderen Geraet.
+   */
+  const reorderLines = useCallback(
+    (side: "white" | "black", keys: string[]) => {
+      const byKey = new Map(variationLines.map((line) => [line.key, line]));
+      const ids = keys
+        .map((key) => byKey.get(key)?.targetId)
+        .filter((id): id is number => typeof id === "number");
+      repReorder(side, ids)
+        .then(reload)
+        .catch((e) => setNotice(errorMessage(e)));
+    },
+    [reload, variationLines]
+  );
 
   const selectedLine = variationLines.find((line) => line.key === selectedLineKey) ?? null;
   const selectedPly = selectedLine && selectedId != null
@@ -451,6 +619,7 @@ function LiveRepertoire() {
         selectedLineKey={selectedLineKey}
         selectedPly={selectedPly}
         onSelect={selectVariation}
+        onReorder={reorderLines}
       />
       <div className="border-t border-line p-2">
         {nodes.length === 0 && (

@@ -144,11 +144,13 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
         due_ts: i64,
         last_ts: i64,
         created_ts: i64,
+        sort_order: i64,
+        sort_ts: i64,
     }
     let mut stmt = conn
         .prepare(
             "SELECT id, parent_id, side, san, name, fen_key, depth, stability, difficulty,
-                    reps, lapses, due_ts, last_ts, created_ts
+                    reps, lapses, due_ts, last_ts, created_ts, sort_order, sort_ts
              FROM rep_nodes ORDER BY depth, id",
         )
         .map_err(|e| e.to_string())?;
@@ -169,6 +171,8 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
                 due_ts: r.get(11)?,
                 last_ts: r.get(12)?,
                 created_ts: r.get(13)?,
+                sort_order: r.get(14)?,
+                sort_ts: r.get(15)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -201,6 +205,8 @@ fn collect_rep(conn: &Connection) -> Result<Vec<SyncRepNode>, String> {
             due_ts: r.due_ts,
             last_ts: r.last_ts,
             created_ts: r.created_ts,
+            sort_order: r.sort_order,
+            sort_ts: r.sort_ts,
         });
     }
     Ok(out)

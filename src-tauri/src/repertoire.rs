@@ -94,6 +94,8 @@ pub struct RepNodeOut {
     pub lapses: i64,
     pub due_ts: i64,
     pub stability: f64,
+    /// Selbst gewählte Position in der Variantenliste · 0 = nie sortiert.
+    pub sort_order: i64,
     /// True, wenn dieser Zug von mir zu spielen ist (trainierbar).
     pub my_move: bool,
 }
@@ -117,7 +119,7 @@ pub(crate) fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT id, parent_id, side, san, name, depth, reps, lapses, due_ts, stability,
-                    note, fen_key
+                    note, fen_key, sort_order
              FROM rep_nodes ORDER BY depth, id",
         )
         .map_err(|e| e.to_string())?;
@@ -139,6 +141,7 @@ pub(crate) fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
                 stability: r.get(9)?,
                 note: r.get(10)?,
                 fen_key: r.get(11)?,
+                sort_order: r.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -150,6 +153,44 @@ pub(crate) fn load_nodes(conn: &Connection) -> Result<Vec<RepNodeOut>, String> {
 pub fn rep_list(db: State<db::Db>) -> Result<Vec<RepNodeOut>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     load_nodes(&conn)
+}
+
+/// Reihenfolge der Varianten einer Seite festschreiben.
+///
+/// `node_ids` ist die vollständige Liste der Linien-Endpunkte in ihrer neuen
+/// Reihenfolge; jeder bekommt seinen Platz als 1-basierte Zahl. Später
+/// angelegte Linien behalten die 0 und hängen sich damit hinten an.
+#[tauri::command]
+pub fn rep_reorder(db: State<db::Db>, side: String, node_ids: Vec<i64>) -> Result<(), String> {
+    let mut conn = db.0.lock().map_err(|e| e.to_string())?;
+    reorder_nodes(&mut conn, &side, &node_ids, now_ts())
+}
+
+fn reorder_nodes(
+    conn: &mut Connection,
+    side: &str,
+    node_ids: &[i64],
+    ts: i64,
+) -> Result<(), String> {
+    if side != "white" && side != "black" {
+        return Err("Seite muss white oder black sein".into());
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    {
+        let mut update = tx
+            .prepare(
+                "UPDATE rep_nodes SET sort_order = ?2, sort_ts = ?3
+                 WHERE id = ?1 AND side = ?4",
+            )
+            .map_err(|e| e.to_string())?;
+        for (index, id) in node_ids.iter().enumerate() {
+            update
+                .execute(params![id, index as i64 + 1, ts, side])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Notiz einer Stellung setzen (leerer Text löscht sie).
@@ -1034,6 +1075,35 @@ mod tests {
         let (_, again) =
             insert_line(&conn, "white", "", &line(&["e4", "e5", "Nf3", "Nc6"])).unwrap();
         assert_eq!(again, 1);
+    }
+
+    /// Die selbst gezogene Reihenfolge steht an den Endpunkten der Linien ·
+    /// Linien, die danach dazukommen, behalten die 0 und hängen sich hinten an.
+    #[test]
+    fn reorder_writes_places_for_one_side_only() {
+        let mut conn = memory_db();
+        let (italian, _) =
+            insert_line(&conn, "white", "Italienisch", &line(&["e4", "e5"])).unwrap();
+        let (sicilian, _) =
+            insert_line(&conn, "white", "Sizilianisch", &line(&["e4", "c5"])).unwrap();
+        let (caro, _) = insert_line(&conn, "black", "Caro-Kann", &line(&["e4", "c6"])).unwrap();
+
+        reorder_nodes(&mut conn, "white", &[sicilian, italian], 4_711).unwrap();
+
+        fn places(conn: &Connection, id: i64) -> (i64, i64) {
+            conn.query_row(
+                "SELECT sort_order, sort_ts FROM rep_nodes WHERE id = ?1",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        }
+        assert_eq!(places(&conn, sicilian), (1, 4_711));
+        assert_eq!(places(&conn, italian), (2, 4_711));
+        // Die andere Seite bleibt unberührt, auch wenn eine fremde Id käme.
+        assert_eq!(places(&conn, caro), (0, 0));
+        reorder_nodes(&mut conn, "white", &[caro], 4_712).unwrap();
+        assert_eq!(places(&conn, caro), (0, 0));
     }
 
     #[test]

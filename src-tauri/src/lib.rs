@@ -539,6 +539,7 @@ pub fn run() {
             repertoire::rep_stats,
             repertoire::rep_node_games,
             repertoire::rep_set_note,
+            repertoire::rep_reorder,
             repertoire::rep_lookup,
             repertoire::rep_gaps,
             repertoire::rep_import_pgn,

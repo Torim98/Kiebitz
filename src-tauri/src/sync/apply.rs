@@ -254,14 +254,23 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
     let mut insert_node = tx
         .prepare(
             "INSERT INTO rep_nodes (parent_id, side, san, name, fen_key, depth,
-                stability, difficulty, reps, lapses, due_ts, last_ts, created_ts)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                stability, difficulty, reps, lapses, due_ts, last_ts, created_ts,
+                sort_order, sort_ts)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
         )
         .map_err(|e| e.to_string())?;
     let mut update_node = tx
         .prepare(
             "UPDATE rep_nodes SET stability = ?2, difficulty = ?3, reps = ?4,
                 lapses = ?5, due_ts = ?6, last_ts = ?7 WHERE id = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    // Die selbst gezogene Reihenfolge hat ihren eigenen Zeitstempel: sie ändert
+    // sich unabhängig vom Lernstand, und die jüngere Anordnung gewinnt.
+    let mut update_sort = tx
+        .prepare(
+            "UPDATE rep_nodes SET sort_order = ?2, sort_ts = ?3
+             WHERE id = ?1 AND sort_ts < ?3",
         )
         .map_err(|e| e.to_string())?;
     for n in sorted {
@@ -303,7 +312,9 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                         n.lapses,
                         n.due_ts,
                         n.last_ts,
-                        n.created_ts
+                        n.created_ts,
+                        n.sort_order,
+                        n.sort_ts
                     ]
                 )
                 .map_err(|e| e.to_string())?;
@@ -326,10 +337,15 @@ fn apply_rep(conn: &mut Connection, nodes: &[SyncRepNode]) -> Result<usize, Stri
                     .map_err(|e| e.to_string())?;
                     merged += 1;
                 }
+                if n.sort_ts > 0 {
+                    update_sort
+                        .execute(params![id, n.sort_order, n.sort_ts])
+                        .map_err(|e| e.to_string())?;
+                }
             }
         }
     }
-    drop((insert_node, update_node));
+    drop((insert_node, update_node, update_sort));
     tx.commit().map_err(|e| e.to_string())?;
     Ok(merged)
 }

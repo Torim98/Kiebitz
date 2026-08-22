@@ -83,9 +83,15 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
+  // Ein geschlossenes Detailblatt räumt seinen History-Eintrag verzögert ab
+  // (MobileSheet). Ohne dieses Auslaufen träfe das popstate erst den nächsten
+  // Test und schlösse dort das Blatt, das er gerade geöffnet hat.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  window.history.replaceState(null, "");
 });
 
 describe("Games page", () => {
@@ -191,6 +197,38 @@ describe("Games page", () => {
     // Antippen wählt die Partie weiterhin aus und öffnet das Detail.
     fireEvent.click(within(list).getByText(/Testgegner/));
     expect(await screen.findByRole("button", { name: "Partie löschen" })).toBeTruthy();
+  });
+
+  // Auf Handybreite kosteten die beiden Chip-Reihen über der Liste mehr Höhe
+  // als die ersten beiden Partien zusammen. Sie stecken jetzt im Filterblatt ·
+  // Import und Export bleiben aber erreichbar, sie sind mobil nur ein Symbol.
+  it("puts the filters into a sheet on mobile and keeps the import reachable", async () => {
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Games openAnalysis={vi.fn()} />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByTestId("games-list");
+
+    // Die Chip-Reihen stehen nicht mehr auf der Seite.
+    expect(screen.queryByRole("button", { name: "Alle Quellen" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Siege" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const sheet = await screen.findByTestId("games-filter-sheet");
+    expect(within(sheet).getByRole("button", { name: "Alle Quellen" })).toBeTruthy();
+
+    // Auswahl im Blatt filtert die Liste und schlägt sich als Pille nieder.
+    fireEvent.click(within(sheet).getByRole("button", { name: "Siege" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Fertig" }));
+    await waitFor(() => expect(screen.queryByTestId("games-filter-sheet")).toBeNull());
+    expect(screen.getByRole("button", { name: "Filter entfernen" })).toBeTruthy();
+
+    // Import/Export liegt mobil als Symbol in derselben Leiste.
+    fireEvent.click(screen.getByRole("button", { name: "Import / Export" }));
+    expect(await screen.findByText("PGN importieren")).toBeTruthy();
   });
 
   it("keeps the detail out of the mobile page until a game is tapped", async () => {

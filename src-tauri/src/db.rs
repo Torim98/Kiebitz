@@ -8,7 +8,7 @@ pub struct Db(pub Mutex<Connection>);
 
 /// Current SQLite schema version. It is stored only after the complete
 /// migration has committed successfully.
-const SCHEMA_VERSION: i64 = 17;
+const SCHEMA_VERSION: i64 = 18;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
@@ -677,6 +677,15 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         ("study_templates", "builtin", "TEXT NOT NULL DEFAULT ''"),
         ("study_events", "planned_min", "INTEGER NOT NULL DEFAULT 0"),
         ("study_events", "source", "TEXT NOT NULL DEFAULT ''"),
+        // Migration v18: selbst gewählte Reihenfolge der Repertoire-Varianten.
+        //
+        // Die Linienliste stand bisher in Einfügereihenfolge; welche Variante
+        // einem wichtig ist, weiß aber nur der Spieler. `sort_order` hält die
+        // gezogene Reihenfolge (0 = noch nie sortiert · solche Linien hängen
+        // sich hinten an), `sort_ts` entscheidet beim Gerätesync, wessen
+        // Reihenfolge die jüngere ist.
+        ("rep_nodes", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
+        ("rep_nodes", "sort_ts", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         add_column_if_missing(conn, table, column, definition)?;
     }
@@ -1629,8 +1638,9 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 17);
+        assert_eq!(version, SCHEMA_VERSION);
         assert!(column_exists(&conn, "games", "termination").unwrap());
+        assert!(column_exists(&conn, "rep_nodes", "sort_order").unwrap());
         assert!(column_exists(&conn, "study_templates", "area").unwrap());
         assert!(column_exists(&conn, "study_templates", "i18n_key").unwrap());
 

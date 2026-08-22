@@ -45,6 +45,7 @@ export default function MobileSheet({
   ariaLabel,
   title,
   subtitle,
+  headerRight,
   footer,
   onClose,
   onPrev,
@@ -57,6 +58,8 @@ export default function MobileSheet({
   ariaLabel: string;
   title: ReactNode;
   subtitle?: ReactNode;
+  /** Kennzahl rechts im Kopf · steht rechtsbündig vor dem Schließen-Knopf. */
+  headerRight?: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
   /** Fehlt der Handler, federt die Geste in die Richtung zurück. */
@@ -200,6 +203,7 @@ export default function MobileSheet({
             {title}
             {subtitle}
           </div>
+          {headerRight && <div className="shrink-0 self-center text-right">{headerRight}</div>}
           <button
             onClick={onClose}
             aria-label={t("common.close")}

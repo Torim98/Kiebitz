@@ -17,6 +17,8 @@ export interface RepNode {
   lapses: number;
   due_ts: number;
   stability: number;
+  /** Selbst gezogene Position in der Variantenliste · 0 = nie sortiert. */
+  sort_order: number;
   my_move: boolean;
 }
 
@@ -93,6 +95,16 @@ export function repAddLine(side: "white" | "black", name: string, sans: string[]
     emitDataChange("repertoire");
     return r;
   });
+}
+
+/**
+ * Reihenfolge der Varianten einer Seite festschreiben.
+ *
+ * `nodeIds` ist die vollständige Liste der Linien-Endpunkte in ihrer neuen
+ * Reihenfolge · das Backend schreibt daraus die Plätze 1..n.
+ */
+export function repReorder(side: "white" | "black", nodeIds: number[]): Promise<void> {
+  return invoke<void>("rep_reorder", { side, nodeIds }).then(() => emitDataChange("repertoire"));
 }
 
 export function repDelete(id: number): Promise<void> {

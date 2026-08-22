@@ -22,7 +22,8 @@ on your device. Devices sync directly with each other over the local network.
   or draw, marked on the losing king.
 - **Insights** — four in-depth pages on playing strength, openings by color,
   behavioral patterns and error phases across your whole history.
-- **Repertoire** — a position tree trained with FSRS spaced repetition.
+- **Repertoire** — a position tree trained with FSRS spaced repetition, with
+  the variation list in an order you drag yourself.
 - **Puzzles** — offline tactics from the Lichess database *and* from your own
   missed moves, with Elo and per-theme tracking.
 - **Endgames** — curated theoretical drills against the engine, optional Syzygy.

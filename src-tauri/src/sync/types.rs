@@ -98,6 +98,14 @@ pub struct SyncRepNode {
     /// Anlage-Zeitpunkt · entscheidet gegen Tombstones (Wieder-Anlegen gewinnt).
     #[serde(default)]
     pub created_ts: i64,
+    /// Selbst gezogene Position in der Variantenliste · 0 = nie sortiert.
+    /// Ältere Gegenstellen kennen beide Felder nicht; dort bleibt es bei 0,
+    /// und die eigene Reihenfolge bleibt unangetastet.
+    #[serde(default)]
+    pub sort_order: i64,
+    /// Wann diese Reihenfolge gesetzt wurde · die jüngere gewinnt.
+    #[serde(default)]
+    pub sort_ts: i64,
 }
 
 /// Gelöschter Repertoire-Teilbaum (Löschung propagiert auf gepairte Geräte).

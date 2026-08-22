@@ -26,6 +26,7 @@ export const de = {
   "common.import": "Importieren",
   "common.loading": "Lade …",
   "common.close": "Schließen",
+  "common.done": "Fertig",
   "common.next": "Weiter",
   "common.tc.bullet": "Bullet",
   "common.tc.blitz": "Blitz",
@@ -138,6 +139,9 @@ export const de = {
   "games.filterOpening": "Eröffnung: {v}",
   "games.clearFilter": "Filter entfernen",
   "games.clearAll": "Alle Filter zurücksetzen",
+  "games.filters": "Filter",
+  "games.filterMatches": "{n} Treffer",
+  "games.filterExact": "Aktive Filter",
   "games.wins": "Siege",
   "games.losses": "Niederlagen",
   "games.draws": "Remis",
@@ -280,6 +284,7 @@ export const de = {
   "rep.startTraining": "Training starten ({n} fällig)",
   "rep.variants": "Varianten",
   "rep.variationKeys": "↑/↓ Variante · ←/→ Zug · Pos1/Ende Anfang/Ende",
+  "rep.reorderHandle": "{name} verschieben (ziehen oder ↑/↓)",
   "rep.startShort": "Start",
   "rep.seedStarter": "Starter-Repertoire übernehmen",
   "rep.addLine": "Variante hinzufügen",
@@ -1495,7 +1500,6 @@ export const de = {
   "set.widgetsHowTo": "Halte eine freie Stelle des Startbildschirms gedrückt, wähle „Widgets“ und dort Kiebitz.",
   "set.widgetsRefresh": "Widgets jetzt aktualisieren",
   "set.widgetsRefreshed": "Widgets aktualisiert.",
-  "set.widgetsDesktop": "Widgets gibt es nur auf Android. Für den Desktop sind keine geplant.",
 } as const;
 
 export type Key = keyof typeof de;

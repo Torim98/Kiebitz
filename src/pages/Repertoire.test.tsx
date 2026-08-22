@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   repStats: vi.fn(),
   repGaps: vi.fn(),
   repReview: vi.fn(),
+  repReorder: vi.fn(),
   /** Der Zug, den ein Klick auf das Brett-Double auslöst. */
   drop: { from: "", to: "" },
   engineMove: "e2e4",
@@ -32,6 +33,7 @@ vi.mock("../lib/repertoire", () => ({
   repList: mocks.repList,
   repLookup: vi.fn(() => Promise.resolve([])),
   repNodeGames: vi.fn(() => new Promise(() => {})),
+  repReorder: mocks.repReorder,
   repReview: mocks.repReview,
   repSetNote: vi.fn(),
   repStats: mocks.repStats,
@@ -68,7 +70,7 @@ vi.mock("../components/Board", () => ({
 
 /** Vier Knoten: 1.e4 e5 2.Nf3 Nc6 · trainiert wird Schwarz. */
 function blackTree(): RepNode[] {
-  const base = { side: "black" as const, name: "", note: "", reps: 1, lapses: 0, due_ts: 0, stability: 1 };
+  const base = { side: "black" as const, name: "", note: "", reps: 1, lapses: 0, due_ts: 0, stability: 1, sort_order: 0 };
   return [
     { ...base, id: 1, parent_id: 0, san: "e4", depth: 1, my_move: false, fen_key: "k1" },
     { ...base, id: 2, parent_id: 1, san: "e5", depth: 2, my_move: true, fen_key: "k2" },
@@ -79,7 +81,7 @@ function blackTree(): RepNode[] {
 
 /** Zwei vollständige Linien mit gemeinsamem ersten Zug. */
 function variationTree(): RepNode[] {
-  const base = { side: "white" as const, name: "", note: "", reps: 1, lapses: 0, due_ts: 0, stability: 1 };
+  const base = { side: "white" as const, name: "", note: "", reps: 1, lapses: 0, due_ts: 0, stability: 1, sort_order: 0 };
   return [
     { ...base, id: 1, parent_id: 0, san: "e4", depth: 1, my_move: true, fen_key: "v1" },
     { ...base, id: 2, parent_id: 1, san: "e5", depth: 2, my_move: false, fen_key: "v2" },
@@ -95,6 +97,7 @@ beforeEach(() => {
   mocks.drop = { from: "", to: "" };
   mocks.engineMove = "e2e4";
   mocks.repReview.mockResolvedValue({ due_ts: 0, interval_days: 1 });
+  mocks.repReorder.mockResolvedValue(undefined);
   mocks.repList.mockResolvedValue([]);
   mocks.repGaps.mockResolvedValue([]);
   mocks.repStats.mockResolvedValue({
@@ -201,6 +204,45 @@ describe("Repertoire training", () => {
 
     fireEvent.keyDown(sicilian, { key: "End" });
     expect(board.dataset.fen).toBe(fenAfter(["e4", "c5", "Nf3"]));
+  });
+
+  // Welche Variante oben steht, weiß nur der Spieler · deshalb lässt sich die
+  // Liste ziehen. Der Griff kann dasselbe über die Tastatur.
+  it("moves a variation with the handle", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    const handle = await screen.findByRole("button", { name: /^Italian Game verschieben/ });
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+
+    // Gespeichert wird die vollständige Reihenfolge der Seite als Endpunkt-Ids:
+    // die Italienische Partie rutscht hinter die Sizilianische.
+    await waitFor(() => expect(mocks.repReorder).toHaveBeenCalledWith("white", [5, 3, 6]));
+  });
+
+  // Ohne gemerkte Reihenfolge steht die Liste in Einfügereihenfolge; sobald
+  // eine gesetzt ist, gilt sie · später angelegte Linien hängen sich hinten an.
+  it("lists the variations in the saved order", async () => {
+    mocks.repList.mockResolvedValue(
+      variationTree().map((node) =>
+        node.id === 5 ? { ...node, sort_order: 1 } : node.id === 3 ? { ...node, sort_order: 2 } : node
+      )
+    );
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    await screen.findByRole("option", { name: /Italian Game/ });
+    const names = screen.getAllByRole("option").map((option) => option.getAttribute("aria-label"));
+    expect(names[0]).toContain("Sicilian Defense");
+    expect(names[1]).toContain("Italian Game");
+    expect(names[2]).toContain("Italian Main Line");
   });
 
   it("navigates previous positions with the left and right arrow keys", async () => {
