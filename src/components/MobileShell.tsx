@@ -94,6 +94,7 @@ export function MobileAppBar({
       <PlanBadge />
       <button
         onClick={onSettings}
+        data-tour="nav-settings"
         aria-label={t("nav.settings")}
         aria-current={settingsActive ? "page" : undefined}
         className={`rounded-lg p-2 transition-colors hover:bg-panel2 hover:text-ink ${
@@ -134,6 +135,7 @@ export function MobileNav({
           <button
             key={id}
             onClick={() => onSelect(id)}
+            data-tour={`nav-${id}`}
             aria-current={active ? "page" : undefined}
             className={`flex min-w-0 flex-col items-center gap-0.5 transition-colors ${
               rail ? "py-1.5" : "flex-1 pt-1.5"

@@ -372,3 +372,43 @@ html[data-store-capture="true"] .board-end-flash {
     animation: none;
   }
 }
+
+/* ── Geführter Rundgang ──────────────────────────────────────────────────────
+   Der Ausschnitt und die Sprechblase wandern von Station zu Station, statt an
+   der nächsten Stelle neu zu erscheinen · das ist der ganze Unterschied
+   zwischen "hier ist noch eine Folie" und "sieh mal dort hin". Die Blase legt
+   beim ersten Erscheinen zusätzlich einen kurzen Auftritt hin; danach zählt
+   nur noch der Weg. */
+.tour-spot {
+  transition:
+    top 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    left 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.tour-bubble {
+  animation: tour-appear 0.2s ease-out;
+  transition:
+    top 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+    left 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes tour-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-bubble {
+    transition: none;
+    animation: none;
+  }
+}

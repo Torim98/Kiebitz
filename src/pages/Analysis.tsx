@@ -829,7 +829,10 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       </header>
 
       {desktop && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5">
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5"
+          data-tour="analysis-run"
+        >
           <select
             value={selectedId ?? ""}
             onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}

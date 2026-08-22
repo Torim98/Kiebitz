@@ -12,15 +12,18 @@ export function Card({
   children,
   className = "",
   pad = true,
+  tour,
 }: {
   title?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
   pad?: boolean;
+  /** Marke für den geführten Rundgang · siehe lib/tourSteps.ts. */
+  tour?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-line bg-panel ${className}`}>
+    <section className={`rounded-xl border border-line bg-panel ${className}`} data-tour={tour}>
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-[13px] font-medium text-ink2">{title}</h2>

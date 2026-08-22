@@ -738,7 +738,7 @@ export default function Games({
           stehen im Blatt, ihr Zustand als Pillen darunter. Auf dem Desktop
           bleibt alles sichtbar, dort ist der Platz dafür da. */}
       {mobile ? (
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex items-center gap-2" data-tour="games-search">
           <div className="relative min-w-0 flex-1">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
             <input
@@ -782,7 +782,7 @@ export default function Games({
           )}
         </div>
       ) : (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2" data-tour="games-search">
           <div className="relative mr-2">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink3" />
             <input

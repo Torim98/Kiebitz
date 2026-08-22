@@ -28,34 +28,33 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/** Sprache bestätigen, Tour überspringen · übrig bleibt die Kontoabfrage. */
+/** Sprache bestätigen · danach steht die Kontoabfrage. */
 function goToAccounts() {
   fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
-  fireEvent.click(screen.getByRole("button", { name: /Skip the tour/i }));
 }
 
 describe("Onboarding", () => {
-  it("explains the app between the language and the accounts step", () => {
+  it("asks for the accounts right after the language, and says what for", () => {
     render(
       <LocaleProvider>
         <Onboarding settings={fresh} onDone={vi.fn()} />
       </LocaleProvider>
     );
 
-    // Sprache bestätigen · danach steht die Erklärung, nicht die Kontoabfrage.
-    fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
-    expect(screen.getByText(/Your games in one place/i)).toBeTruthy();
+    // Erster Schritt ist die Sprache · nach dem Benutzernamen wird noch nicht
+    // gefragt.
+    expect(screen.getByText(/^Language$/i)).toBeTruthy();
     expect(screen.queryByLabelText(/Lichess/i)).toBeNull();
 
-    // Bis zur letzten Folie durchklicken; dort führt die Tour weiter.
-    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
-    expect(screen.getByText(/Everything stays with you/i)).toBeTruthy();
+    // Danach die Konten · mit dem einen Satz, wozu Kiebitz sie will. Erklärt
+    // wird der Rest nicht hier, sondern im Rundgang nach der Einrichtung.
     fireEvent.click(screen.getByRole("button", { name: /^Next$/i }));
+    expect(screen.getByText(/works through them with Stockfish/i)).toBeTruthy();
     expect(screen.getByLabelText(/Lichess/i)).toBeTruthy();
 
-    // Zurück aus der Kontoabfrage landet wieder in der Tour, nicht bei der Sprache.
+    // Zurück führt zur Sprachwahl · dazwischen liegt nichts mehr.
     fireEvent.click(screen.getByRole("button", { name: /^Back$/i }));
-    expect(screen.getByText(/Your games in one place/i)).toBeTruthy();
+    expect(screen.getByText(/^Language$/i)).toBeTruthy();
   });
 
   it("stores a single account and kicks off the first import", async () => {

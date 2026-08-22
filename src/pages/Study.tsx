@@ -570,7 +570,7 @@ export default function Study({
       )}
 
       {mobile && (
-        <nav aria-label={t("st.areas")} className="mb-4 grid grid-cols-3 gap-2">
+        <nav aria-label={t("st.areas")} className="mb-4 grid grid-cols-3 gap-2" data-tour="study-areas">
           {areas.map((area) => (
             <button
               key={area.id}
@@ -624,6 +624,7 @@ export default function Study({
             </span>
           }
           className="min-[1100px]:col-span-2"
+          tour="study-plan"
         >
           {plan && plan.prescriptions.length > 0 ? (
             <div className="flex flex-col gap-2.5">

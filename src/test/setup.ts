@@ -6,6 +6,9 @@ import { configure } from "@testing-library/dom";
  * `matchMedia` fehlt dort komplett; die App fragt damit das Querformat ab.
  * Der Stub meldet "passt nicht" · Tests, die eine bestimmte Antwort brauchen,
  * überschreiben `window.matchMedia` selbst.
+ *
+ * `scrollIntoView` fehlt ebenfalls: jsdom hat kein Layout und deshalb auch
+ * nichts zu scrollen. Der geführte Rundgang holt damit sein Ziel ins Bild.
  */
 
 // Die 64 Testdateien laufen parallel. Auf ausgelasteten CI-Runnern brauchen
@@ -25,4 +28,8 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
       removeListener: () => {},
       dispatchEvent: () => false,
     }) as MediaQueryList;
+}
+
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = () => {};
 }

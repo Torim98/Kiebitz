@@ -158,6 +158,7 @@ export default function InsightsV2({
           mobile ? "grid grid-cols-3 gap-1" : "flex gap-1"
         }`}
         aria-label={t("ins.sections")}
+        data-tour="insights-tabs"
       >
         {TABS.map(({ id, key, icon: Icon }) => (
           <button

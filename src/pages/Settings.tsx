@@ -89,7 +89,6 @@ import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
-import AppTour from "../components/AppTour";
 import PlusSection from "./settings/PlusSection";
 import { PlusBadgeButton } from "../components/PlusLock";
 import { usePlus, usePlusGate } from "../lib/plus/usePlus";
@@ -114,9 +113,16 @@ import {
 
 export default function SettingsPage({
   openSupport,
+  startTour,
 }: {
   /** Öffnet die Rückmeldung · auf beiden Plattformen derselbe Weg. */
   openSupport?: (type?: "feedback" | "crash" | "feature") => void;
+  /**
+   * Startet den geführten Rundgang. Er gehört der App-Shell, nicht dieser
+   * Seite: Er wechselt selbst durch die Seiten und leuchtet dabei Elemente
+   * aus, die es hier gar nicht gibt.
+   */
+  startTour?: () => void;
 }) {
   const backend = useBackendInfo();
   const { locale, setLocale, t } = useI18n();
@@ -188,10 +194,6 @@ export default function SettingsPage({
       setWidgetBusy(false);
     }
   };
-
-  // Die Tour aus der Ersteinrichtung, hier auf Zuruf. Sie hält keinen Zustand
-  // und ändert nichts · deshalb reicht ein Schalter, kein Speichern.
-  const [tourOpen, setTourOpen] = useState(false);
 
   const [notifyBusy, setNotifyBusy] = useState(false);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
@@ -760,7 +762,7 @@ export default function SettingsPage({
         <>
           <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.tourNote")}</p>
           <div className="mt-3">
-            <Button primary onClick={() => setTourOpen(true)}>
+            <Button primary onClick={startTour} disabled={!startTour}>
               <Compass size={14} /> {t("set.tourOpen")}
             </Button>
           </div>
@@ -1978,8 +1980,6 @@ export default function SettingsPage({
           {sectionList}
         </div>
       )}
-
-      {tourOpen && <AppTour overlay onDone={() => setTourOpen(false)} />}
 
       {legalShown && (
         <div

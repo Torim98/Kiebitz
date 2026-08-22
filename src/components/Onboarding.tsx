@@ -3,28 +3,29 @@ import { Bird, Check, Download, Loader2, SkipForward } from "lucide-react";
 import { LOCALES, LOCALE_NAMES, useI18n, type Locale } from "../lib/i18n";
 import { setSettings, type Settings } from "../lib/settings";
 import { runAutoImport } from "../lib/autoImport";
-import AppTour from "./AppTour";
 import { Button, Card, Chip } from "./ui";
 
 /**
- * Ersteinrichtung beim allerersten Start: Sprache, eine kurze Erklärung der
- * App, dann (optional) die Online-Konten. Ohne Konto bleibt Kiebitz voll
- * nutzbar · Partien lassen sich später per PGN importieren.
+ * Ersteinrichtung beim allerersten Start: Sprache, dann (optional) die
+ * Online-Konten. Ohne Konto bleibt Kiebitz voll nutzbar · Partien lassen sich
+ * später per PGN importieren.
  *
- * Die Erklärung steht bewusst *vor* der Kontoabfrage: Wer gerade erst erfahren
- * hat, dass Kiebitz die eigenen Partien auswertet, weiß auch, wozu er seinen
- * Benutzernamen einträgt. Überspringen geht trotzdem, und in den Einstellungen
- * lässt sie sich jederzeit erneut ansehen (dieselbe Komponente).
+ * Erklärt wird hier nichts mehr, außer in einem Satz, wozu die Kontoabfrage
+ * überhaupt da ist: Was Kiebitz kann, zeigt der geführte Rundgang danach in
+ * der App selbst, an den Stellen, an denen es steht. Fünf Folien vor dem
+ * ersten Blick auf die Oberfläche hatten das Problem, dass sie Namen für Dinge
+ * einführten, die man noch nie gesehen hatte.
  */
 export default function Onboarding({
   settings,
   onDone,
 }: {
   settings: Settings;
+  /** Ersteinrichtung fertig · die App startet danach den Rundgang. */
   onDone: (applied: Settings) => void;
 }) {
   const { locale, setLocale, t } = useI18n();
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<0 | 1>(0);
   const [ccUser, setCcUser] = useState(settings.cc_user);
   const [liUser, setLiUser] = useState(settings.li_user);
   const [displayName, setDisplayName] = useState(settings.display_name);
@@ -93,11 +94,12 @@ export default function Onboarding({
                 </Button>
               </div>
             </Card>
-          ) : step === 1 ? (
-            <AppTour onBack={() => setStep(0)} onDone={() => setStep(2)} doneLabel={t("common.next")} />
           ) : (
             <Card title={t("onb.accountsTitle")}>
-              <p className="text-[12.5px] leading-relaxed text-ink3">{t("onb.accountsNote")}</p>
+              {/* Der eine Satz, der vor der Frage nach dem Benutzernamen fehlen
+                  würde: wozu Kiebitz ihn überhaupt haben will. */}
+              <p className="text-[12.5px] leading-relaxed text-ink2">{t("onb.what")}</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-ink3">{t("onb.accountsNote")}</p>
               <div className="mt-4 flex flex-col gap-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-[12px] text-ink3">{t("set.ccUser")}</span>
@@ -139,7 +141,7 @@ export default function Onboarding({
               )}
 
               <div className="mt-4 flex flex-wrap justify-between gap-2">
-                <Button onClick={() => setStep(1)} disabled={busy}>
+                <Button onClick={() => setStep(0)} disabled={busy}>
                   {t("onb.back")}
                 </Button>
                 <div className="flex gap-2">

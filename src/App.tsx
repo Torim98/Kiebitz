@@ -1,4 +1,14 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import {
   Activity,
   BarChart3,
@@ -52,6 +62,7 @@ import { usePlus } from "./lib/plus/usePlus";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
+import { tourSteps } from "./lib/tourSteps";
 
 export type { PageId };
 
@@ -79,6 +90,7 @@ const Insights = lazy(pageLoaders.insights);
 const SettingsPage = lazy(pageLoaders.settings);
 const Support = lazy(pageLoaders.support);
 const Onboarding = lazy(() => import("./components/Onboarding"));
+const GuidedTour = lazy(() => import("./components/GuidedTour"));
 
 const LIKELY_NEXT_PAGES: Record<PageId, PageId[]> = {
   dashboard: ["games", "study"],
@@ -208,6 +220,11 @@ export default function App() {
 
   // Ersteinrichtung: nur beim allerersten Start, danach nie wieder.
   const [onboarding, setOnboarding] = useState<Settings | null>(null);
+  // Der geführte Rundgang · einmal direkt nach der Ersteinrichtung, danach nur
+  // noch auf Zuruf aus den Einstellungen. Er hält nichts fest: Wer ihn noch
+  // einmal will, bekommt ihn noch einmal, ohne dass irgendwo ein
+  // "schon gesehen"-Merker stehen müsste.
+  const [tourOpen, setTourOpen] = useState(false);
   useEffect(() => {
     if (backend.mode !== "desktop") return;
     getSettings()
@@ -373,11 +390,18 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   // Ein Ziel, dessen Elternseite gerade offen ist, wird als Detailebene
   // geöffnet · Zurück führt dann dorthin zurück statt auf den Start.
-  const navigate = (id: PageId) => {
-    if (NAV_PARENT[id] === page) push(id);
-    else goTo(id);
-    setNavOpen(false);
-  };
+  const navigate = useCallback(
+    (id: PageId) => {
+      if (NAV_PARENT[id] === pageRef.current) push(id);
+      else goTo(id);
+      setNavOpen(false);
+    },
+    [goTo, push]
+  );
+
+  // Auf dem Desktop führt der Rundgang an der Seitenleiste entlang, mobil an
+  // der Leiste unten · dieselben Texte, andere Stellen.
+  const steps = useMemo(() => tourSteps(isMobile), [isMobile]);
 
   const activeTab = NAV_PARENT[page] ?? page;
 
@@ -415,6 +439,7 @@ export default function App() {
           <button
             key={id}
             onClick={() => navigate(id)}
+            data-tour={`nav-${id}`}
             className={`flex items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
               page === id
                 ? "bg-panel3 font-medium text-ink"
@@ -485,6 +510,7 @@ export default function App() {
         )}
         <button
           onClick={() => navigate("settings")}
+          data-tour="nav-settings"
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
             page === "settings"
               ? "bg-panel3 font-medium text-ink"
@@ -526,7 +552,9 @@ export default function App() {
       {page === "insights" && (
         <Insights go={navigate} openPuzzles={openPuzzles} openAnalysis={openAnalysis} />
       )}
-      {page === "settings" && <SettingsPage openSupport={openSupport} />}
+      {page === "settings" && (
+        <SettingsPage openSupport={openSupport} startTour={() => setTourOpen(true)} />
+      )}
       {page === "support" && <Support initialType={route.reportType ?? "feedback"} />}
     </Suspense>
   );
@@ -534,12 +562,20 @@ export default function App() {
   const overlays = (
     <>
       <PlusDialog openSettings={() => navigate("settings")} />
+      {tourOpen && (
+        <Suspense fallback={null}>
+          <GuidedTour steps={steps} onNavigate={navigate} onDone={() => setTourOpen(false)} />
+        </Suspense>
+      )}
       {onboarding && (
         <Suspense fallback={null}>
           <Onboarding
             settings={onboarding}
             onDone={(applied) => {
               setOnboarding(null);
+              // Direkt im Anschluss der Rundgang: Jetzt steht die App hinter
+              // dem Fenster, und es gibt etwas zu zeigen.
+              setTourOpen(true);
               // Neue Konten sofort nutzen (Sprache steckt schon im Provider).
               void applied;
             }}
