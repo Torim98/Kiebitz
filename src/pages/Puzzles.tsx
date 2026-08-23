@@ -572,9 +572,6 @@ function TrainerView({
                     t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={openShare}>
-                    <Share2 size={15} /> {t("sh.open")}
-                  </Button>
                   <Button primary onClick={() => load()}>
                     <SkipForward size={15} /> {t("common.next")}
                   </Button>
