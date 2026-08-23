@@ -1,0 +1,363 @@
+/**
+ * „Teilen" für jedes Brett.
+ *
+ * Der Dialog macht aus einer Stellung zwei Dinge: eine Bildkarte, die für sich
+ * spricht, und einen Link, der die Stellung überall wieder aufmacht. Beides
+ * zusammen ist der Punkt: Ein Bild allein lässt sich nicht weiterspielen, ein
+ * Link allein sieht in einem Chat nach nichts aus.
+ *
+ * Die Vorschau zeigt genau das Bild, das hinausgeht. Wer einen Schalter
+ * umlegt, sieht die Wirkung sofort; nichts wird erst beim Absenden entschieden.
+ *
+ * Verdeckt bleibt beim Puzzle nicht nur die Lösung, sondern auch das Motiv:
+ * „Matt in 2" über dem Brett wäre schon die halbe Lösung · dieselbe Überlegung
+ * wie hinter `hideTheme` im Trainer.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  ClipboardCopy,
+  Copy,
+  Download,
+  FlipVertical2,
+  Link2,
+  Loader2,
+  Share2,
+  X,
+} from "lucide-react";
+import { useBackendInfo } from "../lib/backend";
+import { errorMessage } from "../lib/errors";
+import { useI18n } from "../lib/i18n";
+import { evalLabel } from "../lib/evaluation";
+import { themeLabel } from "../lib/puzzles";
+import { renderShareCard } from "../lib/share/card";
+import type { ShareEval, ShareMove, SharePayload } from "../lib/share/codec";
+import { copyImage, copyText, saveImage, shareNative, shareTargets } from "../lib/share/deliver";
+import { shareUrl } from "../lib/share/link";
+import { Button } from "./ui";
+
+/** Was geteilt werden soll · die Seiten reichen ihre Stellung genau so herein. */
+export interface ShareSubject {
+  kind: "analysis" | "puzzle";
+  fen: string;
+  orientation: "white" | "black";
+  /** Zug, der zu dieser Stellung führte · beim Puzzle der Gegnerzug. */
+  lastMove?: ShareMove | null;
+  /** Variante der Analyse bzw. Lösung der Aufgabe. */
+  line?: ShareMove[];
+  eval?: ShareEval | null;
+  rating?: number;
+  theme?: string;
+}
+
+function other(orientation: "white" | "black"): "white" | "black" {
+  return orientation === "white" ? "black" : "white";
+}
+
+/** Wer am Zug ist, steht im FEN · für die Karte reicht das zweite Feld. */
+function whiteToMove(fen: string): boolean {
+  return (fen.trim().split(/\s+/)[1] ?? "w") === "w";
+}
+
+function evalText(value: ShareEval | null | undefined): string {
+  if (!value) return "";
+  if (value.mate != null) return `#${Math.abs(value.mate)}`;
+  return value.cp != null ? evalLabel(value.cp) : "";
+}
+
+export default function ShareDialog({
+  subject,
+  onClose,
+}: {
+  subject: ShareSubject;
+  onClose: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const backend = useBackendInfo();
+  const targets = shareTargets(backend.info?.platform, backend.mode === "desktop");
+  const puzzle = subject.kind === "puzzle";
+
+  const [heading, setHeading] = useState("");
+  const [flipped, setFlipped] = useState(false);
+  const [withLine, setWithLine] = useState(true);
+  const [withEval, setWithEval] = useState(!puzzle);
+  const [revealed, setRevealed] = useState(false);
+  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
+  const [cardError, setCardError] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+
+  // Eigene Kennung, damit Vorschau und Link nicht bei jedem Tastendruck neu
+  // gebaut werden, nur weil `subject.line` ein neues leeres Feld ist.
+  const line = useMemo(() => subject.line ?? [], [subject]);
+  const orientation = flipped ? other(subject.orientation) : subject.orientation;
+  const evaluation = withEval ? (subject.eval ?? null) : null;
+
+  const payload: SharePayload = useMemo(
+    () => ({
+      kind: subject.kind,
+      fen: subject.fen,
+      orientation,
+      lastMove: subject.lastMove ?? null,
+      line: withLine ? line : [],
+      eval: evaluation,
+      title: heading.trim() || undefined,
+      rating: subject.rating,
+      // Das Motiv reist mit, die Landeseite hält es hinter derselben Klappe wie
+      // die Lösung.
+      theme: subject.theme,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subject, orientation, withLine, evaluation, heading, line]
+  );
+
+  const url = useMemo(() => shareUrl(payload), [payload]);
+  const defaultHeading = t(puzzle ? "sh.defaultPuzzle" : "sh.defaultAnalysis");
+  const shownHeading = heading.trim() || defaultHeading;
+  const message = `${shownHeading} · ${t("sh.via")}\n${url}`;
+
+  // Vorschau bauen · gebremst, damit jeder Tastendruck im Titelfeld nicht ein
+  // eigenes Bild rendert.
+  useEffect(() => {
+    let alive = true;
+    let created: string | null = null;
+    const chips = [
+      t(whiteToMove(subject.fen) ? "sh.whiteToMove" : "sh.blackToMove"),
+      evalText(evaluation),
+      subject.rating ? t("sh.rating", { n: subject.rating }) : "",
+      // Motiv erst mit der Lösung · vorher verrät es zu viel.
+      revealed && subject.theme ? themeLabel(subject.theme, locale) : "",
+    ].filter(Boolean);
+
+    const timer = window.setTimeout(() => {
+      renderShareCard({
+        fen: subject.fen,
+        orientation,
+        lastMove: subject.lastMove ?? null,
+        arrow: revealed ? (line.length ? line[0] : null) : null,
+        heading: shownHeading,
+        chips,
+        badge: t(puzzle ? "sh.badgePuzzle" : "sh.badgeAnalysis"),
+        tagline: t("sh.tagline"),
+      })
+        .then((blob) => {
+          if (!alive) return;
+          created = URL.createObjectURL(blob);
+          setCard((previous) => {
+            if (previous) URL.revokeObjectURL(previous.url);
+            return { blob, url: created! };
+          });
+          setCardError(false);
+        })
+        .catch(() => {
+          if (alive) setCardError(true);
+        });
+    }, 120);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject, orientation, revealed, evaluation, shownHeading, locale, t]);
+
+  // Das zuletzt erzeugte Bild freigeben, wenn der Dialog geht.
+  useEffect(() => {
+    return () => {
+      setCard((previous) => {
+        if (previous) URL.revokeObjectURL(previous.url);
+        return null;
+      });
+    };
+  }, []);
+
+  // Escape schließt · derselbe Griff wie in den übrigen Dialogen der App.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    closeRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const run = async (action: () => Promise<string | null>) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const done = await action();
+      if (done) setNotice(done);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (label: string, value: boolean, onChange: (next: boolean) => void) => (
+    <label className="flex cursor-pointer items-center gap-2.5 text-[12.5px] text-ink2">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-4 accent-[var(--color-accent)]"
+      />
+      {label}
+    </label>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="share-dialog-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={panelRef}
+        className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50"
+      >
+        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+            <Share2 size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id="share-dialog-title" className="text-[16px] font-semibold">
+              {t("sh.title")}
+            </h2>
+            <p className="mt-0.5 text-[12px] text-ink3">
+              {t(puzzle ? "sh.leadPuzzle" : "sh.leadAnalysis")}
+            </p>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label={t("common.close")}
+            className="-mr-1 rounded p-1 text-ink3 transition-colors hover:text-ink"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          <div className="relative overflow-hidden rounded-xl border border-line bg-panel2">
+            {card ? (
+              <img src={card.url} alt={t("sh.preview")} className="block w-full" />
+            ) : (
+              <div className="flex aspect-square items-center justify-center text-[12.5px] text-ink3">
+                {cardError ? (
+                  <span className="px-6 text-center">{t("sh.imageFailed")}</span>
+                ) : (
+                  <Loader2 size={18} className="animate-spin" />
+                )}
+              </div>
+            )}
+          </div>
+
+          <input
+            value={heading}
+            onChange={(event) => setHeading(event.target.value)}
+            placeholder={defaultHeading}
+            aria-label={t("sh.headingLabel")}
+            maxLength={60}
+            className="mt-4 w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-ink3 focus:border-line2"
+          />
+
+          <div className="mt-3 flex flex-col gap-2.5">
+            {line.length > 0 &&
+              toggle(t(puzzle ? "sh.optSolution" : "sh.optLine"), withLine, setWithLine)}
+            {line.length > 0 && toggle(t("sh.optReveal"), revealed, setRevealed)}
+            {subject.eval && toggle(t("sh.optEval"), withEval, setWithEval)}
+            <button
+              type="button"
+              onClick={() => setFlipped((value) => !value)}
+              className="flex w-fit items-center gap-2 text-[12.5px] text-ink3 transition-colors hover:text-ink"
+            >
+              <FlipVertical2 size={14} /> {t("sh.optFlip")}
+            </button>
+          </div>
+
+          <p className="mt-4 rounded-lg border border-line bg-panel2 px-3 py-2 text-[11.5px] leading-relaxed text-ink3">
+            {t("sh.privacy")}
+          </p>
+
+          {notice && (
+            <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-accent">
+              <Check size={14} /> {notice}
+            </p>
+          )}
+          {error && (
+            <p className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2 border-t border-line px-5 py-4">
+          {targets.native && (
+            <Button
+              primary
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await shareNative({
+                    title: shownHeading,
+                    text: message,
+                    image: card?.blob ?? null,
+                  });
+                  return null;
+                })
+              }
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />}
+              {t("sh.share")}
+            </Button>
+          )}
+          <Button
+            primary={!targets.native}
+            disabled={busy}
+            onClick={() => run(async () => (await copyText(message), t("sh.linkCopied")))}
+          >
+            <Link2 size={14} /> {t("sh.copyLink")}
+          </Button>
+          {targets.copyImage && (
+            <Button
+              disabled={busy || !card}
+              onClick={() => run(async () => (await copyImage(card!.blob), t("sh.imageCopied")))}
+            >
+              <Copy size={14} /> {t("sh.copyImage")}
+            </Button>
+          )}
+          {targets.saveImage && (
+            <Button
+              disabled={busy || !card}
+              onClick={() =>
+                run(async () => {
+                  const path = await saveImage(card!.blob, "kiebitz-stellung.png");
+                  return path ? t("sh.imageSaved", { path }) : null;
+                })
+              }
+            >
+              <Download size={14} /> {t("sh.saveImage")}
+            </Button>
+          )}
+          <Button
+            disabled={busy}
+            onClick={() => run(async () => (await copyText(subject.fen), t("sh.fenCopied")))}
+          >
+            <ClipboardCopy size={14} /> {t("sh.copyFen")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

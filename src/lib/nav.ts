@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GamesFilter } from "./gameUi";
+import type { SharePayload } from "./share/codec";
 import type { EndgameCategory } from "../data/endgames";
 import { capturePage } from "./storeCapture";
 
@@ -43,6 +44,8 @@ export interface Route {
   endgameCategory?: EndgameCategory;
   /** Rückmeldung: vorgewählte Meldungsart (z. B. Absturz nach Schütteln). */
   reportType?: "feedback" | "crash" | "feature";
+  /** Analyse: Stellung aus einem geteilten Link (`kiebitz://p/…`). */
+  shared?: SharePayload | null;
 }
 
 export type RouteParams = Omit<Route, "page">;

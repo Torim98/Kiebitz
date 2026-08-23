@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Zieht die Figurenzeichnungen aus dem Brett heraus, damit die Schlagliste
- * unter den Spielernamen dieselben Figuren zeigt wie das Brett daneben.
+ * Zieht die Figurenzeichnungen aus dem Brett heraus, damit Schlagliste und
+ * Share-Karte dieselben Figuren zeigen wie das Brett daneben.
  *
  * Warum nicht einfach importieren: `react-chessboard` hält seine Figuren in
  * einem internen `defaultPieces`-Objekt und exportiert es nicht. Statt die
@@ -24,8 +24,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = resolve(ROOT, "src", "components", "pieceGlyphs.ts");
 const CHECK = process.argv.includes("--check");
 
-// Geschlagen werden kann alles außer dem König · nur diese Figuren brauchen wir.
-const PIECES = ["wP", "wB", "wN", "wR", "wQ", "bP", "bB", "bN", "bR", "bQ"];
+// Alle zwölf Figuren. Die Schlagliste kommt ohne Könige aus, die Share-Karte
+// zeichnet dagegen ein vollständiges Brett und braucht sie.
+const PIECES = ["wP", "wB", "wN", "wR", "wQ", "wK", "bP", "bB", "bN", "bR", "bQ", "bK"];
 // Eine Stellung, in der jede dieser Figuren genau einmal vorkommt.
 const POSITION = "1qrbnk2/1p6/8/8/8/8/1P6/1QRBNK2 w - - 0 1";
 
@@ -80,8 +81,9 @@ const body = PIECES.map((piece) => `  ${piece}: ${JSON.stringify(glyphs[piece])}
 const file = `// Erzeugt von scripts/generate-piece-glyphs.mjs · nicht von Hand ändern.
 //
 // Der Inhalt stammt wörtlich aus den Figuren, die \`react-chessboard\` auf das
-// Brett zeichnet · damit zeigt die Schlagliste dieselben Figuren wie das Brett
-// daneben. Neu erzeugen nach jedem Update von react-chessboard:
+// Brett zeichnet · damit zeigen Schlagliste und geteilte Bildkarte dieselben
+// Figuren wie das Brett daneben. Neu erzeugen nach jedem Update von
+// react-chessboard:
 //
 //   npm run pieces:sync
 //

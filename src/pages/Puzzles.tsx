@@ -11,6 +11,7 @@ import {
   Eye,
   Flame,
   Lightbulb,
+  Share2,
   SkipForward,
   Sparkles,
   Target,
@@ -34,6 +35,7 @@ import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { onDataChange } from "../lib/changes";
 import { useTrainingSession } from "../lib/session";
 import Board from "../components/Board";
+import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
@@ -181,6 +183,7 @@ function TrainerView({
   const [themeRevealed, setThemeRevealed] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
+  const [sharing, setSharing] = useState<ShareSubject | null>(null);
   // Vorbelegt aus dem Trainingsplan ("schwächstes Motiv, Band 1420–1580").
   const [theme, setTheme] = useState<string>(initialTheme);
   const [source, setSource] = useState<"all" | "lichess" | "own">("all");
@@ -420,6 +423,35 @@ function TrainerView({
   // Verdeckt bleibt das Motiv nur, solange die Aufgabe offen ist · nach der
   // Lösung ist es Auswertung, kein Spoiler mehr.
   const themeHidden = hideTheme && !themeRevealed && status !== "solved";
+
+  /**
+   * Die Aufgabe, wie sie beim Empfänger ankommt.
+   *
+   * Geteilt wird immer die Ausgangsstellung der Aufgabe, nicht das, was gerade
+   * auf dem Brett steht: Wer nach drei Zügen teilt, will die Aufgabe
+   * weitergeben und nicht seinen Zwischenstand.
+   *
+   * Der Setup-Zug von Lichess ist dabei der letzte Zug, nicht Teil der Lösung ·
+   * genau die Trennung, die `setup_plies` beschreibt.
+   */
+  const openShare = () => {
+    if (!puzzle) return;
+    const start = positionHistory[puzzle.setup_plies] ?? puzzle.fen;
+    const uci = (move: string) => ({
+      from: move.slice(0, 2),
+      to: move.slice(2, 4),
+      promo: (move[4] as "q" | "r" | "b" | "n" | undefined) || undefined,
+    });
+    setSharing({
+      kind: "puzzle",
+      fen: start,
+      orientation,
+      lastMove: puzzle.setup_plies > 0 ? uci(puzzle.moves[0]) : null,
+      line: puzzle.moves.slice(puzzle.setup_plies).map(uci),
+      rating: puzzle.rating,
+      theme: mainTheme || undefined,
+    });
+  };
   const history = stats.history.length >= 2 ? stats.history : [stats.personal_rating, stats.personal_rating];
   const themeStats = stats.themes
     .filter((t) => !["short", "long", "veryLong", "oneMove", "advantage", "crushing", "equality", "mate", "middlegame", "opening", "ownGame", "blunder", "mistake"].includes(t.theme))
@@ -517,8 +549,18 @@ function TrainerView({
               <Button onClick={() => goToPly(lastPly)} className="px-2" title={t("pz.currentPosition")}>
                 <ChevronLast size={14} />
               </Button>
+              <Button
+                onClick={openShare}
+                className="ml-1 px-2"
+                title={t("sh.title")}
+                disabled={!puzzle}
+              >
+                <Share2 size={14} />
+              </Button>
             </div>
           </div>
+
+          {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
 
           <div className="mt-3 flex min-h-[52px] items-center">
             {status === "solved" ? (
@@ -529,9 +571,14 @@ function TrainerView({
                   {ratingDelta != null &&
                     t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
                 </div>
-                <Button primary onClick={() => load()}>
-                  <SkipForward size={15} /> {t("common.next")}
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={openShare}>
+                    <Share2 size={15} /> {t("sh.open")}
+                  </Button>
+                  <Button primary onClick={() => load()}>
+                    <SkipForward size={15} /> {t("common.next")}
+                  </Button>
+                </div>
               </div>
             ) : wrong ? (
               <div className="flex w-full items-center justify-between rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">

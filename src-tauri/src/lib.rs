@@ -18,6 +18,7 @@ mod rep_pgn;
 mod repertoire;
 mod review;
 mod settings;
+mod share;
 mod study;
 mod sync;
 #[cfg(windows)]
@@ -368,7 +369,10 @@ pub fn run() {
             .plugin(widgets::init())
             // Kiebitz Plus auf Android kauft man über Google Play, nicht über
             // Stripe · so verlangt es Google für digitale Inhalte in der App.
-            .plugin(billing::init());
+            .plugin(billing::init())
+            // Geteilte Stellungen gehen über das Systemblatt hinaus · den Weg
+            // dorthin kennt nur Android selbst.
+            .plugin(share::init());
         // Die Play-In-App-Review-API existiert nur im Play-Build. Der
         // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
         // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
@@ -563,6 +567,8 @@ pub fn run() {
             settings::restore_database,
             settings::db_info,
             settings::factory_reset,
+            share::share_position,
+            share::write_share_image,
             plus::plus_secret_get,
             plus::plus_secret_set,
             plus::plus_secret_delete,

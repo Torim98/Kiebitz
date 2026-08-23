@@ -68,6 +68,13 @@ data the app renders, they are unmodified, and they are attributed here and in
 the generated file. Any change *to the drawings themselves* would have to be
 published under CC BY-SA 3.0 as well.
 
+Sharing a position hands the same artwork to people who never installed
+Kiebitz, so the attribution has to travel with it. It is printed on the picture
+card the app exports (`src/lib/share/card.ts`), in the footer of every landing
+page the share worker serves, and on the preview image that chat apps fetch.
+The drawings stay unmodified there too: they are placed on a board, not
+redrawn.
+
 ## Wooden chess-piece recordings (CC0 1.0)
 
 The short board sounds are edited excerpts from **"chess pieces.wav"** by

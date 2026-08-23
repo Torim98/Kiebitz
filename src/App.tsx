@@ -330,8 +330,11 @@ export default function App() {
       onSignedIn: () => logEvent("info", "plus", "Anmeldung über Deep-Link abgeschlossen"),
       onError: () => logEvent("warn", "plus", "Anmeldelink konnte nicht eingelöst werden"),
       onOpenPage: (page) => goTo(page),
+      // Eine geteilte Stellung landet am freien Brett der Analyse · dort kann
+      // man sie sofort weiterspielen und rechnen lassen.
+      onSharedPosition: (shared) => push("analysis", { shared }),
     });
-  }, [backend.mode, goTo]);
+  }, [backend.mode, goTo, push]);
 
   // Datenstand der Android-Widgets · nur dort gibt es welche.
   useEffect(() => {
@@ -536,7 +539,9 @@ export default function App() {
       {page === "games" && (
         <Games openAnalysis={openAnalysis} initialFilter={route.filter ?? null} />
       )}
-      {page === "analysis" && <Analysis targetGameId={route.gameId ?? null} />}
+      {page === "analysis" && (
+        <Analysis targetGameId={route.gameId ?? null} shared={route.shared ?? null} />
+      )}
       {page === "repertoire" && <Repertoire />}
       {page === "endgame" && <Endgame initialCategory={route.endgameCategory} />}
       {page === "puzzles" && (

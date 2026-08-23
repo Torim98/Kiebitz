@@ -17,6 +17,8 @@
     "pins:check": "node scripts/generate-stockfish-notice.mjs --check && node scripts/check-toolchain-pin-consumers.mjs",
     "pieces:sync": "node scripts/generate-piece-glyphs.mjs",
     "pieces:check": "node scripts/generate-piece-glyphs.mjs --check",
+    "share:sync": "node scripts/sync-share-codec.mjs",
+    "share:check": "node scripts/sync-share-codec.mjs --check",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",

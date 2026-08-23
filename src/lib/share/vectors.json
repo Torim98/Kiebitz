@@ -1,0 +1,78 @@
+{
+  "note": "Erzeugt von Kiebitz/scripts/make-share-vectors.mjs · in App und Worker identisch.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "start position",
+      "payload": {
+        "kind": "analysis",
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "orientation": "white"
+      },
+      "encoded": "AQAA__8AAAAA__95qIuXZmZmZgAAAAATQiUxHgABAA"
+    },
+    {
+      "name": "en passant and black view",
+      "payload": {
+        "kind": "analysis",
+        "fen": "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+        "orientation": "black",
+        "lastMove": {
+          "from": "c7",
+          "to": "c5"
+        },
+        "eval": {
+          "cp": 34,
+          "mate": null
+        }
+      },
+      "encoded": "AQAL__sABBAA7_95qIuXZmZmZgAAAAATQiUxPhIAAgCKBgAiAA"
+    },
+    {
+      "name": "puzzle with solution, rating and theme",
+      "payload": {
+        "kind": "puzzle",
+        "fen": "r4rk1/pp3ppp/2n5/8/8/2N5/PP3PPP/R4RK1 w - - 4 20",
+        "orientation": "white",
+        "lastMove": {
+          "from": "b8",
+          "to": "a8"
+        },
+        "line": [
+          {
+            "from": "c3",
+            "to": "d5"
+          },
+          {
+            "from": "g8",
+            "to": "h8"
+          }
+        ],
+        "rating": 1720,
+        "theme": "fork"
+      },
+      "encoded": "AQFmYeMEAAAE42GZa2ZmFwAAMFMABBQAAQAC6gbGAbgGBGZvcms"
+    },
+    {
+      "name": "mate score, promotion and a title",
+      "payload": {
+        "kind": "analysis",
+        "fen": "8/4P3/8/8/8/4k3/8/4K3 w - - 0 60",
+        "orientation": "white",
+        "line": [
+          {
+            "from": "e7",
+            "to": "e8",
+            "promo": "q"
+          }
+        ],
+        "eval": {
+          "cp": null,
+          "mate": 3
+        },
+        "title": "Umwandlung mit Matt · Übung"
+      },
+      "encoded": "AQAcABAAAAAQABCwBQAAPAABDBEBAwAdVW13YW5kbHVuZyBtaXQgTWF0dCDCtyDDnGJ1bmc"
+    }
+  ]
+}

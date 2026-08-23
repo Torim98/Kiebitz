@@ -1,0 +1,114 @@
+/**
+ * Was am Teilen-Dialog nachprüfbar sein muss.
+ *
+ * Der wichtigste Fall ist der unschöne: jsdom hat kein Canvas, also scheitert
+ * die Bildkarte — genau wie sie es auf einem Gerät könnte, dessen WebView das
+ * Bild nicht hergibt. Dann muss der Dialog trotzdem etwas taugen, denn der Link
+ * ist der Teil, der die Stellung wirklich weiterträgt.
+ *
+ * Der zweite Fall ist der Spoiler: Wer eine Aufgabe weitergibt, darf die Lösung
+ * nicht versehentlich mitschicken.
+ */
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import ShareDialog, { type ShareSubject } from "./ShareDialog";
+import { decodeShare } from "../lib/share/codec";
+
+const copied: string[] = [];
+
+vi.mock("../lib/share/deliver", () => ({
+  shareTargets: () => ({ native: false, copyImage: false, saveImage: true }),
+  copyText: (text: string) => {
+    copied.push(text);
+    return Promise.resolve();
+  },
+  copyImage: () => Promise.resolve(),
+  saveImage: () => Promise.resolve("C:/temp/kiebitz.png"),
+  shareNative: () => Promise.resolve(true),
+}));
+
+vi.mock("../lib/backend", () => ({
+  useBackendInfo: () => ({ mode: "desktop", info: { platform: "windows" } }),
+}));
+
+const PUZZLE: ShareSubject = {
+  kind: "puzzle",
+  fen: "r4rk1/pp3ppp/8/8/8/8/PP3PPP/R4RK1 w - - 0 20",
+  orientation: "white",
+  lastMove: { from: "a7", to: "a8" },
+  line: [
+    { from: "f1", to: "f7" },
+    { from: "g8", to: "h8" },
+  ],
+  rating: 1720,
+  theme: "backRankMate",
+};
+
+/** Der Link, der beim Klick auf „Link kopieren" in der Zwischenablage landet. */
+function copiedPayload(): ReturnType<typeof decodeShare> {
+  const link = copied[copied.length - 1] ?? "";
+  const match = /\/p\/([A-Za-z0-9_-]+)/.exec(link);
+  return match ? decodeShare(match[1]) : null;
+}
+
+beforeEach(() => {
+  copied.length = 0;
+});
+
+describe("ShareDialog", () => {
+  it("keeps working when the picture cannot be drawn", async () => {
+    render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
+    // Ohne Canvas bleibt die Vorschau aus · der Hinweis sagt das und der Link
+    // steht weiter bereit.
+    expect(await screen.findByText(/Link funktioniert trotzdem/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toContain("https://s.kiebitz.dev/p/");
+    expect(copied[0]).toContain("geteilt aus Kiebitz");
+  });
+
+  it("shares the puzzle position with its solution but without giving it away", async () => {
+    render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+
+    const payload = copiedPayload();
+    expect(payload?.kind).toBe("puzzle");
+    expect(payload?.fen).toBe(PUZZLE.fen);
+    expect(payload?.line).toHaveLength(2);
+    expect(payload?.rating).toBe(1720);
+    // Der Zug bleibt vom Bild verdeckt, bis jemand den Schalter umlegt.
+    const reveal = screen.getByLabelText(/Zug schon auf dem Bild zeigen/i) as HTMLInputElement;
+    expect(reveal.checked).toBe(false);
+  });
+
+  it("leaves the solution out of the link when asked to", async () => {
+    render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText(/Lösung mitschicken/i));
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copiedPayload()?.line).toBeUndefined();
+  });
+
+  it("turns the board around without touching the position", async () => {
+    render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Brett drehen/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+
+    const payload = copiedPayload();
+    expect(payload?.orientation).toBe("black");
+    expect(payload?.fen).toBe(PUZZLE.fen);
+  });
+
+  it("carries the sender's own heading", async () => {
+    render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/Überschrift/i), {
+      target: { value: "Hier hänge ich fest" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copiedPayload()?.title).toBe("Hier hänge ich fest");
+    expect(copied[0]).toContain("Hier hänge ich fest");
+  });
+});

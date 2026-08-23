@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Chess } from "chess.js";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -12,6 +20,7 @@ import {
   Loader2,
   Save,
   Search,
+  Share2,
   Square,
   Zap,
   RotateCcw,
@@ -37,6 +46,8 @@ import {
   type PositionSearch,
 } from "../lib/analysis";
 import Board from "../components/Board";
+import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
+import type { SharePayload } from "../lib/share/codec";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition, gameEnd } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
@@ -303,7 +314,17 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
   return best ? base + t("an.commentBetter", { san: best }) : base;
 }
 
-export default function Analysis({ targetGameId }: { targetGameId: number | null }) {
+/** Ein für alle Mal dasselbe leere Objekt · sonst rechnet das Brett bei jedem Bild neu. */
+const EMPTY_SQUARE_STYLES: Record<string, CSSProperties> = {};
+
+export default function Analysis({
+  targetGameId,
+  shared = null,
+}: {
+  targetGameId: number | null;
+  /** Stellung aus einem geteilten Link · sie eröffnet das freie Brett. */
+  shared?: SharePayload | null;
+}) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
@@ -336,6 +357,12 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<ShareSubject | null>(null);
+  /**
+   * Ausgangsstellung des freien Bretts · normalerweise die Grundstellung, nach
+   * einem geteilten Link die Stellung aus dem Link.
+   */
+  const [opened, setOpened] = useState<SharePayload | null>(null);
 
   const selectedRef = useRef<number | null>(null);
   selectedRef.current = selectedId;
@@ -356,6 +383,21 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
       setSelectedId(pick?.id ?? null);
     });
   }, [desktop, targetGameId, reloadGames]);
+
+  // Eine geteilte Stellung ersetzt die Auswahl: Sie gehört an das freie Brett,
+  // nicht in eine importierte Partie.
+  useEffect(() => {
+    if (!shared) return;
+    setOpened(shared);
+    setSelectedId(null);
+    setScratchSans([]);
+    setScratchSelected(null);
+    setVariation(null);
+    setPly(0);
+    setLiveEval(null);
+    setLiveBestUci(null);
+    setNotice(shared.title?.trim() || t("sh.opened"));
+  }, [shared, t]);
 
   // Analyse-Events.
   useEffect(() => {
@@ -432,6 +474,12 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   }, [desktop, selectedId]);
 
   const scratch = desktop && selectedId == null;
+
+  // Wer eine Partie auswählt, verlässt die geteilte Stellung · sonst bliebe
+  // ihre Ausgangsstellung unter der Partie liegen.
+  useEffect(() => {
+    if (selectedId != null) setOpened(null);
+  }, [selectedId]);
 
   // Gespeicherte Analyse der gewählten Partie laden.
   useEffect(() => {
@@ -515,11 +563,23 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     setVariation(null);
   }, [selectedId, sans.length]);
 
+  const openedFen = opened?.fen;
+  /**
+   * Der Zug, der zur geteilten Stellung führte · nur an ihrer Ausgangsstellung.
+   * Wer weitergezogen hat, sieht eine andere Stellung, an der die alte
+   * Hervorhebung nichts mehr erklärt.
+   */
+  const openedHighlight = useMemo(() => {
+    const move = opened?.lastMove;
+    if (!move || ply !== 0 || scratchSans.length > 0 || variation) return EMPTY_SQUARE_STYLES;
+    const mark = { background: "rgba(34, 192, 138, 0.28)" };
+    return { [move.from]: mark, [move.to]: mark };
+  }, [opened, ply, scratchSans.length, variation]);
   const fen = useMemo(
     () => variation
-      ? fenAfter([...sans.slice(0, variation.basePly), ...variation.sans])
-      : fenAfter(sans, ply),
-    [sans, ply, variation]
+      ? fenAfter([...sans.slice(0, variation.basePly), ...variation.sans], undefined, openedFen)
+      : fenAfter(sans, ply, openedFen),
+    [sans, ply, variation, openedFen]
   );
 
   /**
@@ -706,7 +766,13 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
   );
 
   const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
-  const orientation = live && game.color === "black" ? "black" : "white";
+  // Ein geteilter Link bringt die Blickrichtung mit · so sieht der Empfänger
+  // dieselbe Seite wie der Absender.
+  const orientation = opened
+    ? opened.orientation
+    : live && game.color === "black"
+      ? "black"
+      : "white";
   const ownPlayerName = live
     ? game.my_name?.trim()
       || (game.source === "chess.com" ? playerProfile.cc : game.source === "lichess" ? playerProfile.li : "")
@@ -779,6 +845,44 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
     setLiveBestUci(null);
     setPly(Math.max(0, Math.min(sans.length, next)));
   };
+  /**
+   * Was von dieser Stellung nach draußen geht.
+   *
+   * Erst beim Klick zusammengebaut und nicht als Memo: Der letzte Zug lässt
+   * sich nur durch Nachspielen der Partie ermitteln, und das lohnt nicht bei
+   * jedem Blättern · nur dann, wenn wirklich jemand teilen will.
+   *
+   * Bewusst ohne Spielernamen: Geteilt wird eine Stellung, nicht die Partie
+   * zweier Leute, die davon nichts wissen.
+   */
+  const openShare = () => {
+    const played = variation
+      ? [...sans.slice(0, variation.basePly), ...variation.sans]
+      : sans.slice(0, ply);
+    let lastMove: ShareSubject["lastMove"] = null;
+    try {
+      const chess = new Chess();
+      for (const san of played) chess.move(san);
+      const history = chess.history({ verbose: true });
+      const last = history[history.length - 1];
+      if (last) lastMove = { from: last.from, to: last.to };
+    } catch {
+      // Demo-Daten oder eine Stellung, die sich nicht nachspielen lässt · dann
+      // eben ohne Hervorhebung.
+    }
+    const best = nextBestUci;
+    setSharing({
+      kind: "analysis",
+      fen,
+      orientation,
+      lastMove,
+      line: best ? [{ from: best.slice(0, 2), to: best.slice(2, 4) }] : [],
+      eval: liveEval ?? (currentMove
+        ? { cp: currentMove.evalCp ?? null, mate: currentMove.mateIn ?? null }
+        : null),
+    });
+  };
+
   /**
    * Direktsprung zur Originalpartie, wie im Dashboard und im Partien-Tab.
    * Fehlt die gespeicherte URL (ältere Importe, PGN-Import), führt der Link
@@ -978,7 +1082,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 draggable={scratch || live}
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
                 onSquareClick={scratch || live ? onBoardSquareClick : undefined}
-                squareStyles={selectionStyles(fen, scratchSelected)}
+                squareStyles={{ ...openedHighlight, ...selectionStyles(fen, scratchSelected) }}
                 arrows={variation || scratch ? liveArrows : previewArrows}
                 badges={currentQuality && currentTarget ? [{
                   square: currentTarget,
@@ -1027,6 +1131,7 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
             {scratch && (
               <Button
                 onClick={() => {
+                  setOpened(null);
                   setScratchSans([]);
                   setPly(0);
                   setScratchSelected(null);
@@ -1048,6 +1153,9 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
                 <Button onClick={() => goToPly((variation?.basePly ?? ply) - 1)}><ChevronLeft size={15} /></Button>
                 <Button onClick={() => goToPly((variation?.basePly ?? ply) + 1)}><ChevronRight size={15} /></Button>
                 <Button onClick={() => goToPly(sans.length)}><ChevronLast size={15} /></Button>
+                <Button onClick={openShare} title={t("sh.title")} className="ml-1">
+                  <Share2 size={15} />
+                </Button>
               </div>
               <div className="shrink-0 text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
                 {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
@@ -1343,6 +1451,8 @@ export default function Analysis({ targetGameId }: { targetGameId: number | null
           )}
         </div>
       </div>
+
+      {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
     </div>
   );
 }

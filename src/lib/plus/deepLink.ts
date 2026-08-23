@@ -1,5 +1,5 @@
 /**
- * Deep Link der Anmeldung.
+ * Deep Links der App.
  *
  * Der Magic-Link im Postfach führt auf die API; die bestätigt die Anmeldung und
  * bietet `kiebitz://auth?code=…` an. Das Betriebssystem gibt diese URL an die
@@ -8,8 +8,13 @@
  *
  * Der Code ist fünf Minuten gültig und nur einmal verwendbar; er landet
  * deshalb nirgends in einem Log.
+ *
+ * Dieselbe Schema-Registrierung trägt zwei weitere Ziele: `kiebitz://open?page=…`
+ * aus den Android-Widgets und `kiebitz://p/…` aus einer geteilten Stellung.
  */
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { firstSharePayload } from "../share/link";
+import type { SharePayload } from "../share/codec";
 import { signInWithCode } from "./store";
 
 /**
@@ -87,6 +92,8 @@ export interface DeepLinkHandlers {
   onError?: (error: unknown) => void;
   /** Ein Widget hat eine Seite angefordert. */
   onOpenPage?: (page: OpenPage) => void;
+  /** Jemand hat eine geteilte Stellung geöffnet (`kiebitz://p/…`). */
+  onSharedPosition?: (payload: SharePayload) => void;
 }
 
 /**
@@ -112,6 +119,8 @@ export function installDeepLinks(handlers: DeepLinkHandlers = {}): () => void {
     if (code) void redeem(code);
     const page = firstOpenPage(urls);
     if (page) handlers.onOpenPage?.(page);
+    const shared = firstSharePayload(urls);
+    if (shared) handlers.onSharedPosition?.(shared);
   };
 
   // Kaltstart über den Link: Die URL liegt schon bereit, bevor irgendjemand
