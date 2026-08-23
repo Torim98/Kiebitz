@@ -16,6 +16,10 @@ src-tauri/gen/schemas/
 # Stockfish binaries (bundled separately)
 src-tauri/binaries/
 
+# Zwischenstände der Icon-Vektorisierung · ein Dutzend Megabyte JSON je Lauf,
+# aus denen nichts gebaut wird. Das fertige Icon liegt daneben als PNG.
+src-tauri/icons/source-icon/
+
 # Local database & user data
 *.sqlite
 *.sqlite-journal
