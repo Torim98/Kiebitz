@@ -38,6 +38,8 @@ export interface WeekArea {
   share: number;
   /** Was noch fehlt; nie negativ · mehr als geplant ist kein Fehlbetrag. */
   gap: number;
+  /** Befund-Evidenz für die Priorisierung des Wochenvorschlags. */
+  evidence?: number;
 }
 
 export interface WeekBudget {
@@ -102,6 +104,7 @@ export function buildWeekBudget(
       target,
       share: need?.target ?? 0,
       gap: Math.max(0, target - minutes),
+      evidence: need?.evidence ?? 0,
     };
   });
 

@@ -289,6 +289,8 @@ describe("buildWeekPlan", () => {
     template(1, "openings"),
     template(2, "tactics"),
     template(3, "endgames"),
+    template(4, "play"),
+    template(5, "analysis"),
   ];
   const monday = new Date(Date.UTC(2026, 6, 27));
 
@@ -337,6 +339,31 @@ describe("buildWeekPlan", () => {
     const units = plan(week("openings", 24), { dueWeek: [0, 0, 30, 0, 25, 0, 0] });
     expect(units).toHaveLength(2);
     expect(units.map((unit) => unit.day)).toEqual(["2026-07-29", "2026-07-31"]);
+  });
+
+  it("uses the remaining gaps and weak areas without stacking everything on today", () => {
+    const units = plan([
+      { area: "play", minutes: 5, target: 32, share: 42, gap: 27, evidence: 0.1 },
+      { area: "tactics", minutes: 7, target: 27, share: 36, gap: 20, evidence: 1.2 },
+      { area: "openings", minutes: 0, target: 8, share: 11, gap: 8, evidence: 0.2 },
+      { area: "endgames", minutes: 0, target: 2, share: 3, gap: 2, evidence: 0 },
+      { area: "analysis", minutes: 1, target: 7, share: 9, gap: 6, evidence: 0 },
+    ], { startDay: new Date(Date.UTC(2026, 7, 25)) });
+
+    // Taktik ist hier die belegte Schwäche und beginnt deshalb. Die 8-Minuten-
+    // Eröffnungslücke wird nicht einfach weggerundet; Endspiel und Analyse
+    // bleiben unter der sinnvollen Sitzungsschwelle außen vor.
+    expect(units.map((unit) => unit.area)).toEqual([
+      "tactics",
+      "openings",
+      "play",
+      "tactics",
+    ]);
+    expect(units.filter((unit) => unit.area === "tactics").map((unit) => unit.day)).toEqual([
+      "2026-08-25",
+      "2026-08-28",
+    ]);
+    expect(new Set(units.map((unit) => unit.day)).size).toBe(4);
   });
 
   it("counts what is already planned by hand as covered", () => {

@@ -449,6 +449,12 @@ const SESSION_TARGET: Record<Area, number> = {
   analysis: 25,
 };
 
+/** Unterhalb davon wird aus einer Lücke keine sinnvolle Sitzung. */
+const MIN_PLANNABLE_DEMAND = 8;
+
+/** Eine einzelne Sitzung soll den Tag nicht unnötig dominieren. */
+const MAX_DAILY_MINUTES = 60;
+
 /** Sitzungslänge: in Fünf-Minuten-Schritten, und nie lächerlich kurz oder lang. */
 export function sessionMinutes(minutes: number): number {
   return Math.round(Math.min(90, Math.max(10, minutes)) / 5) * 5;
@@ -493,9 +499,11 @@ export interface WeekPlanInput {
  * im Kalender steht. Reicht das Fenster in die nächste Woche hinein — und das
  * tut es an jedem Tag außer Montag — kommt deren anteiliges Budget dazu.
  *
- * Drei Regeln bestimmen, wo die Termine landen: Wiederholungen auf den Tagen
- * mit den meisten FSRS-Fälligkeiten, Taktik gleichmäßig über die Woche statt in
- * einem Block, der Rest gestreut.
+ * Die Befund-Evidenz aus der Allokation bestimmt, welche Baustelle zuerst
+ * drankommt. Die Einheiten werden danach gemeinsam über die verfügbaren Tage
+ * gelegt: keine unabhängige Bereichsschleife, die alles auf heute stapelt,
+ * sondern eine ausgeglichene Tageslast. Wiederholungen bleiben verteilt,
+ * Repertoire-Einheiten folgen den Tagen mit den meisten Fälligkeiten.
  */
 export function buildWeekPlan(input: WeekPlanInput): PlannedUnit[] {
   const days: { day: string; index: number; due: number; allowed: boolean }[] = [];
@@ -518,37 +526,68 @@ export function buildWeekPlan(input: WeekPlanInput): PlannedUnit[] {
   // Wochentag-Index des Starttages (montags null, sonntags sechs).
   const beyond = (input.startDay.getUTCDay() + 6) % 7;
 
+  const candidates = input.week
+    .map((entry) => {
+      const template = templateFor(input.templates, entry.area);
+      if (!template) return null;
+
+      const rest =
+        entry.target -
+        entry.minutes +
+        (input.carryOver?.[entry.area] ?? 0) -
+        (input.planned?.[entry.area] ?? 0);
+      const demand = Math.max(0, rest) + (entry.target * beyond) / 7;
+      // Einheiten von 5–7 Minuten werden weder dem Spieler noch dem Budget
+      // gerecht; ab 8 Minuten lässt sich eine 10-Minuten-Sitzung vertreten.
+      if (demand < MIN_PLANNABLE_DEMAND) return null;
+
+      // Die Lücke bleibt maßgeblich. Evidenz darf nur die Reihenfolge und
+      // damit die Verteilung verbessern, nicht das Bereichsbudget aufblasen.
+      const remainingRatio = demand / Math.max(10, entry.target);
+      const weakness = Math.min(2, Math.max(0, entry.evidence ?? 0));
+      return {
+        entry,
+        template,
+        demand,
+        priority: remainingRatio + weakness * 2,
+      };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate != null)
+    .sort(
+      (a, b) =>
+        b.priority - a.priority ||
+        b.demand - a.demand ||
+        a.entry.area.localeCompare(b.entry.area)
+    );
+
+  const loads = new Map<number, number>();
+  const usedDaysByArea = new Map<Area, Set<number>>();
   const out: PlannedUnit[] = [];
-  for (const entry of input.week) {
-    const template = templateFor(input.templates, entry.area);
-    if (!template) continue;
-    const rest =
-      entry.target -
-      entry.minutes +
-      (input.carryOver?.[entry.area] ?? 0) -
-      (input.planned?.[entry.area] ?? 0);
-    const demand = Math.max(0, rest) + (entry.target * beyond) / 7;
-    // Unter zehn Minuten ist kein Termin, sondern eine Erinnerung.
-    if (demand < 10) continue;
+  for (const { entry, template, demand } of candidates) {
 
     const count = Math.min(
       usable.length,
       Math.max(1, Math.round(demand / SESSION_TARGET[entry.area]))
     );
     const minutes = sessionMinutes(demand / count);
-    let chosen: typeof usable;
-    if (entry.area === "openings") {
-      // Wiederholungen dorthin, wo die Fälligkeiten liegen.
-      chosen = [...usable].sort((a, b) => b.due - a.due || a.index - b.index).slice(0, count);
-    } else if (entry.area === "tactics") {
-      // Möglichst gleichmäßig über die Woche.
-      const step = usable.length / count;
-      chosen = Array.from({ length: count }, (_, i) => usable[Math.floor(i * step)]);
-    } else {
-      chosen = spread(usable, count);
-    }
-
-    for (const day of chosen) {
+    const usedDays = usedDaysByArea.get(entry.area) ?? new Set<number>();
+    usedDaysByArea.set(entry.area, usedDays);
+    for (let ordinal = 0; ordinal < count; ordinal++) {
+      // Für mehrere Einheiten desselben Bereichs liegt das Soll-Raster über
+      // die ganze Woche. Die tatsächliche Wahl berücksichtigt anschließend
+      // noch die bereits verplante Last anderer Bereiche.
+      const preferredIndex = Math.floor((ordinal * usable.length) / count);
+      const day = choosePlanningDay(
+        usable,
+        entry.area,
+        preferredIndex,
+        minutes,
+        usedDays,
+        loads
+      );
+      if (!day) continue;
+      usedDays.add(day.index);
+      loads.set(day.index, (loads.get(day.index) ?? 0) + minutes);
       out.push({
         day: day.day,
         templateId: template.id,
@@ -561,13 +600,38 @@ export function buildWeekPlan(input: WeekPlanInput): PlannedUnit[] {
   return out.sort((a, b) => a.day.localeCompare(b.day) || a.area.localeCompare(b.area));
 }
 
-/** `count` Tage möglichst gleichmäßig aus der Liste, ohne Dopplung. */
-function spread<T>(items: T[], count: number): T[] {
-  if (count >= items.length) return [...items];
-  const step = items.length / count;
-  return Array.from({ length: count }, (_, index) => items[Math.round(index * step)]).filter(
-    (item, index, list) => list.indexOf(item) === index
-  );
+interface PlanningDay {
+  day: string;
+  index: number;
+  due: number;
+  allowed: boolean;
+}
+
+/** Wählt den sinnvollsten freien Tag für genau eine Einheit. */
+function choosePlanningDay(
+  days: PlanningDay[],
+  area: Area,
+  preferredIndex: number,
+  minutes: number,
+  usedDays: Set<number>,
+  loads: Map<number, number>
+): PlanningDay | undefined {
+  const available = days.filter((day) => !usedDays.has(day.index));
+  if (available.length === 0) return undefined;
+  const maxDue = Math.max(0, ...available.map((day) => day.due));
+
+  return [...available].sort((a, b) => {
+    const score = (day: PlanningDay): number => {
+      const load = loads.get(day.index) ?? 0;
+      const overload = Math.max(0, load + minutes - MAX_DAILY_MINUTES);
+      const duePenalty = area === "openings" ? (maxDue - day.due) * 100 : 0;
+      // Last ist wichtiger als ein kosmetisch perfektes Raster. Eine kleine
+      // Distanz zum Wunschindex darf deshalb einen anderen Bereich nicht
+      // wieder auf denselben Tag drängen.
+      return duePenalty + load * 2 + overload * 100 + Math.abs(day.index - preferredIndex);
+    };
+    return score(a) - score(b) || a.index - b.index;
+  })[0];
 }
 
 // ── Gesamtplan ──────────────────────────────────────────────────────────────

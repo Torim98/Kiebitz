@@ -89,6 +89,14 @@ describe("buildWeekBudget", () => {
     expect(rich.byArea.find((entry) => entry.area === "endgames")?.gap).toBe(0);
   });
 
+  it("keeps the weakness evidence available to the planner", () => {
+    const withEvidence = allocation.map((need) =>
+      need.area === "tactics" ? { ...need, evidence: 1.25 } : need
+    );
+    const week = buildWeekBudget([], withEvidence, MONDAY, NOW);
+    expect(week.byArea.find((entry) => entry.area === "tactics")?.evidence).toBe(1.25);
+  });
+
   it("caps the progress bar but not the numbers", () => {
     const week = buildWeekBudget([day(0, { play: 400 })], allocation, MONDAY, NOW);
     expect(week.minutes).toBe(400);
