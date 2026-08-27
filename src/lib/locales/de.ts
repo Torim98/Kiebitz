@@ -90,6 +90,7 @@ export const de = {
   "dash.recentGames": "Letzte Partien",
   "dash.showAll": "Alle anzeigen →",
   "dash.openInAnalysis": "In der Analyse öffnen",
+  "dash.showGamesFor": "Partien anzeigen: {p} · {tc}",
 
   // ── Partien ────────────────────────────────────────────────────────────────
   "games.title": "Partien-Datenbank",

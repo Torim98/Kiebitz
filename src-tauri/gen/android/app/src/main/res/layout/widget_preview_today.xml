@@ -3,6 +3,12 @@
   Vorschau im Widget-Auswahldialog · ein statisches Abbild dessen, was das
   Widget mit Daten zeigt. Es hat dieselbe Fläche, dieselbe Kennzahl und
   denselben Balken wie die Glance-Fassung; wer es ablegt, bekommt genau das.
+
+  Farbflächen (Balken, Punkte) sind FrameLayouts und keine <View>: Eine
+  previewLayout wird als RemoteViews aufgeblasen, und RemoteViews lässt nur
+  eine feste Liste von Klassen zu · android.view.View gehört nicht dazu. Mit
+  <View> stand im Auswahldialog „Widget kann nicht geladen werden".
+
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -31,6 +37,8 @@
             android:layout_weight="1"
             android:layout_height="wrap_content"
             android:layout_marginStart="7dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/widget_today_short"
             android:textColor="@color/widget_ink2"
             android:textSize="12sp" />
@@ -63,7 +71,7 @@
         android:layout_marginTop="6dp"
         android:background="@drawable/widget_track">
 
-        <View
+        <FrameLayout
             android:layout_width="66dp"
             android:layout_height="match_parent"
             android:background="@drawable/widget_bar" />
@@ -76,7 +84,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <View
+        <FrameLayout
             android:layout_width="7dp"
             android:layout_height="7dp"
             android:background="@drawable/widget_dot_tactics" />

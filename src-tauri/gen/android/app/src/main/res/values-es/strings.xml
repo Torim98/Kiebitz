@@ -33,7 +33,6 @@
     <string name="widget_preview_progress">12 / 30 min</string>
     <string name="widget_preview_open">2 pendientes</string>
     <string name="widget_preview_week_ratio">95 / 180 min</string>
-    <string name="widget_preview_week_days">3 de 5 días</string>
 
     <string name="widget_area_play">Jugar</string>
     <string name="widget_area_tactics">Táctica</string>

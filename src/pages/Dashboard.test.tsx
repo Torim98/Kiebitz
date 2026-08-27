@@ -104,6 +104,13 @@ describe("Dashboard page", () => {
     expect(openGames).toHaveBeenCalledWith({ opponent: "Testgegner" });
   });
 
+  it("turns a rating card into a Games filter on platform and time control", async () => {
+    const { openGames } = renderDashboard();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Partien anzeigen: lichess · Rapid" }));
+    expect(openGames).toHaveBeenCalledWith({ source: "lichess", tc: "rapid" });
+  });
+
   it("routes the live analysis action", async () => {
     const { go } = renderDashboard();
 

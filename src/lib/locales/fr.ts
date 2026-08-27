@@ -82,6 +82,7 @@ export const fr: Record<Key, string> = {
   "dash.recentGames": "Dernières parties",
   "dash.showAll": "Tout afficher →",
   "dash.openInAnalysis": "Ouvrir dans l'analyse",
+  "dash.showGamesFor": "Voir les parties : {p} · {tc}",
 
   "games.title": "Base de parties",
   "games.dbCount": "{n} parties dans la base SQLite locale",

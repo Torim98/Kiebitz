@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   type TooltipProps,
 } from "recharts";
-import { ArrowDownRight, ArrowUpRight, BookOpen, Cpu, Puzzle } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronRight, Cpu, Puzzle } from "lucide-react";
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { LOCALE_TAGS, useI18n } from "../lib/i18n";
@@ -143,7 +143,7 @@ export default function Dashboard({
 
   const cards = dash
     ? dash.cards
-    : ratings.map((r) => ({ id: r.id, platform: r.platform, tc: r.tc, value: r.value, delta: r.delta, spark: r.spark, url: r.url }));
+    : ratings.map((r) => ({ id: r.id, platform: r.platform, tc: r.tc, timeClass: r.timeClass, value: r.value, delta: r.delta, spark: r.spark, url: r.url }));
 
   const recent: UiGame[] = dash ? dash.recent : demoGames.slice(0, 5);
   const unanalyzed = dash ? dash.unanalyzed : demoGames.filter((g) => !g.analyzed).length;
@@ -206,33 +206,81 @@ export default function Dashboard({
       </header>
 
       <div className="mb-4 grid grid-cols-2 gap-4 min-[1100px]:grid-cols-4">
-        {cards.map((r) => (
-          <div
-            key={r.id}
-            className="rounded-xl border border-line bg-panel p-4"
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <SourceBadge source={r.platform} />
-              <span className="text-[11.5px] text-ink3">{r.tc}</span>
-            </div>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <div className="text-[26px] font-semibold leading-none tracking-tight">{r.value}</div>
-                <div
-                  className="mt-1.5 flex items-center gap-1 text-[12px]"
-                  style={{ color: r.delta >= 0 ? "var(--color-win)" : "var(--color-loss)" }}
-                >
-                  {r.delta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-                  {r.delta >= 0 ? "+" : ""}
-                  {r.delta} · {t("dash.days30")}
-                </div>
+        {cards.map((r) => {
+          // Die Karte beantwortet „welche Partien stecken hinter dieser Zahl?"
+          // und führt in die Partienliste, gefiltert auf Plattform und
+          // Bedenkzeit · dieselbe Leitung, die auch die Badges der letzten
+          // Partien darunter benutzen.
+          //
+          // Ohne Bedenkzeitklasse gibt es nichts zu filtern (die Puzzle-Karte
+          // der Demo-Daten): Sie bleibt eine Fläche und tut nichts, statt in
+          // eine leere Liste zu führen.
+          const target: GamesFilter | null = r.timeClass
+            ? { source: r.platform, tc: r.timeClass }
+            : null;
+          const label = t("dash.showGamesFor", { p: r.platform, tc: r.tc });
+          const body = (
+            <>
+              <div className="mb-2 flex items-center justify-between">
+                <SourceBadge source={r.platform} />
+                <span className="flex items-center gap-0.5 text-[11.5px] text-ink3">
+                  {r.tc}
+                  {/* Ohne Zeigegerät gibt es kein Hover · auf dem Telefon muss
+                      der Hinweis deshalb stehen bleiben, sonst sieht die Karte
+                      aus wie die Anzeige, die sie bisher war. */}
+                  {target && (
+                    <ChevronRight
+                      size={13}
+                      className={
+                        mobile
+                          ? "-mr-1"
+                          : "-mr-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                      }
+                      aria-hidden
+                    />
+                  )}
+                </span>
               </div>
-              <span className="hidden min-[440px]:block">
-                <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
-              </span>
-            </div>
-          </div>
-        ))}
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <div className="text-[26px] font-semibold leading-none tracking-tight">{r.value}</div>
+                  <div
+                    className="mt-1.5 flex items-center gap-1 text-[12px]"
+                    style={{ color: r.delta >= 0 ? "var(--color-win)" : "var(--color-loss)" }}
+                  >
+                    {r.delta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                    {r.delta >= 0 ? "+" : ""}
+                    {r.delta} · {t("dash.days30")}
+                  </div>
+                </div>
+                <span className="hidden min-[440px]:block">
+                  <Spark data={r.spark} color={r.platform === "chess.com" ? chart.cc : chart.li} />
+                </span>
+              </div>
+            </>
+          );
+
+          if (!target) {
+            return (
+              <div key={r.id} className="rounded-xl border border-line bg-panel p-4">
+                {body}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => openGames(target)}
+              title={label}
+              aria-label={label}
+              className="group w-full touch-manipulation rounded-xl border border-line bg-panel p-4 text-left transition-colors hover:border-line2 hover:bg-panel2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim active:bg-panel2"
+            >
+              {body}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">

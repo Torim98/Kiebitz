@@ -82,6 +82,7 @@ export const zh: Record<Key, string> = {
   "dash.recentGames": "最近对局",
   "dash.showAll": "查看全部 →",
   "dash.openInAnalysis": "在分析中打开",
+  "dash.showGamesFor": "查看对局：{p} · {tc}",
 
   "games.title": "对局数据库",
   "games.dbCount": "本地 SQLite 数据库中有 {n} 局",

@@ -22,6 +22,23 @@
     <init>();
 }
 
+# One link further down the same WorkManager chain: every worker is merged with
+# its InputMerger before it starts, and WorkManager creates that merger through
+# Class.forName(...).newInstance(). The library's own consumer rule reads
+# `-keep class * extends androidx.work.InputMerger` and therefore keeps only the
+# class *name*; R8 in full mode still drops the unused default constructor. The
+# release build then fails with "OverwritingInputMerger has no zero argument
+# constructor", WorkerWrapper aborts, and not a single worker runs any more.
+#
+# That is fatal for the home screen widgets: Glance does not compose in the
+# receiver but in `androidx.glance.session.SessionWorker`, a WorkManager worker.
+# If it never runs, the widget never delivers RemoteViews and stays on its
+# `initialLayout` forever (the card with the bird on it and nothing else).
+# Debug builds are unaffected because they are not minified.
+-keepclassmembers class * extends androidx.work.InputMerger {
+    <init>();
+}
+
 # Firebase component discovery reads ML Kit registrar class names from the
 # merged manifest and creates them through reflection. firebase-components
 # keeps the classes, but R8 can still remove their no-argument constructors.

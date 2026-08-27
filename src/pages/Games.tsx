@@ -164,7 +164,15 @@ export default function Games({
         (g) =>
           (source === "alle" || g.source === source) &&
           (result === "alle" || g.result === result) &&
-          (tc === "" || g.timeClass === tc || g.tc === tc) &&
+          // Demo-Partien tragen nur das übersetzte Label („Rapid"), aus der
+          // Datenbank kommt der Rohschlüssel („rapid") · ein Vorfilter aus dem
+          // Dashboard nennt den Rohschlüssel, weil die Datenbankabfrage ihn braucht.
+          // Ohne den Vergleich ohne Groß- und Kleinschreibung fände er im
+          // Demo-Modus nichts und die Liste stünde leer da.
+          (tc === "" ||
+            g.timeClass === tc ||
+            g.tc === tc ||
+            g.tc.toLowerCase() === tc.toLowerCase()) &&
           (dateKey === "" || g.dateKey === dateKey || g.date === dateKey) &&
           (opponent === "" || g.opponent === opponent) &&
           (opening === "" || g.opening === opening) &&

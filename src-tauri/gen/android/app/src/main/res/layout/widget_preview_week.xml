@@ -5,6 +5,12 @@
   Trainingstagen, dieselbe Kennzahl, derselbe nach Bereichen eingefärbte
   Balken. Er ist hier von Hand nachgebaut, weil eine Vorschau keine Daten hat ·
   die Verhältnisse entsprechen den Beispielwerten daneben.
+
+  Farbflächen (Balken, Punkte) sind FrameLayouts und keine <View>: Eine
+  previewLayout wird als RemoteViews aufgeblasen, und RemoteViews lässt nur
+  eine feste Liste von Klassen zu · android.view.View gehört nicht dazu. Mit
+  <View> stand im Auswahldialog „Widget kann nicht geladen werden".
+
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -33,47 +39,49 @@
             android:layout_weight="1"
             android:layout_height="wrap_content"
             android:layout_marginStart="7dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/widget_week_short"
             android:textColor="@color/widget_ink2"
             android:textSize="12sp" />
 
-        <View
+        <FrameLayout
             android:layout_width="7dp"
             android:layout_height="7dp"
             android:background="@drawable/widget_dot_accent" />
 
-        <View
-            android:layout_width="7dp"
-            android:layout_height="7dp"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/widget_dot_accent" />
-
-        <View
+        <FrameLayout
             android:layout_width="7dp"
             android:layout_height="7dp"
             android:layout_marginStart="4dp"
             android:background="@drawable/widget_dot_accent" />
 
-        <View
+        <FrameLayout
+            android:layout_width="7dp"
+            android:layout_height="7dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/widget_dot_accent" />
+
+        <FrameLayout
             android:layout_width="7dp"
             android:layout_height="7dp"
             android:layout_marginStart="4dp"
             android:background="@drawable/widget_dot_open" />
 
-        <View
+        <FrameLayout
             android:layout_width="7dp"
             android:layout_height="7dp"
             android:layout_marginStart="4dp"
             android:background="@drawable/widget_dot_open" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="9dp"
-            android:maxLines="1"
-            android:text="@string/widget_preview_week_days"
-            android:textColor="@color/widget_ink3"
-            android:textSize="11sp" />
+        <!--
+          „3 von 5 Tagen" stand hier neben den Punkten und sagte dasselbe wie
+          sie. Der Auswahldialog zeichnet die Vorschau auf der *Mindest*breite
+          des Widgets (110 dp) und nicht auf seiner Vorgabegröße · dort blieb
+          für den Namen dann nichts übrig, und aus „Woche" wurde „…". Die
+          Glance-Fassung blendet dieselbe Angabe unterhalb von 200 dp Breite
+          ebenfalls aus.
+        -->
     </LinearLayout>
 
     <TextView
@@ -92,24 +100,24 @@
         android:orientation="horizontal"
         android:background="@drawable/widget_track">
 
-        <View
+        <FrameLayout
             android:layout_width="78dp"
             android:layout_height="match_parent"
             android:background="@drawable/widget_seg_tactics" />
 
-        <View
+        <FrameLayout
             android:layout_width="54dp"
             android:layout_height="match_parent"
             android:layout_marginStart="2dp"
             android:background="@drawable/widget_seg_play" />
 
-        <View
+        <FrameLayout
             android:layout_width="30dp"
             android:layout_height="match_parent"
             android:layout_marginStart="2dp"
             android:background="@drawable/widget_seg_openings" />
 
-        <View
+        <FrameLayout
             android:layout_width="15dp"
             android:layout_height="match_parent"
             android:layout_marginStart="2dp"

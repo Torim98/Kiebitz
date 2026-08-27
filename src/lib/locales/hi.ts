@@ -82,6 +82,7 @@ export const hi: Record<Key, string> = {
   "dash.recentGames": "हाल की बाज़ियाँ",
   "dash.showAll": "सभी देखें →",
   "dash.openInAnalysis": "विश्लेषण में खोलें",
+  "dash.showGamesFor": "बाज़ियाँ देखें: {p} · {tc}",
 
   "games.title": "बाज़ियों का डेटाबेस",
   "games.dbCount": "स्थानीय SQLite डेटाबेस में {n} बाज़ियाँ",
