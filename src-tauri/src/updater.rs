@@ -24,7 +24,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 #[cfg(all(target_os = "android", not(feature = "play-store")))]
 const RELEASE_MANIFEST_URL: &str =
-    "https://github.com/Torim98/Kiebitz/releases/latest/download/latest.json";
+    "https://github.com/kiebitz-dev/Kiebitz/releases/latest/download/latest.json";
 
 #[cfg(any(all(target_os = "android", not(feature = "play-store")), test))]
 fn parse_release_version(raw: &str) -> Result<semver::Version, String> {
@@ -41,7 +41,7 @@ fn is_newer_release(current: &str, candidate: &str) -> Result<bool, String> {
 fn android_apk_url(version: &str) -> Result<String, String> {
     let version = parse_release_version(version)?.to_string();
     Ok(format!(
-        "https://github.com/Torim98/Kiebitz/releases/download/v{version}/Kiebitz_{version}_arm64.apk"
+        "https://github.com/kiebitz-dev/Kiebitz/releases/download/v{version}/Kiebitz_{version}_arm64.apk"
     ))
 }
 
@@ -411,7 +411,7 @@ mod tests {
     fn android_apk_link_matches_release_asset_name() {
         assert_eq!(
             android_apk_url("v0.5.0").unwrap(),
-            "https://github.com/Torim98/Kiebitz/releases/download/v0.5.0/Kiebitz_0.5.0_arm64.apk"
+            "https://github.com/kiebitz-dev/Kiebitz/releases/download/v0.5.0/Kiebitz_0.5.0_arm64.apk"
         );
     }
 }

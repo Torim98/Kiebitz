@@ -155,7 +155,7 @@ namespace Kiebitz.Release
 }
 "@
     }
-    $updaterUrl = "github.com/Torim98/Kiebitz/releases/latest/download/latest.json"
+    $updaterUrl = "github.com/kiebitz-dev/Kiebitz/releases/latest/download/latest.json"
     $updaterBytes = [Text.Encoding]::UTF8.GetBytes($updaterUrl)
     $externalUpdaterMatches = Get-ChildItem -LiteralPath $tempDirectory -Recurse -File |
         Where-Object {

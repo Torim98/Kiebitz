@@ -9,7 +9,7 @@ No Kiebitz account and no chess-data cloud. Games, analyses, and settings stay
 on your device. Devices sync directly with each other over the local network.
 
 **Website:** <https://kiebitz.dev/> · **Downloads:**
-[latest release](https://github.com/Torim98/Kiebitz/releases/latest)
+[latest release](https://github.com/kiebitz-dev/Kiebitz/releases/latest)
 
 ## Features
 

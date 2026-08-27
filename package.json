@@ -6,7 +6,7 @@
   "homepage": "https://kiebitz.dev/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Torim98/Kiebitz.git"
+    "url": "https://github.com/kiebitz-dev/Kiebitz.git"
   },
   "type": "module",
   "scripts": {

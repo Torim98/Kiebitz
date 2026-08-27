@@ -1775,7 +1775,7 @@ export default function SettingsPage({
             </button>
             <button
               type="button"
-              onClick={() => openExternal("https://github.com/Torim98/Kiebitz")}
+              onClick={() => openExternal("https://github.com/kiebitz-dev/Kiebitz")}
               className="inline-flex items-center gap-1 text-accent transition-colors hover:text-ink"
             >
               <ExternalLink size={12} /> {t("set.aboutRepo")}

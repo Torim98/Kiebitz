@@ -5,7 +5,7 @@ version = "0.1.1"
 description = "Kiebitz — local-first desktop chess companion"
 authors = ["Torim98"]
 homepage = "https://kiebitz.dev/"
-repository = "https://github.com/Torim98/Kiebitz"
+repository = "https://github.com/kiebitz-dev/Kiebitz"
 # Source-available, kein OSI-Open-Source — Bedingungen in ../LICENSE.
 license-file = "../LICENSE"
 publish = false

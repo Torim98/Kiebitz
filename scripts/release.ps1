@@ -100,7 +100,7 @@ try {
   # Branch und Tag kommen gemeinsam auf GitHub oder gar nicht.
   Invoke-Checked git @("push", "--atomic", "origin", "main", "v$Version")
 
-  Write-Host "Release v$Version gestartet: https://github.com/Torim98/Kiebitz/actions" -ForegroundColor Green
+  Write-Host "Release v$Version gestartet: https://github.com/kiebitz-dev/Kiebitz/actions" -ForegroundColor Green
   Write-Host "Play-AAB für die Google Play Console: $playAab" -ForegroundColor Green
 }
 catch {

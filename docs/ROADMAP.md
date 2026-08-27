@@ -1,8 +1,8 @@
 # Kiebitz — Roadmap
 
 This document contains only open work and near-term technical direction.
-Completed work belongs in the [Git history](https://github.com/Torim98/Kiebitz/commits/main)
-and [release notes](https://github.com/Torim98/Kiebitz/releases); the current feature
+Completed work belongs in the [Git history](https://github.com/kiebitz-dev/Kiebitz/commits/main)
+and [release notes](https://github.com/kiebitz-dev/Kiebitz/releases); the current feature
 set is summarized in the [README](../README.md).
 
 ## Current priorities

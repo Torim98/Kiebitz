@@ -17,7 +17,7 @@ test("builds the complete updater manifest with encoded asset URLs", async () =>
   const manifest = await buildUpdaterManifest({
     release: { body: "Release notes" },
     assets,
-    repository: "Torim98/Kiebitz",
+    repository: "kiebitz-dev/Kiebitz",
     serverUrl: "https://github.com",
     tag: "v1.0 beta",
     version: "1.0.0",
@@ -53,7 +53,7 @@ test("rejects a signature without its bundle", async () => {
     buildUpdaterManifest({
       release: {},
       assets: assets.filter((asset) => asset.name !== "Kiebitz.msi"),
-      repository: "Torim98/Kiebitz",
+      repository: "kiebitz-dev/Kiebitz",
       serverUrl: "https://github.com",
       tag: "v1.0.0",
       version: "1.0.0",

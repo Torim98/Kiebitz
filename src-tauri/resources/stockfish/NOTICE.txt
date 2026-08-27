@@ -30,7 +30,7 @@ distributed alongside every Kiebitz release, at no charge, as the release asset
 
 Permanent download link (always resolves to the current Kiebitz release):
 
-  https://github.com/Torim98/Kiebitz/releases/latest/download/stockfish-18-source-cb3d4ee9b47d.tar.gz
+  https://github.com/kiebitz-dev/Kiebitz/releases/latest/download/stockfish-18-source-cb3d4ee9b47d.tar.gz
 
 The archive is generated directly from the Git commit named above, so its
 contents are verifiable against that commit.
@@ -41,7 +41,7 @@ with a complete machine-readable copy of that corresponding source code, for no
 more than the cost of physically performing the distribution. Requests can be
 made at:
 
-  https://github.com/Torim98/Kiebitz/issues
+  https://github.com/kiebitz-dev/Kiebitz/issues
 
 This offer is valid to anyone who received the Stockfish binary as part of
 Kiebitz, regardless of the channel it was obtained from.

@@ -15,7 +15,7 @@ signing & notarization → iOS*.
   `npm run pins:sync` after changing it; CI verifies its consumers with
   `npm run pins:check`.
 - Website: <https://kiebitz.dev/> — a **separate** repository,
-  [`Torim98/kiebitz-site`](https://github.com/Torim98/kiebitz-site), served by
+  [`kiebitz-dev/kiebitz-site`](https://github.com/kiebitz-dev/kiebitz-site), served by
   GitHub Pages from `main`/root. It hosts the privacy policy that Google Play
   requires, so that URL has to stay reachable and stable. Referenced from
   `README.md`, `package.json` → `homepage`, `Cargo.toml` → `homepage`, and from
@@ -607,7 +607,7 @@ the app:
 
 The pieces that make it work:
 
-- **Endpoint**: `https://github.com/Torim98/Kiebitz/releases/latest/download/latest.json`
+- **Endpoint**: `https://github.com/kiebitz-dev/Kiebitz/releases/latest/download/latest.json`
   (`tauri.conf.json` → `plugins.updater.endpoints`). Each release must attach a
   `latest.json` manifest plus the updater artifacts.
 - **Signing key pair**: updates are signed (independent of OS code signing).
@@ -646,7 +646,7 @@ The pieces that make it work:
     "platforms": {
       "windows-x86_64": {
         "signature": "<contents of the .sig file>",
-        "url": "https://github.com/Torim98/Kiebitz/releases/download/v0.2.0/Kiebitz_0.2.0_x64-setup.exe"
+        "url": "https://github.com/kiebitz-dev/Kiebitz/releases/download/v0.2.0/Kiebitz_0.2.0_x64-setup.exe"
       }
     }
   }

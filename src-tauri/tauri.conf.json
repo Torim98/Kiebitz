@@ -74,7 +74,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ2N0I0OUI5MEUyRUE0NTIKUldSU3BDNE91VWw3MXM3QVdnVFRtNTVOZDgralo3SklaNXVicEMraUpTNzA5eDJMS0Ixd213bXIK",
       "endpoints": [
-        "https://github.com/Torim98/Kiebitz/releases/latest/download/latest.json"
+        "https://github.com/kiebitz-dev/Kiebitz/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
