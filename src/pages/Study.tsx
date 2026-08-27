@@ -17,10 +17,8 @@ import { listGameSummaries, type GameSummary } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import {
   applyWeekPlan,
-  closeStudyFocus,
   eventMinutes,
   getStudyCalendar,
-  setStudyFocus,
   studyData,
   templateAreas,
   templateText,
@@ -29,13 +27,12 @@ import {
   type Area,
   type StudyData,
   type StudyEvent,
-  type StudyFocus,
   type StudyTemplate,
   type TrainingProgram,
 } from "../lib/study";
 import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
-import { deepInsights, studyMetrics, type MetricWindow } from "../lib/insights";
+import { deepInsights, studyMetrics, type FindingWindow } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
 import {
   buildPlan,
@@ -44,28 +41,21 @@ import {
   type PlannedUnit,
   type TrainingPlan,
 } from "../lib/plan";
-import {
-  cycleWindows,
-  measureEffect,
-  measureRating,
-  ratingNoise,
-  type EffectResult,
-  type RatingEffect,
-} from "../lib/effect";
+import { measureRating, ratingNoise, type RatingEffect } from "../lib/effect";
 import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "../lib/week";
 import { Button, Card } from "../components/ui";
 import { PlusBadge } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import StudyPlanner from "../components/StudyPlanner";
-import StudyFocusCard from "../components/StudyFocusCard";
+import PrescriptionCard from "../components/PrescriptionCard";
 import WeekBudgetBar from "../components/WeekBudgetBar";
+import WindowNote from "../components/WindowNote";
 import TodaySession, { type SessionItem } from "../components/TodaySession";
 import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
 import { deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
-import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { DEMO_PLAN_STATE } from "./studyDemo";
 import { ENDGAME_TYPE_CATEGORY, type EndgameCategory } from "../data/endgames";
 import type { PageId } from "../App";
@@ -77,7 +67,8 @@ export interface StudyState {
   program: TrainingProgram | null;
   plan: TrainingPlan | null;
   findings: Finding[];
-  windows: Map<number, { before: MetricWindow; after: MetricWindow }>;
+  /** Zeitraum, aus dem die Befunde stammen · steht unter dem Coach. */
+  window: FindingWindow;
   templates: StudyTemplate[];
   /** Geplante Einheiten der nächsten sieben Tage, ab heute. */
   events: StudyEvent[];
@@ -106,20 +97,18 @@ export default function Study({
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
   const storeCapture = isStoreCapture();
-  const now = Math.floor(Date.now() / 1000);
 
   const [state, setState] = useState<StudyState | null>(null);
   const [planning, setPlanning] = useState<PlannedUnit[] | null>(null);
   const [busy, setBusy] = useState(false);
   const planGate = usePlusGate("adaptive_plan");
-  const focusGate = usePlusGate("focus_cycles");
 
   const loadRef = useRef<Promise<void> | null>(null);
   const loadFresh = useCallback(async () => {
     // Bewusst hier und nicht aus dem Render-Scope: `load` hängt an einem
     // Änderungs-Abo und läuft womöglich Stunden später erneut. Mit einem
-    // eingefrorenen Zeitpunkt endete das Nachher-Fenster beim Öffnen der Seite,
-    // und genau die Partien, die seither dazukamen, fehlten in der Messung.
+    // eingefrorenen Zeitpunkt endete das Messfenster beim Öffnen der Seite, und
+    // genau die Partien, die seither dazukamen, fehlten in der Messung.
     const now = Math.floor(Date.now() / 1000);
     const [data, program, records, deep, puzzles, settings] = await Promise.all([
       studyData().catch(() => null),
@@ -145,21 +134,14 @@ export default function Study({
           })
         : null;
 
-    // Für jeden laufenden Zyklus zwei gleich lange Fenster · davor und seither.
-    // Die Reihenfolge der Fenster bleibt an die Fokusse gekoppelt, damit die
-    // Zuordnung nicht über Indizes rät.
-    const focuses = program?.focuses ?? [];
-    const specs = focuses.flatMap((focus) => {
-      const { before, after } = cycleWindows(focus.start_ts, focus.cycle_days, now);
-      return [before, after];
-    });
-    const measured = specs.length > 0 ? await studyMetrics(specs).catch(() => []) : [];
-    const windows = new Map<number, { before: MetricWindow; after: MetricWindow }>();
-    focuses.forEach((focus, index) => {
-      const before = measured[index * 2];
-      const after = measured[index * 2 + 1];
-      if (before && after) windows.set(focus.id, { before, after });
-    });
+    // Die Ratingveränderung im selben Zeitraum, aus dem auch die Befunde
+    // kommen. Ohne Fenster (zu wenig Material) gibt es keine Zahl: „+140 Elo
+    // seit 2021" beantwortet keine Frage, die auf dieser Seite gestellt wird.
+    const findingWindow = deep?.window ?? { days: 0, from_ts: 0, games: 0, analyzed: 0 };
+    const measured =
+      findingWindow.days > 0
+        ? await studyMetrics([{ from_ts: findingWindow.from_ts, to_ts: now + 1 }]).catch(() => [])
+        : [];
 
     // Die nächsten sieben Tage, nicht nur heute: der Tagesplan ist ein
     // Ausschnitt davon, und der Wochenvorschlag muss wissen, was in diesem
@@ -177,7 +159,7 @@ export default function Study({
       program,
       plan,
       findings,
-      windows,
+      window: findingWindow,
       templates: calendar.templates,
       events: calendar.events,
       rating: measureRating(measured),
@@ -209,69 +191,6 @@ export default function Study({
 
   const plan = state?.plan ?? null;
   const data = state?.data ?? null;
-  const focusByArea = useMemo(() => {
-    const map = new Map<Area, StudyFocus>();
-    for (const focus of state?.program?.focuses ?? []) map.set(focus.area, focus);
-    return map;
-  }, [state]);
-
-  const effectFor = useCallback(
-    (focus: StudyFocus | null, metricKey?: string): EffectResult | null => {
-      if (!focus || !metricKey) return null;
-      const pair = state?.windows.get(focus.id);
-      if (!pair) return null;
-      return measureEffect(metricKey, pair.before, pair.after);
-    },
-    [state]
-  );
-
-  // ── Aktionen ───────────────────────────────────────────────────────────────
-
-  const startFocus = async (area: Area, metricKey: string | undefined, label: string) => {
-    if (!desktop || !metricKey) return;
-    // Fokuszyklen messen die Wirkung über Wochen · eine Plus-Funktion. Der
-    // Vorschlag selbst bleibt sichtbar, nur das Starten führt in die Erklärung.
-    if (!focusGate.unlocked && !focusGate.pending) {
-      openPlusDialog("focus_cycles");
-      return;
-    }
-    setBusy(true);
-    try {
-      const settings = await getSettings().catch(() => null);
-      await setStudyFocus({
-        area,
-        metric_key: metricKey,
-        label_params: JSON.stringify({ name: label }),
-        cycle_days: settings?.focus_cycle_days ?? 14,
-      });
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const stopFocus = async (focus: StudyFocus) => {
-    if (!desktop) return;
-    setBusy(true);
-    try {
-      await closeStudyFocus(focus.id, "dropped");
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const completeFocus = async (focus: StudyFocus) => {
-    if (!desktop) return;
-    setBusy(true);
-    try {
-      await closeStudyFocus(focus.id, "done");
-      void maybeRequestPlayReview(backend.info, { kind: "focus-cycle-complete" });
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // ── Woche ──────────────────────────────────────────────────────────────────
 
@@ -537,9 +456,9 @@ export default function Study({
           {state?.rating && (
             <div
               className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]"
-              title={t(
+              title={`${t(
                 state.rating.confidence === "measured" ? "plan.ratingExact" : "plan.ratingApprox"
-              )}
+              )} ${t("plan.ratingWindow", { d: deInt(state.window.days) })}`}
             >
               <Gauge size={15} className="text-violet" />
               <span className="font-medium tabular-nums">
@@ -616,7 +535,7 @@ export default function Study({
       )}
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
-        {/* Fokusse */}
+        {/* Woran arbeiten */}
         <Card
           title={
             <span className="flex items-center gap-2">
@@ -628,53 +547,38 @@ export default function Study({
         >
           {plan && plan.prescriptions.length > 0 ? (
             <div className="flex flex-col gap-2.5">
-              {plan.prescriptions.map((prescription) => {
-                const focus = focusByArea.get(prescription.area) ?? null;
-                return (
-                  <StudyFocusCard
-                    key={prescription.id}
-                    prescription={prescription}
-                    focus={focus}
-                    effect={effectFor(focus, prescription.metricKey ?? focus?.metric_key)}
-                    now={now}
-                    mobile={mobile}
-                    onStart={() =>
-                      !busy &&
-                      startFocus(
-                        prescription.area,
-                        prescription.metricKey,
-                        String(prescription.finding.params.name ?? "")
-                      )
-                    }
-                    onStop={() => focus && !busy && stopFocus(focus)}
-                    onComplete={() => focus && !busy && completeFocus(focus)}
-                    onAction={() => {
-                      const action = prescription.action;
-                      if (!action) return;
-                      if (action.kind === "puzzles") {
-                        openPuzzles(action.theme, {
-                          minRating: action.minRating,
-                          maxRating: action.maxRating,
-                        });
-                      } else if (action.kind === "repertoire") go("repertoire");
-                      else if (action.kind === "endgame") {
-                        // Der Befund nennt den Endspieltyp aus der
-                        // Materialsignatur · daraus wird die Drill-Kategorie.
-                        const type = prescription.finding.params.type;
-                        const category =
-                          typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
-                        if (openEndgame) openEndgame(category);
-                        else go("endgame");
-                      } else if (action.kind === "analysis") go("analysis");
-                      else go("games");
-                    }}
-                  />
-                );
-              })}
+              {plan.prescriptions.map((prescription) => (
+                <PrescriptionCard
+                  key={prescription.id}
+                  prescription={prescription}
+                  mobile={mobile}
+                  onAction={() => {
+                    const action = prescription.action;
+                    if (!action) return;
+                    if (action.kind === "puzzles") {
+                      openPuzzles(action.theme, {
+                        minRating: action.minRating,
+                        maxRating: action.maxRating,
+                      });
+                    } else if (action.kind === "repertoire") go("repertoire");
+                    else if (action.kind === "endgame") {
+                      // Der Befund nennt den Endspieltyp aus der
+                      // Materialsignatur · daraus wird die Drill-Kategorie.
+                      const type = prescription.finding.params.type;
+                      const category =
+                        typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
+                      if (openEndgame) openEndgame(category);
+                      else go("endgame");
+                    } else if (action.kind === "analysis") go("analysis");
+                    else go("games");
+                  }}
+                />
+              ))}
             </div>
           ) : (
             <p className="py-2 text-[13px] leading-relaxed text-ink3">{t("st.coachEmpty")}</p>
           )}
+          {state && <WindowNote window={state.window} className="mt-3" />}
           {state && state.findings.length > (plan?.prescriptions.length ?? 0) && (
             <button
               type="button"

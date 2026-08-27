@@ -27,10 +27,8 @@ import { useI18n, type Key } from "../../lib/i18n";
 import { dateLocale, de, deInt } from "../../lib/format";
 import { themeLabel, type PuzzleInsights } from "../../lib/puzzles";
 import { studyMetrics, type DeepInsights, type MetricWindow } from "../../lib/insights";
-import { trainingProgram, type StudyFocus, type TrainingProgram } from "../../lib/study";
+import { trainingProgram, type TrainingProgram } from "../../lib/study";
 import { lagComparison, weeklyLoad, type LagComparison, type WeekLoad } from "../../lib/balance";
-import { cycleWindows, measureEffect } from "../../lib/effect";
-import { EffectLine } from "../../components/StudyFocusCard";
 import type { Finding } from "../../lib/findings";
 import { Empty, FindingStrip, Kpi, MetricBar, Section, Stat, Versus } from "./parts";
 
@@ -51,14 +49,6 @@ function isoWeek(date: Date): number {
     firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7)
   );
   return 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
-}
-
-function dayLabel(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString(dateLocale(), {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "UTC",
-  });
 }
 
 export default function Training({
@@ -85,7 +75,7 @@ export default function Training({
 
   return (
     <div className="space-y-4">
-      <FindingStrip findings={findings} onAction={onAction} />
+      <FindingStrip findings={findings} window={deep.window} onAction={onAction} />
 
       {desktop && <Balance />}
 
@@ -284,8 +274,7 @@ export default function Training({
   );
 
   /**
-   * Trainingsbilanz: Last je Woche, die Leitkennzahl daneben, und die
-   * abgeschlossenen Fokus-Zyklen mit ihrem Vorher-Nachher.
+   * Trainingsbilanz: Last je Woche und die Leitkennzahl daneben.
    *
    * Lädt eigenständig nach, weil `deep_insights` diese Daten nicht mitbringt
    * und der Reiter ohnehin erst beim Öffnen befüllt wird.
@@ -294,7 +283,6 @@ export default function Training({
     const [program, setProgram] = useState<TrainingProgram | null>(null);
     const [weeks, setWeeks] = useState<WeekLoad[]>([]);
     const [weekMetrics, setWeekMetrics] = useState<MetricWindow[]>([]);
-    const [cycles, setCycles] = useState<{ focus: StudyFocus; windows: MetricWindow[] }[]>([]);
 
     useEffect(() => {
       let cancelled = false;
@@ -305,31 +293,13 @@ export default function Training({
           const load = weeklyLoad(next.days);
           setWeeks(load);
 
-          // Ein Fenster je Woche für die Verlaufskurve, plus zwei je
-          // abgeschlossenem Zyklus. Beides in einem Aufruf · der Backend-Befehl
-          // geht die Datenbank sonst mehrfach durch.
-          const done = next.history.filter((focus) => focus.status !== "active").slice(0, 4);
-          const specs = [
-            ...load.map((week) => ({ from_ts: week.from_ts, to_ts: week.to_ts })),
-            ...done.flatMap((focus) => {
-              const { before, after } = cycleWindows(
-                focus.start_ts,
-                focus.cycle_days,
-                focus.end_ts || focus.start_ts + focus.cycle_days * 86_400
-              );
-              return [before, after];
-            }),
-          ];
+          // Ein Fenster je Woche für die Verlaufskurve · in einem Aufruf, der
+          // Backend-Befehl geht die Datenbank sonst mehrfach durch.
+          const specs = load.map((week) => ({ from_ts: week.from_ts, to_ts: week.to_ts }));
           if (specs.length === 0) return;
           const measured = await studyMetrics(specs).catch(() => [] as MetricWindow[]);
           if (cancelled || measured.length !== specs.length) return;
-          setWeekMetrics(measured.slice(0, load.length));
-          setCycles(
-            done.map((focus, index) => ({
-              focus,
-              windows: measured.slice(load.length + index * 2, load.length + index * 2 + 2),
-            }))
-          );
+          setWeekMetrics(measured);
         })
         .catch(() => {});
       return () => {
@@ -434,39 +404,6 @@ export default function Training({
           {lag && <LagPanel lag={lag} />}
         </Section>
 
-        <Section
-          title={t("ins.trCycleTitle")}
-          summary={t("ins.trCycleSummary", { n: cycles.length })}
-          disabled={cycles.length === 0}
-          disabledNote={t("ins.trCycleNone")}
-        >
-          <div className="flex flex-col gap-2.5">
-            {cycles.map(({ focus, windows }) => (
-              <div key={focus.id} className="rounded-lg border border-line bg-panel2 px-3.5 py-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-[12.5px] font-medium text-ink">
-                    {t(`plan.area${focus.area[0].toUpperCase()}${focus.area.slice(1)}` as Key)}
-                  </span>
-                  <span className="text-[11.5px] tabular-nums text-ink3">
-                    {t("ins.trCycleRange", {
-                      from: dayLabel(focus.start_ts),
-                      to: dayLabel(focus.end_ts || focus.start_ts + focus.cycle_days * 86_400),
-                    })}
-                  </span>
-                </div>
-                <div className="mt-1.5">
-                  <EffectLine
-                    effect={measureEffect(
-                      focus.metric_key,
-                      windows[0] ?? null,
-                      windows[1] ?? null
-                    )}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
       </>
     );
   }

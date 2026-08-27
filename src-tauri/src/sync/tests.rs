@@ -180,7 +180,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };
@@ -213,7 +212,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };
@@ -261,7 +259,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };
@@ -604,7 +601,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };
@@ -643,7 +639,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![
                 SyncPref {
@@ -775,44 +770,6 @@ mod tests {
         assert_eq!(collected.len(), 1);
         assert_eq!(collected[0].ts, 200);
         assert_eq!(collected[0].path, "e4 e5 Nf3");
-    }
-
-    #[test]
-    fn study_focus_merges_by_last_write() {
-        let conn = mem_db();
-        let mut focus = SyncStudyFocus {
-            sync_key: "focus-tactics".into(),
-            area: "tactics".into(),
-            metric_key: "blunders_middlegame_per100".into(),
-            label_params: "{}".into(),
-            target: Some(2.0),
-            cycle_days: 14,
-            start_ts: 1_000,
-            end_ts: 0,
-            status: "active".into(),
-            created_ts: 1_000,
-            updated_ts: 1_000,
-            deleted: false,
-        };
-
-        assert_eq!(apply_study_focus(&conn, &[focus.clone()]).unwrap(), 1);
-        // Ein älterer Stand darf den neueren nicht überschreiben.
-        let mut stale = focus.clone();
-        stale.status = "dropped".into();
-        stale.updated_ts = 500;
-        assert_eq!(apply_study_focus(&conn, &[stale]).unwrap(), 0);
-
-        focus.status = "done".into();
-        focus.end_ts = 2_000;
-        focus.updated_ts = 2_000;
-        assert_eq!(apply_study_focus(&conn, &[focus.clone()]).unwrap(), 1);
-
-        let collected = collect_study_focus(&conn, 0).unwrap();
-        assert_eq!(collected.len(), 1);
-        assert_eq!(collected[0].status, "done");
-        assert_eq!(collected[0].end_ts, 2_000);
-        // Der Zyklus trägt nur die Absicht · Messwerte gibt es hier bewusst nicht.
-        assert_eq!(collected[0].metric_key, "blunders_middlegame_per100");
     }
 
     #[test]
@@ -988,7 +945,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };
@@ -1046,7 +1002,6 @@ mod tests {
             study_templates: vec![],
             study_events: vec![],
             rep_reviews: vec![],
-            study_focus: vec![],
             study_sessions: vec![],
             prefs: vec![],
         };

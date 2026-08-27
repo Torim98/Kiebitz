@@ -115,6 +115,9 @@ export default function InsightsV2({
     () => (deepData ? buildDna(deepData, live) : []),
     [deepData, live]
   );
+  // Die Befunde rechnen über das Fenster (das steckt in `buildFindings`), die
+  // Reiter über die ganze Historie · die Frage „woran arbeite ich jetzt" hätte
+  // sonst für jeden mit langer Historie auf Jahre dieselbe Antwort.
   const findings = useMemo(
     () => (deepData ? buildFindings(deepData, live) : []),
     [deepData, live]

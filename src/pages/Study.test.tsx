@@ -33,8 +33,6 @@ function liveStudy(overrides: Record<string, unknown> = {}) {
 
 function emptyProgram(overrides: Record<string, unknown> = {}) {
   return {
-    focuses: [],
-    history: [],
     load_28d: [
       { area: "play", items: 20, minutes: 200 },
       { area: "tactics", items: 40, minutes: 60 },
@@ -45,26 +43,6 @@ function emptyProgram(overrides: Record<string, unknown> = {}) {
     days: [],
     observed_weekly_minutes: 72,
     ...overrides,
-  };
-}
-
-/** Ein Messfenster mit genug Material, damit ein Urteil zustande kommt. */
-function window(blunders: number, games = 40) {
-  return {
-    from_ts: 0,
-    to_ts: 1,
-    games,
-    ratings: [],
-    metrics: [
-      {
-        key: "blunders_middlegame_per100",
-        value: blunders,
-        n: 1_200,
-        sd: null,
-        unit: "per100",
-        lower_is_better: true,
-      },
-    ],
   };
 }
 
@@ -96,7 +74,6 @@ function mockBackend(options: BackendOptions = {}) {
           weekly_minutes: 0,
           training_days: 0,
           goal_date: "",
-          focus_cycle_days: 14,
           ...settings,
         });
       case "study_data":
@@ -109,20 +86,6 @@ function mockBackend(options: BackendOptions = {}) {
         return Promise.resolve(puzzles);
       case "study_metrics":
         return Promise.resolve(metrics);
-      case "set_study_focus":
-        return Promise.resolve({
-          id: 9,
-          area: "tactics",
-          metric_key: "blunders_middlegame_per100",
-          label_params: "{}",
-          target: null,
-          cycle_days: 14,
-          start_ts: 0,
-          end_ts: 0,
-          status: "active",
-        });
-      case "close_study_focus":
-        return Promise.resolve();
       case "study_calendar":
         return Promise.resolve({
           templates: [
@@ -250,111 +213,16 @@ describe("Study page", () => {
     );
   });
 
-  it("starts a focus cycle and shows the verdict once a cycle is running", async () => {
+  it("names the window its advice comes from", async () => {
     mockBackend({ deep: demoDeepInsights() });
     renderStudy();
     await screen.findByText("Zeitnot kostet dich Partien");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Als Fokus setzen" })[0]);
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        "set_study_focus",
-        expect.objectContaining({
-          focus: expect.objectContaining({ cycle_days: 14 }),
-        })
-      );
-    });
-  });
-
-  it("reports a running cycle as not yet measurable when the sample is short", async () => {
-    const start = Math.floor(Date.now() / 1000) - 5 * DAY;
-    mockBackend({
-      deep: demoDeepInsights(),
-      program: emptyProgram({
-        focuses: [
-          {
-            id: 3,
-            area: "tactics",
-            metric_key: "blunders_middlegame_per100",
-            label_params: "{}",
-            target: 2,
-            cycle_days: 14,
-            start_ts: start,
-            end_ts: 0,
-            status: "active",
-          },
-        ],
-      }),
-      // Zu wenig Material im Nachher-Fenster · das Urteil muss ausbleiben.
-      metrics: [
-        window(3.1),
-        { ...window(2.4), metrics: [{ ...window(2.4).metrics[0], n: 90 }] },
-      ],
-    });
-    renderStudy();
-
-    expect(await screen.findByText(/noch nicht messbar/)).toBeTruthy();
-    expect(screen.getByText("Tag 6/14")).toBeTruthy();
-  });
-
-  it("calls a real improvement a real improvement", async () => {
-    const start = Math.floor(Date.now() / 1000) - 12 * DAY;
-    mockBackend({
-      deep: demoDeepInsights(),
-      program: emptyProgram({
-        focuses: [
-          {
-            id: 4,
-            area: "tactics",
-            metric_key: "blunders_middlegame_per100",
-            label_params: "{}",
-            target: 2,
-            cycle_days: 14,
-            start_ts: start,
-            end_ts: 0,
-            status: "active",
-          },
-        ],
-      }),
-      // 3,4 → 1,9 bei 1.200 Zügen liegt klar über der Rauschgrenze.
-      metrics: [window(3.4), window(1.9)],
-    });
-    renderStudy();
-
-    expect(await screen.findByText("wirkt")).toBeTruthy();
-    expect(screen.getByText("3,4 → 1,9")).toBeTruthy();
-  });
-
-  it("completes an elapsed focus cycle as a success instead of dropping it", async () => {
-    const start = Math.floor(Date.now() / 1000) - 15 * DAY;
-    mockBackend({
-      deep: demoDeepInsights(),
-      program: emptyProgram({
-        focuses: [
-          {
-            id: 5,
-            area: "tactics",
-            metric_key: "blunders_middlegame_per100",
-            label_params: "{}",
-            target: 2,
-            cycle_days: 14,
-            start_ts: start,
-            end_ts: 0,
-            status: "active",
-          },
-        ],
-      }),
-      metrics: [window(3.4), window(1.9)],
-    });
-    renderStudy();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Zyklus abschließen" }));
-    await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith("close_study_focus", {
-        focusId: 5,
-        status: "done",
-      });
-    });
+    // Der Coach nennt seinen Zeitraum · ein Ratschlag ohne ihn ist nicht
+    // prüfbar, und genau das war das Problem der ganzen Historie.
+    expect(
+      screen.getByText(/Aus deinen letzten 42 Tagen · 96 Partien/)
+    ).toBeTruthy();
   });
 
   it("marks a fully completed backend plan as done", async () => {
@@ -390,12 +258,12 @@ describe("Study page", () => {
     expect(screen.queryByRole("navigation", { name: "Trainingsbereiche" })).toBeNull();
   });
 
-  it("stacks the focus action below the text only in the mobile shell", async () => {
+  it("stacks the prescription action below the text only in the mobile shell", async () => {
     mockBackend({ deep: demoDeepInsights() });
     renderStudy(vi.fn(), vi.fn(), true);
 
     const mobileCard = (await screen.findByText("Zeitnot kostet dich Partien")).closest(
-      "[data-focus-card]"
+      "[data-prescription]"
     ) as HTMLElement;
     const mobileAction = within(mobileCard).queryByRole("button", {
       name: /Puzzles|Repertoire|Endspiele|Analyse|Partien/,
@@ -406,7 +274,7 @@ describe("Study page", () => {
     mockBackend({ deep: demoDeepInsights() });
     renderStudy();
     const desktopCard = (await screen.findByText("Zeitnot kostet dich Partien")).closest(
-      "[data-focus-card]"
+      "[data-prescription]"
     ) as HTMLElement;
     const desktopAction = within(desktopCard).queryByRole("button", {
       name: /Puzzles|Repertoire|Endspiele|Analyse|Partien/,

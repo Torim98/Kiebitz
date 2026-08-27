@@ -12,6 +12,8 @@ import { useMobileShell } from "../../components/MobileShell";
 import { chart } from "../../components/chartTheme";
 import { de, deInt } from "../../lib/format";
 import { localizeFindingParams, type Finding, type Tone } from "../../lib/findings";
+import type { FindingWindow } from "../../lib/insights";
+import WindowNote from "../../components/WindowNote";
 
 export function Kpi({
   label,
@@ -232,9 +234,12 @@ export function FindingCard({
 /** Befunde eines Reiters, oben angeheftet. Nichts anzeigen ist auch eine Aussage. */
 export function FindingStrip({
   findings,
+  window,
   onAction,
 }: {
   findings: Finding[];
+  /** Zeitraum der Befunde · die Auswertungen darunter zeigen die ganze Historie. */
+  window?: FindingWindow;
   onAction?: (finding: Finding) => void;
 }) {
   const { t } = useI18n();
@@ -250,6 +255,7 @@ export function FindingStrip({
           <FindingCard key={finding.id} finding={finding} onAction={onAction} />
         ))}
       </div>
+      {window && <WindowNote window={window} className="mt-2.5" />}
     </div>
   );
 }

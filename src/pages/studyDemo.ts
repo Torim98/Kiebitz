@@ -4,36 +4,14 @@
  * Versuche · das Layout soll trotzdem zeigen, wofür die Seite gebaut ist.
  *
  * Die Zahlen sind erfunden, aber in sich stimmig: die Verordnungen passen zu
- * den Befunden, und die Wirkungszeile zeigt bewusst auch einen Fall, der noch
- * nicht messbar ist — das ist der häufigste echte Zustand.
+ * den Befunden, und das Befundfenster passt zur gezeigten Spielhäufigkeit.
  */
 import { isoDay } from "../lib/dates";
 import type { Locale } from "../lib/i18n";
 import type { Finding } from "../lib/findings";
-import type { MetricWindow } from "../lib/insights";
 import type { StudyState } from "./Study";
 
 const DAY = 86_400;
-
-/** Ein Messfenster mit der Patzerrate des Mittelspiels. */
-function demoWindow(blunders: number, from: number, to: number): MetricWindow {
-  return {
-    from_ts: from,
-    to_ts: to,
-    games: 34,
-    ratings: [],
-    metrics: [
-      {
-        key: "blunders_middlegame_per100",
-        value: blunders,
-        n: 1_180,
-        sd: null,
-        unit: "per100",
-        lower_is_better: true,
-      },
-    ],
-  };
-}
 
 export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
   const now = Math.floor(Date.now() / 1000);
@@ -51,7 +29,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       bodyKey: "fnd.troubleBody",
       params: { p: 17.4, e: 9.2, b: 4.1, m: 28 },
       lever: { area: "play", trainability: 0.9 },
-      metricKey: "trouble_pct",
     },
     {
       id: "punishment",
@@ -62,7 +39,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       bodyKey: "fnd.punishBody",
       params: { p: 44.5, n: 96, m: 43 },
       lever: { area: "tactics", trainability: 0.9 },
-      metricKey: "blunders_middlegame_per100",
       action: { kind: "puzzles" },
     },
     {
@@ -74,7 +50,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       bodyKey: "fnd.openFacedBody",
       params: { name: "Sicilian Defense", p: 36.4, b: 49.1, n: 22, m: 6 },
       lever: { area: "openings", trainability: 1 },
-      metricKey: "acc_opening",
       action: { kind: "repertoire" },
     },
     {
@@ -86,7 +61,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       bodyKey: "fnd.endgameBody",
       params: { type: "rook", p: 38.1, n: 17 },
       lever: { area: "endgames", trainability: 0.9 },
-      metricKey: "acc_endgame",
       action: { kind: "endgame" },
     },
   ];
@@ -109,20 +83,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       streak_days: 3,
     },
     program: {
-      focuses: [
-        {
-          id: 1,
-          area: "tactics",
-          metric_key: "blunders_middlegame_per100",
-          label_params: "{}",
-          target: 2,
-          cycle_days: 14,
-          start_ts: now - 9 * DAY,
-          end_ts: 0,
-          status: "active",
-        },
-      ],
-      history: [],
       load_28d: [
         { area: "play", items: 41, minutes: 420 },
         { area: "tactics", items: 180, minutes: 270 },
@@ -161,7 +121,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
           finding: findings[0],
           doseKey: "plan.dosePlay",
           doseParams: { m: 65 },
-          metricKey: "trouble_pct",
         },
         {
           id: "punishment",
@@ -170,7 +129,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
           doseKey: "plan.dosePuzzlesTheme",
           doseParams: { n: 15, lo: 1420, hi: 1670, theme: "fork" },
           action: { kind: "puzzles", theme: "fork", minRating: 1420, maxRating: 1670 },
-          metricKey: "blunders_middlegame_per100",
         },
         {
           id: "opening-black-name:sicilian defense",
@@ -179,7 +137,6 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
           doseKey: "plan.doseOpenings",
           doseParams: { m: 12, d: 5 },
           action: { kind: "repertoire" },
-          metricKey: "acc_opening",
         },
       ],
       hygiene: [
@@ -201,18 +158,9 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       trainingDayCount: 5,
     },
     findings,
-    // Zwei Messfenster für den laufenden Zyklus · ohne sie fehlt der Vorschau
-    // genau das, was den Reiter ausmacht: die Rückmeldung, ob das Training
-    // wirkt. Die Zahlen liegen bewusst klar über der Rauschgrenze.
-    windows: new Map([
-      [
-        1,
-        {
-          before: demoWindow(3.4, now - 23 * DAY, now - 9 * DAY),
-          after: demoWindow(2.1, now - 9 * DAY, now),
-        },
-      ],
-    ]),
+    // Der Coach in der Vorschau redet über die letzten sechs Wochen · so
+    // sieht das Fenster für jemanden aus, der ein paar Mal pro Woche spielt.
+    window: { days: 42, from_ts: now - 42 * DAY, games: 34, analyzed: 31 },
     templates: [],
     // Zwei Einheiten für heute · die eine ist von der gemessenen Zeit bereits
     // erfüllt, die andere steht noch offen. Genau dieser Unterschied ist es,

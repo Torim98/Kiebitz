@@ -483,6 +483,22 @@ pub struct OpeningInsights {
     pub games: i64,
 }
 
+/// Zeitraum, aus dem die Befunde gerechnet werden.
+///
+/// Die Reiter zeigen die ganze Historie, die Befunde nur diesen Ausschnitt ·
+/// die Oberfläche muss beides auseinanderhalten können, also steht hier, worauf
+/// „Woran du arbeiten solltest" beruht.
+#[derive(Serialize, Default, Clone)]
+pub struct FindingWindow {
+    /// Länge in Tagen · 0 heißt „ganze Historie".
+    pub days: i64,
+    /// Beginn des Fensters (0 bei ganzer Historie).
+    pub from_ts: i64,
+    /// Partien im Fenster.
+    pub games: i64,
+    pub analyzed: i64,
+}
+
 #[derive(Serialize, Default)]
 pub struct DeepInsights {
     pub coverage: Coverage,
@@ -495,6 +511,11 @@ pub struct DeepInsights {
     pub formats: FormatInsights,
     pub openings: OpeningInsights,
     pub spotlight: Option<Spotlight>,
+    /// Fenster, über das `recent` gerechnet ist.
+    pub window: FindingWindow,
+    /// Dieselbe Auswertung, aber nur über die jüngsten Partien · `None`, wenn
+    /// das Fenster ohnehin die ganze Historie umfasst.
+    pub recent: Option<Box<DeepInsights>>,
 }
 
 // ── Endspiel-Signatur ────────────────────────────────────────────────────────

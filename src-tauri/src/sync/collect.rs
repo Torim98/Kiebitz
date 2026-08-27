@@ -515,34 +515,3 @@ fn collect_prefs(conn: &Connection) -> Result<Vec<SyncPref>, String> {
         })
         .collect())
 }
-
-fn collect_study_focus(conn: &Connection, since: i64) -> Result<Vec<SyncStudyFocus>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT sync_key, area, metric_key, label_params, target, cycle_days,
-                    start_ts, end_ts, status, created_ts, updated_ts, deleted
-             FROM study_focus WHERE updated_ts >= ?1",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(params![since.saturating_sub(SLACK)], |r| {
-            Ok(SyncStudyFocus {
-                sync_key: r.get(0)?,
-                area: r.get(1)?,
-                metric_key: r.get(2)?,
-                label_params: r.get(3)?,
-                target: r.get(4)?,
-                cycle_days: r.get(5)?,
-                start_ts: r.get(6)?,
-                end_ts: r.get(7)?,
-                status: r.get(8)?,
-                created_ts: r.get(9)?,
-                updated_ts: r.get(10)?,
-                deleted: r.get::<_, i64>(11)? != 0,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<_, _>>()
-        .map_err(|e| e.to_string());
-    rows
-}

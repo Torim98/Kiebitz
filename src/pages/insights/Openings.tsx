@@ -70,7 +70,7 @@ export default function Openings({
 
   return (
     <div className="space-y-4">
-      <FindingStrip findings={findings} onAction={onAction} />
+      <FindingStrip findings={findings} window={deep.window} onAction={onAction} />
 
       {repertoire.nodes > 0 && totals.games > 0 && (
         <div className="grid grid-cols-2 gap-4 min-[1050px]:grid-cols-4">

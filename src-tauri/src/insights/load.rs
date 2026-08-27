@@ -59,29 +59,186 @@ fn compute(conn: &Connection) -> Result<DeepInsights, String> {
         });
     }
 
+    let sessions = session_bounds(&views);
+
+    let mut out = insights_for(conn, &views, &sessions, &puzzle_days, &nodes, &children)?;
+
+    // Das Befundfenster · dieselbe Rechnung ein zweites Mal, aber nur über die
+    // jüngsten Partien. Datenbankarbeit kostet das kaum etwas: Partien, Uhren
+    // und Bewertungen liegen längst im Speicher, und das Fenster ist ein
+    // Suffix der aufsteigend sortierten Liste.
+    let window = finding_window(&views, now_ts());
+    out.window = window.describe(&views);
+    if let Some(start) = window.start {
+        let mut recent = insights_for(
+            conn,
+            &views[start..],
+            &sessions[start..],
+            &puzzle_days,
+            &nodes,
+            &children,
+        )?;
+        recent.window = out.window.clone();
+        out.recent = Some(Box::new(recent));
+    }
+    Ok(out)
+}
+
+/// Eine vollständige Auswertung über genau die übergebenen Partien.
+fn insights_for(
+    conn: &Connection,
+    views: &[GameView],
+    sessions: &[(usize, i64)],
+    puzzle_days: &HashMap<i64, i64>,
+    nodes: &[repertoire::RepNodeOut],
+    children: &repertoire::BookChildren,
+) -> Result<DeepInsights, String> {
     let coverage = Coverage {
         games: views.len() as i64,
         analyzed: views.iter().filter(|v| !v.evals.is_empty()).count() as i64,
         with_clocks: views.iter().filter(|v| v.clocks.is_some()).count() as i64,
         moves_judged: views.iter().map(|v| v.evals.len() as i64).sum(),
-        first_ts: asc.first().map(|g| g.played_ts).unwrap_or(0),
-        last_ts: asc.last().map(|g| g.played_ts).unwrap_or(0),
+        first_ts: views.first().map(|v| v.raw.played_ts).unwrap_or(0),
+        last_ts: views.last().map(|v| v.raw.played_ts).unwrap_or(0),
     };
 
-    let sessions = session_bounds(&views);
-
     Ok(DeepInsights {
-        time: time_insights(&views, &sessions),
-        content: content_insights(&views),
-        benchmark: benchmark_insights(&views),
-        sessions: session_insights(&views, &sessions, &puzzle_days),
-        progress: progress_insights(conn, &views, &nodes, &children)?,
-        repertoire: repertoire_insights(&views, &nodes, &children),
-        formats: format_insights(&views),
-        openings: opening_insights(&views),
-        spotlight: spotlight(&views),
+        time: time_insights(views, sessions),
+        content: content_insights(views),
+        benchmark: benchmark_insights(views),
+        sessions: session_insights(views, sessions, puzzle_days),
+        progress: progress_insights(conn, views, nodes, children)?,
+        repertoire: repertoire_insights(views, nodes, children),
+        formats: format_insights(views),
+        openings: opening_insights(views),
+        spotlight: spotlight(views),
         coverage,
+        window: FindingWindow::default(),
+        recent: None,
     })
+}
+
+// ── Befundfenster ────────────────────────────────────────────────────────────
+//
+// Die Reiter zeigen die ganze Historie · das ist ihre Aufgabe. Die Befunde
+// dürfen das nicht: Wer zweitausend Partien mitbringt, bekommt sonst
+// Ratschläge, die sich nie mehr ändern, weil drei gute Wochen gegen fünf Jahre
+// Datenbestand nicht ankommen. Die Befunde rechnen deshalb über ein Fenster,
+// und wie lang es ist, entscheidet die Spielhäufigkeit: Wer täglich spielt, hat
+// in drei Wochen genug Material für eine belastbare Aussage; wer zweimal im
+// Monat spielt, braucht dafür ein Vierteljahr.
+
+/// Kürzestes Fenster · darunter misst man die Tagesform.
+const WINDOW_MIN_WEEKS: i64 = 3;
+/// Längstes Fenster · darüber ist „jüngst" kein ehrliches Wort mehr.
+const WINDOW_MAX_WEEKS: i64 = 13;
+/// Partienzahl, die ein Fenster anpeilt.
+const WINDOW_TARGET_GAMES: f64 = 40.0;
+/// Darunter bleibt es bei der ganzen Historie · lieber ein älterer Befund als
+/// einer aus acht Partien.
+const WINDOW_MIN_GAMES: usize = 12;
+/// Zeitraum, aus dem die Spielhäufigkeit abgelesen wird.
+const ACTIVITY_LOOKBACK_DAYS: i64 = 180;
+
+const DAY: i64 = 86_400;
+
+struct Window {
+    days: i64,
+    from_ts: i64,
+    /// Index in `views`, ab dem das Fenster gilt · None = ganze Historie.
+    start: Option<usize>,
+}
+
+impl Window {
+    /// Ganze Historie · `days = 0` sagt der Oberfläche, dass sie kein Fenster
+    /// zu nennen braucht.
+    fn whole() -> Self {
+        Window {
+            days: 0,
+            from_ts: 0,
+            start: None,
+        }
+    }
+
+    fn describe(&self, views: &[GameView]) -> FindingWindow {
+        let slice = match self.start {
+            Some(start) => &views[start..],
+            None => views,
+        };
+        FindingWindow {
+            days: self.days,
+            from_ts: self.from_ts,
+            games: slice.len() as i64,
+            analyzed: slice.iter().filter(|v| !v.evals.is_empty()).count() as i64,
+        }
+    }
+}
+
+/// Zählt das Fenster nur analysierte Partien?
+///
+/// Fast alle Regeln in `findings.ts` hängen an Zugbewertungen; eine nicht
+/// analysierte Partie trägt zu ihnen nichts bei. Ist überhaupt nichts
+/// analysiert, zählt jede Partie · dann geht es ohnehin um den einen Befund
+/// „lass analysieren".
+fn window_usable(view: &GameView, analyzed_only: bool) -> bool {
+    view.raw.played_ts > 0 && (!analyzed_only || !view.evals.is_empty())
+}
+
+/// Fenster für die Befunde · `views` aufsteigend nach Zeit.
+fn finding_window(views: &[GameView], now: i64) -> Window {
+    let analyzed_only = views.iter().any(|v| !v.evals.is_empty());
+    let usable: Vec<i64> = views
+        .iter()
+        .filter(|v| window_usable(v, analyzed_only) && v.raw.played_ts <= now)
+        .map(|v| v.raw.played_ts)
+        .collect();
+    if usable.len() < WINDOW_MIN_GAMES {
+        return Window::whole();
+    }
+
+    // Spielhäufigkeit der jüngeren Vergangenheit. Der Nenner ist der wirklich
+    // beobachtete Zeitraum: Wer seit zwei Monaten dabei ist, gilt nicht als
+    // Gelegenheitsspieler, nur weil die Rückschau ein halbes Jahr breit ist.
+    let first = usable[0];
+    let span_days = ACTIVITY_LOOKBACK_DAYS.min(((now - first) / DAY).max(1));
+    let since = now - span_days * DAY;
+    let played = usable.iter().filter(|ts| **ts >= since).count() as f64;
+    let per_week = played / (span_days as f64 / 7.0);
+    if per_week <= 0.0 {
+        return Window::whole();
+    }
+
+    let weeks = (WINDOW_TARGET_GAMES / per_week)
+        .ceil()
+        .clamp(WINDOW_MIN_WEEKS as f64, WINDOW_MAX_WEEKS as f64) as i64;
+    let days = weeks * 7;
+    let from_ts = now - days * DAY;
+    if from_ts <= first {
+        // Das Fenster deckt ohnehin alles ab · die zweite Rechnung wäre
+        // doppelte Arbeit mit demselben Ergebnis.
+        return Window::whole();
+    }
+
+    let start = views.partition_point(|v| v.raw.played_ts < from_ts);
+    let inside = views[start..]
+        .iter()
+        .filter(|v| window_usable(v, analyzed_only))
+        .count();
+    if inside < WINDOW_MIN_GAMES {
+        return Window::whole();
+    }
+    Window {
+        days,
+        from_ts,
+        start: Some(start),
+    }
+}
+
+fn now_ts() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Prüftiefe für den Buchabgleich · 20 Halbzüge sind zehn Züge und decken das

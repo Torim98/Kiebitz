@@ -169,22 +169,85 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("APK-Download konnte nicht geöffnet werden: {e}"))
 }
 
-// Play übernimmt Installation und Updates. Diese Stubs halten die gemeinsame
-// Command-Oberfläche stabil, ohne Netzwerkzugriff oder externe Download-URL.
+// ── Play-Updates ─────────────────────────────────────────────────────────────
+//
+// Play-Apps dürfen sich ausschließlich über Play aktualisieren; heruntergeladen
+// wird hier also nichts. Die Brücke fragt nur, ob im Store eine neuere Version
+// steht, und übergibt das Aktualisieren an Play (siehe `UpdatePlugin.kt`).
+//
+// Play kennt zur neuen Version nur ihren Versionscode. Der reist als
+// `available` mit, damit die gemeinsame Struktur bleibt; die Oberfläche spricht
+// auf Play-Geräten deshalb von „einem Update" statt von einer Versionsnummer.
+
+#[cfg(all(target_os = "android", feature = "play-store"))]
+struct PlayUpdate<R: tauri::Runtime>(tauri::plugin::PluginHandle<R>);
+
+#[cfg(all(target_os = "android", feature = "play-store"))]
+#[derive(serde::Serialize)]
+struct EmptyRequest {}
+
+#[cfg(all(target_os = "android", feature = "play-store"))]
+#[derive(serde::Deserialize)]
+struct PlayUpdateInfo {
+    #[serde(default)]
+    available: bool,
+    #[serde(default, rename = "versionCode")]
+    version_code: i64,
+}
+
+#[cfg(all(target_os = "android", feature = "play-store"))]
+#[derive(serde::Deserialize)]
+struct PlayUpdateStart {
+    #[serde(default)]
+    started: bool,
+}
+
+/// Registriert die native Brücke zur Play-App-Update-API.
+#[cfg(all(target_os = "android", feature = "play-store"))]
+pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    use tauri::Manager;
+    tauri::plugin::Builder::new("playUpdate")
+        .setup(|app, api| {
+            let handle = api.register_android_plugin("de.torim.kiebitz", "UpdatePlugin")?;
+            app.manage(PlayUpdate(handle));
+            Ok(())
+        })
+        .build()
+}
+
 #[cfg(all(target_os = "android", feature = "play-store"))]
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateCheck, String> {
+    use tauri::Manager;
+    let current = app.package_info().version.to_string();
+    let info: PlayUpdateInfo = app
+        .state::<PlayUpdate<tauri::Wry>>()
+        .0
+        .run_mobile_plugin_async("checkUpdate", EmptyRequest {})
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(UpdateCheck {
-        current: app.package_info().version.to_string(),
-        available: None,
+        current,
+        available: info.available.then(|| info.version_code.to_string()),
         notes: None,
     })
 }
 
 #[cfg(all(target_os = "android", feature = "play-store"))]
 #[tauri::command]
-pub async fn install_update(_app: AppHandle) -> Result<(), String> {
-    Err("Updates werden von Google Play verwaltet.".into())
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let result: PlayUpdateStart = app
+        .state::<PlayUpdate<tauri::Wry>>()
+        .0
+        .run_mobile_plugin_async("startUpdate", EmptyRequest {})
+        .await
+        .map_err(|error| error.to_string())?;
+    if result.started {
+        Ok(())
+    } else {
+        Err("Google Play konnte das Update nicht öffnen.".into())
+    }
 }
 
 #[cfg(target_os = "ios")]

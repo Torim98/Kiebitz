@@ -56,11 +56,6 @@ export interface Finding {
   params: Record<string, string | number>;
   action?: FindingAction;
   lever?: FindingLever;
-  /**
-   * Kennzahl aus `study_metrics`, an der sich zeigt, ob das Training wirkt.
-   * Nur gesetzt, wo die Kausalkette kurz genug ist, um sie ehrlich zu messen.
-   */
-  metricKey?: string;
 }
 
 /** Phase → Bereich · dieselbe Zuordnung an drei Stellen wäre eine zu viel. */
@@ -82,7 +77,15 @@ function round(value: number): number {
 
 export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[] {
   const out: Finding[] = [];
-  const { time, content, benchmark, sessions, progress, repertoire, formats } = deep;
+  // Fast alles hier fragt „wie spielst du gerade", und die Antwort darf nicht
+  // an einer langen Historie festkleben · dafür gibt es das Befundfenster
+  // (siehe `insights/load.rs`). Ohne Fenster ist `recent` die ganze Historie.
+  const recent = deep.recent ?? deep;
+  const { time, content, benchmark, sessions, repertoire, formats } = recent;
+  // Der Fortschrittsblock ist die Ausnahme: „Genauigkeit steigt, Rating nicht"
+  // und „das Repertoiretraining wirkt" sind Aussagen über Monate. Im Fenster
+  // gäbe es sie nie zu sehen, also lesen sie weiter die ganze Historie.
+  const { progress } = deep;
   const push = (finding: Finding) => out.push(finding);
 
   // ── Block A · Zeit ────────────────────────────────────────────────────────
@@ -96,7 +99,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "time-rush",
       lever: { area: "play", trainability: 0.8 },
-      metricKey: "blunders_per100",
       severity: severity((instant.errors_per_100 - deliberateRate) * 12, instant.moves, 400),
       tone: "bad",
       tab: "time",
@@ -115,7 +117,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "time-trouble",
       lever: { area: "play", trainability: 0.9 },
-      metricKey: "trouble_pct",
       severity: severity(time.trouble.share_pct * 2 + worse * 6, time.trouble.moves, 300),
       tone: time.trouble.share_pct >= 15 ? "bad" : "warn",
       tab: "time",
@@ -151,7 +152,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "time-theory",
       lever: { area: "openings", trainability: 0.9 },
-      metricKey: "in_book_pct",
       severity: severity(time.theory.book_share_pct * 2, time.theory.book_moves, 200),
       tone: "warn",
       tab: "time",
@@ -169,7 +169,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "time-flag",
       lever: { area: "play", trainability: 0.9 },
-      metricKey: "trouble_pct",
       severity: severity(flagLossPct * 10, time.trouble.flag_losses, 5),
       tone: "bad",
       tab: "time",
@@ -212,7 +211,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: `rep-deviation-${side.side}`,
       lever: { area: "openings", trainability: 1 },
-      metricKey: "in_book_pct",
       severity: severity(gap * 3, side.mine, 25),
       tone: "bad",
       tab: "openings",
@@ -234,7 +232,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "rep-shaky",
       lever: { area: "openings", trainability: 1.0 },
-      metricKey: "in_book_pct",
       severity: severity(shaky.lapses * 10, shaky.games, 6),
       tone: "warn",
       tab: "openings",
@@ -251,7 +248,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "conversion",
       lever: { area: PHASE_AREA[content.conversion.phase] ?? "tactics", trainability: 0.7 },
-      metricKey: "acc_endgame",
       severity: severity((82 - content.conversion.score_pct) * 2.5, content.conversion.games, 30),
       tone: content.conversion.score_pct < 70 ? "bad" : "warn",
       tab: "strength",
@@ -284,7 +280,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "punishment",
       lever: { area: "tactics", trainability: 0.9 },
-      metricKey: "blunders_middlegame_per100",
       severity: severity(content.punishment.missed_pct * 1.4, content.punishment.chances, 60),
       tone: "bad",
       tab: "strength",
@@ -304,7 +299,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "forcing",
       lever: { area: "tactics", trainability: 0.9 },
-      metricKey: "blunders_per100",
       severity: severity((anatomy.forcing_pct - anatomy.forcing_base_pct) * 2.5, anatomy.errors, 60),
       tone: "bad",
       tab: "strength",
@@ -344,7 +338,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: `endgame-${endgame.key}`,
       lever: { area: "endgames", trainability: 0.9 },
-      metricKey: "acc_endgame",
       severity: severity((50 - endgame.score_pct) * 2, endgame.games, 15),
       tone: "warn",
       tab: "strength",
@@ -365,7 +358,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       push({
         id: "bench-blunders",
       lever: { area: "tactics", trainability: 0.8 },
-      metricKey: "blunders_per100",
         severity: severity(Math.abs(relative) * 130, benchmark.me.moves, 800),
         tone: relative > 0 ? "bad" : "good",
         tab: "strength",
@@ -394,7 +386,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       push({
         id: `bench-phase-${gaps[0].phase}`,
         lever: { area: PHASE_AREA[gaps[0].phase] ?? "tactics", trainability: 0.8 },
-        metricKey: `blunders_${gaps[0].phase}_per100`,
         severity: severity(gaps[0].gap * 22, benchmark.games, 40),
         tone: "warn",
         tab: "strength",
@@ -419,7 +410,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       push({
         id: "session-length",
       lever: { area: "play", trainability: 0.9 },
-      metricKey: "score_pct",
         severity: severity((first.score_pct - drop.score_pct) * 3, drop.games, 25),
         tone: "warn",
         tab: "patterns",
@@ -439,7 +429,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "requeue",
       lever: { area: "play", trainability: 0.9 },
-      metricKey: "score_pct",
       severity: severity((sessions.requeue.slow_score - sessions.requeue.fast_score) * 3, sessions.requeue.fast_games, 30),
       tone: "bad",
       tab: "patterns",
@@ -479,7 +468,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     push({
       id: "session-damage",
       lever: { area: "play", trainability: 0.7 },
-      metricKey: "score_pct",
       severity: severity(sessions.damage.worst3_pct, sessions.damage.sessions, 30),
       tone: "warn",
       tab: "patterns",
@@ -509,8 +497,7 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     } else if (progress.accuracy_delta <= -1.5) {
       push({
         id: "progress-down",
-      lever: { area: "tactics", trainability: 0.5 },
-      metricKey: "acc_overall",
+        lever: { area: "tactics", trainability: 0.5 },
         severity: severity(Math.abs(progress.accuracy_delta) * 14, progress.months.length, 8),
         tone: "bad",
         tab: "training",
@@ -546,8 +533,7 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
     if (Math.abs(gap) >= 6) {
       push({
         id: "rep-effect",
-      lever: { area: "openings", trainability: 0.8 },
-      metricKey: "in_book_pct",
+        lever: { area: "openings", trainability: 0.8 },
         severity: severity(Math.abs(gap) * 2.5, Math.min(repEffect.before_games, repEffect.after_games), 25),
         tone: gap > 0 ? "good" : "warn",
         tab: "training",
@@ -637,14 +623,13 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
   // Zwei Fragen, ein Datensatz: als Weiß steht hier, was die eigene Wahl
   // einbringt, als Schwarz, gegen welches System die Vorbereitung nicht hält.
 
-  for (const family of weakestFamilies(deep.openings.families, deep.openings.baseline_score)) {
-    const gap = deep.openings.baseline_score - family.score_pct;
+  for (const family of weakestFamilies(recent.openings.families, recent.openings.baseline_score)) {
+    const gap = recent.openings.baseline_score - family.score_pct;
     const asWhite = family.color === "white";
     const hasMatchingLine = family.avg_departure_ply > 0;
     push({
       id: `opening-${family.color}-${family.key}`,
       lever: { area: "openings", trainability: 1 },
-      metricKey: "acc_opening",
       // Der Verlust zählt doppelt: wie groß der Abstand ist *und* wie oft die
       // Familie vorkommt. Eine schwache Eröffnung, die zweimal im Jahr aufs
       // Brett kommt, ist kein Trainingsziel.
@@ -662,7 +647,7 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       params: {
         name: family.label,
         p: round(family.score_pct),
-        b: round(deep.openings.baseline_score),
+        b: round(recent.openings.baseline_score),
         n: family.games,
         m: family.avg_departure_ply > 0 ? Math.ceil(family.avg_departure_ply / 2) : 0,
       },
@@ -694,7 +679,6 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
       push({
         id: "format-pool",
         lever: { area: "play", trainability: 1 },
-        metricKey: "score_pct",
         severity: severity(edge / 2, Math.min(best.format.games, weakest.format.games), 40),
         tone: "warn",
         tab: "time",
@@ -720,20 +704,20 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
   //
   // Alles auf dieser Seite hängt an analysierten Partien. Ist die Abdeckung
   // dünn, ist der Rückstand selbst der wichtigste Befund.
-  if (deep.coverage.games >= 30) {
-    const covered = (deep.coverage.analyzed / deep.coverage.games) * 100;
+  if (recent.coverage.games >= 30) {
+    const covered = (recent.coverage.analyzed / recent.coverage.games) * 100;
     if (covered < 60) {
       push({
         id: "coverage-low",
         lever: { area: "analysis", trainability: 1 },
-        severity: severity((60 - covered) * 1.5, deep.coverage.games, 60),
+        severity: severity((60 - covered) * 1.5, recent.coverage.games, 60),
         tone: covered < 30 ? "bad" : "warn",
         tab: "training",
         titleKey: "fnd.coverageTitle",
         bodyKey: "fnd.coverageBody",
         params: {
           p: Math.round(covered),
-          n: deep.coverage.games - deep.coverage.analyzed,
+          n: recent.coverage.games - recent.coverage.analyzed,
         },
         action: { kind: "analysis" },
       });

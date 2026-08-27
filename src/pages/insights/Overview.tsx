@@ -18,6 +18,7 @@ import { weakestAxis } from "../../lib/dna";
 import type { Finding } from "../../lib/findings";
 import { topFindings } from "../../lib/findings";
 import { FindingCard, Kpi, Empty } from "./parts";
+import WindowNote from "../../components/WindowNote";
 
 export default function Overview({
   deep,
@@ -92,6 +93,7 @@ export default function Overview({
         ) : (
           <Empty text={t("ins.noFindings")} />
         )}
+        <WindowNote window={deep.window} className="mt-3 border-t border-line pt-3" />
       </Card>
 
       <div className="grid gap-4 min-[900px]:grid-cols-[1.1fr_1fr]">

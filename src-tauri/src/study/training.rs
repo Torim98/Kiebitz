@@ -1,3 +1,6 @@
+/// Trainingsbereiche. Dieselben Schlüssel benutzt `lib/plan.ts`.
+pub const AREAS: [&str; 5] = ["play", "tactics", "openings", "endgames", "analysis"];
+
 /// Aufwand eines Bereichs in einem Zeitraum · Minuten sind geschätzt, damit
 /// Puzzles, Drills, Wiederholungen und Partien überhaupt vergleichbar werden.
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -21,8 +24,6 @@ pub struct LoadDay {
 
 #[derive(Serialize, Default)]
 pub struct TrainingProgram {
-    pub focuses: Vec<StudyFocus>,
-    pub history: Vec<StudyFocus>,
     /// Ist-Aufwand der letzten 28 Tage je Bereich.
     pub load_28d: Vec<AreaLoad>,
     /// Tageslast (Minuten) über das angefragte Fenster, aufsteigend.
@@ -358,12 +359,6 @@ fn training_program_from_conn(
         .sum();
 
     Ok(TrainingProgram {
-        focuses: read_focus_rows(conn, true)?,
-        history: read_focus_rows(conn, false)?
-            .into_iter()
-            .filter(|f| f.status != "active")
-            .take(12)
-            .collect(),
         load_28d,
         days,
         observed_weekly_minutes: round_centi(observed_centi / 8),

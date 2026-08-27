@@ -5,6 +5,7 @@ import { dbInfo, type Settings } from "../lib/settings";
 import { puzzleStats } from "../lib/puzzles";
 import { syncInfo } from "../lib/sync";
 import { legalDocuments } from "../lib/legal";
+import { checkUpdate, installUpdate } from "../lib/updater";
 import { ShellProvider } from "../components/MobileShell";
 import SettingsPage from "./Settings";
 
@@ -115,7 +116,6 @@ const androidSettings = {
   weekly_minutes: 0,
   training_days: 0,
   goal_date: "",
-  focus_cycle_days: 14,
   onboarded: true,
   analytics_enabled: false,
   analytics_installation_id: "",
@@ -271,6 +271,45 @@ describe("Settings loading", () => {
     });
 
     expect(screen.getByRole("button", { name: /set\.widgets/ })).toBeTruthy();
+  });
+
+  // Play-Builds dürfen sich nicht selbst aktualisieren · geprüft wird trotzdem,
+  // und der Knopf übergibt an Play.
+  it("offers the Play update check on a Play Store build", async () => {
+    mocks.getSettings.mockResolvedValue(androidSettings);
+    mocks.backend = {
+      mode: "desktop",
+      info: {
+        version: "0.6.0",
+        backend: "tauri",
+        platform: "android",
+        distribution: "play-store",
+      },
+    };
+    vi.mocked(checkUpdate).mockResolvedValue({ current: "0.6.0", available: "42", notes: null });
+    vi.mocked(installUpdate).mockResolvedValue(undefined);
+
+    await act(async () => {
+      render(
+        <ShellProvider mobile>
+          <SettingsPage />
+        </ShellProvider>
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /set\.updates/ }));
+    // Kein Auto-Update-Schalter: Play entscheidet, wann installiert wird.
+    expect(screen.queryByText("set.autoUpdateToggle")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "set.updateCheck" }));
+    });
+
+    // Der Versionscode aus Play ist keine Versionsnummer · die Meldung nennt
+    // deshalb keine.
+    expect(screen.getByText("set.updatePlayAvailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /set\.updatePlayInstall/ }));
+    expect(vi.mocked(installUpdate)).toHaveBeenCalledTimes(1);
   });
 
   it("hands the guided tour over to the app shell", async () => {

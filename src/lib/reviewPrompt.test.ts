@@ -47,18 +47,14 @@ describe("Play review success-moment policy", () => {
     expect(invoke).toHaveBeenCalledWith("request_play_review");
   });
 
-  it("accepts an explicitly completed focus cycle as a success moment", async () => {
-    expect(
-      await maybeRequestPlayReview(playBackend, { kind: "focus-cycle-complete" })
-    ).toBe(true);
-    expect(invoke).toHaveBeenCalledTimes(1);
-  });
-
   it("uses a three-month cooldown even when another milestone follows", async () => {
-    await maybeRequestPlayReview(playBackend, { kind: "focus-cycle-complete" });
     await maybeRequestPlayReview(playBackend, {
       kind: "analysis-complete",
-      totalAnalyzedGames: 20,
+      totalAnalyzedGames: 10,
+    });
+    await maybeRequestPlayReview(playBackend, {
+      kind: "puzzle-solved",
+      totalSolved: 40,
     });
 
     expect(invoke).toHaveBeenCalledTimes(1);
@@ -92,7 +88,7 @@ describe("Play review success-moment policy", () => {
   it("keeps a later success moment available when Play Core cannot start", async () => {
     vi.mocked(invoke).mockResolvedValueOnce({ requested: false });
     expect(
-      await maybeRequestPlayReview(playBackend, { kind: "focus-cycle-complete" })
+      await maybeRequestPlayReview(playBackend, { kind: "puzzle-solved", totalSolved: 40 })
     ).toBe(false);
     expect(
       await maybeRequestPlayReview(playBackend, {

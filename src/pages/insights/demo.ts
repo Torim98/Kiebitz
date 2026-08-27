@@ -464,5 +464,14 @@ export function demoDeepInsights(): DeepInsights {
       opponent: "Opponent 42",
       played_at: "",
     },
+    // In der Vorschau ist die Demo-Historie selbst schon der Ausschnitt · ein
+    // zweites, kürzeres Fenster hätte hier nichts zu zeigen.
+    window: {
+      days: 42,
+      from_ts: Math.floor(Date.now() / 1000) - 42 * 86_400,
+      games: 96,
+      analyzed: 84,
+    },
+    recent: null,
   };
 }

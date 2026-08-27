@@ -376,9 +376,13 @@ pub fn run() {
         // Die Play-In-App-Review-API existiert nur im Play-Build. Der
         // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
         // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
+        //
+        // Dasselbe gilt für die Update-Brücke: Play-Apps dürfen sich nur über
+        // Play aktualisieren, und der GitHub-Weg der Sideload-Builds existiert
+        // in diesem Build nicht.
         #[cfg(feature = "play-store")]
         {
-            builder = builder.plugin(review::init());
+            builder = builder.plugin(review::init()).plugin(updater::init());
         }
     }
 
@@ -591,8 +595,6 @@ pub fn run() {
             study::move_study_unit,
             study::complete_study_unit,
             study::delete_study_unit,
-            study::set_study_focus,
-            study::close_study_focus,
             study::training_program,
             study::record_study_time,
             sync::sync_info,

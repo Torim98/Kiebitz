@@ -13,7 +13,6 @@ use tauri::{Manager, State};
 
 include!("calendar.rs");
 include!("calendar_commands.rs");
-include!("focus.rs");
 include!("sessions.rs");
 include!("training.rs");
 include!("tests.rs");

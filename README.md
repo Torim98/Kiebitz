@@ -33,7 +33,9 @@ on your device. Devices sync directly with each other over the local network.
   to do with the dose attached (which puzzle band, which opening, which endgame
   type) and opens it in one click, planned units complete themselves once the
   measured time covers them, and what a week leaves open carries into the next.
-  Focus cycles measure whether the training actually changed anything.
+  What to work on is read from the stretch you actually played in — a few weeks
+  if you play daily, a quarter if you play now and then — so the advice moves
+  when your play moves.
 - **Sharing** — send a position from the analysis board, a puzzle from the
   trainer, an opening line from the repertoire or an endgame drill: a picture
   card in Kiebitz' own colours plus a link that opens the position anywhere.

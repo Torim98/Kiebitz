@@ -19,7 +19,6 @@ export const PLUS_ONLY_FEATURES = [
   "full_insights",
   "personal_puzzles",
   "adaptive_plan",
-  "focus_cycles",
   "automatic_lan_sync",
   "widgets",
   "no_ads",

@@ -37,6 +37,7 @@ import { setBoardSoundEnabled, setBoardSoundVolume } from "./lib/sound";
 import { installCrashReporter, logEvent } from "./lib/diag";
 import { onDeviceShake } from "./lib/shake";
 import {
+  checkUpdate,
   installUpdate,
   onUpdateAvailable,
   onUpdateState,
@@ -382,8 +383,27 @@ export default function App() {
     };
   }, [backend.mode]);
 
+  // Android aus dem Play Store: Dort gibt es keinen Start-Check im Backend,
+  // weil Play-Apps nichts selbst herunterladen dürfen. Gefragt wird deshalb
+  // hier, einmal je App-Start, und der Hinweis führt in Plays eigenen Ablauf.
+  const playStore = info?.platform === "android" && info?.distribution === "play-store";
+  useEffect(() => {
+    if (backend.mode !== "desktop" || !playStore) return;
+    let cancelled = false;
+    checkUpdate()
+      .then((check) => {
+        if (cancelled || !check.available) return;
+        setAvailable({ version: check.available, notes: check.notes });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [backend.mode, playStore]);
+
   // Der Nutzer startet das Update aus der Benachrichtigung; ab da übernimmt
-  // der Fortschritts-Toast (update://state). Fehler zeigt die Settings-Seite.
+  // der Fortschritts-Toast (update://state) · im Play-Build führt derselbe
+  // Knopf direkt in Plays Update-Ablauf. Fehler zeigt die Settings-Seite.
   const startUpdate = () => {
     setAvailable(null);
     installUpdate().catch(() => {});
@@ -600,7 +620,9 @@ export default function App() {
             <div className="flex items-start gap-2.5">
               <RefreshCw size={15} className="mt-0.5 shrink-0 text-accent" />
               <div className="min-w-0 text-[12.5px] text-ink2">
-                {t("app.updateAvailable", { v: available.version })}
+                {playStore
+                  ? t("app.updatePlayAvailable")
+                  : t("app.updateAvailable", { v: available.version })}
               </div>
               <button
                 onClick={() => setAvailable(null)}

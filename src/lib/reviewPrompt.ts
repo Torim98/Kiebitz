@@ -11,7 +11,6 @@ const MIN_MASTERED_ENDGAME_DRILLS = 5;
 
 export type ReviewMilestone =
   | { kind: "analysis-complete"; totalAnalyzedGames: number }
-  | { kind: "focus-cycle-complete" }
   | { kind: "puzzle-solved"; totalSolved: number }
   | { kind: "repertoire-session-complete"; correctAnswers: number }
   | { kind: "endgame-drill-mastered"; masteredDrills: number };
@@ -55,8 +54,6 @@ function isEligible(milestone: ReviewMilestone): boolean {
   switch (milestone.kind) {
     case "analysis-complete":
       return milestone.totalAnalyzedGames >= MIN_ANALYZED_GAMES;
-    case "focus-cycle-complete":
-      return true;
     case "puzzle-solved":
       return milestone.totalSolved >= MIN_SOLVED_PUZZLES;
     case "repertoire-session-complete":

@@ -201,7 +201,6 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
                 study_templates: collect_study_templates(&conn, since)?,
                 study_events: collect_study_events(&conn, since)?,
                 rep_reviews: collect_rep_reviews(&conn, since)?,
-                study_focus: collect_study_focus(&conn, since)?,
                 study_sessions: collect_study_sessions(&conn, since)?,
                 prefs: collect_prefs(&conn)?,
             };
@@ -242,7 +241,6 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
         let study_templates = apply_study_templates(&conn, &resp.study_templates)?;
         let study_events = apply_study_events(&conn, &resp.study_events)?;
         let rep_reviews = apply_rep_reviews(&conn, &resp.rep_reviews)?;
-        let study_focus = apply_study_focus(&conn, &resp.study_focus)?;
         let study_sessions = apply_study_sessions(&conn, &resp.study_sessions)?;
         // Wochenbudget und Trainingstage können vom anderen Gerät kommen ·
         // der laufende Einstellungs-Zustand muss ihnen sofort folgen, sonst
@@ -261,7 +259,6 @@ pub async fn sync_now(app: tauri::AppHandle) -> Result<SyncSummary, String> {
             study_merged: study_templates
                 + study_events
                 + rep_reviews
-                + study_focus
                 + study_sessions
                 + prefs,
         })

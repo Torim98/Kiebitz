@@ -875,19 +875,6 @@ export default function SettingsPage({
                 className={`mt-2 ${inputCls}`}
               />
             </Field>
-            <Field label={t("set.focusCycle")}>
-              <select
-                value={draft.focus_cycle_days}
-                onChange={(e) => patch({ focus_cycle_days: Number(e.target.value) })}
-                className={inputCls}
-              >
-                {[7, 14, 28].map((days) => (
-                  <option key={days} value={days}>
-                    {t("set.focusCycleDays", { n: days })}
-                  </option>
-                ))}
-              </select>
-            </Field>
             <Field label={t("set.goalDate")}>
               <input
                 type="date"
@@ -1335,18 +1322,8 @@ export default function SettingsPage({
       summary: t("set.updatesSummary"),
       content:
         desktop && draft ? (
-          playStore ? (
             <>
-              <span className="text-[12px] text-ink3">
-                {t("set.updateCurrent", { v: backend.info?.version ?? "?" })}
-              </span>
-              <p className="mt-3 text-[12px] leading-relaxed text-ink3">
-                {t("set.updatePlayNote")}
-              </p>
-            </>
-          ) : (
-            <>
-              {!mobile && (
+              {!mobile && !playStore && (
                 <label className="flex cursor-pointer items-center gap-3">
                   <input
                     type="checkbox"
@@ -1393,13 +1370,24 @@ export default function SettingsPage({
                 >
                   {updCheck.available ? (
                     <div className="flex flex-col gap-2">
-                      <span>{t("set.updateAvailable", { v: updCheck.available })}</span>
+                      <span>
+                        {playStore
+                          ? t("set.updatePlayAvailable")
+                          : t("set.updateAvailable", { v: updCheck.available })}
+                      </span>
                       {updCheck.notes && (
                         <span className="whitespace-pre-wrap text-[12px] text-ink2">{updCheck.notes}</span>
                       )}
                       <div>
                         <Button primary onClick={runUpdateInstall}>
-                          <Download size={14} /> {t(mobile ? "set.updateInstallMobile" : "set.updateInstall")}
+                          <Download size={14} />{" "}
+                          {t(
+                            playStore
+                              ? "set.updatePlayInstall"
+                              : mobile
+                                ? "set.updateInstallMobile"
+                                : "set.updateInstall"
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -1409,10 +1397,15 @@ export default function SettingsPage({
                 </div>
               )}
               <p className="mt-3 text-[12px] leading-relaxed text-ink3">
-                {t(mobile ? "set.updateMobileNote" : "set.autoUpdateNote")}
+                {t(
+                  playStore
+                    ? "set.updatePlayNote"
+                    : mobile
+                      ? "set.updateMobileNote"
+                      : "set.autoUpdateNote"
+                )}
               </p>
             </>
-          )
         ) : (
           desktopOnly
         ),

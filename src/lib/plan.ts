@@ -151,8 +151,6 @@ export interface Prescription {
   doseKey: Key | null;
   doseParams: Record<string, string | number>;
   action?: FindingAction;
-  /** Kennzahl für die Wirkungsmessung (aus dem Befund übernommen). */
-  metricKey?: string;
 }
 
 /** Empfohlenes Ratingband und die Tagesdosis für den Puzzle-Trainer. */
@@ -293,7 +291,6 @@ function toPrescription(
               maxRating: dose.maxRating,
             }
           : (finding.action ?? { kind: "puzzles" }),
-        metricKey: finding.metricKey,
       };
     case "openings":
       return {
@@ -303,7 +300,6 @@ function toPrescription(
         doseKey: "plan.doseOpenings",
         doseParams: { m: perSession, d: trainingDays },
         action: finding.action ?? { kind: "repertoire" },
-        metricKey: finding.metricKey,
       };
     case "endgames":
       return {
@@ -315,7 +311,6 @@ function toPrescription(
         doseKey: "plan.doseEndgames",
         doseParams: { m: Math.max(15, perSession), n: Math.min(3, Math.max(1, trainingDays - 3)) },
         action: finding.action ?? { kind: "endgame" },
-        metricKey: finding.metricKey,
       };
     case "analysis":
       return {
@@ -325,7 +320,6 @@ function toPrescription(
         doseKey: "plan.doseAnalysis",
         doseParams: { m: perSession },
         action: finding.action ?? { kind: "analysis" },
-        metricKey: finding.metricKey,
       };
     default:
       return {
@@ -335,7 +329,6 @@ function toPrescription(
         doseKey: "plan.dosePlay",
         doseParams: { m: minutes },
         action: finding.action,
-        metricKey: finding.metricKey,
       };
   }
 }

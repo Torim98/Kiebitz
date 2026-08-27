@@ -160,6 +160,9 @@ dependencies {
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
+    // In-App-Updates: Play-Apps dürfen sich nur über Play aktualisieren, also
+    // fragt Kiebitz beim Start hier nach, ob im Store etwas Neueres steht.
+    implementation("com.google.android.play:app-update:2.1.0")
     // Kiebitz Plus auf Android. Google Play verlangt für digitale Inhalte
     // innerhalb der App seinen eigenen Bezahlweg; der Stripe-Checkout bleibt
     // deshalb Desktop und Website vorbehalten.

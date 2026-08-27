@@ -3,9 +3,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { loadLocale, LocaleProvider } from "./lib/i18n";
 import App from "./App";
 
-vi.mock("./lib/backend", () => ({
-  useBackendInfo: () => ({ mode: "desktop", info: { platform: "android", version: "0.5.2" } }),
+const mocks = vi.hoisted(() => ({
+  backend: {
+    mode: "desktop",
+    info: { platform: "android", version: "0.5.2" },
+  } as { mode: string; info: Record<string, unknown> },
+  checkUpdate: vi.fn(),
+  installUpdate: vi.fn(),
 }));
+
+vi.mock("./lib/backend", () => ({ useBackendInfo: () => mocks.backend }));
 vi.mock("./lib/db", () => ({ dbStats: () => new Promise(() => {}) }));
 vi.mock("./lib/settings", () => ({
   // Diese Navigationstests brauchen keine asynchron geladenen Einstellungen.
@@ -20,7 +27,8 @@ vi.mock("./lib/syncManager", () => ({
   useSyncStatus: () => ({ active: false, phase: "idle", lastSync: 0 }),
 }));
 vi.mock("./lib/updater", () => ({
-  installUpdate: vi.fn(),
+  checkUpdate: mocks.checkUpdate,
+  installUpdate: mocks.installUpdate,
   onUpdateAvailable: () => Promise.resolve(() => {}),
   onUpdateState: () => Promise.resolve(() => {}),
 }));
@@ -47,6 +55,11 @@ vi.mock("./pages/Settings", () => ({ default: () => <div>Settings</div> }));
 const realMatchMedia = window.matchMedia;
 
 beforeEach(async () => {
+  mocks.backend = { mode: "desktop", info: { platform: "android", version: "0.5.2" } };
+  mocks.checkUpdate.mockReset();
+  mocks.checkUpdate.mockRejectedValue(new Error("kein Backend"));
+  mocks.installUpdate.mockReset();
+  mocks.installUpdate.mockResolvedValue(undefined);
   // Ab Werk startet die App auf Englisch; hier werden deutsche Labels geprüft.
   localStorage.setItem("kiebitz.locale", "de");
   await loadLocale("de");
@@ -216,5 +229,39 @@ describe("back navigation", () => {
 
     window.history.back();
     await waitFor(() => expect(pageTitle()).toBe("Dashboard"));
+  });
+});
+
+describe("Play-Updates", () => {
+  // Andere Android-Apps sagen beim Start, wenn im Store etwas Neueres steht ·
+  // Kiebitz tut das jetzt auch, und der Knopf übergibt an Play.
+  it("reports a Play Store update after the start and hands over to Play", async () => {
+    mocks.backend = {
+      mode: "desktop",
+      info: { platform: "android", version: "0.5.2", distribution: "play-store" },
+    };
+    mocks.checkUpdate.mockResolvedValue({ current: "0.5.2", available: "42", notes: null });
+
+    await act(async () => {
+      render(<LocaleProvider><App /></LocaleProvider>);
+    });
+
+    // Der Versionscode von Play ist keine Versionsnummer · der Hinweis nennt
+    // deshalb keine.
+    const notice = await screen.findByText("Im Play Store steht eine neuere Version von Kiebitz.");
+    expect(notice).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Jetzt aktualisieren" }));
+    expect(mocks.installUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet on a sideloaded build · there the backend asks GitHub", async () => {
+    mocks.checkUpdate.mockResolvedValue({ current: "0.5.2", available: "0.6.0", notes: null });
+
+    await act(async () => {
+      render(<LocaleProvider><App /></LocaleProvider>);
+    });
+
+    expect(mocks.checkUpdate).not.toHaveBeenCalled();
   });
 });

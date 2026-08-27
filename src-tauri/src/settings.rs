@@ -90,8 +90,6 @@ pub struct Settings {
     pub training_days: u32,
     /// Optionales Zieldatum ("YYYY-MM-DD"), z. B. ein Turnier. Leer = keins.
     pub goal_date: String,
-    /// Länge eines Fokus-Zyklus in Tagen (7, 14 oder 28).
-    pub focus_cycle_days: u32,
     /// Wurde die Ersteinrichtung durchlaufen? Steuert das Onboarding.
     pub onboarded: bool,
     /// Pseudonyme Nutzungsstatistik · ab Werk an, jederzeit abschaltbar.
@@ -220,7 +218,6 @@ impl Default for Settings {
             weekly_minutes: 0,
             training_days: 0,
             goal_date: String::new(),
-            focus_cycle_days: 14,
             onboarded: false,
             // Die Statistik ist ab Werk an · sonst zählt sie nur die Neugierigen.
             analytics_enabled: true,
@@ -233,7 +230,7 @@ pub struct SettingsState(pub Mutex<Settings>);
 
 // ── Trainingsprogramm: geteilt statt gerätelokal ────────────────────────────
 //
-// Wochenbudget, Trainingstage, Zieldatum und Zykluslänge beschreiben *einen*
+// Wochenbudget, Trainingstage und Zieldatum beschreiben *einen*
 // Trainingsplan, nicht die Einrichtung eines Geräts. Solange sie in der
 // settings.json lagen, rechnete jedes Gerät mit einem anderen Wochenziel — der
 // Desktop mit 84 Minuten, das Handy mit 114, beide aus ihrer eigenen Historie
@@ -241,15 +238,14 @@ pub struct SettingsState(pub Mutex<Settings>);
 // liegen sie jetzt in `study_prefs` und reisen mit dem Sync.
 //
 // Die `Settings`-Struktur behält die Felder: die Oberfläche kennt weiter genau
-// eine Einstellungsseite, und nur diese Datei weiß, dass vier Werte woanders
+// eine Einstellungsseite, und nur diese Datei weiß, dass drei Werte woanders
 // zu Hause sind.
 
 fn pref_value(settings: &Settings, key: &str) -> String {
     match key {
         "weekly_minutes" => settings.weekly_minutes.to_string(),
         "training_days" => settings.training_days.to_string(),
-        "goal_date" => settings.goal_date.clone(),
-        _ => settings.focus_cycle_days.to_string(),
+        _ => settings.goal_date.clone(),
     }
 }
 
@@ -258,7 +254,6 @@ fn apply_pref(settings: &mut Settings, key: &str, value: &str) {
         "weekly_minutes" => settings.weekly_minutes = value.parse().unwrap_or(0),
         "training_days" => settings.training_days = value.parse().unwrap_or(0),
         "goal_date" => settings.goal_date = value.to_string(),
-        "focus_cycle_days" => settings.focus_cycle_days = value.parse().unwrap_or(14),
         _ => {}
     }
 }
@@ -310,7 +305,6 @@ pub fn refresh_study_prefs(app: &tauri::AppHandle, conn: &Connection) -> bool {
     before.weekly_minutes != settings.weekly_minutes
         || before.training_days != settings.training_days
         || before.goal_date != settings.goal_date
-        || before.focus_cycle_days != settings.focus_cycle_days
 }
 
 /// Oberflächensprachen · muss mit LOCALES in src/lib/i18n.tsx übereinstimmen.
@@ -342,11 +336,6 @@ fn normalize(mut s: Settings) -> Settings {
     }
     s.training_days &= 0b111_1111;
     s.goal_date = normalize_day(&s.goal_date);
-    s.focus_cycle_days = match s.focus_cycle_days {
-        7 => 7,
-        28 => 28,
-        _ => 14,
-    };
     s.cc_user = s.cc_user.trim().to_string();
     s.li_user = s.li_user.trim().to_string();
     s.display_name = s.display_name.trim().to_string();

@@ -762,12 +762,6 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
     // löscht sich die Vergangenheit selbst, sobald eine Karte erneut drankommt.
     // Ein Verlauf über Wochen braucht ein append-only Log · dieselbe Bauart wie
     // `puzzle_attempts`, das der Sync bereits konfliktfrei vereinigt.
-    //
-    // `study_focus` speichert ausschließlich die *Absicht* (worauf trainiert
-    // wird, ab wann, mit welchem Ziel). Messwerte stehen bewusst nicht darin:
-    // alle Rohdaten tragen Zeitstempel, also lässt sich jede Kennzahl für jedes
-    // Fenster neu rechnen. Gespeicherte Momentaufnahmen wären nach Nachimport,
-    // neuer Auto-Analyse oder Gerätesync falsch, berechnete bleiben richtig.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rep_review_log (
             id       INTEGER PRIMARY KEY,
@@ -779,26 +773,20 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
          );
          CREATE INDEX IF NOT EXISTS idx_rep_review_log_ts ON rep_review_log(ts);
          CREATE UNIQUE INDEX IF NOT EXISTS idx_rep_review_log_key
-           ON rep_review_log(side, path, ts);
-
-         CREATE TABLE IF NOT EXISTS study_focus (
-            id           INTEGER PRIMARY KEY,
-            sync_key     TEXT NOT NULL DEFAULT '',
-            area         TEXT NOT NULL,
-            metric_key   TEXT NOT NULL,
-            label_params TEXT NOT NULL DEFAULT '{}',
-            target       REAL,
-            cycle_days   INTEGER NOT NULL DEFAULT 14,
-            start_ts     INTEGER NOT NULL,
-            end_ts       INTEGER NOT NULL DEFAULT 0,
-            status       TEXT NOT NULL DEFAULT 'active',
-            created_ts   INTEGER NOT NULL DEFAULT 0,
-            updated_ts   INTEGER NOT NULL DEFAULT 0,
-            deleted      INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE INDEX IF NOT EXISTS idx_study_focus_status ON study_focus(status, start_ts);",
+           ON rep_review_log(side, path, ts);",
     )
     .map_err(|e| format!("Trainingsprogramm-Schema fehlgeschlagen: {e}"))?;
+
+    // Migration v19: Fokus-Zyklen entfernt.
+    //
+    // `study_focus` hielt die Absicht „ich arbeite jetzt an X", aus der eine
+    // Vorher/Nachher-Messung wurde. Der Coach nennt seine Baustellen inzwischen
+    // von selbst und rechnet über ein Fenster, das der Spielhäufigkeit folgt ·
+    // damit war der von Hand gesetzte Zyklus ein zweiter Weg zum selben Ziel,
+    // der gepflegt werden wollte. Die Tabelle trug nur diese Absicht, keine
+    // Messwerte; mit der Funktion verschwindet auch ihr Inhalt.
+    conn.execute_batch("DROP TABLE IF EXISTS study_focus;")
+        .map_err(|e| format!("Fokus-Tabelle konnte nicht entfernt werden: {e}"))?;
 
     // Migration v16: gemessene Trainingszeit.
     //
@@ -828,12 +816,6 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
            ON study_sessions(start_ts);",
     )
     .map_err(|e| format!("Sitzungs-Schema fehlgeschlagen: {e}"))?;
-    conn.execute_batch(
-        "UPDATE study_focus
-           SET sync_key = 'focus-' || created_ts || '-' || id
-         WHERE sync_key = '';",
-    )
-    .map_err(|e| format!("Fokus-Sync-Migration fehlgeschlagen: {e}"))?;
 
     // Einmaliger Backfill des Wiederholungslogs aus dem FSRS-Zustand. Das
     // rekonstruiert nur die jeweils letzte Wiederholung je Knoten — mehr gibt
@@ -954,12 +936,7 @@ pub struct StudyPref {
 
 /// Die Namen, die zwischen Geräten wandern. Bewusst eine feste Liste: was hier
 /// nicht steht, bleibt gerätelokal.
-pub const STUDY_PREF_KEYS: [&str; 4] = [
-    "weekly_minutes",
-    "training_days",
-    "goal_date",
-    "focus_cycle_days",
-];
+pub const STUDY_PREF_KEYS: [&str; 3] = ["weekly_minutes", "training_days", "goal_date"];
 
 pub fn study_pref_get(conn: &Connection, key: &str) -> Option<String> {
     conn.query_row(

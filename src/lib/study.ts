@@ -286,38 +286,6 @@ export const AREA_COLOR: Record<Area, string> = {
   analysis: "var(--color-cc)",
 };
 
-/** Wählbare Zykluslängen in Tagen. */
-export const CYCLE_DAYS = [7, 14, 28] as const;
-
-/**
- * Ein Fokus-Zyklus. Gespeichert wird nur die Absicht · Baseline und Wirkung
- * werden aus den Rohdaten neu gerechnet, damit sie nach Nachimport, neuer
- * Analyse oder Gerätesync noch stimmen.
- */
-export interface StudyFocus {
-  id: number;
-  area: Area;
-  /** Kennzahl aus `study_metrics`, an der die Wirkung gemessen wird. */
-  metric_key: string;
-  /** JSON mit den Parametern für die Beschriftung (Motiv, Eröffnung, …). */
-  label_params: string;
-  target: number | null;
-  cycle_days: number;
-  start_ts: number;
-  /** 0, solange der Zyklus läuft. */
-  end_ts: number;
-  status: "active" | "done" | "dropped";
-}
-
-export interface StudyFocusInput {
-  id?: number;
-  area: Area;
-  metric_key: string;
-  label_params?: string;
-  target?: number | null;
-  cycle_days?: number;
-}
-
 export interface AreaLoad {
   area: Area;
   items: number;
@@ -334,8 +302,6 @@ export interface LoadDay {
 }
 
 export interface TrainingProgram {
-  focuses: StudyFocus[];
-  history: StudyFocus[];
   load_28d: AreaLoad[];
   days: LoadDay[];
   /** Aus den letzten acht Wochen abgeleitetes Wochenbudget in Minuten. */
@@ -344,17 +310,6 @@ export interface TrainingProgram {
 
 export function trainingProgram(days?: number): Promise<TrainingProgram> {
   return invoke<TrainingProgram>("training_program", { days: days ?? null });
-}
-
-export function setStudyFocus(focus: StudyFocusInput): Promise<StudyFocus> {
-  return invoke<StudyFocus>("set_study_focus", { focus }).then((result) => {
-    emitDataChange("study");
-    return result;
-  });
-}
-
-export function closeStudyFocus(focusId: number, status: "done" | "dropped"): Promise<void> {
-  return invoke<void>("close_study_focus", { focusId, status }).then(() => emitDataChange("study"));
 }
 
 /** Minuten eines Tages über alle Bereiche. */

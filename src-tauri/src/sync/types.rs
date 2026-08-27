@@ -230,24 +230,6 @@ pub struct SyncRepReview {
     pub grade: i64,
 }
 
-/// Ein Fokus-Zyklus. Enthält nur die Absicht; Messwerte werden auf jedem Gerät
-/// aus den Rohdaten neu gerechnet.
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SyncStudyFocus {
-    pub sync_key: String,
-    pub area: String,
-    pub metric_key: String,
-    pub label_params: String,
-    pub target: Option<f64>,
-    pub cycle_days: i64,
-    pub start_ts: i64,
-    pub end_ts: i64,
-    pub status: String,
-    pub created_ts: i64,
-    pub updated_ts: i64,
-    pub deleted: bool,
-}
-
 /// Eine gemessene Trainingssitzung.
 ///
 /// Anders als Puzzle-Versuche wächst eine Sitzung nach dem Anlegen weiter ·
@@ -283,8 +265,6 @@ pub struct SyncRequest {
     pub study_events: Vec<SyncStudyEvent>,
     #[serde(default)]
     pub rep_reviews: Vec<SyncRepReview>,
-    #[serde(default)]
-    pub study_focus: Vec<SyncStudyFocus>,
     /// Ältere Gegenstellen kennen das Feld nicht · dort bleibt die gemessene
     /// Zeit auf dem Gerät, auf dem sie angefallen ist.
     #[serde(default)]
@@ -316,8 +296,6 @@ pub struct SyncResponse {
     pub study_events: Vec<SyncStudyEvent>,
     #[serde(default)]
     pub rep_reviews: Vec<SyncRepReview>,
-    #[serde(default)]
-    pub study_focus: Vec<SyncStudyFocus>,
     /// Ältere Gegenstellen kennen das Feld nicht · dort bleibt die gemessene
     /// Zeit auf dem Gerät, auf dem sie angefallen ist.
     #[serde(default)]

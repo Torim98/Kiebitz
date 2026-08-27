@@ -27,6 +27,51 @@ describe("Befund-Engine", () => {
     expect(ids).toContain("format-mismatch");
   });
 
+  // Der eigentliche Sinn des Fensters: Was vor Monaten schieflief, darf einen
+  // Vorschlag nicht am Leben halten, wenn es zuletzt in Ordnung war.
+  it("liest die kurzfristigen Befunde aus dem Fenster, nicht aus der Historie", () => {
+    const deep = demoDeepInsights();
+    deep.content.conversion.games = 40;
+    deep.content.conversion.score_pct = 40;
+
+    const recent = demoDeepInsights();
+    recent.content.conversion.games = 40;
+    recent.content.conversion.score_pct = 92;
+    deep.recent = recent;
+
+    expect(buildFindings(deep, live).map((f) => f.id)).not.toContain("conversion");
+
+    // Ohne Fenster (zu wenig Material) zählt wieder die ganze Historie.
+    deep.recent = null;
+    expect(buildFindings(deep, live).map((f) => f.id)).toContain("conversion");
+  });
+
+  // Der Fortschrittsblock ist die Ausnahme · über drei Wochen gibt es keine
+  // Monatsreihe, aus der sich ein Trend ablesen ließe.
+  it("liest den Fortschritt weiter aus der ganzen Historie", () => {
+    const deep = demoDeepInsights();
+    deep.progress.accuracy_delta = -4;
+    deep.progress.rating_delta = -10;
+    deep.progress.months = Array.from({ length: 8 }, (_, index) => ({
+      month: `2026-0${index + 1}`,
+      games: 30,
+      score_pct: 50,
+      accuracy: 80,
+      rating: 1500,
+      blunders_per_100: 3,
+      puzzle_attempts: 0,
+      puzzle_solved: 0,
+    }));
+
+    // Das Fenster kennt nur einen Monat · trotzdem steht der Befund da.
+    const recent = demoDeepInsights();
+    recent.progress.accuracy_delta = null;
+    recent.progress.months = [];
+    deep.recent = recent;
+
+    expect(buildFindings(deep, live).map((f) => f.id)).toContain("progress-down");
+  });
+
   it("sortiert nach Schweregrad", () => {
     const findings = buildFindings(demoDeepInsights(), live);
     const severities = findings.map((f) => f.severity);

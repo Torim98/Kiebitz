@@ -59,8 +59,6 @@ export interface Settings {
   training_days: number;
   /** Optionales Zieldatum "YYYY-MM-DD" (leer = keins). */
   goal_date: string;
-  /** Länge eines Fokus-Zyklus in Tagen: 7, 14 oder 28. */
-  focus_cycle_days: number;
   /** Wurde die Ersteinrichtung durchlaufen? */
   onboarded: boolean;
   /** Pseudonyme Nutzungsstatistik (ab Werk an, hier abschaltbar). */

@@ -394,6 +394,20 @@ export interface OpeningInsights {
   games: number;
 }
 
+/**
+ * Zeitraum, aus dem die Befunde gerechnet sind.
+ *
+ * Die Reiter zeigen die ganze Historie, die Befunde nur diesen Ausschnitt ·
+ * seine Länge richtet sich danach, wie oft gespielt wird (siehe `load.rs`).
+ */
+export interface FindingWindow {
+  /** Länge in Tagen · 0 heißt „ganze Historie". */
+  days: number;
+  from_ts: number;
+  games: number;
+  analyzed: number;
+}
+
 export interface DeepInsights {
   coverage: Coverage;
   time: TimeInsights;
@@ -405,7 +419,14 @@ export interface DeepInsights {
   formats: FormatInsights;
   openings: OpeningInsights;
   spotlight: Spotlight | null;
+  window: FindingWindow;
+  /**
+   * Dieselbe Auswertung über die jüngsten Partien · `null`, wenn das Fenster
+   * ohnehin die ganze Historie umfasst.
+   */
+  recent: DeepInsights | null;
 }
+
 
 let deepInsightsRequest: Promise<DeepInsights> | null = null;
 

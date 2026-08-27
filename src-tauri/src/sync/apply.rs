@@ -761,86 +761,6 @@ fn apply_study_sessions(
     Ok(merged)
 }
 
-fn apply_study_focus(conn: &Connection, focuses: &[SyncStudyFocus]) -> Result<usize, String> {
-    let mut merged = 0usize;
-    let mut find_focus = conn
-        .prepare("SELECT id, updated_ts FROM study_focus WHERE sync_key = ?1")
-        .map_err(|e| e.to_string())?;
-    let mut update_focus = conn
-        .prepare(
-            "UPDATE study_focus
-             SET area=?1, metric_key=?2, label_params=?3, target=?4, cycle_days=?5,
-                 start_ts=?6, end_ts=?7, status=?8, created_ts=?9, updated_ts=?10,
-                 deleted=?11
-             WHERE id=?12",
-        )
-        .map_err(|e| e.to_string())?;
-    let mut insert_focus = conn
-        .prepare(
-            "INSERT INTO study_focus
-             (sync_key, area, metric_key, label_params, target, cycle_days,
-              start_ts, end_ts, status, created_ts, updated_ts, deleted)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-        )
-        .map_err(|e| e.to_string())?;
-    for focus in focuses {
-        let existing = find_focus.query_row(
-            params![focus.sync_key],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-        );
-        match existing {
-            Ok((id, updated_ts)) if focus.updated_ts > updated_ts => {
-                merged += update_focus
-                    .execute(
-                        params![
-                            focus.area,
-                            focus.metric_key,
-                            focus.label_params,
-                            focus.target,
-                            focus.cycle_days,
-                            focus.start_ts,
-                            focus.end_ts,
-                            focus.status,
-                            focus.created_ts,
-                            focus.updated_ts,
-                            focus.deleted as i64,
-                            id
-                        ],
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(_) => {}
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                merged += insert_focus
-                    .execute(
-                        params![
-                            focus.sync_key,
-                            focus.area,
-                            focus.metric_key,
-                            focus.label_params,
-                            focus.target,
-                            focus.cycle_days,
-                            focus.start_ts,
-                            focus.end_ts,
-                            focus.status,
-                            focus.created_ts,
-                            focus.updated_ts,
-                            focus.deleted as i64
-                        ],
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
-            Err(error) => return Err(error.to_string()),
-        }
-    }
-    Ok(merged)
-}
-
-/// Einstellungen des Trainingsprogramms vereinigen · der jüngere Zeitstempel
-/// gewinnt, gleich alte Werte ändern nichts.
-///
-/// Unbekannte Schlüssel werden verworfen: was ein neueres Gerät teilt, dieses
-/// aber nicht kennt, gehört nicht blind in die eigene Tabelle.
 fn apply_prefs(conn: &Connection, prefs: &[SyncPref]) -> Result<usize, String> {
     let mut merged = 0usize;
     for pref in prefs {
@@ -878,7 +798,6 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
     apply_study_templates(conn, &req.study_templates)?;
     apply_study_events(conn, &req.study_events)?;
     apply_rep_reviews(conn, &req.rep_reviews)?;
-    apply_study_focus(conn, &req.study_focus)?;
     apply_study_sessions(conn, &req.study_sessions)?;
     apply_prefs(conn, &req.prefs)?;
     Ok(SyncResponse {
@@ -893,7 +812,6 @@ fn handle_sync(conn: &mut Connection, req: &SyncRequest) -> Result<SyncResponse,
         study_templates: collect_study_templates(conn, req.since)?,
         study_events: collect_study_events(conn, req.since)?,
         rep_reviews: collect_rep_reviews(conn, req.since)?,
-        study_focus: collect_study_focus(conn, req.since)?,
         study_sessions: collect_study_sessions(conn, req.since)?,
         prefs: collect_prefs(conn)?,
     })

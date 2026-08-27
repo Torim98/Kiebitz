@@ -4,6 +4,120 @@
 mod tests {
     use super::*;
 
+    /// Bauteile für das Befundfenster: `count` Partien im Abstand
+    /// `every_days`, die letzte heute.
+    fn window_games(count: usize, every_days: i64, now: i64) -> Vec<RawGame> {
+        (0..count)
+            .map(|index| RawGame {
+                id: index as i64 + 1,
+                played_ts: now - (count as i64 - 1 - index as i64) * every_days * 86_400,
+                source: "lichess".into(),
+                time_class: "blitz".into(),
+                color: "white".into(),
+                result: "win".into(),
+                moves: "e4 e5".into(),
+                clocks: String::new(),
+                time_control: "300+0".into(),
+                my_elo: 1500,
+                opp_elo: 1500,
+                accuracy: None,
+                opening: String::new(),
+            })
+            .collect()
+    }
+
+    fn one_eval() -> Vec<Ev> {
+        vec![Ev {
+            ply: 1,
+            san: "e4".into(),
+            eval_cp: Some(20),
+            mate_in: None,
+            best_uci: String::new(),
+            judgment: String::new(),
+            phase: "opening".into(),
+        }]
+    }
+
+    /// Jede `every`-te Partie ist analysiert, der Rest nicht.
+    fn views_every<'a>(
+        games: &'a [RawGame],
+        evals: &'a [Ev],
+        none: &'a [Ev],
+        every: usize,
+    ) -> Vec<GameView<'a>> {
+        games
+            .iter()
+            .enumerate()
+            .map(|(index, game)| GameView {
+                raw: game,
+                evals: if index % every == 0 { evals } else { none },
+                wp: Vec::new(),
+                clocks: None,
+                book_departure: None,
+                book_plies: 0,
+            })
+            .collect()
+    }
+
+    /// Wer mehrmals täglich spielt, bekommt das kürzeste Fenster · drei Wochen
+    /// sind bei dieser Frequenz längst genug Material.
+    #[test]
+    fn frequent_players_get_the_short_window() {
+        let now = 1_800_000_000;
+        let evals = one_eval();
+        let none: Vec<Ev> = Vec::new();
+        // 180 Partien in 60 Tagen · drei am Tag.
+        let mut games = window_games(60, 1, now);
+        games.extend(window_games(60, 1, now));
+        games.extend(window_games(60, 1, now));
+        games.sort_by_key(|g| g.played_ts);
+        let views = views_every(&games, &evals, &none, 1);
+        let window = finding_window(&views, now);
+        assert_eq!(window.days, 21);
+        let start = window.start.expect("Fenster gesetzt");
+        assert!(views.len() - start >= 40, "genug Partien im Fenster");
+    }
+
+    /// Wer ein paar Mal im Monat spielt, bekommt ein Vierteljahr · sonst
+    /// stünden in den Befunden acht Partien.
+    #[test]
+    fn occasional_players_get_the_long_window() {
+        let now = 1_800_000_000;
+        let evals = one_eval();
+        let none: Vec<Ev> = Vec::new();
+        let games = window_games(40, 5, now);
+        let views = views_every(&games, &evals, &none, 1);
+        let window = finding_window(&views, now);
+        assert_eq!(window.days, 91);
+    }
+
+    /// Zu wenig Material selbst im längsten Fenster · dann bleibt es bei der
+    /// ganzen Historie, statt einen Befund aus fünf Partien zu bauen.
+    #[test]
+    fn a_thin_history_keeps_the_whole_span() {
+        let now = 1_800_000_000;
+        let evals = one_eval();
+        let none: Vec<Ev> = Vec::new();
+        let games = window_games(20, 40, now);
+        let views = views_every(&games, &evals, &none, 1);
+        let window = finding_window(&views, now);
+        assert_eq!(window.days, 0);
+        assert!(window.start.is_none());
+    }
+
+    /// Nicht analysierte Partien tragen zu den Befunden nichts bei · sie dürfen
+    /// das Fenster deshalb nicht künstlich verkürzen.
+    #[test]
+    fn unanalyzed_games_do_not_shrink_the_window() {
+        let now = 1_800_000_000;
+        let evals = one_eval();
+        let none: Vec<Ev> = Vec::new();
+        // Täglich gespielt, aber nur jede fünfte Partie ist analysiert.
+        let games = window_games(200, 1, now);
+        assert_eq!(finding_window(&views_every(&games, &evals, &none, 1), now).days, 42);
+        assert_eq!(finding_window(&views_every(&games, &evals, &none, 5), now).days, 91);
+    }
+
     #[test]
     fn parses_time_controls() {
         assert_eq!(parse_time_control("600+5"), Some((600.0, 5.0)));
