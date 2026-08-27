@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { moveTargetStyles, selectionStyles } from "../lib/boardMoves";
+import { lastMoveStyles, moveTargetStyles, selectionStyles } from "../lib/boardMoves";
 import { soundsForTransition } from "../lib/boardSound";
 import { playBoardSound } from "../lib/sound";
 
@@ -66,6 +66,13 @@ type BoardProps = {
   onPieceDrop?: (from: string, to: string) => boolean;
   onSquareClick?: (square: string) => void;
   squareStyles?: Record<string, CSSProperties>;
+  /**
+   * Der Zug, der zur gezeigten Stellung führte · seine beiden Felder werden
+   * hell hinterlegt. Die Seiten reichen ihn herein, statt ihn aus dem
+   * Stellungswechsel zu erraten: Wer zurückblättert, will den Zug markiert
+   * sehen, der zu dieser Stellung führte, und nicht den, der von ihr wegführt.
+   */
+  lastMove?: { from: string; to: string } | null;
   orientation?: "white" | "black";
   boardId: string;
   shake?: boolean;
@@ -126,6 +133,7 @@ type BoardSurfaceProps = {
   orientation: "white" | "black";
   dragSource: string | null;
   squareStyles: Record<string, CSSProperties>;
+  lastMove: { from: string; to: string } | null;
   muted: boolean;
   android: boolean;
   hasDropHandler: boolean;
@@ -152,6 +160,7 @@ const BoardSurface = memo(
     orientation,
     dragSource,
     squareStyles,
+    lastMove,
     muted,
     android,
     hasDropHandler,
@@ -161,9 +170,15 @@ const BoardSurface = memo(
     onPieceDragBegin,
     onPieceDragEnd,
   }: BoardSurfaceProps) {
+    // Der letzte Zug liegt zuunterst: Auswahl, Zugpunkte und alles, was eine
+    // Seite selbst markiert, sollen ihn überschreiben können.
     const combinedStyles = useMemo(
-      () => ({ ...selectionStyles(fen, dragSource), ...squareStyles }),
-      [fen, dragSource, squareStyles]
+      () => ({
+        ...lastMoveStyles(lastMove),
+        ...selectionStyles(fen, dragSource),
+        ...squareStyles,
+      }),
+      [fen, dragSource, lastMove, squareStyles]
     );
 
     return (
@@ -195,6 +210,8 @@ const BoardSurface = memo(
     && previous.mouseDrag === next.mouseDrag
     && previous.orientation === next.orientation
     && previous.dragSource === next.dragSource
+    && previous.lastMove?.from === next.lastMove?.from
+    && previous.lastMove?.to === next.lastMove?.to
     && previous.muted === next.muted
     && previous.android === next.android
     && previous.hasDropHandler === next.hasDropHandler
@@ -316,6 +333,7 @@ export default function Board({
   onPieceDrop,
   onSquareClick,
   squareStyles,
+  lastMove = null,
   orientation = "white",
   boardId,
   shake = false,
@@ -667,6 +685,7 @@ export default function Board({
           onPieceDrop={handlePieceDrop}
           onSquareClick={handleSquareClick}
           orientation={orientation}
+          lastMove={lastMove}
           squareStyles={squareStyles ?? EMPTY_STYLES}
           width={w}
         />

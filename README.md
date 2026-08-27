@@ -34,11 +34,13 @@ on your device. Devices sync directly with each other over the local network.
   type) and opens it in one click, planned units complete themselves once the
   measured time covers them, and what a week leaves open carries into the next.
   Focus cycles measure whether the training actually changed anything.
-- **Sharing** — send a position from the analysis board or a puzzle from the
-  trainer: a picture card in Kiebitz' own colours plus a link that opens the
-  position anywhere. The position travels inside the link itself, so nothing is
-  stored on a server; a shared puzzle keeps its solution covered until the
-  person on the other end asks for it.
+- **Sharing** — send a position from the analysis board, a puzzle from the
+  trainer, an opening line from the repertoire or an endgame drill: a picture
+  card in Kiebitz' own colours plus a link that opens the position anywhere.
+  The position travels inside the link itself, so nothing is stored on a
+  server; a shared puzzle keeps its solution covered until the person on the
+  other end asks for it, and its board plays by the rules — only the side to
+  move can be picked up, and every legal target is marked.
 - **Mobile** — Android build with native per-ABI Stockfish and encrypted
   device-to-device LAN sync (QR pairing) with the desktop as hub.
 

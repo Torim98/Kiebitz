@@ -6,6 +6,7 @@ import {
   Lightbulb,
   Loader2,
   RotateCcw,
+  Share2,
   Shuffle,
   SkipForward,
   Trophy,
@@ -22,6 +23,7 @@ import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key } from "../lib/i18n";
 import { endgameMove, endgameRecord, endgameStats, type DrillStat } from "../lib/endgame";
 import Board from "../components/Board";
+import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
@@ -65,10 +67,13 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const [endMsg, setEndMsg] = useState<Key | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  /** Zuletzt gezogener Zug · eigener wie Engine-Antwort, für die Markierung. */
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [hintMove, setHintMove] = useState<string | null>(null);
   const [hintLoading, setHintLoading] = useState(false);
   const [shake, setShake] = useState(false);
   const [stats, setStats] = useState<Record<string, DrillStat>>({});
+  const [sharing, setSharing] = useState<ShareSubject | null>(null);
 
   const chessRef = useRef(new Chess(drill.fen));
   // Läuft eine Engine-Anfrage noch, während der Drill gewechselt wird,
@@ -136,12 +141,13 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     endgameMove(chessRef.current.fen())
       .then((uci) => {
         if (run !== runRef.current) return;
-        chessRef.current.move({
+        const move = chessRef.current.move({
           from: uci.slice(0, 2),
           to: uci.slice(2, 4),
           promotion: uci.length > 4 ? uci[4] : undefined,
         });
         setFen(chessRef.current.fen());
+        setLastMove({ from: move.from, to: move.to });
         if (!checkEnd(d)) setStatus("playing");
       })
       .catch((e) => {
@@ -156,6 +162,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     setDrill(d);
     chessRef.current = new Chess(d.fen);
     setFen(d.fen);
+    setLastMove(null);
     setStatus("playing");
     setEndMsg(null);
     setError(null);
@@ -170,12 +177,14 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     if (status !== "playing") return false;
     const c = chessRef.current;
     if (desktop && c.turn() !== userColor) return false;
+    let move;
     try {
-      c.move({ from, to, promotion: "q" });
+      move = c.move({ from, to, promotion: "q" });
     } catch {
       return false;
     }
     setFen(c.fen());
+    setLastMove({ from: move.from, to: move.to });
     setSelected(null);
     setHintMove(null);
     setError(null);
@@ -226,6 +235,29 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     squareStyles[hintMove.slice(0, 2)] = { boxShadow: "inset 0 0 0 3px #d9a028" };
     squareStyles[hintMove.slice(2, 4)] = { boxShadow: "inset 0 0 0 3px #d9a02888" };
   }
+
+  /**
+   * Das Endspiel, wie es beim Empfänger ankommt.
+   *
+   * Geteilt wird die Ausgangsstellung des Drills und nicht der eigene
+   * Zwischenstand · wie bei einer Aufgabe gibt man das Problem weiter und
+   * nicht die halbe Lösung. Das Ziel steht in der Überschrift: Ohne „Gewinn"
+   * oder „Remis" ist eine Endspielstellung nur ein Haufen Figuren.
+   */
+  const openShare = () => {
+    setSharing({
+      kind: "endgame",
+      fen: drill.fen,
+      orientation: drill.side,
+      title: `${drillText(drill.name, locale)} · ${t(drill.goal === "win" ? "eg.goalWin" : "eg.goalDraw")}`,
+    });
+  };
+
+  const shareButton = (
+    <Button onClick={openShare} className="px-2" title={t("sh.title")}>
+      <Share2 size={14} />
+    </Button>
+  );
 
   const mastered = useMemo(
     () => ENDGAME_DRILLS.filter((d) => (stats[d.id]?.solved ?? 0) > 0).length,
@@ -298,6 +330,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
             boardId="endgame"
             fen={fen}
             width={BOARD_WIDTH}
+            lastMove={lastMove}
             draggable={status === "playing"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
@@ -326,6 +359,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                   {endMsg ? t(endMsg) : ""}
                 </div>
                 <div className="flex gap-2">
+                  {shareButton}
                   <Button onClick={() => start(drill)}>
                     <RotateCcw size={14} /> {t("eg.retry")}
                   </Button>
@@ -355,6 +389,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                       {t("eg.hintMove")}
                     </Button>
                   )}
+                  {shareButton}
                   <Button onClick={() => start(drill)}>
                     <RotateCcw size={14} /> {t("eg.restart")}
                   </Button>
@@ -371,6 +406,8 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               {error}
             </div>
           )}
+
+          {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
         </div>
 
         {/* Aufgabenliste */}

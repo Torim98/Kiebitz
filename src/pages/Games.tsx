@@ -37,7 +37,7 @@ import { useMobileShell } from "../components/MobileShell";
 import MobileSheet from "../components/MobileSheet";
 import TagEditor from "../components/TagEditor";
 import { de, deInt } from "../lib/format";
-import { fenAfter } from "../lib/position";
+import { replaySans } from "../lib/position";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
 const PAGE_SIZE_KEY = "kiebitz.games.pageSize";
@@ -181,8 +181,11 @@ export default function Games({
     ? toUi(selectedRecord, locale)
     : selectedSummary;
 
-  // Schlussstellung der gewählten Partie · einmal für das Vorschaubrett gerechnet.
-  const previewFen = useMemo(() => (selected ? fenAfter(selected.sans) : ""), [selected]);
+  // Schlussstellung der gewählten Partie · einmal für das Vorschaubrett gerechnet,
+  // samt dem Zug, mit dem die Partie endete.
+  const preview = useMemo(() => replaySans(selected ? selected.sans : []), [selected]);
+  const previewFen = selected ? preview.fen : "";
+  const previewLastMove = preview.moves[preview.moves.length - 1] ?? null;
   useEffect(() => {
     if (!selectedSummary?.dbId) {
       setSelectedRecord(null);
@@ -523,6 +526,7 @@ export default function Games({
         boardId="games-preview"
         fen={previewFen}
         width={BOARD_WIDTH}
+        lastMove={previewLastMove}
         orientation={selected.color}
         silent
       />

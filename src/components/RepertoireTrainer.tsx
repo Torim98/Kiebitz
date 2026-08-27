@@ -17,7 +17,7 @@ import { capturedFromFen } from "../lib/captured";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "./ui";
 import { useT } from "../lib/i18n";
-import { fenAfter } from "../lib/position";
+import { fenAfter, replaySans } from "../lib/position";
 import { useBackendInfo } from "../lib/backend";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 
@@ -139,7 +139,9 @@ export default function RepertoireTrainer({
   const item = items?.[idx] ?? null;
   const promptSans = item?.prompt_sans ?? EMPTY_SANS;
   const lineSans = useMemo(() => [...promptSans, ...played], [promptSans, played]);
-  const fen = useMemo(() => fenAfter(lineSans.slice(0, viewPly)), [lineSans, viewPly]);
+  const position = useMemo(() => replaySans(lineSans, viewPly), [lineSans, viewPly]);
+  const fen = position.fen;
+  const lastMove = position.moves[position.moves.length - 1] ?? null;
   const liveFen = useMemo(() => fenAfter(lineSans), [lineSans]);
   /** Steht das Brett auf der Stellung, in der gerade gefragt wird? */
   const atLive = viewPly === lineSans.length;
@@ -393,6 +395,7 @@ export default function RepertoireTrainer({
           boardId="rep-train"
           fen={fen}
           width={BOARD_WIDTH}
+          lastMove={lastMove}
           draggable={state === "ask" && atLive}
           onPieceDrop={tryMove}
           onSquareClick={trainSelection.onSquareClick}

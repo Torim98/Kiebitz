@@ -101,6 +101,49 @@ describe("ShareDialog", () => {
     expect(payload?.fen).toBe(PUZZLE.fen);
   });
 
+  it("names a repertoire line the way the repertoire does, moves and all", async () => {
+    const line: ShareSubject = {
+      kind: "repertoire",
+      fen: "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+      orientation: "white",
+      lastMove: { from: "c7", to: "c5" },
+      line: [{ from: "g1", to: "f3" }],
+      title: "Sizilianisch · Offen",
+    };
+    render(<ShareDialog subject={line} onClose={() => {}} />);
+    // Der Name der Linie steht schon im Feld · niemand tippt ihn ab.
+    expect((screen.getByLabelText(/Überschrift/i) as HTMLInputElement).value)
+      .toBe("Sizilianisch · Offen");
+    expect(screen.getByLabelText(/Buchzüge mitgeben/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    const payload = copiedPayload();
+    expect(payload?.kind).toBe("repertoire");
+    expect(payload?.title).toBe("Sizilianisch · Offen");
+    expect(payload?.line).toEqual([{ from: "g1", to: "f3" }]);
+  });
+
+  it("sends an endgame drill with its goal and nothing to give away", async () => {
+    const drill: ShareSubject = {
+      kind: "endgame",
+      fen: "8/8/4k3/8/8/4K3/4P3/8 w - - 0 1",
+      orientation: "white",
+      title: "Bauernendspiel · Gewinn",
+    };
+    render(<ShareDialog subject={drill} onClose={() => {}} />);
+    expect(screen.getByText(/Schick das Endspiel weiter/i)).toBeTruthy();
+    // Ohne Lösung gibt es auch keinen Schalter, der eine verspräche.
+    expect(screen.queryByLabelText(/mitgeben|mitschicken/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    const payload = copiedPayload();
+    expect(payload?.kind).toBe("endgame");
+    expect(payload?.fen).toBe(drill.fen);
+    expect(payload?.title).toBe("Bauernendspiel · Gewinn");
+  });
+
   it("carries the sender's own heading", async () => {
     render(<ShareDialog subject={PUZZLE} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/Überschrift/i), {

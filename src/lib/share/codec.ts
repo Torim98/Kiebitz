@@ -23,7 +23,17 @@
 /** Aktuelle Formatversion · ältere Nutzlasten bleiben lesbar, neue nicht rückwärts. */
 export const SHARE_VERSION = 1;
 
-export type ShareKind = "analysis" | "puzzle";
+/**
+ * Woher eine geteilte Stellung stammt · sie entscheidet über Aufmacher,
+ * Vorgabetitel und darüber, ob die Fortsetzung verdeckt bleibt.
+ *
+ * Die Reihenfolge ist Teil des Formats: Der Codec schreibt den Index. Neue
+ * Arten kommen deshalb hinten dazu und nie dazwischen · dann liest ein Link
+ * von gestern in jeder Version dieselbe Stellung. Umgekehrt gilt das nicht:
+ * Eine ältere App kennt eine neue Art nicht und meldet den Link als
+ * unlesbar, statt eine falsche Stellung zu zeigen.
+ */
+export type ShareKind = "analysis" | "puzzle" | "repertoire" | "endgame";
 
 /** Ein Zug in der Sprache des Bretts · Felder wie "e2", Umwandlung als Kleinbuchstabe. */
 export interface ShareMove {
@@ -51,8 +61,9 @@ export interface SharePayload {
    */
   lastMove?: ShareMove | null;
   /**
-   * Fortsetzung: die Variante der Analyse oder die Lösung der Aufgabe. Beim
-   * Puzzle bleibt sie auf der Landeseite verdeckt, bis jemand sie sehen will.
+   * Fortsetzung: die Variante der Analyse, die Lösung der Aufgabe oder die
+   * Züge einer Repertoire-Linie. Beim Puzzle bleibt sie auf der Landeseite
+   * verdeckt, bis jemand sie sehen will.
    */
   line?: ShareMove[];
   /** Stockfish-Bewertung der Stellung, sofern sie mitgeteilt werden soll. */
@@ -65,7 +76,7 @@ export interface SharePayload {
   theme?: string;
 }
 
-const KINDS: ShareKind[] = ["analysis", "puzzle"];
+const KINDS: ShareKind[] = ["analysis", "puzzle", "repertoire", "endgame"];
 
 /** Figurenkennungen in der Reihenfolge ihrer Nibble-Codes. */
 const PIECES = "PNBRQKpnbrqk";

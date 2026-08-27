@@ -149,6 +149,27 @@ describe("Board badges", () => {
     expect(latestDrop).toHaveBeenCalledWith("e2", "e4");
   });
 
+  it("marks both squares of the last move, under everything a page marks itself", () => {
+    const view = render(
+      <Board
+        boardId="test"
+        fen={FEN_AFTER_E4}
+        width={400}
+        lastMove={{ from: "e2", to: "e4" }}
+        squareStyles={{ e4: { background: "own" } }}
+      />
+    );
+
+    let styles = boardMock.props?.customSquareStyles as Record<string, { background: string }>;
+    expect(String(styles.e2.background)).toBe("rgba(34, 192, 138, 0.32)");
+    // Was die Seite selbst setzt, schlägt die Markierung.
+    expect(String(styles.e4.background)).toBe("own");
+
+    view.rerender(<Board boardId="test" fen={FEN_AFTER_E4} width={400} />);
+    styles = boardMock.props?.customSquareStyles as Record<string, { background: string }>;
+    expect(styles).toEqual({});
+  });
+
   it("cancels the imperative drag when the position changes", () => {
     const onPieceDrop = vi.fn(() => true);
     const view = render(

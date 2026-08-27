@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { Chess } from "chess.js";
@@ -61,7 +60,7 @@ import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import { de } from "../lib/format";
 import { evalLabel, winProb } from "../lib/evaluation";
-import { fenAfter } from "../lib/position";
+import { replaySans } from "../lib/position";
 import { selectionStyles } from "../lib/boardMoves";
 import {
   clocksAtPly,
@@ -314,9 +313,6 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
   return best ? base + t("an.commentBetter", { san: best }) : base;
 }
 
-/** Ein für alle Mal dasselbe leere Objekt · sonst rechnet das Brett bei jedem Bild neu. */
-const EMPTY_SQUARE_STYLES: Record<string, CSSProperties> = {};
-
 export default function Analysis({
   targetGameId,
   shared = null,
@@ -565,21 +561,24 @@ export default function Analysis({
 
   const openedFen = opened?.fen;
   /**
-   * Der Zug, der zur geteilten Stellung führte · nur an ihrer Ausgangsstellung.
-   * Wer weitergezogen hat, sieht eine andere Stellung, an der die alte
-   * Hervorhebung nichts mehr erklärt.
+   * Stellung und der Zug, der zu ihr führte · in einem Durchgang nachgespielt,
+   * weil das Brett beides zugleich zeigt.
    */
-  const openedHighlight = useMemo(() => {
-    const move = opened?.lastMove;
-    if (!move || ply !== 0 || scratchSans.length > 0 || variation) return EMPTY_SQUARE_STYLES;
-    const mark = { background: "rgba(34, 192, 138, 0.28)" };
-    return { [move.from]: mark, [move.to]: mark };
-  }, [opened, ply, scratchSans.length, variation]);
-  const fen = useMemo(
+  const position = useMemo(
     () => variation
-      ? fenAfter([...sans.slice(0, variation.basePly), ...variation.sans], undefined, openedFen)
-      : fenAfter(sans, ply, openedFen),
+      ? replaySans([...sans.slice(0, variation.basePly), ...variation.sans], undefined, openedFen)
+      : replaySans(sans, ply, openedFen),
     [sans, ply, variation, openedFen]
+  );
+  const fen = position.fen;
+  /**
+   * Der markierte Zug. In der Ausgangsstellung einer geteilten Stellung gibt
+   * es keinen nachgespielten Zug · dort kommt er aus dem Link, denn auch dann
+   * soll zu sehen sein, woher die Stellung kommt.
+   */
+  const boardLastMove = useMemo(
+    () => position.moves[position.moves.length - 1] ?? opened?.lastMove ?? null,
+    [position, opened]
   );
 
   /**
@@ -848,34 +847,18 @@ export default function Analysis({
   /**
    * Was von dieser Stellung nach draußen geht.
    *
-   * Erst beim Klick zusammengebaut und nicht als Memo: Der letzte Zug lässt
-   * sich nur durch Nachspielen der Partie ermitteln, und das lohnt nicht bei
-   * jedem Blättern · nur dann, wenn wirklich jemand teilen will.
-   *
    * Bewusst ohne Spielernamen: Geteilt wird eine Stellung, nicht die Partie
    * zweier Leute, die davon nichts wissen.
    */
   const openShare = () => {
-    const played = variation
-      ? [...sans.slice(0, variation.basePly), ...variation.sans]
-      : sans.slice(0, ply);
-    let lastMove: ShareSubject["lastMove"] = null;
-    try {
-      const chess = new Chess();
-      for (const san of played) chess.move(san);
-      const history = chess.history({ verbose: true });
-      const last = history[history.length - 1];
-      if (last) lastMove = { from: last.from, to: last.to };
-    } catch {
-      // Demo-Daten oder eine Stellung, die sich nicht nachspielen lässt · dann
-      // eben ohne Hervorhebung.
-    }
     const best = nextBestUci;
     setSharing({
       kind: "analysis",
       fen,
       orientation,
-      lastMove,
+      // Derselbe Zug, den auch das Brett hervorhebt · beim Empfänger soll die
+      // Stellung so ankommen, wie sie hier steht.
+      lastMove: boardLastMove,
       line: best ? [{ from: best.slice(0, 2), to: best.slice(2, 4) }] : [],
       eval: liveEval ?? (currentMove
         ? { cp: currentMove.evalCp ?? null, mate: currentMove.mateIn ?? null }
@@ -1082,7 +1065,8 @@ export default function Analysis({
                 draggable={scratch || live}
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
                 onSquareClick={scratch || live ? onBoardSquareClick : undefined}
-                squareStyles={{ ...openedHighlight, ...selectionStyles(fen, scratchSelected) }}
+                lastMove={boardLastMove}
+                squareStyles={selectionStyles(fen, scratchSelected)}
                 arrows={variation || scratch ? liveArrows : previewArrows}
                 badges={currentQuality && currentTarget ? [{
                   square: currentTarget,

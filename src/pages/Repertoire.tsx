@@ -12,6 +12,7 @@ import {
   ListTree,
   Loader2,
   Plus,
+  Share2,
   Shuffle,
   Sparkles,
   Trash2,
@@ -44,13 +45,14 @@ import { useTrainingSession } from "../lib/session";
 import Board from "../components/Board";
 import LiveEngine from "../components/LiveEngine";
 import RepertoireTrainer from "../components/RepertoireTrainer";
+import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useMobileShell } from "../components/MobileShell";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card, Chip } from "../components/ui";
 import { de } from "../lib/format";
 import { errorMessage } from "../lib/errors";
-import { fenAfter } from "../lib/position";
+import { replaySans } from "../lib/position";
 import { isStoreCapture } from "../lib/storeCapture";
 import { batchDataChanges } from "../lib/changes";
 import { CoverageCard, GapsCard } from "./repertoire/RepertoireStats";
@@ -561,8 +563,11 @@ function LiveRepertoire() {
   }, []);
 
   const selected = selectedId != null ? (byId.get(selectedId) ?? null) : null;
+  const [sharing, setSharing] = useState<ShareSubject | null>(null);
   const baseSans = useMemo(() => pathSans(selectedId), [pathSans, selectedId]);
-  const fen = useMemo(() => fenAfter(baseSans), [baseSans]);
+  const position = useMemo(() => replaySans(baseSans), [baseSans]);
+  const fen = position.fen;
+  const lastMove = position.moves[position.moves.length - 1] ?? null;
 
   useEffect(() => {
     setNodeStats(null);
@@ -643,16 +648,42 @@ function LiveRepertoire() {
     </Panel>
   );
 
+  /**
+   * Die Variante, wie sie beim Empfänger ankommt.
+   *
+   * Geteilt wird die Stellung, die auf dem Brett steht, und dazu die Züge, die
+   * im Buch danach kommen · eine Eröffnung ist eine Fortsetzung und keine
+   * Einzelstellung. Der Name der Linie steht schon in der Überschrift, damit
+   * niemand abtippt, was die Seite längst weiß.
+   */
+  const openShare = () => {
+    const line = selectedLine ? replaySans(selectedLine.sans).moves.slice(baseSans.length) : [];
+    setSharing({
+      kind: "repertoire",
+      fen,
+      orientation: selected?.side ?? "white",
+      lastMove,
+      line,
+      title: selectedLine?.name,
+    });
+  };
+
   const boardPane = (
     <div>
       <Board
         boardId="repertoire"
         fen={fen}
         width={BOARD_WIDTH}
+        lastMove={lastMove}
         orientation={selected?.side ?? "white"}
       />
-      <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-        {moveText(baseSans) || t("rep.startPos")}
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
+        <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
+          {moveText(baseSans) || t("rep.startPos")}
+        </span>
+        <Button onClick={openShare} className="shrink-0 px-2" title={t("sh.title")}>
+          <Share2 size={14} />
+        </Button>
       </div>
     </div>
   );
@@ -835,6 +866,8 @@ function LiveRepertoire() {
       ) : (
         <RepertoireGrid tree={treePanel} board={boardPane} details={detailsPane} />
       )}
+
+      {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
     </div>
   );
 }
@@ -1089,7 +1122,9 @@ function AddLine({
     chessRef.current = c;
   }, [sans]);
 
-  const fen = useMemo(() => fenAfter(sans), [sans]);
+  const position = useMemo(() => replaySans(sans), [sans]);
+  const fen = position.fen;
+  const lastMove = position.moves[position.moves.length - 1] ?? null;
 
   // Steht diese Stellung schon woanders im Buch? Entprellt, weil beim
   // schnellen Durchklicken sonst jede Zwischenstellung nachfragt.
@@ -1179,6 +1214,7 @@ function AddLine({
           boardId="rep-add"
           fen={fen}
           width={BOARD_WIDTH}
+          lastMove={lastMove}
           draggable
           onPieceDrop={tryMove}
           onSquareClick={addSelection.onSquareClick}
@@ -1323,7 +1359,9 @@ function DemoRepertoire() {
     setSelectedPly(ply);
   }, []);
   const visibleSans = useMemo(() => node.moveSeq.slice(0, selectedPly + 1), [node, selectedPly]);
-  const fen = useMemo(() => fenAfter(visibleSans), [visibleSans]);
+  const position = useMemo(() => replaySans(visibleSans), [visibleSans]);
+  const fen = position.fen;
+  const lastMove = position.moves[position.moves.length - 1] ?? null;
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
@@ -1338,7 +1376,7 @@ function DemoRepertoire() {
 
   const boardPane = (
     <div>
-      <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} />
+      <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} lastMove={lastMove} />
       <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
         {moveText(visibleSans) || t("rep.startPos")}
       </div>

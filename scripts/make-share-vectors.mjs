@@ -22,7 +22,12 @@ import { encodeShare } from "../src/lib/share/codec.ts";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK = process.argv.includes("--check");
 
-/** Je ein Fall für jeden Teil des Formats · zusammen decken sie jedes Feld ab. */
+/**
+ * Je ein Fall für jeden Teil des Formats · zusammen decken sie jedes Feld ab.
+ *
+ * Angehängt wird, nie umsortiert: Die bereits eingefrorenen Fälle müssen
+ * Zeichen für Zeichen dieselben bleiben, sonst wäre die Prüfung wertlos.
+ */
 const CASES = [
   {
     name: "start position",
@@ -55,6 +60,29 @@ const CASES = [
       ],
       rating: 1720,
       theme: "fork",
+    },
+  },
+  {
+    name: "an opening line from the repertoire",
+    payload: {
+      kind: "repertoire",
+      fen: "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+      orientation: "white",
+      lastMove: { from: "c7", to: "c5" },
+      line: [
+        { from: "g1", to: "f3" },
+        { from: "d7", to: "d6" },
+      ],
+      title: "Sizilianisch · so spiele ich es",
+    },
+  },
+  {
+    name: "an endgame drill with its goal in the title",
+    payload: {
+      kind: "endgame",
+      fen: "8/8/4k3/8/8/4K3/4P3/8 w - - 12 47",
+      orientation: "white",
+      title: "Bauernendspiel · Gewinn",
     },
   },
   {

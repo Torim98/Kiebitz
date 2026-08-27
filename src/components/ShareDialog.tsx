@@ -27,28 +27,69 @@ import {
 } from "lucide-react";
 import { useBackendInfo } from "../lib/backend";
 import { errorMessage } from "../lib/errors";
-import { useI18n } from "../lib/i18n";
+import { useI18n, type Key } from "../lib/i18n";
 import { evalLabel } from "../lib/evaluation";
 import { themeLabel } from "../lib/puzzles";
 import { renderShareCard } from "../lib/share/card";
-import type { ShareEval, ShareMove, SharePayload } from "../lib/share/codec";
+import type { ShareEval, ShareKind, ShareMove, SharePayload } from "../lib/share/codec";
 import { copyImage, copyText, saveImage, shareNative, shareTargets } from "../lib/share/deliver";
 import { shareUrl } from "../lib/share/link";
 import { Button } from "./ui";
 
 /** Was geteilt werden soll · die Seiten reichen ihre Stellung genau so herein. */
 export interface ShareSubject {
-  kind: "analysis" | "puzzle";
+  kind: ShareKind;
   fen: string;
   orientation: "white" | "black";
   /** Zug, der zu dieser Stellung führte · beim Puzzle der Gegnerzug. */
   lastMove?: ShareMove | null;
-  /** Variante der Analyse bzw. Lösung der Aufgabe. */
+  /** Variante der Analyse, Lösung der Aufgabe oder Züge der Repertoire-Linie. */
   line?: ShareMove[];
   eval?: ShareEval | null;
   rating?: number;
   theme?: string;
+  /**
+   * Vorschlag für die Überschrift · der Name der Variante, der Titel des
+   * Drills. Der Absender kann ihn überschreiben, aber er muss ihn nicht
+   * abtippen, nur weil die Seite ihn längst kennt.
+   */
+  title?: string;
 }
+
+/**
+ * Die Wörter, die an der Art hängen. Jede Art bringt ihren Aufmacher, ihren
+ * Vorgabetitel und die Beschriftung des Linien-Schalters mit · dieselbe Reihe
+ * an Texten wie auf der Landeseite, nur hier für den Absender.
+ */
+const KIND_TEXT: Record<
+  ShareKind,
+  { badge: Key; lead: Key; heading: Key; line: Key }
+> = {
+  analysis: {
+    badge: "sh.badgeAnalysis",
+    lead: "sh.leadAnalysis",
+    heading: "sh.defaultAnalysis",
+    line: "sh.optLine",
+  },
+  puzzle: {
+    badge: "sh.badgePuzzle",
+    lead: "sh.leadPuzzle",
+    heading: "sh.defaultPuzzle",
+    line: "sh.optSolution",
+  },
+  repertoire: {
+    badge: "sh.badgeRepertoire",
+    lead: "sh.leadRepertoire",
+    heading: "sh.defaultRepertoire",
+    line: "sh.optVariation",
+  },
+  endgame: {
+    badge: "sh.badgeEndgame",
+    lead: "sh.leadEndgame",
+    heading: "sh.defaultEndgame",
+    line: "sh.optLine",
+  },
+};
 
 function other(orientation: "white" | "black"): "white" | "black" {
   return orientation === "white" ? "black" : "white";
@@ -76,8 +117,9 @@ export default function ShareDialog({
   const backend = useBackendInfo();
   const targets = shareTargets(backend.info?.platform, backend.mode === "desktop");
   const puzzle = subject.kind === "puzzle";
+  const words = KIND_TEXT[subject.kind] ?? KIND_TEXT.analysis;
 
-  const [heading, setHeading] = useState("");
+  const [heading, setHeading] = useState(subject.title?.slice(0, 60) ?? "");
   const [flipped, setFlipped] = useState(false);
   const [withLine, setWithLine] = useState(true);
   const [withEval, setWithEval] = useState(!puzzle);
@@ -116,7 +158,7 @@ export default function ShareDialog({
   );
 
   const url = useMemo(() => shareUrl(payload), [payload]);
-  const defaultHeading = t(puzzle ? "sh.defaultPuzzle" : "sh.defaultAnalysis");
+  const defaultHeading = t(words.heading);
   const shownHeading = heading.trim() || defaultHeading;
   const message = `${shownHeading} · ${t("sh.via")}\n${url}`;
 
@@ -141,7 +183,7 @@ export default function ShareDialog({
         arrow: revealed ? (line.length ? line[0] : null) : null,
         heading: shownHeading,
         chips,
-        badge: t(puzzle ? "sh.badgePuzzle" : "sh.badgeAnalysis"),
+        badge: t(words.badge),
         tagline: t("sh.tagline"),
       })
         .then((blob) => {
@@ -234,7 +276,7 @@ export default function ShareDialog({
               {t("sh.title")}
             </h2>
             <p className="mt-0.5 text-[12px] text-ink3">
-              {t(puzzle ? "sh.leadPuzzle" : "sh.leadAnalysis")}
+              {t(words.lead)}
             </p>
           </div>
           <button
@@ -273,8 +315,7 @@ export default function ShareDialog({
           />
 
           <div className="mt-3 flex flex-col gap-2.5">
-            {line.length > 0 &&
-              toggle(t(puzzle ? "sh.optSolution" : "sh.optLine"), withLine, setWithLine)}
+            {line.length > 0 && toggle(t(words.line), withLine, setWithLine)}
             {line.length > 0 && toggle(t("sh.optReveal"), revealed, setRevealed)}
             {subject.eval && toggle(t("sh.optEval"), withEval, setWithEval)}
             <button

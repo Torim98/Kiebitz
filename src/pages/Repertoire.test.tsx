@@ -47,6 +47,13 @@ vi.mock("../components/LiveEngine", () => ({
     onMove ? <button onClick={() => onMove(mocks.engineMove)}>play engine move</button> : null,
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
+// Der Teilen-Dialog selbst hat eigene Tests · hier zählt nur, was die Seite
+// ihm mitgibt.
+vi.mock("../components/ShareDialog", () => ({
+  default: ({ subject }: { subject: Record<string, unknown> }) => (
+    <div data-testid="share-subject">{JSON.stringify(subject)}</div>
+  ),
+}));
 // Das Brett-Double reicht den Zug durch, den der Test vorher in mocks.drop
 // gelegt hat · so lässt sich ein Zug ohne echtes Drag-and-drop auslösen.
 vi.mock("../components/Board", () => ({
@@ -204,6 +211,29 @@ describe("Repertoire training", () => {
 
     fireEvent.keyDown(sicilian, { key: "End" });
     expect(board.dataset.fen).toBe(fenAfter(["e4", "c5", "Nf3"]));
+  });
+
+  it("shares the position on the board together with the rest of the line", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    const italian = await screen.findByRole("option", { name: "Italian Game: 1.e4 e5 2.Nf3" });
+    fireEvent.click(italian);
+    // Einen Halbzug zurück: geteilt wird, was auf dem Brett steht.
+    fireEvent.keyDown(italian, { key: "ArrowLeft" });
+    fireEvent.click(screen.getByTitle("Stellung teilen"));
+
+    const subject = JSON.parse(screen.getByTestId("share-subject").textContent!);
+    expect(subject.kind).toBe("repertoire");
+    expect(subject.fen).toBe(fenAfter(["e4", "e5"]));
+    expect(subject.lastMove).toEqual({ from: "e7", to: "e5" });
+    // Was das Buch danach spielt, reist mit.
+    expect(subject.line).toEqual([{ from: "g1", to: "f3" }]);
+    expect(subject.title).toBe("Italian Game");
   });
 
   // Welche Variante oben steht, weiß nur der Spieler · deshalb lässt sich die

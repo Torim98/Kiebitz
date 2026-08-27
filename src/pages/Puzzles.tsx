@@ -40,6 +40,7 @@ import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
 import { BOARD_WIDTH } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
+import { moveBetween } from "../lib/position";
 import { Button, Card, Chip, Spark } from "../components/ui";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
@@ -295,6 +296,13 @@ function TrainerView({
   const lastPly = Math.max(0, positionHistory.length - 1);
   const fen = positionHistory[viewPly] ?? puzzle?.fen ?? "";
   const atLive = viewPly === lastPly;
+  // Der Trainer führt Stellungen und keine Zugliste · der markierte Zug ist
+  // der Unterschied zur vorigen Stellung. Das gilt auch beim Zurückblättern:
+  // dort steht der Zug, der zur gezeigten Stellung führte.
+  const lastMove = useMemo(
+    () => (viewPly > 0 ? moveBetween(positionHistory[viewPly - 1], fen) : null),
+    [positionHistory, viewPly, fen]
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -521,6 +529,7 @@ function TrainerView({
             boardId="puzzle"
             fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
             width={BOARD_WIDTH}
+            lastMove={lastMove}
             draggable={status === "playing" && atLive}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}
@@ -835,6 +844,8 @@ function DemoPuzzles() {
 
   const chessRef = useRef(new Chess(puzzle.fen));
   const [fen, setFen] = useState(puzzle.fen);
+  /** Der gelöste Zug bleibt markiert · davor gibt es auf diesem Brett keinen. */
+  const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
 
   const next = () => {
     const n = (idx + 1) % demoPuzzles.length;
@@ -842,6 +853,7 @@ function DemoPuzzles() {
     const p = demoPuzzles[n];
     chessRef.current = new Chess(p.fen);
     setFen(p.fen);
+    setLastMove(null);
     setStatus("open");
     setSelected(null);
   };
@@ -853,6 +865,7 @@ function DemoPuzzles() {
       const move = chess.move({ from, to, promotion: "q" });
       if (move.san === puzzle.solutionSan) {
         setFen(chess.fen());
+        setLastMove({ from: move.from, to: move.to });
         setStatus("solved");
         return true;
       }
@@ -922,6 +935,7 @@ function DemoPuzzles() {
             boardId="puzzle"
             fen={fen}
             width={BOARD_WIDTH}
+            lastMove={lastMove}
             draggable={status !== "solved"}
             onPieceDrop={tryMove}
             onSquareClick={onSquareClick}

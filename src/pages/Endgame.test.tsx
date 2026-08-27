@@ -47,6 +47,13 @@ vi.mock("../components/Board", () => ({
   ),
 }));
 
+// Der Teilen-Dialog hat eigene Tests · hier zählt, was die Seite ihm mitgibt.
+vi.mock("../components/ShareDialog", () => ({
+  default: ({ subject }: { subject: Record<string, unknown> }) => (
+    <div data-testid="share-subject">{JSON.stringify(subject)}</div>
+  ),
+}));
+
 afterEach(() => {
   cleanup();
   engineMove.mockClear();
@@ -60,6 +67,18 @@ describe("Endgame trainer", () => {
     expect(screen.getByTestId("endgame-board").getAttribute("data-fen")).toBe(
       "4k3/8/8/8/8/8/8/R3K3 w - - 0 1"
     );
+  });
+
+  it("shares the drill as it starts, with its goal, not the half-played position", () => {
+    render(<Endgame />);
+    fireEvent.click(screen.getByRole("button", { name: "make move" }));
+
+    fireEvent.click(screen.getByTitle("sh.title"));
+    const subject = JSON.parse(screen.getByTestId("share-subject").textContent!);
+    expect(subject.kind).toBe("endgame");
+    expect(subject.fen).toBe("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+    expect(subject.orientation).toBe("white");
+    expect(subject.title).toBe("Random: rook vs. king · eg.goalWin");
   });
 
   it("keeps a fixed status slot while the engine starts thinking", () => {

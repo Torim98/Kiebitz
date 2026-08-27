@@ -22,6 +22,23 @@ const captureStyle: CSSProperties = {
 export const selectedStyle: CSSProperties = { background: "rgba(34, 192, 138, 0.42)" };
 
 /**
+ * Der zuletzt gespielte Zug · beide Felder liegen in einem hellen Grün.
+ *
+ * Dieselbe Markierung wie auf der Landeseite eines geteilten Links: Wer eine
+ * Stellung aufschlägt, sieht sofort, woher sie kommt, ohne die Zugliste lesen
+ * zu müssen. Blasser als die Auswahl, denn sie ist Auskunft und nicht Angebot.
+ */
+export const lastMoveStyle: CSSProperties = { background: "rgba(34, 192, 138, 0.32)" };
+
+/** Beide Felder eines Zuges · leeres Objekt ohne Zug. */
+export function lastMoveStyles(
+  move: { from: string; to: string } | null | undefined
+): Record<string, CSSProperties> {
+  if (!move) return {};
+  return { [move.from]: lastMoveStyle, [move.to]: lastMoveStyle };
+}
+
+/**
  * Stile für alle legalen Zielfelder von `from`. Leeres Objekt, wenn dort kein
  * eigener Stein steht oder die Stellung ungültig ist.
  */

@@ -12,11 +12,11 @@ set is summarized in the [README](../README.md).
 - [ ] **Google Play distribution.** Complete Play App Signing enrollment, store
   listing, closed testing, the production-access request and review. The signed
   AAB build and its technical verification already exist.
-- [ ] **Sharing, second stage.** The analysis board and the puzzle trainer can
-  share a position; repertoire lines and endgame drills cannot yet. Also open:
-  Android App Links for `https://s.kiebitz.dev/p/*` (`assetlinks.json` from the
-  share worker), so a shared link opens the installed app directly instead of
-  the browser.
+- [ ] **Sharing, second stage.** Analysis, puzzles, repertoire lines and endgame
+  drills can all share a position, and the shared board plays by the rules.
+  Still open: Android App Links for `https://s.kiebitz.dev/p/*`
+  (`assetlinks.json` from the share worker), so a shared link opens the
+  installed app directly instead of the browser.
 
 ## Platform horizon
 

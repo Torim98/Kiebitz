@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeShare, encodeShare, type SharePayload } from "./codec";
+import { decodeShare, encodeShare, fromBase64Url, type SharePayload } from "./codec";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 // Nach 1. e4 c5: Schwarz hat gerade gezogen, Weiß hat ein e.p.-Feld hinter sich.
@@ -68,6 +68,18 @@ describe("share codec", () => {
     expect(decoded.rating).toBe(1780);
     expect(decoded.theme).toBe("backRankMate");
     expect(decoded.title).toBe("Findest du den Zug?");
+  });
+
+  it("carries every kind, and keeps the older ones on their old code", () => {
+    for (const kind of ["analysis", "puzzle", "repertoire", "endgame"] as const) {
+      expect(roundTrip({ kind, fen: ENDGAME, orientation: "white" }).kind).toBe(kind);
+    }
+    // Anhängen statt einsortieren: Analyse und Aufgabe stehen weiter auf 0 und
+    // 1, sonst öffnete ein alter Link plötzlich eine andere Art.
+    const codeOf = (kind: "analysis" | "puzzle" | "repertoire" | "endgame") =>
+      fromBase64Url(encodeShare({ kind, fen: START, orientation: "white" }))[1];
+    expect([codeOf("analysis"), codeOf("puzzle"), codeOf("repertoire"), codeOf("endgame")])
+      .toEqual([0, 1, 2, 3]);
   });
 
   it("cuts an over-long title on a character boundary", () => {
