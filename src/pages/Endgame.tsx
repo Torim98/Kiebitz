@@ -359,10 +359,10 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                   {endMsg ? t(endMsg) : ""}
                 </div>
                 <div className="flex gap-2">
-                  {shareButton}
                   <Button onClick={() => start(drill)}>
                     <RotateCcw size={14} /> {t("eg.retry")}
                   </Button>
+                  {shareButton}
                   {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
                   {status === "solved" && drill.category === "random" && (
                     <Button primary onClick={() => start(randomDrill())}>
@@ -389,10 +389,10 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                       {t("eg.hintMove")}
                     </Button>
                   )}
-                  {shareButton}
                   <Button onClick={() => start(drill)}>
                     <RotateCcw size={14} /> {t("eg.restart")}
                   </Button>
+                  {shareButton}
                 </div>
                 <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
                   {drillText(drill.hint, locale)}

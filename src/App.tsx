@@ -144,6 +144,11 @@ const NAV_PARENT: Partial<Record<PageId, PageId>> = {
   puzzles: "study",
 };
 
+// Wartezeiten zwischen den Anläufen, ein Update aus dem Hinweis zu
+// installieren · zwei Pausen, also drei Versuche. Kurz genug, dass jemand
+// davor sitzen bleibt, lang genug für eine Leitung, die gerade hakt.
+const UPDATE_RETRY_DELAYS = [2000, 8000] as const;
+
 export default function App() {
   // Der Stapel hält die Seite samt Deep-Link-Parametern und hängt an der
   // Session-History · siehe lib/nav.ts. Erst dadurch tut die Android-Zurück-
@@ -403,11 +408,60 @@ export default function App() {
 
   // Der Nutzer startet das Update aus der Benachrichtigung; ab da übernimmt
   // der Fortschritts-Toast (update://state) · im Play-Build führt derselbe
-  // Knopf direkt in Plays Update-Ablauf. Fehler zeigt die Settings-Seite.
-  const startUpdate = () => {
+  // Knopf direkt in Plays Update-Ablauf.
+  //
+  // Ein Fehlschlag darf den Hinweis nicht verschlucken: Vorher verschwand der
+  // Toast beim Klick und niemand erfuhr, dass gar nichts installiert wurde.
+  // Jetzt bleibt er stehen, versucht es im Hintergrund noch zweimal · ein
+  // abgebrochener Download oder eine kurz nicht erreichbare Release-Seite ist
+  // der wahrscheinlichste Grund · und zeigt danach den Fehler mit einem Knopf
+  // zum Wiederholen, wie ihn auch die Settings-Seite stehen lässt.
+  const [updBusy, setUpdBusy] = useState(false);
+  const [updError, setUpdError] = useState<string | null>(null);
+  // Zählt Anläufe: Wer den Hinweis wegklickt oder die App verlässt, erhöht
+  // den Zähler und ein noch laufender Anlauf schreibt nichts mehr.
+  const updRun = useRef(0);
+  useEffect(() => () => void updRun.current++, []);
+
+  const startUpdate = useCallback(() => {
+    setUpdBusy((busy) => {
+      if (busy) return busy;
+      const run = ++updRun.current;
+      setUpdError(null);
+      void (async () => {
+        let last = "";
+        for (let attempt = 0; attempt <= UPDATE_RETRY_DELAYS.length; attempt++) {
+          try {
+            await installUpdate();
+            // Der Desktop kehrt hier gewöhnlich nicht zurück (Neustart);
+            // Android hat Play bzw. den APK-Download geöffnet · beides fertig.
+            if (updRun.current !== run) return;
+            setUpdBusy(false);
+            setAvailable(null);
+            return;
+          } catch (e) {
+            last = String(e);
+          }
+          if (updRun.current !== run) return;
+          const wait = UPDATE_RETRY_DELAYS[attempt];
+          if (wait == null) break;
+          await new Promise((done) => setTimeout(done, wait));
+          if (updRun.current !== run) return;
+        }
+        setUpdBusy(false);
+        setUpdError(last || "?");
+      })();
+      return true;
+    });
+  }, []);
+
+  /** „Später", das X und der Wechsel weg vom Hinweis brechen auch die Anläufe ab. */
+  const dismissUpdate = useCallback(() => {
+    updRun.current++;
+    setUpdBusy(false);
+    setUpdError(null);
     setAvailable(null);
-    installUpdate().catch(() => {});
-  };
+  }, []);
 
   // Mobile: Sidebar wird zum Slide-in-Drawer hinter einem Hamburger-Button.
   const [navOpen, setNavOpen] = useState(false);
@@ -618,34 +672,48 @@ export default function App() {
         available && (
           <div className="fixed bottom-4 right-4 z-50 flex w-[288px] flex-col gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 shadow-xl">
             <div className="flex items-start gap-2.5">
-              <RefreshCw size={15} className="mt-0.5 shrink-0 text-accent" />
-              <div className="min-w-0 text-[12.5px] text-ink2">
-                {playStore
-                  ? t("app.updatePlayAvailable")
-                  : t("app.updateAvailable", { v: available.version })}
+              {updBusy ? (
+                <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin text-accent" />
+              ) : (
+                <RefreshCw
+                  size={15}
+                  className={`mt-0.5 shrink-0 ${updError ? "text-loss" : "text-accent"}`}
+                />
+              )}
+              <div className={`min-w-0 text-[12.5px] ${updError ? "text-loss" : "text-ink2"}`}>
+                {updError
+                  ? t("app.updateFailed", { e: updError })
+                  : updBusy
+                    ? t("app.updateStarting")
+                    : playStore
+                      ? t("app.updatePlayAvailable")
+                      : t("app.updateAvailable", { v: available.version })}
               </div>
               <button
-                onClick={() => setAvailable(null)}
+                onClick={dismissUpdate}
                 aria-label={t("app.updateLater")}
                 className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-ink3 transition-colors hover:text-ink"
               >
                 <X size={14} />
               </button>
             </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setAvailable(null)}
-                className="rounded-md px-2.5 py-1 text-[12px] text-ink3 transition-colors hover:text-ink"
-              >
-                {t("app.updateLater")}
-              </button>
-              <button
-                onClick={startUpdate}
-                className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
-              >
-                <Download size={13} /> {t("app.updateNow")}
-              </button>
-            </div>
+            {!updBusy && (
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={dismissUpdate}
+                  className="rounded-md px-2.5 py-1 text-[12px] text-ink3 transition-colors hover:text-ink"
+                >
+                  {t("app.updateLater")}
+                </button>
+                <button
+                  onClick={startUpdate}
+                  className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
+                >
+                  {updError ? <RefreshCw size={13} /> : <Download size={13} />}{" "}
+                  {updError ? t("app.updateRetry") : t("app.updateNow")}
+                </button>
+              </div>
+            )}
           </div>
         )
       )}

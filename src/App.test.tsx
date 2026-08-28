@@ -255,6 +255,48 @@ describe("Play-Updates", () => {
     expect(mocks.installUpdate).toHaveBeenCalledTimes(1);
   });
 
+  // Vorher verschwand der Hinweis beim Klick, das Update schlug fehl und
+  // niemand erfuhr davon. Jetzt bleibt er stehen, versucht es im Hintergrund
+  // weiter und bietet danach das Wiederholen an.
+  it("keeps the notice and retries when the install fails", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.backend = {
+        mode: "desktop",
+        info: { platform: "android", version: "0.5.2", distribution: "play-store" },
+      };
+      mocks.checkUpdate.mockResolvedValue({ current: "0.5.2", available: "42", notes: null });
+      mocks.installUpdate.mockRejectedValue(new Error("Play antwortet nicht"));
+
+      await act(async () => {
+        render(<LocaleProvider><App /></LocaleProvider>);
+      });
+      await act(async () => {});
+
+      fireEvent.click(screen.getByRole("button", { name: "Jetzt aktualisieren" }));
+      await act(async () => {});
+      // Der Hinweis steht noch, jetzt mit laufendem Versuch.
+      expect(screen.getByText("Update wird gestartet …")).toBeTruthy();
+
+      // Zwei Pausen, drei Versuche.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8000);
+      });
+      expect(mocks.installUpdate).toHaveBeenCalledTimes(3);
+
+      // Danach der Fehler, und ein Knopf, der es noch einmal versucht.
+      expect(screen.getByText(/Play antwortet nicht/)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Erneut versuchen" }));
+      await act(async () => {});
+      expect(mocks.installUpdate).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stays quiet on a sideloaded build · there the backend asks GitHub", async () => {
     mocks.checkUpdate.mockResolvedValue({ current: "0.5.2", available: "0.6.0", notes: null });
 
