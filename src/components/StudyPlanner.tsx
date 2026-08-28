@@ -37,6 +37,7 @@ import {
   type StudyTemplate,
   type StudyTemplateInput,
 } from "../lib/study";
+import { useMobileShell } from "./MobileShell";
 import { onDataChange } from "../lib/changes";
 import { isoDay } from "../lib/dates";
 import { deInt } from "../lib/format";
@@ -191,14 +192,22 @@ export default function StudyPlanner({
   desktop,
   /** Der Wochenvorschlag · er gehört in dieselbe Karte wie der Plan. */
   proposal,
+  /**
+   * Der Knopf, der den Vorschlag anfordert. Er steht in der Kopfzeile neben
+   * der Wochenwahl · dort, wo die anderen Schalter der Karte sitzen, statt
+   * als breite gestrichelte Fläche über dem Kalender.
+   */
+  proposalAction,
   /** Vorgeschlagene Länge einer von Hand geplanten Einheit, aus dem Budget. */
   suggestMinutes,
 }: {
   desktop: boolean;
   proposal?: ReactNode;
+  proposalAction?: ReactNode;
   suggestMinutes?: (areas: Area[]) => number;
 }) {
   const { locale, t } = useI18n();
+  const mobile = useMobileShell();
   const storeCapture = isStoreCapture();
   // Der Plan ist der Hauptinhalt; die Einheiten bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -214,13 +223,21 @@ export default function StudyPlanner({
   /** Raster für die nächste Planung aus der Einheiten-Liste. */
   const [planRepeat, setPlanRepeat] = useState<RepeatRule>("");
   const today = isoDay(new Date());
-  /** Aufgeklappte Tage · heute ist es von selbst. */
-  const [open, setOpen] = useState<Set<string>>(() => new Set([today]));
+  /** Der Tag, dessen Einheiten unter der Woche stehen · heute zuerst. */
+  const [selected, setSelected] = useState(today);
 
   const days = useMemo(
     () => [...Array(7)].map((_, index) => new Date(windowStart.getTime() + index * DAY_MS)),
     [windowStart]
   );
+  // Beim Blättern in eine andere Woche muss der gewählte Tag mitwandern ·
+  // sonst zeigt die Detailzeile einen Tag, der in der Leiste fehlt.
+  useEffect(() => {
+    const window = days.map((date) => isoDay(date));
+    if (window.includes(selected)) return;
+    setSelected(window.includes(today) ? today : window[0]);
+  }, [days, selected, today]);
+
   const previewCalendar = useMemo<StudyCalendar>(() => {
     // Die Vorschau zeigt dieselben Standardeinheiten wie eine frische
     // Installation · über i18n_key stehen sie in der Sprache der Oberfläche.
@@ -401,14 +418,6 @@ export default function StudyPlanner({
     if (await mutate(() => saveStudyTemplate(editing))) setEditing(null);
   };
 
-  const toggleDay = (day: string) =>
-    setOpen((current) => {
-      const next = new Set(current);
-      if (next.has(day)) next.delete(day);
-      else next.add(day);
-      return next;
-    });
-
   // Gemeinsame Skala aller sieben Zeilen · sonst sähe ein 20-Minuten-Tag neben
   // einem 90-Minuten-Tag genauso voll aus.
   const rows = useMemo(
@@ -431,6 +440,10 @@ export default function StudyPlanner({
     [days, visibleCalendar]
   );
   const scale = Math.max(30, ...rows.map((row) => Math.max(row.planned, row.measured)));
+  // Der gewählte Tag muss immer einer der sieben sein: beim Blättern in eine
+  // andere Woche zeigt sonst die Detailzeile auf einen Tag, der nicht mehr
+  // in der Leiste steht.
+  const selectedRow = rows.find((row) => row.day === selected) ?? rows[0];
 
   return (
     <Card
@@ -441,7 +454,12 @@ export default function StudyPlanner({
         </span>
       }
       action={
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          {/* Der Vorschlag gehört neben die Wochenwahl · beides stellt ein,
+              was die Karte darunter zeigt. Mobil ist dafür kein Platz, dort
+              steht er als eigene Zeile über den Lerneinheiten. */}
+          {!mobile && proposalAction}
+          <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setWindowStart(new Date(windowStart.getTime() - 7 * DAY_MS))}
@@ -464,6 +482,7 @@ export default function StudyPlanner({
           >
             <ChevronRight size={15} />
           </button>
+          </div>
         </div>
       }
     >
@@ -495,238 +514,321 @@ export default function StudyPlanner({
             <div className="text-[11.5px] text-ink3">{t("st.calendarHint")}</div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          {/* Die Woche als sieben Spalten nebeneinander · vorher waren es
+              sieben gestapelte Aufklapper, die alle gleichzeitig offen sein
+              konnten und dann die halbe Seite füllten. Jede Spalte trägt
+              dieselbe Aussage wie zuvor die Zeile: oben der Plan nach
+              Bereichen, darunter die gemessene Zeit. */}
+          <div className="grid grid-cols-7 gap-1 min-[700px]:gap-2">
             {rows.map((row) => {
               const isToday = row.day === today;
               const future = row.day > today;
-              const expanded = open.has(row.day);
+              const active = row.day === selected;
               return (
-                <div
+                <button
                   key={row.day}
+                  type="button"
                   data-study-day={row.day}
-                  className={`rounded-xl border transition-colors ${
+                  onClick={() => setSelected(row.day)}
+                  aria-pressed={active}
+                  className={`rounded-xl border px-1 py-2 text-center transition-colors min-[1100px]:p-2.5 min-[1100px]:text-left ${
                     drag?.over === row.day
                       ? "border-accent bg-accent-soft/60"
-                      : isToday
-                        ? "border-accent-dim bg-accent-soft/25"
-                        : "border-line bg-panel2"
+                      : active
+                        ? "border-accent-dim bg-accent-soft/40"
+                        : "border-line bg-panel2 hover:border-line2"
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleDay(row.day)}
-                    aria-expanded={expanded}
-                    className="flex w-full items-center gap-3 px-2.5 py-2 text-left"
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={`shrink-0 text-ink3 transition-transform ${
-                        expanded ? "" : "-rotate-90"
-                      }`}
-                    />
-                    <span className="flex w-[58px] shrink-0 items-baseline gap-1.5">
-                      <span className="text-[11px] uppercase tracking-wide text-ink3">
-                        {row.date.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })}
+                  {/* Eine von sieben Spalten ist auf dem Telefon rund 45 px
+                      breit, im schmalen Desktop-Fenster rund 65 · unterhalb von
+                      1100 px steht der Wochentag deshalb über dem Datum und
+                      alles Weitere fällt weg. Das hängt an der Fensterbreite und
+                      nicht an der Shell: ein schmales Desktop-Fenster hat
+                      dasselbe Platzproblem wie ein Telefon. */}
+                  <span className="block min-[1100px]:flex min-[1100px]:items-baseline min-[1100px]:justify-between min-[1100px]:gap-1">
+                    <span className="block min-[1100px]:flex min-[1100px]:items-baseline min-[1100px]:gap-1.5">
+                      <span className="block text-[10px] uppercase tracking-wide text-ink3 min-[1100px]:inline min-[1100px]:text-[10.5px]">
+                        {row.date.toLocaleDateString(locale, {
+                          weekday: "short",
+                          timeZone: "UTC",
+                        })}
                       </span>
                       <span
-                        className={`text-[13.5px] font-semibold ${isToday ? "text-accent" : "text-ink"}`}
+                        className={`block text-[15px] font-semibold min-[1100px]:inline min-[1100px]:text-[14px] ${
+                          isToday ? "text-accent" : "text-ink"
+                        }`}
                       >
                         {row.date.getUTCDate()}
                       </span>
                     </span>
-
-                    {/* Oben der Plan nach Bereichen, darunter die gemessene
-                        Zeit · dieselbe Sprache wie die Wochenleiste. */}
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="flex h-1.5 overflow-hidden rounded-full bg-panel3">
-                        {row.events.map((event) => (
-                          <span
-                            key={event.id}
-                            title={`${templateText(event.template, "title", t)} · ${t("plan.minutes", { m: eventMinutes(event) })}`}
-                            style={{
-                              width: `${(eventMinutes(event) / scale) * 100}%`,
-                              background:
-                                AREA_COLOR[templateAreas(event.template)[0] ?? "play"] ??
-                                "var(--color-ink3)",
-                              opacity: event.completed || event.auto_done ? 0.45 : 1,
-                            }}
-                          />
-                        ))}
+                    {/* Fällige Wiederholungen nennt nur, wer sie noch abtragen
+                        kann · für vergangene Tage ist die Zahl keine Aufgabe
+                        mehr, sondern ein Vorwurf. */}
+                    {(future || isToday) && row.due > 0 && (
+                      <span className="hidden shrink-0 text-[10.5px] tabular-nums text-gold min-[1100px]:inline">
+                        {t("st.due", { n: deInt(row.due) })}
                       </span>
-                      {!future && (
-                        <span className="flex h-1.5 overflow-hidden rounded-full bg-panel3">
-                          <span
-                            className="block h-full rounded-full bg-accent"
-                            style={{ width: `${Math.min(100, (row.measured / scale) * 100)}%` }}
-                          />
+                    )}
+                  </span>
+
+                  <span className="mt-2 flex h-[5px] overflow-hidden rounded-full bg-panel3">
+                    {row.events.map((event) => (
+                      <span
+                        key={event.id}
+                        title={`${templateText(event.template, "title", t)} · ${t("plan.minutes", { m: eventMinutes(event) })}`}
+                        style={{
+                          width: `${(eventMinutes(event) / scale) * 100}%`,
+                          background:
+                            AREA_COLOR[templateAreas(event.template)[0] ?? "play"] ??
+                            "var(--color-ink3)",
+                          opacity: event.completed || event.auto_done ? 0.45 : 1,
+                        }}
+                      />
+                    ))}
+                  </span>
+                  <span className="mt-[3px] flex h-[5px] overflow-hidden rounded-full bg-panel3">
+                    {!future && (
+                      <span
+                        className="block h-full rounded-full bg-accent"
+                        style={{ width: `${Math.min(100, (row.measured / scale) * 100)}%` }}
+                      />
+                    )}
+                  </span>
+
+                  {/* Schmal tragen die Balken die Aussage · die Titel stehen
+                      dann unten beim gewählten Tag. */}
+                  <span className="mt-2 hidden min-h-[40px] flex-col gap-1 min-[1100px]:flex">
+                      {row.events.slice(0, 2).map((event) => (
+                        <span
+                          key={event.id}
+                          style={{
+                            borderLeftColor:
+                              AREA_COLOR[templateAreas(event.template)[0] ?? "play"] ??
+                              "var(--color-ink3)",
+                            borderLeftWidth: 3,
+                          }}
+                          className={`truncate rounded bg-panel3 px-1.5 py-0.5 text-[10.5px] ${
+                            event.completed || event.auto_done ? "text-ink3" : "text-ink"
+                          }`}
+                        >
+                          {templateText(event.template, "title", t)}
+                        </span>
+                      ))}
+                      {row.events.length > 2 && (
+                        <span className="px-1.5 text-[10px] tabular-nums text-ink3">
+                          + {row.events.length - 2}
                         </span>
                       )}
-                    </span>
+                  </span>
 
-                    <span className="flex shrink-0 flex-col items-end text-[10.5px] leading-tight">
-                      {/* Ein leerer künftiger Tag sagt „nichts geplant" schon
-                          über den leeren Balken · eine 0 daneben ist Lärm. */}
-                      {(!future || row.planned > 0) && (
-                        <span className="tabular-nums text-ink2">
-                          {future
-                            ? t("st.dayPlanned", { m: deInt(row.planned) })
-                            : t("st.dayActualPlanned", {
-                                a: deInt(row.measured),
-                                m: deInt(row.planned),
-                              })}
-                        </span>
-                      )}
-                      {(future || isToday) && row.due > 0 && (
-                        <span className="text-gold">{t("st.due", { n: deInt(row.due) })}</span>
-                      )}
+                  {/* Schmal bleibt die nackte Zahl unter den Balken · "14
+                      fällig" sprengt eine 45-px-Spalte. */}
+                  {(future || isToday) && row.due > 0 && (
+                    <span
+                      className="mt-1.5 block text-[10px] tabular-nums text-gold min-[1100px]:hidden"
+                      title={t("st.due", { n: deInt(row.due) })}
+                    >
+                      {deInt(row.due)}
                     </span>
-                  </button>
-
-                  {expanded && (
-                    <div className="grid gap-2 px-2.5 pb-2.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3">
-                      {row.events.map((event) => {
-                        const areas = templateAreas(event.template);
-                        const done = event.completed || event.auto_done;
-                        return (
-                          <div
-                            key={event.id}
-                            data-study-unit={event.id}
-                            // Der farbige Streifen links nennt den Bereich, ohne
-                            // eine Zeile dafür zu verbrauchen.
-                            style={
-                              areas[0]
-                                ? { borderLeftColor: AREA_COLOR[areas[0]], borderLeftWidth: 3 }
-                                : undefined
-                            }
-                            className={`rounded-lg border p-2 ${
-                              drag?.kind === "event" && drag.id === event.id ? "opacity-40" : ""
-                            } ${done ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
-                          >
-                            <div className="flex items-start gap-1.5">
-                              <span
-                                onPointerDown={(pointerEvent) =>
-                                  startDrag(pointerEvent, {
-                                    kind: "event",
-                                    id: event.id,
-                                    label: templateText(event.template, "title", t),
-                                  })
-                                }
-                                className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
-                                aria-label={t("st.dragUnit")}
-                              >
-                                <GripVertical size={12} />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div
-                                  className={`text-[11.5px] font-medium leading-tight ${done ? "text-ink3 line-through" : "text-ink"}`}
-                                >
-                                  {templateText(event.template, "title", t)}
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
-                                  {eventMinutes(event) > 0 && (
-                                    <span className="tabular-nums">
-                                      {t("plan.minutes", { m: deInt(eventMinutes(event)) })}
-                                    </span>
-                                  )}
-                                  {areas.map((area) => (
-                                    <span key={area}>{t(AREA_KEY[area])}</span>
-                                  ))}
-                                  {/* Von der gemessenen Zeit erfüllt · das
-                                      unterscheidet sich von Hand abgehakt und
-                                      soll auch so aussehen. */}
-                                  {!event.completed && event.auto_done && (
-                                    <span className="text-accent">{t("st.doneMeasured")}</span>
-                                  )}
-                                  {event.repeat_rule && (
-                                    <span
-                                      className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
-                                      title={t("st.repeatSeries")}
-                                    >
-                                      <Repeat size={9} /> {t(REPEAT_LABEL[event.repeat_rule])}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-2 flex justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void mutate(() => completeStudyUnit(event.id, !event.completed))
-                                }
-                                disabled={!desktop}
-                                className={`rounded-md p-1 ${event.completed ? "bg-accent-soft text-accent" : "text-ink3 hover:bg-panel2 hover:text-accent"}`}
-                                aria-label={event.completed ? t("st.markOpen") : t("st.markDone")}
-                              >
-                                <Check size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setRepeating((current) =>
-                                    current === event.id ? null : event.id
-                                  )
-                                }
-                                disabled={!desktop}
-                                aria-expanded={repeating === event.id}
-                                className={`rounded-md p-1 ${
-                                  repeating === event.id || event.repeat_rule
-                                    ? "bg-accent-soft text-accent"
-                                    : "text-ink3 hover:bg-panel2 hover:text-accent"
-                                }`}
-                                aria-label={t("st.repeatSet")}
-                                title={t("st.repeatSet")}
-                              >
-                                <Repeat size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void removeUnit(event)}
-                                disabled={!desktop}
-                                className="rounded-md p-1 text-ink3 hover:bg-panel2 hover:text-loss"
-                                aria-label={t("common.delete")}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                            {repeating === event.id && (
-                              <RepeatForm
-                                day={event.day}
-                                current={event.repeat_rule}
-                                busy={busy}
-                                onCancel={() => setRepeating(null)}
-                                onApply={async (rule, until) => {
-                                  if (await mutate(() => repeatStudyUnit(event.id, rule, until))) {
-                                    setRepeating(null);
-                                  }
-                                }}
-                                onDeleteSeries={
-                                  event.series_key
-                                    ? async () => {
-                                        if (await mutate(() => deleteStudyUnit(event.id, "series"))) {
-                                          setRepeating(null);
-                                        }
-                                      }
-                                    : undefined
-                                }
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                      {row.events.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-line px-2 py-2 text-center text-[10.5px] text-ink3">
-                          {t("st.dropHere")}
-                        </div>
-                      )}
-                    </div>
                   )}
-                </div>
+
+                  <span className="mt-2 hidden text-[10.5px] tabular-nums text-ink2 min-[1100px]:block">
+                    {future
+                      ? row.planned > 0
+                        ? t("st.dayPlanned", { m: deInt(row.planned) })
+                        : t("st.dayNothing")
+                      : t("st.dayActualPlanned", {
+                          a: deInt(row.measured),
+                          m: deInt(row.planned),
+                        })}
+                  </span>
+                </button>
               );
             })}
           </div>
+
+          {/* Die Einheiten zeigt nur der gewählte Tag. Sieben gleichzeitig
+              offene Tage beantworteten die Frage „wann mache ich was?" mit
+              einer Wand aus Kacheln. */}
+          <div className="mt-2.5 rounded-xl border border-line bg-panel2 p-3">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="text-[12.5px] font-medium text-ink">
+                {selectedRow.date.toLocaleDateString(locale, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  timeZone: "UTC",
+                })}
+                {" · "}
+                {selectedRow.events.length === 1
+                  ? t("st.dayUnitOne")
+                  : t("st.dayUnitMany", { n: deInt(selectedRow.events.length) })}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-[11.5px] tabular-nums text-ink3 min-[1100px]:hidden">
+                  {selectedRow.day > today
+                    ? t("st.dayPlanned", { m: deInt(selectedRow.planned) })
+                    : t("st.dayActualPlanned", {
+                        a: deInt(selectedRow.measured),
+                        m: deInt(selectedRow.planned),
+                      })}
+                </span>
+                <button
+                  type="button"
+                  disabled={!desktop}
+                  onClick={() => {
+                    setPlanningDay(selectedRow.day);
+                    setLibraryOpen(true);
+                  }}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-line bg-panel px-3 text-[11.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 min-[1100px]:min-h-0 min-[1100px]:px-2.5 min-[1100px]:py-1.5"
+                >
+                  <Plus size={12} /> {t("st.addUnitShort")}
+                </button>
+              </span>
+            </div>
+
+            <div className="grid gap-2 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3">
+              {selectedRow.events.map((event) => {
+                const areas = templateAreas(event.template);
+                const done = event.completed || event.auto_done;
+                return (
+                  <div
+                    key={event.id}
+                    data-study-unit={event.id}
+                    // Der farbige Streifen links nennt den Bereich, ohne
+                    // eine Zeile dafür zu verbrauchen.
+                    style={
+                      areas[0]
+                        ? { borderLeftColor: AREA_COLOR[areas[0]], borderLeftWidth: 3 }
+                        : undefined
+                    }
+                    className={`rounded-lg border p-2 ${
+                      drag?.kind === "event" && drag.id === event.id ? "opacity-40" : ""
+                    } ${done ? "border-accent-dim bg-accent-soft/50" : "border-line2 bg-panel"}`}
+                  >
+                    <div className="flex items-start gap-1.5">
+                      <span
+                        onPointerDown={(pointerEvent) =>
+                          startDrag(pointerEvent, {
+                            kind: "event",
+                            id: event.id,
+                            label: templateText(event.template, "title", t),
+                          })
+                        }
+                        className="mt-0.5 shrink-0 cursor-grab touch-none text-ink3 active:cursor-grabbing"
+                        aria-label={t("st.dragUnit")}
+                      >
+                        <GripVertical size={12} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`text-[11.5px] font-medium leading-tight ${done ? "text-ink3 line-through" : "text-ink"}`}
+                        >
+                          {templateText(event.template, "title", t)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-ink3">
+                          {eventMinutes(event) > 0 && (
+                            <span className="tabular-nums">
+                              {t("plan.minutes", { m: deInt(eventMinutes(event)) })}
+                            </span>
+                          )}
+                          {areas.map((area) => (
+                            <span key={area}>{t(AREA_KEY[area])}</span>
+                          ))}
+                          {/* Von der gemessenen Zeit erfüllt · das
+                              unterscheidet sich von Hand abgehakt und
+                              soll auch so aussehen. */}
+                          {!event.completed && event.auto_done && (
+                            <span className="text-accent">{t("st.doneMeasured")}</span>
+                          )}
+                          {event.repeat_rule && (
+                            <span
+                              className="inline-flex items-center gap-0.5 rounded border border-line2 px-1 text-accent"
+                              title={t("st.repeatSeries")}
+                            >
+                              <Repeat size={9} /> {t(REPEAT_LABEL[event.repeat_rule])}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void mutate(() => completeStudyUnit(event.id, !event.completed))
+                        }
+                        disabled={!desktop}
+                        className={`rounded-md p-1 ${event.completed ? "bg-accent-soft text-accent" : "text-ink3 hover:bg-panel2 hover:text-accent"}`}
+                        aria-label={event.completed ? t("st.markOpen") : t("st.markDone")}
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRepeating((current) =>
+                            current === event.id ? null : event.id
+                          )
+                        }
+                        disabled={!desktop}
+                        aria-expanded={repeating === event.id}
+                        className={`rounded-md p-1 ${
+                          repeating === event.id || event.repeat_rule
+                            ? "bg-accent-soft text-accent"
+                            : "text-ink3 hover:bg-panel2 hover:text-accent"
+                        }`}
+                        aria-label={t("st.repeatSet")}
+                        title={t("st.repeatSet")}
+                      >
+                        <Repeat size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeUnit(event)}
+                        disabled={!desktop}
+                        className="rounded-md p-1 text-ink3 hover:bg-panel2 hover:text-loss"
+                        aria-label={t("common.delete")}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    {repeating === event.id && (
+                      <RepeatForm
+                        day={event.day}
+                        current={event.repeat_rule}
+                        busy={busy}
+                        onCancel={() => setRepeating(null)}
+                        onApply={async (rule, until) => {
+                          if (await mutate(() => repeatStudyUnit(event.id, rule, until))) {
+                            setRepeating(null);
+                          }
+                        }}
+                        onDeleteSeries={
+                          event.series_key
+                            ? async () => {
+                                if (await mutate(() => deleteStudyUnit(event.id, "series"))) {
+                                  setRepeating(null);
+                                }
+                              }
+                            : undefined
+                        }
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {selectedRow.events.length === 0 && (
+                <div className="rounded-lg border border-dashed border-line px-2 py-3 text-center text-[10.5px] text-ink3">
+                  {t("st.dropHere")}
+                </div>
+              )}
+            </div>
+          </div>
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
         </div>
+
+        {mobile && proposalAction}
 
         <div className="rounded-xl border border-line bg-panel2 p-3">
           <div className="flex items-center justify-between gap-2">
@@ -788,7 +890,7 @@ export default function StudyPlanner({
           </div>
 
           {libraryOpen && (
-            <div className="mt-3 grid gap-2 min-[700px]:grid-cols-2 min-[1200px]:grid-cols-4">
+            <div className="mt-3 grid gap-2 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3 min-[1300px]:grid-cols-5">
               {visibleCalendar.templates.map((template) => {
                 const areas = templateAreas(template);
                 return (

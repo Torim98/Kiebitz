@@ -286,6 +286,20 @@ export const AREA_COLOR: Record<Area, string> = {
   analysis: "var(--color-cc)",
 };
 
+/**
+ * Gedämpfte Fassung derselben Farbe · Hintergrund hinter einem Bereichssymbol.
+ *
+ * Bewusst feste rgba-Werte und kein `color-mix`: die Android-WebView älterer
+ * Geräte kennt die Funktion nicht und ließe die Fläche dann ganz weg.
+ */
+export const AREA_SOFT: Record<Area, string> = {
+  play: "rgba(34, 192, 138, 0.14)",
+  tactics: "rgba(57, 135, 229, 0.14)",
+  openings: "rgba(144, 133, 233, 0.14)",
+  endgames: "rgba(217, 160, 40, 0.14)",
+  analysis: "rgba(129, 182, 76, 0.14)",
+};
+
 export interface AreaLoad {
   area: Area;
   items: number;

@@ -235,6 +235,41 @@ describe("Study page", () => {
     });
   });
 
+  it("lifts the first open task out of the list and into one block", async () => {
+    mockBackend();
+    renderStudy();
+
+    // Der Block nennt dieselbe Einheit, die sonst als erste Zeile käme · und
+    // trägt die ausführliche Beschriftung, nicht das kurze Listen-Verb.
+    await screen.findByText("3 / 10");
+    const hero = document.querySelector("[data-session-hero]");
+    expect(hero?.getAttribute("data-session-hero")).toBe("reviews");
+    expect(within(hero as HTMLElement).getByRole("button", { name: /Repertoire trainieren/ })).toBeTruthy();
+
+    // Und sie steht kein zweites Mal in der Liste darunter.
+    expect(document.querySelector("[data-session-item='reviews']")).toBeNull();
+    expect(document.querySelector("[data-session-item='puzzles']")).toBeTruthy();
+  });
+
+  it("puts what is due now above the trainers on mobile", async () => {
+    mockBackend({ deep: demoDeepInsights() });
+    renderStudy(vi.fn(), vi.fn(), true);
+    await screen.findAllByText("3 / 10");
+
+    // Reihenfolge der Seite: erst „jetzt dran", dann die Absprünge, dann der
+    // Rest des Tages · vorher stand die Wochentabelle vor allem anderen.
+    const hero = document.querySelector("[data-session-hero]") as HTMLElement;
+    const hub = screen.getByRole("navigation", { name: "Trainingsbereiche" });
+    expect(hero.compareDocumentPosition(hub) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Die Woche ist mobil eine Zeile · ihre Bereichszahlen kommen erst auf Tipp.
+    expect(document.querySelector("[data-week-area='tactics']")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { expanded: false, name: /Diese Woche/ }));
+    await waitFor(() => {
+      expect(document.querySelector("[data-week-area='tactics']")).toBeTruthy();
+    });
+  });
+
   it("acts as the training hub on mobile, but leaves the desktop page alone", async () => {
     mockBackend();
     const { go, openPuzzles } = renderStudy(vi.fn(), vi.fn(), true);
@@ -244,7 +279,9 @@ describe("Study page", () => {
     expect(hub.getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Repertoire7 fällig",
       "Puzzles3 / 10",
-      "EndspieleTheorie gegen die Engine",
+      // Endspiele haben keinen Fälligkeits-Zähler · die Kachel zeigt deshalb
+      // die Endspielzeit der laufenden Woche gegen ihr Ziel.
+      "Endspiele0 von 2 Min.",
     ]);
 
     fireEvent.click(hub.getByRole("button", { name: /^Endspiele/ }));

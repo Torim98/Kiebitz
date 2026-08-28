@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import StudyPlanner from "./StudyPlanner";
 
@@ -86,8 +86,13 @@ describe("Plantafel", () => {
       </LocaleProvider>
     );
 
-    expect(await screen.findByText(/7 von 0 Min\./)).toBeTruthy();
-    expect(await screen.findByText(/2 fällig/)).toBeTruthy();
+    // Die Zahl steht in der Tagesspalte · unter 1100 px blendet die Spalte
+    // sie aus und die Detailzeile darunter zeigt sie stattdessen. Beide sind
+    // im DOM, deshalb wird hier die Spalte selbst befragt.
+    const column = await screen.findByRole("button", { pressed: true });
+    expect(column.getAttribute("data-study-day")).toBe(today);
+    expect(within(column).getByText(/7 von 0 Min\./)).toBeTruthy();
+    expect(within(column).getByText(/2 fällig/)).toBeTruthy();
   });
 
   it("plant eine gezogene Einheit auf den Tag unter dem Zeiger, mit Länge aus dem Budget", async () => {

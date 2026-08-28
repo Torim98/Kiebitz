@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CalendarPlus,
+  ChevronDown,
+  ChevronRight,
   Cpu,
   Crown,
   Flame,
@@ -17,6 +19,7 @@ import { listGameSummaries, type GameSummary } from "../lib/db";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import {
   applyWeekPlan,
+  completeStudyUnit,
   eventMinutes,
   getStudyCalendar,
   studyData,
@@ -24,6 +27,7 @@ import {
   templateText,
   trainingProgram,
   AREA_COLOR,
+  AREA_SOFT,
   type Area,
   type StudyData,
   type StudyEvent,
@@ -49,9 +53,17 @@ import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import StudyPlanner from "../components/StudyPlanner";
 import PrescriptionCard from "../components/PrescriptionCard";
-import WeekBudgetBar from "../components/WeekBudgetBar";
+import WeekBudgetBar, {
+  WeekAreaList,
+  WeekBar,
+  WeekNote,
+} from "../components/WeekBudgetBar";
 import WindowNote from "../components/WindowNote";
-import TodaySession, { type SessionItem } from "../components/TodaySession";
+import TodaySession, {
+  SessionHero,
+  SessionList,
+  type SessionItem,
+} from "../components/TodaySession";
 import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
 import { deInt } from "../lib/format";
@@ -101,6 +113,8 @@ export default function Study({
   const [state, setState] = useState<StudyState | null>(null);
   const [planning, setPlanning] = useState<PlannedUnit[] | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Die Wochenzahlen mobil · zugeklappt ist die Karte eine Zeile. */
+  const [weekOpen, setWeekOpen] = useState(false);
   const planGate = usePlusGate("adaptive_plan");
 
   const loadRef = useRef<Promise<void> | null>(null);
@@ -294,12 +308,15 @@ export default function Study({
 
   /** Icon und Sprungziel je Bereich · dasselbe wie in den Fokuskarten. */
   const areaAction = useCallback(
-    (area: Area): { icon: typeof BookOpen; label: string; run: () => void } => {
+    (
+      area: Area
+    ): { icon: typeof BookOpen; label: string; heroLabel: string; run: () => void } => {
       switch (area) {
         case "tactics":
           return {
             icon: PuzzleIcon,
             label: t("dash.solve"),
+            heroLabel: t("st.toPuzzles"),
             run: () =>
               openPuzzles(
                 dose?.theme,
@@ -307,22 +324,64 @@ export default function Study({
               ),
           };
         case "openings":
-          return { icon: BookOpen, label: t("dash.train"), run: () => go("repertoire") };
+          return {
+            icon: BookOpen,
+            label: t("dash.train"),
+            heroLabel: t("st.toRepertoire"),
+            run: () => go("repertoire"),
+          };
         case "endgames":
           return {
             icon: Crown,
             label: t("dash.train"),
+            heroLabel: t("st.toEndgame"),
             run: () => (openEndgame ? openEndgame() : go("endgame")),
           };
         case "analysis":
-          return { icon: Cpu, label: t("dash.start"), run: () => go("analysis") };
+          return {
+            icon: Cpu,
+            label: t("dash.start"),
+            heroLabel: t("st.toAnalysis"),
+            run: () => go("analysis"),
+          };
         default:
           // Gespielt wird außerhalb von Kiebitz · das Dashboard hält die
           // Absprünge zu chess.com und Lichess bereit.
-          return { icon: Timer, label: t("st.sessionPlay"), run: () => go("dashboard") };
+          return {
+            icon: Timer,
+            label: t("st.sessionPlay"),
+            heroLabel: t("st.sessionPlay"),
+            run: () => go("dashboard"),
+          };
       }
     },
     [t, go, openPuzzles, openEndgame, dose]
+  );
+
+  /** Die Endspielzeit der laufenden Woche · Statuszeile der mobilen Kachel. */
+  const endgameWeek = useMemo(
+    () => week?.byArea.find((entry) => entry.area === "endgames" && entry.target > 0) ?? null,
+    [week]
+  );
+
+  /**
+   * Eine geplante Einheit von Hand abhaken · und wieder öffnen.
+   *
+   * Die gemessene Zeit erfüllt Einheiten von selbst; das Häkchen ist für das,
+   * was außerhalb von Kiebitz passiert ist — eine Partie am Brett, ein Buch.
+   * Was ohnehin täglich anfällt (Wiederholungen, Tagesdosis, Analyse-Rückstand)
+   * bekommt keins: dort wäre es eine Behauptung gegen die eigene Messung.
+   */
+  const toggleUnit = useCallback(
+    async (event: StudyEvent) => {
+      if (!desktop) return;
+      try {
+        await completeStudyUnit(event.id, !event.completed);
+      } finally {
+        await load();
+      }
+    },
+    [desktop, load]
   );
 
   /**
@@ -357,10 +416,19 @@ export default function Study({
         icon: action?.icon ?? Lightbulb,
         label: templateText(event.template, "title", t),
         detail: String(detail),
+        dose: String(detail),
+        // Woher die Einheit kommt · sie steht im Kalender, im Gegensatz zu
+        // dem, was ohnehin jeden Tag anfällt.
+        meta: `${t("plan.minutes", { m: deInt(eventMinutes(event)) })} · ${t("st.fromWeekPlan")}`,
         minutes: eventMinutes(event) || null,
         done,
         auto: !event.completed && event.auto_done,
-        action: action ? { label: action.label, run: action.run } : undefined,
+        action: action
+          ? { label: action.label, heroLabel: action.heroLabel, run: action.run }
+          : undefined,
+        // Nur geplante Einheiten lassen sich von Hand abhaken · und nur, wenn
+        // ein Backend da ist, das die Änderung behält.
+        toggle: desktop ? () => void toggleUnit(event) : undefined,
       });
     }
 
@@ -380,7 +448,11 @@ export default function Study({
           minutes: null,
           done: data.due_now === 0,
           auto: false,
-          action: { label: t("dash.train"), run: () => go("repertoire") },
+          action: {
+            label: t("dash.train"),
+            heroLabel: t("st.toRepertoire"),
+            run: () => go("repertoire"),
+          },
         },
         {
           id: "puzzles",
@@ -393,6 +465,7 @@ export default function Study({
           auto: false,
           action: {
             label: t("dash.solve"),
+            heroLabel: t("st.toPuzzles"),
             run: () =>
               openPuzzles(
                 dose?.theme,
@@ -409,17 +482,22 @@ export default function Study({
           minutes: null,
           done: data.unanalyzed === 0,
           auto: false,
-          action: { label: t("dash.start"), run: () => go("analysis") },
+          action: {
+            label: t("dash.start"),
+            heroLabel: t("st.toAnalysis"),
+            run: () => go("analysis"),
+          },
         }
       );
     }
     return items;
-  }, [state, data, todayIso, areaAction, dose, t, locale, go, openPuzzles]);
+  }, [state, data, todayIso, areaAction, dose, t, locale, go, openPuzzles, desktop, toggleUnit]);
 
   const areas = useMemo(
     () => [
       {
         id: "repertoire" as const,
+        area: "openings" as Area,
         icon: BookOpen,
         label: t("nav.repertoire"),
         status: data ? t("st.due", { n: deInt(data.due_now) }) : "",
@@ -427,6 +505,7 @@ export default function Study({
       },
       {
         id: "puzzles" as const,
+        area: "tactics" as Area,
         icon: PuzzleIcon,
         label: t("nav.puzzles"),
         status: data
@@ -436,50 +515,308 @@ export default function Study({
       },
       {
         id: "endgame" as const,
+        area: "endgames" as Area,
         icon: Crown,
         label: t("nav.endgame"),
-        status: t("st.areaEndgame"),
+        // Endspiele haben keinen Fälligkeits-Zähler · dort steht die Zeit der
+        // laufenden Woche gegen ihr Ziel, dieselbe Zahl wie in der Wochenkarte.
+        status: endgameWeek
+          ? t("st.weekBudgetValue", {
+              a: deInt(endgameWeek.minutes),
+              m: deInt(endgameWeek.target),
+            })
+          : t("st.areaEndgame"),
         onClick: () => go("endgame"),
       },
     ],
-    [data, dose, t, go, openPuzzles]
+    [data, dose, t, go, openPuzzles, endgameWeek]
+  );
+
+  /**
+   * Der Kopf der Tagessitzung und der Rest · mobil stehen die beiden nicht
+   * beieinander: dazwischen liegen die drei Trainer, weil man von dieser Seite
+   * aus auch ohne Tagesplan ins Repertoire oder in die Puzzles springt.
+   */
+  const nextItem = sessionItems.find((item) => !item.done) ?? null;
+  const restItems = sessionItems.filter((item) => item.id !== nextItem?.id);
+  const doneCount = sessionItems.filter((item) => item.done).length;
+
+  /** Woran es morgen weitergeht · steht nur da, wenn heute nichts offen ist. */
+  const tomorrowNote = useMemo(() => {
+    const day = isoDay(new Date(Date.now() + DAY * 1_000));
+    const event = (state?.events ?? []).find(
+      (entry) => entry.day === day && !entry.completed && !entry.auto_done
+    );
+    if (!event) return undefined;
+    const title = templateText(event.template, "title", t);
+    const minutes = eventMinutes(event);
+    return minutes > 0
+      ? t("st.tomorrowNext", { m: deInt(minutes), title })
+      : t("st.tomorrowNextPlain", { title });
+  }, [state, t]);
+
+  const todayHeading = (
+    <span className="flex items-center gap-2">
+      <Timer size={14} className="text-accent" />
+      {t("st.todayOn", {
+        d: new Date().toLocaleDateString(locale, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        }),
+      })}
+    </span>
+  );
+  const todayProgress =
+    sessionItems.length > 0 ? (
+      <span className="shrink-0 text-[12px] tabular-nums text-ink3">
+        {t("st.doneOf", { a: deInt(doneCount), n: deInt(sessionItems.length) })}
+      </span>
+    ) : undefined;
+
+  /** Die Wochenkarte · am Desktop der Ring, mobil eine Zeile zum Aufklappen. */
+  const weekChip = week && (
+    <span
+      className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+        week.open === 0
+          ? "border-accent-dim bg-accent-soft text-accent"
+          : "border-line text-ink3"
+      }`}
+    >
+      {week.open === 0 ? t("st.weekBudgetDone") : t("st.weekBudgetLeft", { m: deInt(week.open) })}
+    </span>
+  );
+  const weekSource = state?.budgetSet ? (
+    // Steht ein Budget in den Einstellungen, ist es auf allen Geräten dasselbe
+    // · das ist die halbe Aussage dieser Zeile.
+    t("st.weekBudgetSource", { m: deInt(plan?.weeklyMinutes ?? 0) })
+  ) : (
+    t("st.weekBudgetObserved", { m: deInt(state?.observedWeeklyMinutes ?? 0) })
+  );
+
+  /* Der Wochenvorschlag gehört zu Kiebitz Plus. Von Hand planen, verschieben
+     und abhaken bleibt frei · gesperrt ist nur, dass Kiebitz die Woche selbst
+     zusammenstellt. */
+  const proposalAction =
+    desktop && plan && planning == null ? (
+      <button
+        type="button"
+        onClick={() => {
+          if (!planGate.unlocked && !planGate.pending) {
+            openPlusDialog("adaptive_plan");
+            return;
+          }
+          proposePlan();
+        }}
+        className={`inline-flex items-center justify-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-1.5 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent ${
+          mobile ? "w-full py-2.5" : ""
+        }`}
+      >
+        <CalendarPlus size={15} /> {t("plan.proposeWeek")}
+        {!planGate.unlocked && !planGate.pending && <PlusBadge />}
+      </button>
+    ) : undefined;
+
+  const proposalBox =
+    desktop && plan && planning != null ? (
+      <div className="rounded-xl border border-accent-dim bg-panel2 p-3">
+        <div className="mb-2 text-[13px] font-medium text-ink">{t("plan.proposalTitle")}</div>
+        {planning.length === 0 ? (
+          <p className="text-[12.5px] leading-relaxed text-ink3">{t("plan.proposalEmpty")}</p>
+        ) : (
+          <>
+            <p className="mb-3 text-[12.5px] leading-relaxed text-ink3">
+              {t("plan.proposalNote", { n: planning.length, m: plan.weeklyMinutes })}
+            </p>
+            <ul className="mb-3 grid gap-1.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-3">
+              {planning.map((unit, index) => (
+                <li
+                  key={`${unit.day}-${unit.templateId}-${index}`}
+                  className="flex items-baseline justify-between gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px]"
+                  style={{ borderLeftColor: AREA_COLOR[unit.area], borderLeftWidth: 3 }}
+                >
+                  <span className="tabular-nums text-ink3">{unit.day}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink2">{unit.templateTitle}</span>
+                  <span className="shrink-0 tabular-nums text-ink3">
+                    {t("plan.minutes", { m: unit.minutes })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {planning.length > 0 && (
+            <Button onClick={applyPlan} disabled={busy}>
+              {t("plan.proposalApply")}
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => setPlanning(null)}
+            className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink3 transition-colors hover:text-ink"
+          >
+            {t("common.cancel")}
+          </button>
+        </div>
+      </div>
+    ) : undefined;
+
+  const coachCard = (
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <Lightbulb size={14} className="text-gold" /> {t("st.coach")}
+        </span>
+      }
+      action={state ? <WindowNote window={state.window} /> : undefined}
+      tour="study-plan"
+      className={mobile ? "mt-3" : "mt-4"}
+    >
+      {plan && plan.prescriptions.length > 0 ? (
+        <div
+          className={
+            mobile
+              ? "flex flex-col gap-2"
+              : "grid gap-3 min-[760px]:grid-cols-2 min-[1100px]:grid-cols-3"
+          }
+        >
+          {plan.prescriptions.map((prescription, index) => (
+            <PrescriptionCard
+              key={prescription.id}
+              prescription={prescription}
+              mobile={mobile}
+              index={index}
+              total={plan.prescriptions.length}
+              onAction={() => {
+                const action = prescription.action;
+                if (!action) return;
+                if (action.kind === "puzzles") {
+                  openPuzzles(action.theme, {
+                    minRating: action.minRating,
+                    maxRating: action.maxRating,
+                  });
+                } else if (action.kind === "repertoire") go("repertoire");
+                else if (action.kind === "endgame") {
+                  // Der Befund nennt den Endspieltyp aus der Materialsignatur ·
+                  // daraus wird die Drill-Kategorie.
+                  const type = prescription.finding.params.type;
+                  const category =
+                    typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
+                  if (openEndgame) openEndgame(category);
+                  else go("endgame");
+                } else if (action.kind === "analysis") go("analysis");
+                else go("games");
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="py-2 text-[13px] leading-relaxed text-ink3">{t("st.coachEmpty")}</p>
+      )}
+      {state && state.findings.length > (plan?.prescriptions.length ?? 0) && (
+        <div className={`flex ${mobile ? "" : "justify-end"} mt-3`}>
+          <button
+            type="button"
+            onClick={() => go("insights")}
+            className={`inline-flex items-center justify-between gap-2 rounded-lg text-[12.5px] text-ink3 transition-colors hover:text-ink ${
+              mobile ? "w-full border border-line bg-panel2 px-3 py-2.5" : ""
+            }`}
+          >
+            {t("st.allFindings", { n: state.findings.length })}
+            <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+    </Card>
+  );
+
+  const hygieneCard = plan && (
+    <Card
+      className={mobile ? "mt-3" : "mt-4"}
+      title={
+        <span className="flex items-center gap-2">
+          <Timer size={14} className="text-gold" /> {t("plan.hygieneTitle")}
+        </span>
+      }
+    >
+      {plan.hygiene.length > 0 ? (
+        <ul className="grid gap-2 min-[900px]:grid-cols-2">
+          {plan.hygiene.map((tip) => (
+            <li
+              key={tip.id}
+              className="rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
+            >
+              {/* Der Formattipp trägt Zeitformate als Rohwerte · dieselbe
+                  Übersetzung wie in den Befunden. */}
+              {t(tip.key, localizeFindingParams(tip.params, t, locale))}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="py-2 text-[12.5px] leading-relaxed text-ink3">{t("plan.hygieneEmpty")}</p>
+      )}
+    </Card>
+  );
+
+  const planner = (
+    <StudyPlanner
+      desktop={desktop}
+      suggestMinutes={suggestMinutes}
+      proposal={proposalBox}
+      proposalAction={proposalAction}
+    />
   );
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-        <div>
-          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("st.title")}</h1>
-          <p className="mt-0.5 text-[13px] text-ink3">{t("st.subtitle")}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {state?.rating && (
-            <div
-              className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]"
-              title={`${t(
-                state.rating.confidence === "measured" ? "plan.ratingExact" : "plan.ratingApprox"
-              )} ${t("plan.ratingWindow", { d: deInt(state.window.days) })}`}
-            >
-              <Gauge size={15} className="text-violet" />
-              <span className="font-medium tabular-nums">
-                {t("plan.ratingDelta", {
-                  d: `${state.rating.delta > 0 ? "+" : ""}${deInt(state.rating.delta)}`,
-                })}
-              </span>
-              <span className="text-ink3">
-                {Math.abs(state.rating.delta) <= ratingNoise(state.rating.games)
-                  ? t("plan.ratingNoise")
-                  : t("plan.ratingPools", { n: state.rating.pools })}
-              </span>
-            </div>
-          )}
-          {data && data.streak_days > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-[13px]">
-              <Flame size={15} className="text-gold" />
-              <span className="font-medium">{t("st.streak", { n: deInt(data.streak_days) })}</span>
-            </div>
-          )}
-        </div>
+      <header
+        className={`flex flex-wrap items-end justify-between gap-x-4 gap-y-3 ${
+          mobile ? "mb-3" : "mb-5"
+        }`}
+      >
+        {/* Mobil trägt die App-Bar den Seitennamen, und der Untertitel erklärt
+            eine Seite, die man ohnehin schon offen hat · die Zeile kostet dort
+            nur den Platz, den „Jetzt dran" braucht. */}
+        {!mobile && (
+          <div>
+            <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("st.title")}</h1>
+            <p className="mt-0.5 text-[13px] text-ink3">{t("st.subtitle")}</p>
+          </div>
+        )}
+        {/* Zwei Kennzahlen, eine Leiste · getrennte Kästen ließen sie wie zwei
+            Bedienelemente aussehen, die sie nicht sind. */}
+        {(state?.rating || (data && data.streak_days > 0)) && (
+          <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-panel">
+            {state?.rating && (
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 text-[13px]"
+                title={`${t(
+                  state.rating.confidence === "measured" ? "plan.ratingExact" : "plan.ratingApprox"
+                )} ${t("plan.ratingWindow", { d: deInt(state.window.days) })}`}
+              >
+                <Gauge size={15} className="text-violet" />
+                <span className="font-medium tabular-nums">
+                  {t("plan.ratingDelta", {
+                    d: `${state.rating.delta > 0 ? "+" : ""}${deInt(state.rating.delta)}`,
+                  })}
+                </span>
+                <span className="text-ink3">
+                  {Math.abs(state.rating.delta) <= ratingNoise(state.rating.games)
+                    ? t("plan.ratingNoise")
+                    : t("plan.ratingPools", { n: state.rating.pools })}
+                </span>
+              </div>
+            )}
+            {state?.rating && data && data.streak_days > 0 && <div className="w-px bg-line" />}
+            {data && data.streak_days > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
+                <Flame size={15} className="text-gold" />
+                <span className="font-medium">{t("st.streak", { n: deInt(data.streak_days) })}</span>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       {!desktop && !storeCapture && (
@@ -488,219 +825,139 @@ export default function Study({
         </div>
       )}
 
-      {mobile && (
-        <nav aria-label={t("st.areas")} className="mb-4 grid grid-cols-3 gap-2" data-tour="study-areas">
-          {areas.map((area) => (
-            <button
-              key={area.id}
-              onClick={area.onClick}
-              className="flex flex-col items-center gap-1.5 rounded-xl border border-line bg-panel px-2 py-3 text-center transition-colors hover:bg-panel2"
-            >
-              <area.icon size={19} className="text-accent" />
-              <span className="max-w-full truncate text-[12.5px] font-medium text-ink">
-                {area.label}
-              </span>
-              <span className="text-[11px] leading-tight text-ink3">{area.status}</span>
-            </button>
-          ))}
-        </nav>
-      )}
-
-      {/* Die Woche als eine Zahl · sie steht über allem anderen, weil sie die
-          Frage beantwortet, mit der man diese Seite öffnet. */}
-      {week && (
-        <Card
-          className="mb-4"
-          title={
-            <span className="flex items-center gap-2">
-              <Gauge size={14} className="text-accent" /> {t("st.weekBudget")}
-            </span>
-          }
-        >
-          <WeekBudgetBar
-            budget={week}
-            source={
-              state?.budgetSet ? (
-                // Steht ein Budget in den Einstellungen, ist es auf allen
-                // Geräten dasselbe · das ist die halbe Aussage dieser Zeile.
-                t("st.weekBudgetSource", { m: deInt(plan?.weeklyMinutes ?? 0) })
-              ) : (
-                t("st.weekBudgetObserved", {
-                  m: deInt(state?.observedWeeklyMinutes ?? 0),
-                })
-              )
-            }
-          />
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-3">
-        {/* Woran arbeiten */}
-        <Card
-          title={
-            <span className="flex items-center gap-2">
-              <Lightbulb size={14} className="text-gold" /> {t("st.coach")}
-            </span>
-          }
-          className="min-[1100px]:col-span-2"
-          tour="study-plan"
-        >
-          {plan && plan.prescriptions.length > 0 ? (
-            <div className="flex flex-col gap-2.5">
-              {plan.prescriptions.map((prescription) => (
-                <PrescriptionCard
-                  key={prescription.id}
-                  prescription={prescription}
-                  mobile={mobile}
-                  onAction={() => {
-                    const action = prescription.action;
-                    if (!action) return;
-                    if (action.kind === "puzzles") {
-                      openPuzzles(action.theme, {
-                        minRating: action.minRating,
-                        maxRating: action.maxRating,
-                      });
-                    } else if (action.kind === "repertoire") go("repertoire");
-                    else if (action.kind === "endgame") {
-                      // Der Befund nennt den Endspieltyp aus der
-                      // Materialsignatur · daraus wird die Drill-Kategorie.
-                      const type = prescription.finding.params.type;
-                      const category =
-                        typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
-                      if (openEndgame) openEndgame(category);
-                      else go("endgame");
-                    } else if (action.kind === "analysis") go("analysis");
-                    else go("games");
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="py-2 text-[13px] leading-relaxed text-ink3">{t("st.coachEmpty")}</p>
+      {mobile ? (
+        <>
+          {/* Was jetzt dran ist, steht über allem · danach erst, wohin man
+              sonst springen kann. */}
+          {sessionItems.length > 0 && (
+            <SessionHero item={nextItem} mobile tomorrow={tomorrowNote} />
           )}
-          {state && <WindowNote window={state.window} className="mt-3" />}
-          {state && state.findings.length > (plan?.prescriptions.length ?? 0) && (
-            <button
-              type="button"
-              onClick={() => go("insights")}
-              className="mt-3 w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink3 transition-colors hover:border-line2 hover:text-ink"
+
+          <nav
+            aria-label={t("st.areas")}
+            className={`grid grid-cols-3 gap-2 ${sessionItems.length > 0 ? "mt-3" : ""}`}
+            data-tour="study-areas"
+          >
+            {areas.map((area) => (
+              <button
+                key={area.id}
+                onClick={area.onClick}
+                className="flex min-h-[88px] flex-col items-start gap-2 rounded-xl border border-line bg-panel px-3 py-2.5 text-left transition-colors hover:bg-panel2"
+              >
+                <span
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-lg"
+                  style={{ background: AREA_SOFT[area.area], color: AREA_COLOR[area.area] }}
+                >
+                  <area.icon size={17} />
+                </span>
+                <span className="w-full min-w-0">
+                  <span className="block truncate text-[12.5px] font-medium text-ink">
+                    {area.label}
+                  </span>
+                  <span
+                    className="block truncate text-[11.5px] font-medium tabular-nums"
+                    style={{ color: AREA_COLOR[area.area] }}
+                  >
+                    {area.status}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </nav>
+
+          <Card className="mt-3" title={todayHeading} action={todayProgress}>
+            {restItems.length > 0 ? (
+              <SessionList items={restItems} mobile />
+            ) : (
+              <p className="py-2 text-[13px] leading-relaxed text-ink3">{t("st.sessionEmpty")}</p>
+            )}
+          </Card>
+
+          {/* Die Woche ist mobil eine Zeile · aufgeklappt dieselben Zahlen wie
+              am Desktop. */}
+          {week && (
+            <section
+              data-week-budget=""
+              className="mt-3 rounded-xl border border-line bg-panel"
             >
-              {t("st.allFindings", { n: state.findings.length })}
-            </button>
-          )}
-        </Card>
-
-        {/* Heute */}
-        <Card title={t("st.today")}>
-          <TodaySession items={sessionItems} emptyKey="st.sessionEmpty" />
-        </Card>
-      </div>
-
-      {/* Plan · die nächsten sieben Tage. Der Vorschlag steht in derselben
-          Karte wie die Plantafel: er füllt genau die Lücken, die sie zeigt. */}
-      <StudyPlanner
-        desktop={desktop}
-        suggestMinutes={suggestMinutes}
-        proposal={
-          desktop && plan ? (
-            planning == null ? (
-              // Der adaptive Wochenvorschlag gehört zu Kiebitz Plus. Von Hand
-              // planen, verschieben und abhaken bleibt frei · gesperrt ist nur,
-              // dass Kiebitz die Woche selbst zusammenstellt.
               <button
                 type="button"
-                onClick={() => {
-                  if (!planGate.unlocked && !planGate.pending) {
-                    openPlusDialog("adaptive_plan");
-                    return;
-                  }
-                  proposePlan();
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line2 px-4 py-2.5 text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+                onClick={() => setWeekOpen((value) => !value)}
+                aria-expanded={weekOpen}
+                className="w-full px-4 py-3 text-left"
               >
-                <CalendarPlus size={15} /> {t("plan.proposeWeek")}
-                {!planGate.unlocked && !planGate.pending && <PlusBadge />}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[13px] font-medium text-ink2">{t("st.weekBudget")}</span>
+                    <span className="text-[13px] font-semibold tabular-nums text-ink">
+                      {t("st.weekBudgetValue", {
+                        a: deInt(week.minutes),
+                        m: deInt(week.target),
+                      })}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {weekChip}
+                    <ChevronDown
+                      size={14}
+                      className={`text-ink3 transition-transform ${weekOpen ? "" : "-rotate-90"}`}
+                    />
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <WeekBar budget={week} />
+                </div>
               </button>
-            ) : (
-              <div className="rounded-xl border border-accent-dim bg-panel2 p-3">
-                <div className="mb-2 text-[13px] font-medium text-ink">
-                  {t("plan.proposalTitle")}
+              {weekOpen && (
+                <div className="border-t border-line px-4 py-3">
+                  <WeekAreaList budget={week} />
+                  <WeekNote budget={week} source={weekSource} className="mt-3" />
                 </div>
-                {planning.length === 0 ? (
-                  <p className="text-[12.5px] leading-relaxed text-ink3">
-                    {t("plan.proposalEmpty")}
-                  </p>
-                ) : (
-                  <>
-                    <p className="mb-3 text-[12.5px] leading-relaxed text-ink3">
-                      {t("plan.proposalNote", { n: planning.length, m: plan.weeklyMinutes })}
-                    </p>
-                    <ul className="mb-3 flex flex-col gap-1.5">
-                      {planning.map((unit, index) => (
-                        <li
-                          key={`${unit.day}-${unit.templateId}-${index}`}
-                          className="flex items-baseline justify-between gap-3 rounded-lg border border-line bg-panel px-3 py-2 text-[12.5px]"
-                          style={{ borderLeftColor: AREA_COLOR[unit.area], borderLeftWidth: 3 }}
-                        >
-                          <span className="tabular-nums text-ink3">{unit.day}</span>
-                          <span className="min-w-0 flex-1 truncate text-ink2">
-                            {unit.templateTitle}
-                          </span>
-                          <span className="shrink-0 tabular-nums text-ink3">
-                            {t("plan.minutes", { m: unit.minutes })}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {planning.length > 0 && (
-                    <Button onClick={applyPlan} disabled={busy}>
-                      {t("plan.proposalApply")}
-                    </Button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setPlanning(null)}
-                    className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink3 transition-colors hover:text-ink"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                </div>
-              </div>
-            )
-          ) : undefined
-        }
-      />
-
-      {/* Spielhygiene · kein Trainingsinhalt, sondern *wie* gespielt wird. */}
-      {plan && (
-        <Card
-          className="mt-4"
-          title={
-            <span className="flex items-center gap-2">
-              <Timer size={14} className="text-gold" /> {t("plan.hygieneTitle")}
-            </span>
-          }
-        >
-          {plan.hygiene.length > 0 ? (
-            <ul className="grid gap-2 min-[900px]:grid-cols-2">
-              {plan.hygiene.map((tip) => (
-                <li
-                  key={tip.id}
-                  className="rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] leading-relaxed text-ink2"
-                >
-                  {/* Der Formattipp trägt Zeitformate als Rohwerte · dieselbe
-                      Übersetzung wie in den Befunden. */}
-                  {t(tip.key, localizeFindingParams(tip.params, t, locale))}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="py-2 text-[12.5px] leading-relaxed text-ink3">{t("plan.hygieneEmpty")}</p>
+              )}
+            </section>
           )}
-        </Card>
+
+          {coachCard}
+          {planner}
+          {hygieneCard}
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col items-start gap-4 min-[1100px]:flex-row">
+            <Card
+              className="w-full min-w-0 flex-1"
+              title={todayHeading}
+              action={todayProgress}
+            >
+              <TodaySession
+                items={sessionItems}
+                emptyKey="st.sessionEmpty"
+                mobile={false}
+                tomorrow={tomorrowNote}
+              />
+            </Card>
+
+            {/* Die Woche als eine Figur · sie beantwortet „bin ich auf Kurs?",
+                ohne die Frage zu verdrängen, mit der man die Seite öffnet. */}
+            {week && (
+              <Card
+                className="w-full min-[1100px]:w-[372px] min-[1100px]:shrink-0"
+                title={
+                  <span className="flex items-center gap-2">
+                    <Gauge size={14} className="text-accent" /> {t("st.weekBudget")}
+                  </span>
+                }
+                action={weekChip}
+              >
+                <WeekBudgetBar budget={week} source={weekSource} />
+              </Card>
+            )}
+          </div>
+
+          {coachCard}
+          {planner}
+          {hygieneCard}
+        </>
       )}
     </div>
   );
