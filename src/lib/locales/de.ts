@@ -356,6 +356,8 @@ export const de = {
   "rep.newVariant": "Neue Variante",
   "rep.namePlaceholder": "Name der Variante (optional)",
   "rep.undoMove": "Zug zurück",
+  "rep.playToAdd": "Zug auf dem Brett spielen, um daraus eine neue Variante zu bauen.",
+  "rep.undoMoveHint": "Zug zurück · Pfeiltaste nach links",
   "rep.saveMoves.one": "Speichern ({n} Zug)",
   "rep.saveMoves.many": "Speichern ({n} Züge)",
   "rep.playBothSides": "Spiele beide Seiten der Variante nach · trainiert werden später nur deine eigenen Züge ({side}).",
@@ -417,6 +419,10 @@ export const de = {
   "rep.dueLabel": "Fällig",
   "rep.positions": "Positionen",
   "rep.deleteVariant": "Variante löschen",
+  "rep.deleteLine": "{name} löschen",
+  "rep.deleteTitle": "Variante löschen?",
+  "rep.deleteConfirmAction": "Endgültig löschen",
+  "rep.deleteConfirm": "„{name}“ wirklich löschen? Die Variante verschwindet samt allen Fortsetzungen, die unter ihr stehen, und samt dem Lernfortschritt dieser Züge. Die Löschung wird beim nächsten Gerätesync übertragen.",
 
   // ── Puzzles ────────────────────────────────────────────────────────────────
   "pz.title": "Puzzle-Training",

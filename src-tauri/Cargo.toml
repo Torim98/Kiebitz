@@ -91,6 +91,10 @@ rustls-pemfile = "2"
 # und die Erinnerung soll melden, wenn Windows sie ablehnt.
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.7"
+# Registry direkt statt ueber `reg.exe`. Ein unsigniertes Programm, das
+# versteckte `reg add`-Prozesse startet, sieht fuer die Verhaltenserkennung von
+# Defender aus wie ein Schaedling, der sich einnistet · siehe reminder.rs.
+windows-registry = "0.5"
 
 # QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops per Kamera.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

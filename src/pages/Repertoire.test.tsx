@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   repGaps: vi.fn(),
   repReview: vi.fn(),
   repReorder: vi.fn(),
+  repDelete: vi.fn(),
   /** Der Zug, den ein Klick auf das Brett-Double auslöst. */
   drop: { from: "", to: "" },
   engineMove: "e2e4",
@@ -24,7 +25,7 @@ vi.mock("../lib/backend", () => ({
 }));
 vi.mock("../lib/repertoire", () => ({
   repAddLine: vi.fn(),
-  repDelete: vi.fn(),
+  repDelete: mocks.repDelete,
   repDue: mocks.repDue,
   repExportPgnFile: vi.fn(),
   repGaps: mocks.repGaps,
@@ -105,6 +106,7 @@ beforeEach(() => {
   mocks.engineMove = "e2e4";
   mocks.repReview.mockResolvedValue({ due_ts: 0, interval_days: 1 });
   mocks.repReorder.mockResolvedValue(undefined);
+  mocks.repDelete.mockResolvedValue(undefined);
   mocks.repList.mockResolvedValue([]);
   mocks.repGaps.mockResolvedValue([]);
   mocks.repStats.mockResolvedValue({
@@ -368,5 +370,89 @@ describe("Repertoire training", () => {
     // Beide eigenen Züge der Linie wurden einzeln bewertet.
     expect(mocks.repReview).toHaveBeenCalledWith(2, 4);
     expect(mocks.repReview).toHaveBeenCalledWith(4, 4);
+  });
+});
+
+describe("Repertoire deleting and building", () => {
+  it("asks before deleting and drops only the moves that belong to the line alone", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    // Der Mülleimer sitzt an der Zeile selbst · dort sucht man ihn.
+    fireEvent.click(await screen.findByRole("button", { name: "Sicilian Defense löschen" }));
+    expect(screen.getByText("Variante löschen?")).toBeTruthy();
+    // Erst der Abbruch: gefragt heißt nicht gelöscht.
+    fireEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
+    await waitFor(() => expect(screen.queryByText("Variante löschen?")).toBeNull());
+    expect(mocks.repDelete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sicilian Defense löschen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Endgültig löschen" }));
+    // 1.e4 trägt auch die italienische Partie · fallen darf erst 1…c5 (id 4).
+    await waitFor(() => expect(mocks.repDelete).toHaveBeenCalledWith(4));
+  });
+
+  it("keeps a named line above the deleted one", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Italian Main Line löschen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Endgültig löschen" }));
+    // Über Bc4 steht die benannte italienische Partie · sie bleibt stehen.
+    await waitFor(() => expect(mocks.repDelete).toHaveBeenCalledWith(6));
+  });
+
+  it("opens the builder with the move that was played on the overview board", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    await screen.findByTestId("board-repertoire");
+    mocks.drop = { from: "d2", to: "d4" };
+    fireEvent.click(screen.getByTestId("play-repertoire"));
+
+    const board = await screen.findByTestId("board-rep-add");
+    expect(board.dataset.fen).toBe(fenAfter(["d4"]));
+    expect(screen.getByRole("button", { name: "Speichern (1 Zug)" })).toBeTruthy();
+  });
+
+  it("takes a move back with the left arrow key", async () => {
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Variante hinzufügen" }));
+
+    for (const uci of ["e2e4", "e7e5"]) {
+      mocks.engineMove = uci;
+      fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
+    }
+    await waitFor(() =>
+      expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4", "e5"]))
+    );
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4"]))
+    );
+
+    // Im Namensfeld gehört der Pfeil dem Cursor, nicht dem Brett.
+    const name = screen.getByPlaceholderText("Name der Variante (optional)");
+    fireEvent.keyDown(name, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(screen.getByTestId("board-rep-add").dataset.fen).toBe(fenAfter(["e4"]))
+    );
   });
 });

@@ -968,13 +968,18 @@ export default function Games({
                   {n}
                 </Chip>
               ))}
-              <span className="ml-1 tabular-nums">
-                {t("games.rangeInfo", {
-                  from: deInt(rangeFrom),
-                  to: deInt(rangeTo),
-                  total: deInt(totalResults),
-                })}
-              </span>
+              {/* Die Spanne "1-10 von 1.518" steht auf dem Handy direkt
+                  ueber derselben Seitenzahl, die rechts daneben schon zaehlt ·
+                  dort entfaellt sie, auf dem Desktop ist Platz genug. */}
+              {!mobile && (
+                <span className="ml-1 tabular-nums">
+                  {t("games.rangeInfo", {
+                    from: deInt(rangeFrom),
+                    to: deInt(rangeTo),
+                    total: deInt(totalResults),
+                  })}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button

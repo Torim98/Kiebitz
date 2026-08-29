@@ -369,41 +369,22 @@ pub fn reminder_message(
 
 /// Registriert die AppUserModelID in HKCU. Ohne sie verwirft Windows Toasts
 /// stillschweigend · auch die des Tauri-Plugins.
+///
+/// Bewusst über die Registry-API und nicht über `reg.exe`: Ein Programm ohne
+/// Code-Signatur, das versteckte `reg add`-Prozesse startet, erfüllt genau das
+/// Muster, an dem die Verhaltenserkennung von Defender einen Schädling erkennt,
+/// der sich im System einnistet (`Behavior:Win32/Persistence.A!ml`). Derselbe
+/// Eintrag aus dem eigenen Prozess heraus ist unauffällig und kostet nebenbei
+/// zwei Prozessstarts weniger bei jedem Start der App.
 #[cfg(windows)]
 pub fn register_windows_app_id(app_id: &str, display_name: &str, icon: Option<PathBuf>) {
-    use std::process::Command;
-    // `reg add` statt einer Registry-Crate: kein zusätzlicher Dependency-Baum,
-    // und der Aufruf ist idempotent.
-    let key = format!("HKCU\\Software\\Classes\\AppUserModelId\\{app_id}");
-    let mut base = Command::new("reg");
-    base.args([
-        "add",
-        &key,
-        "/v",
-        "DisplayName",
-        "/t",
-        "REG_SZ",
-        "/d",
-        display_name,
-        "/f",
-    ]);
-    no_window(&mut base);
-    let _ = base.output();
-    if let Some(path) = icon.filter(|p| p.exists()) {
-        let mut with_icon = Command::new("reg");
-        with_icon.args([
-            "add",
-            &key,
-            "/v",
-            "IconUri",
-            "/t",
-            "REG_SZ",
-            "/d",
-            &path.to_string_lossy(),
-            "/f",
-        ]);
-        no_window(&mut with_icon);
-        let _ = with_icon.output();
+    let path = format!("Software\\Classes\\AppUserModelId\\{app_id}");
+    let Ok(key) = windows_registry::CURRENT_USER.create(&path) else {
+        return;
+    };
+    let _ = key.set_string("DisplayName", display_name);
+    if let Some(icon) = icon.filter(|p| p.exists()) {
+        let _ = key.set_string("IconUri", icon.to_string_lossy().as_ref());
     }
 }
 
@@ -514,21 +495,145 @@ pub fn notify_now(app: tauri::AppHandle, title: String, body: String) -> Result<
 #[cfg(windows)]
 const TASK_NAME: &str = "Kiebitz Trainings-Erinnerung";
 
+/// Text für ein XML-Attribut bzw. einen Elementinhalt entschärfen. Pfade
+/// dürfen `&` enthalten, und ein unmaskiertes `&` macht die Aufgabendatei
+/// ungültig.
+#[cfg(windows)]
+fn xml_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Die Aufgabendefinition, wie die Aufgabenplanung sie selbst schreibt.
+///
+/// Alles, was früher ein zweiter PowerShell-Aufruf nachträglich gesetzt hat,
+/// steht hier gleich mit drin: Akkubetrieb ist kein Grund, die Erinnerung
+/// ausfallen zu lassen, ein wegen Standby verpasster Termin wird nachgeholt,
+/// und länger als fünf Minuten darf der Lauf nicht dauern.
+#[cfg(windows)]
+fn task_xml(exe: &std::path::Path, time: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Kiebitz erinnert einmal am Tag an das offene Training.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2020-01-01T{time}:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>true</WakeToRun>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{exe}</Command>
+      <Arguments>--reminder</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"#,
+        time = xml_escape(time),
+        exe = xml_escape(&exe.display().to_string()),
+    )
+}
+
+/// `schtasks` mit den gegebenen Argumenten, ohne aufblitzendes Konsolenfenster.
+#[cfg(windows)]
+fn schtasks(args: &[&str]) -> Result<std::process::Output, String> {
+    let mut command = std::process::Command::new("schtasks");
+    command.args(args);
+    no_window(&mut command);
+    command.output().map_err(|e| e.to_string())
+}
+
 /// Legt die tägliche Aufgabe an bzw. entfernt sie. Die Aufgabe startet Kiebitz
 /// mit `--reminder`; der Lauf zeigt die Benachrichtigung und beendet sich.
+///
+/// Die Definition geht als fertige XML-Datei an `schtasks`. Der ältere Weg
+/// (`/Delete`, dann `/Create /SC DAILY`, dann `powershell.exe` für die
+/// Akku-Einstellungen) startete für dasselbe Ergebnis drei versteckte
+/// Kindprozesse — ein unsigniertes Programm aus `%LOCALAPPDATA%`, das
+/// verstecktes PowerShell aufruft und sich anschließend einen Autostart
+/// einträgt, ist die Lehrbuchsignatur von `Behavior:Win32/Persistence.A!ml`.
+/// Ein `schtasks /Create /XML` erledigt dasselbe mit einem Prozess und ohne
+/// PowerShell.
 #[cfg(windows)]
-fn apply_windows_schedule(enabled: bool, time: &str) -> Result<String, String> {
-    use std::process::Command;
-    let mut remove = Command::new("schtasks");
-    remove.args(["/Delete", "/TN", TASK_NAME, "/F"]);
-    no_window(&mut remove);
-    let _ = remove.output();
+fn apply_windows_schedule(
+    enabled: bool,
+    time: &str,
+    dir: &std::path::Path,
+) -> Result<String, String> {
     if !enabled {
+        let _ = schtasks(&["/Delete", "/TN", TASK_NAME, "/F"]);
         return Ok(String::new());
     }
+    // `HH:MM` gehört unverändert in die XML-Datei · alles andere wäre entweder
+    // eine kaputte Aufgabe oder eingeschleustes Markup.
+    let valid = time.len() == 5
+        && time.as_bytes()[2] == b':'
+        && time
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| i == 2 || b.is_ascii_digit());
+    if !valid {
+        return Err(format!("Unbrauchbare Uhrzeit für die Erinnerung: {time}"));
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut create = Command::new("schtasks");
-    create.args([
+    // Die Datei liegt neben den Einstellungen und nicht in %TEMP%: aus dem
+    // Temp-Verzeichnis gestartete Dateien sind für sich schon ein Verdacht.
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let xml_path = dir.join("reminder-task.xml");
+    // `schtasks /XML` liest UTF-16 mit Stückliste · UTF-8 lehnt es ab.
+    let mut bytes = vec![0xFF, 0xFE];
+    for unit in task_xml(&exe, time).encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(&xml_path, bytes).map_err(|e| e.to_string())?;
+
+    // `/F` überschreibt eine vorhandene Aufgabe · ein eigener `/Delete`-Lauf
+    // davor wäre nur ein weiterer Prozess.
+    let created = schtasks(&[
+        "/Create",
+        "/TN",
+        TASK_NAME,
+        "/XML",
+        &xml_path.to_string_lossy(),
+        "/F",
+    ])?;
+    let _ = std::fs::remove_file(&xml_path);
+    if created.status.success() {
+        return Ok(TASK_NAME.to_string());
+    }
+
+    // Sollte eine Windows-Fassung die Datei ablehnen, bleibt der frühere Weg:
+    // eine einfache Tagesaufgabe. Sie startet dann nach Windows-Vorgabe nicht
+    // im Akkubetrieb — unschön, aber besser als gar keine Erinnerung.
+    let fallback = schtasks(&[
         "/Create",
         "/TN",
         TASK_NAME,
@@ -539,43 +644,36 @@ fn apply_windows_schedule(enabled: bool, time: &str) -> Result<String, String> {
         "/ST",
         time,
         "/F",
-    ]);
-    no_window(&mut create);
-    let output = create.output().map_err(|e| e.to_string())?;
-    if !output.status.success() {
+    ])?;
+    if !fallback.status.success() {
         return Err(format!(
             "Aufgabenplanung meldet: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-
-    // `schtasks /Create` setzt bei einer einfachen Aufgabe standardmäßig
-    // "nicht im Akkubetrieb starten" und "bei Akkubetrieb beenden". Auf
-    // Notebooks fällt die Erinnerung dadurch unbemerkt aus. Außerdem soll
-    // Windows einen wegen Standby verpassten Termin zeitnah nachholen.
-    let script = format!(
-        "$ErrorActionPreference='Stop'; \
-         $settings=New-ScheduledTaskSettingsSet \
-           -AllowStartIfOnBatteries \
-           -DontStopIfGoingOnBatteries \
-           -StartWhenAvailable \
-           -WakeToRun \
-           -ExecutionTimeLimit (New-TimeSpan -Minutes 5); \
-         Set-ScheduledTask -TaskName '{}' -Settings $settings | Out-Null",
-        TASK_NAME.replace('\'', "''")
-    );
-    let mut configure = Command::new("powershell.exe");
-    configure.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-    no_window(&mut configure);
-    let configured = configure.output().map_err(|e| e.to_string())?;
-    if !configured.status.success() {
-        return Err(format!(
-            "Aufgabenplanung konnte nicht zuverlässig konfiguriert werden: {}",
-            String::from_utf8_lossy(&configured.stderr).trim()
+            String::from_utf8_lossy(&created.stderr).trim()
         ));
     }
     Ok(TASK_NAME.to_string())
 }
+
+/// Was zuletzt erfolgreich eingetragen wurde · damit ein gewöhnlicher App-Start
+/// die Aufgabenplanung gar nicht erst anfassen muss.
+#[cfg(windows)]
+#[derive(Serialize, serde::Deserialize, PartialEq)]
+struct ScheduleState {
+    enabled: bool,
+    time: String,
+    exe: String,
+    ts: i64,
+}
+
+/// Wie lange ein Eintrag ohne Nachprüfen gilt.
+///
+/// Ohne diese Frist müsste jeder Start `schtasks` fragen, ob die Aufgabe noch
+/// steht; mit ihr fasst eine unveränderte Installation die Aufgabenplanung
+/// höchstens einmal pro Woche an. Verschwindet die Aufgabe doch einmal (von
+/// Hand gelöscht, von einem Virenscanner entfernt), holt Kiebitz sie innerhalb
+/// dieser Woche von selbst zurück.
+#[cfg(windows)]
+const SCHEDULE_RECHECK_SECS: i64 = 7 * 86_400;
 
 /// Bringt die Betriebssystem-Planung mit den Einstellungen in Einklang.
 /// Rückgabe: Name der Aufgabe (leer = keine Planung nötig/möglich).
@@ -590,7 +688,39 @@ pub fn sync_reminder_schedule(app: tauri::AppHandle) -> Result<String, String> {
         .clone();
     #[cfg(windows)]
     {
-        apply_windows_schedule(settings.notify_enabled, &settings.notify_time)
+        let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+        let marker = dir.join("reminder-schedule.json");
+        let wanted = ScheduleState {
+            enabled: settings.notify_enabled,
+            time: settings.notify_time.clone(),
+            exe: std::env::current_exe()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            ts: now_ts(),
+        };
+        // Steht dieselbe Planung schon und ist der Eintrag frisch, bleibt die
+        // Aufgabenplanung unberührt · siehe SCHEDULE_RECHECK_SECS.
+        let known = std::fs::read_to_string(&marker)
+            .ok()
+            .and_then(|text| serde_json::from_str::<ScheduleState>(&text).ok());
+        if let Some(known) = known {
+            if known.enabled == wanted.enabled
+                && known.time == wanted.time
+                && known.exe == wanted.exe
+                && wanted.ts - known.ts < SCHEDULE_RECHECK_SECS
+            {
+                return Ok(if known.enabled {
+                    TASK_NAME.to_string()
+                } else {
+                    String::new()
+                });
+            }
+        }
+        let name = apply_windows_schedule(settings.notify_enabled, &settings.notify_time, &dir)?;
+        if let Ok(text) = serde_json::to_string(&wanted) {
+            let _ = std::fs::write(&marker, text);
+        }
+        Ok(name)
     }
     #[cfg(not(windows))]
     {
@@ -722,6 +852,37 @@ mod tests {
 
     const TODAY: i64 = 20_000;
     const NOW: i64 = TODAY * 86_400 + 12 * 3_600;
+
+    /// Die Aufgabendefinition trägt Uhrzeit, Pfad und die Akku-Einstellungen,
+    /// die früher ein zweiter PowerShell-Aufruf nachgereicht hat.
+    #[cfg(windows)]
+    #[test]
+    fn task_definition_carries_time_path_and_battery_settings() {
+        let xml = task_xml(
+            std::path::Path::new(r"C:\Users\a b\AppData\Local\Rock & Roll\kiebitz.exe"),
+            "19:30",
+        );
+        assert!(xml.contains("<StartBoundary>2020-01-01T19:30:00</StartBoundary>"));
+        assert!(xml.contains(
+            r"<Command>C:\Users\a b\AppData\Local\Rock &amp; Roll\kiebitz.exe</Command>"
+        ));
+        assert!(xml.contains("<Arguments>--reminder</Arguments>"));
+        // Ohne diese drei fällt die Erinnerung auf einem Notebook aus.
+        assert!(xml.contains("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"));
+        assert!(xml.contains("<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"));
+        assert!(xml.contains("<StartWhenAvailable>true</StartWhenAvailable>"));
+    }
+
+    /// Eine Uhrzeit, die keine ist, darf keine Aufgabe anlegen — und schon gar
+    /// nicht als Markup in der Datei landen.
+    #[cfg(windows)]
+    #[test]
+    fn refuses_a_time_that_is_not_a_time() {
+        let dir = std::env::temp_dir().join("kiebitz-schedule-test");
+        for bad in ["", "19:3", "abcde", "</Task><x>"] {
+            assert!(apply_windows_schedule(true, bad, &dir).is_err(), "{bad}");
+        }
+    }
 
     fn settings() -> Settings {
         Settings {

@@ -336,7 +336,7 @@ State per platform, and what it would take:
 - **Windows**: SmartScreen shows "unknown publisher". A code-signing
   certificate (OV, from ~150 €/year; EV clears the reputation hurdle
   immediately) configured via `bundle.windows.certificateThumbprint` or signed
-  in CI would remove it.
+  in CI would remove it. It would also settle the Defender problem below.
 - **macOS**: the release builds are **unsigned and not notarized**, so Gatekeeper
   refuses a double-click. Users open the app once via right-click → *Open*, or
   clear the quarantine flag:
@@ -355,6 +355,54 @@ State per platform, and what it would take:
   distributed as they are.
 
 For private/personal use you can skip signing and dismiss the warnings.
+
+### Windows Defender: `Behavior:Win32/Persistence.A!ml`
+
+On 29.08.2026 Defender quarantined `%LOCALAPPDATA%\Kiebitz\kiebitz.exe`, the
+Start-menu/taskbar/desktop shortcuts and the scheduled task
+`Kiebitz Trainings-Erinnerung` on the developer machine. Nothing was infected —
+this is a behavioural (`!ml`) verdict, not a signature match, and it fires on a
+*combination* rather than on any one thing:
+
+1. the binary is **unsigned** and has **no SmartScreen reputation** (few
+   downloads, new hash on every release), and
+2. it lives in `%LOCALAPPDATA%` rather than `Program Files` (Tauri's NSIS
+   default is a per-user install), and
+3. it used to spawn, hidden (`CREATE_NO_WINDOW`) and on **every single start**,
+   `reg.exe` twice → `schtasks.exe /Delete` → `schtasks.exe /Create` →
+   `powershell.exe`, ending in an autostart entry that points back at itself.
+
+Point 3 is the textbook shape of a dropper installing persistence, and it is
+the only part that is ours to fix. `reminder.rs` no longer does any of it:
+
+- the AppUserModelID goes in through the registry API (`windows-registry`),
+  not through two hidden `reg.exe` children;
+- the scheduled task is registered from a task XML in a single
+  `schtasks /Create /XML /F` — no separate `/Delete`, and **no PowerShell**;
+  the battery/wake settings that PowerShell used to patch in afterwards are in
+  the XML;
+- `reminder-schedule.json` next to the settings records what was applied, so an
+  unchanged installation touches the Task Scheduler at most **once a week**
+  (`SCHEDULE_RECHECK_SECS`) instead of five times per launch. The weekly
+  re-check is what brings the task back if a scanner removed it.
+
+That leaves an ordinary app registering one daily task. What it cannot fix is
+points 1 and 2 — the real remedies, in order of effect:
+
+1. **Sign the binaries** (see above). An EV certificate also clears
+   SmartScreen immediately.
+2. **Report the false positive** to Microsoft at
+   <https://www.microsoft.com/en-us/wdsi/filesubmission> (category *Software
+   developer*, "Incorrectly detected as malware"). Turnaround is usually a day
+   or two and the verdict propagates to all users, so do this for any release
+   that gets flagged. Restore the file locally first (Windows Security →
+   *Protection history* → *Allow on device*) so you can submit it.
+3. Optionally set `bundle.windows.nsis.installMode` to `both` so users can
+   install into `Program Files`; that path carries far more trust than
+   `%LOCALAPPDATA%`. It costs an elevation prompt during install.
+
+If it happens again, check *Protection history* for **which** process tree was
+flagged before assuming it is this one — it names the exact child process.
 
 ### iOS
 

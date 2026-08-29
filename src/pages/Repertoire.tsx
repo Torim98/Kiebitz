@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   CornerUpLeft,
@@ -122,6 +123,7 @@ function VariationList({
   selectedPly,
   onSelect,
   onReorder,
+  onDelete,
 }: {
   lines: VariationLine[];
   selectedLineKey: string | null;
@@ -132,6 +134,12 @@ function VariationList({
    * (die Demo-Liste der Web-Vorschau ist fest).
    */
   onReorder?: (side: "white" | "black", keys: string[]) => void;
+  /**
+   * Variante löschen · derselbe Weg wie ueber den Mülleimer in der
+   * Detailkarte, nur direkt an der Zeile, wo man die Variante ohnehin
+   * ansieht. Ohne den Handler bleibt die Liste lesend (Web-Vorschau).
+   */
+  onDelete?: (line: VariationLine) => void;
 }) {
   const t = useT();
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -360,6 +368,17 @@ function VariationList({
                             <GripVertical aria-hidden="true" size={14} />
                           </button>
                         )}
+                        {onDelete && (
+                          <button
+                            type="button"
+                            aria-label={t("rep.deleteLine", { name: line.name })}
+                            title={t("rep.deleteVariant")}
+                            onClick={() => onDelete(line)}
+                            className="flex w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-panel2/60 text-ink3 transition-colors hover:border-[#8a3535] hover:text-loss focus:outline-none focus:ring-2 focus:ring-accent-dim"
+                          >
+                            <Trash2 aria-hidden="true" size={14} />
+                          </button>
+                        )}
                       </div>
                     </Fragment>
                   );
@@ -431,6 +450,8 @@ function LiveRepertoire() {
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
   const [nodeStats, setNodeStats] = useState<NodeGameStats | null>(null);
   const [mode, setMode] = useState<"browse" | "add" | "train">("browse");
+  /** Zug, mit dem der Baukasten aufgeht, wenn er vom Brett aus gestartet wurde. */
+  const [seedSans, setSeedSans] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [limits, setLimits] = useState<{ due: number; fresh: number }>({ due: 20, fresh: 5 });
   const now = Math.floor(Date.now() / 1000);
@@ -596,6 +617,34 @@ function LiveRepertoire() {
     }
   };
 
+  /**
+   * Was beim Löschen einer Variante wirklich fallen darf.
+   *
+   * `rep_delete` nimmt einen Knoten samt Untervarianten · gäbe man ihm den
+   * Endpunkt der Zeile, bliebe der ganze Weg dorthin als Rumpf stehen; gäbe
+   * man ihm die Wurzel, risse man Schwesternvarianten mit. Gesucht ist der
+   * höchste Knoten, der nur zu dieser einen Zeile gehört: von unten nach
+   * oben, solange der Vorgaenger genau ein Kind hat und selbst keinen Namen
+   * trägt (ein benannter Vorgaenger steht als eigene Variante in der Liste
+   * und muss stehen bleiben).
+   */
+  const exclusiveRoot = useCallback(
+    (endpointId: number): number => {
+      const path = pathNodes(endpointId);
+      // Von unten nach oben zurücklaufen und beim ersten Vorgänger halten,
+      // der noch woanders gebraucht wird.
+      let root = endpointId;
+      for (let i = path.length - 2; i >= 0; i -= 1) {
+        const node = path[i];
+        if (node.name.trim() !== "") break;
+        if ((children.get(`${node.side}:${node.id}`) ?? []).length !== 1) break;
+        root = node.id;
+      }
+      return root;
+    },
+    [children, pathNodes]
+  );
+
   const remove = async (id: number) => {
     await repDelete(id).catch((e) => setNotice(errorMessage(e)));
     if (selectedId === id) {
@@ -603,6 +652,18 @@ function LiveRepertoire() {
       setSelectedLineKey(null);
     }
     reload();
+  };
+
+  /**
+   * Löschen fragt nach · eine Variante ist Wochen an Wiederholungen, und der
+   * Mülleimer sitzt in der Liste direkt neben dem Zieh-Griff.
+   */
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; name: string } | null>(null);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const { id } = pendingDelete;
+    setPendingDelete(null);
+    await remove(id);
   };
 
   /** Einen Zug aus einer Lücke ins Buch übernehmen. */
@@ -626,6 +687,10 @@ function LiveRepertoire() {
         selectedPly={selectedPly}
         onSelect={selectVariation}
         onReorder={reorderLines}
+        onDelete={(line) =>
+          typeof line.targetId === "number" &&
+          setPendingDelete({ id: exclusiveRoot(line.targetId), name: line.name })
+        }
       />
       <div className="border-t border-line p-2">
         {nodes.length === 0 && (
@@ -637,7 +702,10 @@ function LiveRepertoire() {
           </button>
         )}
         <button
-          onClick={() => setMode("add")}
+          onClick={() => {
+            setSeedSans([]);
+            setMode("add");
+          }}
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-left text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
         >
           <Plus size={14} className="shrink-0" />
@@ -672,6 +740,25 @@ function LiveRepertoire() {
     });
   };
 
+  /**
+   * Ein Zug auf dem Brett der Übersicht ist eine Absichtserklaerung: hier
+   * soll etwas ins Buch. Statt ihn wirkungslos verpuffen zu lassen, oeffnet er
+   * den Baukasten mit genau diesem Zug als erstem Schritt · das ist derselbe
+   * Weg wie „Variante hinzufügen“, nur ohne den Umweg ueber den Knopf.
+   */
+  const startFromMove = (from: string, to: string): boolean => {
+    try {
+      const chess = new Chess(fen);
+      const move = chess.move({ from, to, promotion: "q" });
+      setSeedSans([move.san]);
+      setMode("add");
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const browseSelection = useBoardSelection(fen, startFromMove);
+
   const boardPane = (
     <div>
       <Board
@@ -679,7 +766,12 @@ function LiveRepertoire() {
         fen={fen}
         width={BOARD_WIDTH}
         lastMove={lastMove}
+        draggable
+        onPieceDrop={startFromMove}
+        onSquareClick={browseSelection.onSquareClick}
+        squareStyles={browseSelection.squareStyles}
         orientation={selected?.side ?? "white"}
+        mouseDrag
       />
       <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
         <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
@@ -689,6 +781,7 @@ function LiveRepertoire() {
           <Share2 size={14} />
         </Button>
       </div>
+      <p className="mt-2 px-1 text-[12px] leading-relaxed text-ink3">{t("rep.playToAdd")}</p>
     </div>
   );
 
@@ -700,7 +793,7 @@ function LiveRepertoire() {
             title={moveLabel(selected)}
             action={
               <button
-                onClick={() => remove(selected.id)}
+                onClick={() => setPendingDelete({ id: selected.id, name: moveLabel(selected) })}
                 className="text-ink3 transition-colors hover:text-loss"
                 title={t("rep.deleteVariant")}
               >
@@ -853,8 +946,10 @@ function LiveRepertoire() {
         <AddLine
           baseSans={baseSans}
           baseSide={selected?.side ?? null}
+          seedSans={seedSans}
           onDone={(err) => {
             setMode("browse");
+            setSeedSans([]);
             if (err) setNotice(err);
             reload();
           }}
@@ -872,6 +967,48 @@ function LiveRepertoire() {
       )}
 
       {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-variation-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPendingDelete(null);
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+            <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+                  Kiebitz
+                </div>
+                <h2 id="delete-variation-title" className="text-[16px] font-semibold">
+                  {t("rep.deleteTitle")}
+                </h2>
+              </div>
+            </div>
+            <p className="px-5 py-4 text-[13px] leading-relaxed text-ink2">
+              {t("rep.deleteConfirm", { name: pendingDelete.name })}
+            </p>
+            <div className="flex justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
+              <Button onClick={() => setPendingDelete(null)}>{t("common.cancel")}</Button>
+              <button
+                type="button"
+                autoFocus
+                onClick={confirmDelete}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d]"
+              >
+                <Trash2 size={14} /> {t("rep.deleteConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1086,14 +1223,17 @@ function BookCard({
 function AddLine({
   baseSans,
   baseSide,
+  seedSans = [],
   onDone,
 }: {
   baseSans: string[];
   baseSide: "white" | "black" | null;
+  /** Züge, die schon auf dem Brett standen, als der Baukasten aufging. */
+  seedSans?: string[];
   onDone: (err?: string) => void;
 }) {
   const t = useT();
-  const [draft, setDraft] = useState<string[]>([]);
+  const [draft, setDraft] = useState<string[]>(seedSans);
   const [name, setName] = useState("");
   const [nameEdited, setNameEdited] = useState(false);
   const [side, setSide] = useState<"white" | "black">(baseSide ?? "white");
@@ -1201,6 +1341,26 @@ function AddLine({
     }
   };
 
+  const undo = useCallback(() => setDraft((d) => d.slice(0, -1)), []);
+
+  /**
+   * Pfeil nach links nimmt den letzten Zug zurück · beim Bauen einer Variante
+   * verklickt man sich, und der Griff zur Maus für „Zug zurück“ reißt aus
+   * dem Fluss. Tippt gerade jemand den Namen, gehört die Taste dem Feld.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo]);
+
   const save = async () => {
     if (draft.length === 0) return;
     try {
@@ -1229,6 +1389,7 @@ function AddLine({
         <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
           {moveText(sans) || t("rep.playOnBoard")}
         </div>
+        <p className="mt-2 px-1 text-[12px] leading-relaxed text-ink3">{t("rep.undoMoveHint")}</p>
       </div>
       <div className="flex max-w-[420px] flex-col gap-3">
         <Card title={t("rep.newVariant")}>
@@ -1258,7 +1419,8 @@ function AddLine({
           )}
           <div className="mt-3 flex gap-2">
             <Button
-              onClick={() => setDraft((d) => d.slice(0, -1))}
+              onClick={undo}
+              title={t("rep.undoMoveHint")}
               className={draft.length === 0 ? "opacity-50" : ""}
             >
               <CornerUpLeft size={14} /> {t("rep.undoMove")}

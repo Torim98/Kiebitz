@@ -174,6 +174,25 @@ describe("Games page", () => {
     expect(warning.closest("div")?.className).toContain("text-gold");
   });
 
+  it("drops the range line on mobile", async () => {
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Games openAnalysis={vi.fn()} />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+    await screen.findByTestId("games-list");
+    // Rechts daneben steht auf dem Handy ohnehin schon "Seite 1 / n".
+    expect(screen.queryByText(/^\d+–\d+ von /)).toBeNull();
+  });
+
+  it("keeps the range line on the desktop", async () => {
+    render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+    await screen.findByRole("button", { name: "Testgegner" });
+    expect(screen.getByText("1–1 von 1")).toBeTruthy();
+  });
+
   it("swaps the wide table for cards on mobile without losing the row action", async () => {
     const { container } = render(
       <LocaleProvider>
