@@ -266,6 +266,7 @@ export const zh: Record<Key, string> = {
   "sh.optLine": "附上变着",
   "sh.optSolution": "附上答案",
   "sh.optVariation": "附上开局库着法",
+  "sh.optHistory": "附上此前的着法",
   "sh.optReveal": "在图上直接显示着法",
   "sh.optFlip": "翻转棋盘",
   "sh.share": "分享",

@@ -53,6 +53,7 @@ import { Button, Card, Chip } from "../components/ui";
 import { de } from "../lib/format";
 import { errorMessage } from "../lib/errors";
 import { replaySans } from "../lib/position";
+import { shareHistory } from "../lib/share/notation";
 import { isStoreCapture } from "../lib/storeCapture";
 import { batchDataChanges } from "../lib/changes";
 import { CoverageCard, GapsCard } from "./repertoire/RepertoireStats";
@@ -664,6 +665,9 @@ function LiveRepertoire() {
       orientation: selected?.side ?? "white",
       lastMove,
       line,
+      // Der Weg zur Stellung gehört bei einer Eröffnung dazu · dieselbe Zeile,
+      // die auch unter dem Brett steht.
+      history: shareHistory(baseSans),
       title: selectedLine?.name,
     });
   };

@@ -266,6 +266,7 @@ export const ar: Record<Key, string> = {
   "sh.optLine": "إرفاق المتغيّر",
   "sh.optSolution": "إرفاق الحل",
   "sh.optVariation": "إرسال نقلات الذخيرة",
+  "sh.optHistory": "إرسال النقلات السابقة",
   "sh.optReveal": "إظهار النقلة على الصورة",
   "sh.optFlip": "قلب الرقعة",
   "sh.share": "مشاركة",

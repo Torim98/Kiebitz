@@ -266,6 +266,7 @@ export const es: Record<Key, string> = {
   "sh.optLine": "Incluir la variante",
   "sh.optSolution": "Incluir la solución",
   "sh.optVariation": "Incluir las jugadas del repertorio",
+  "sh.optHistory": "Incluir las jugadas anteriores",
   "sh.optReveal": "Mostrar la jugada en la imagen",
   "sh.optFlip": "Girar el tablero",
   "sh.share": "Compartir",

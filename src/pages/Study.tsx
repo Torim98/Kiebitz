@@ -557,7 +557,7 @@ export default function Study({
 
   const todayHeading = (
     <span className="flex items-center gap-2">
-      <Timer size={14} className="text-accent" />
+      <Timer size={14} className="shrink-0 text-accent" />
       {t("st.todayOn", {
         d: new Date().toLocaleDateString(locale, {
           weekday: "long",
@@ -666,13 +666,18 @@ export default function Study({
     <Card
       title={
         <span className="flex items-center gap-2">
-          <Lightbulb size={14} className="text-gold" /> {t("st.coach")}
+          <Lightbulb size={14} className="shrink-0 text-gold" /> {t("st.coach")}
         </span>
       }
-      action={state ? <WindowNote window={state.window} /> : undefined}
+      // Woraus die Befunde gerechnet sind, ist ein Satz und keine Beschriftung ·
+      // neben der Überschrift bleibt auf dem Handy für beide zu wenig Platz,
+      // und die Zeile drückt den Titel in zwei Zeilen um das Symbol herum.
+      // Dort steht sie deshalb über den Befunden, auf die sie sich bezieht.
+      action={state && !mobile ? <WindowNote window={state.window} /> : undefined}
       tour="study-plan"
       className={mobile ? "mt-3" : "mt-4"}
     >
+      {state && mobile && <WindowNote window={state.window} className="mb-3" />}
       {plan && plan.prescriptions.length > 0 ? (
         <div
           className={
@@ -736,7 +741,7 @@ export default function Study({
       className={mobile ? "mt-3" : "mt-4"}
       title={
         <span className="flex items-center gap-2">
-          <Timer size={14} className="text-gold" /> {t("plan.hygieneTitle")}
+          <Timer size={14} className="shrink-0 text-gold" /> {t("plan.hygieneTitle")}
         </span>
       }
     >

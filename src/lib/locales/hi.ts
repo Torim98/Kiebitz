@@ -266,6 +266,7 @@ export const hi: Record<Key, string> = {
   "sh.optLine": "प्रकार साथ भेजें",
   "sh.optSolution": "हल साथ भेजें",
   "sh.optVariation": "बुक चालें साथ भेजें",
+  "sh.optHistory": "अब तक की चालें साथ भेजें",
   "sh.optReveal": "चाल तस्वीर पर दिखाएँ",
   "sh.optFlip": "बोर्ड पलटें",
   "sh.share": "साझा करें",

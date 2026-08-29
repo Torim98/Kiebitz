@@ -124,6 +124,25 @@ describe("ShareDialog", () => {
     expect(payload?.line).toEqual([{ from: "g1", to: "f3" }]);
   });
 
+  it("takes the moves so far along, and lets the sender leave them out", async () => {
+    const line: ShareSubject = {
+      kind: "analysis",
+      fen: "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+      orientation: "white",
+      lastMove: { from: "c7", to: "c5" },
+      history: "1.e4 c5",
+    };
+    render(<ShareDialog subject={line} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copiedPayload()?.history).toBe("1.e4 c5");
+
+    fireEvent.click(screen.getByLabelText(/Bisherige Züge mitgeben/i));
+    fireEvent.click(screen.getByRole("button", { name: /Link kopieren/i }));
+    await waitFor(() => expect(copied).toHaveLength(2));
+    expect(copiedPayload()?.history).toBeUndefined();
+  });
+
   it("sends an endgame drill with its goal and nothing to give away", async () => {
     const drill: ShareSubject = {
       kind: "endgame",

@@ -233,6 +233,8 @@ describe("Repertoire training", () => {
     expect(subject.lastMove).toEqual({ from: "e7", to: "e5" });
     // Was das Buch danach spielt, reist mit.
     expect(subject.line).toEqual([{ from: "g1", to: "f3" }]);
+    // Und der Weg dorthin · dieselbe Zeile, die unter dem Brett steht.
+    expect(subject.history).toBe("1.e4 e5");
     expect(subject.title).toBe("Italian Game");
   });
 

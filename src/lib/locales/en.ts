@@ -268,6 +268,7 @@ export const en: Record<Key, string> = {
   "sh.optLine": "Include the variation",
   "sh.optSolution": "Include the solution",
   "sh.optVariation": "Include the book moves",
+  "sh.optHistory": "Include the moves so far",
   "sh.optReveal": "Show the move on the picture",
   "sh.optFlip": "Flip the board",
   "sh.share": "Share",

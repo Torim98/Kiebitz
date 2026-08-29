@@ -266,6 +266,7 @@ export const fr: Record<Key, string> = {
   "sh.optLine": "Joindre la variante",
   "sh.optSolution": "Joindre la solution",
   "sh.optVariation": "Inclure les coups du répertoire",
+  "sh.optHistory": "Inclure les coups joués jusqu'ici",
   "sh.optReveal": "Montrer le coup sur l’image",
   "sh.optFlip": "Retourner l’échiquier",
   "sh.share": "Partager",

@@ -61,6 +61,7 @@ import { usePlusGate } from "../lib/plus/usePlus";
 import { de } from "../lib/format";
 import { evalLabel, winProb } from "../lib/evaluation";
 import { replaySans } from "../lib/position";
+import { plyOffset, shareHistory } from "../lib/share/notation";
 import { selectionStyles } from "../lib/boardMoves";
 import {
   clocksAtPly,
@@ -561,15 +562,30 @@ export default function Analysis({
 
   const openedFen = opened?.fen;
   /**
+   * Die Züge bis zur gezeigten Stellung · in einer Variante deren Ast, sonst
+   * die Partie bis zum aktuellen Halbzug. Sie tragen beides: das Brett und die
+   * Notation, die ein geteilter Link mitnimmt.
+   */
+  const shownSans = useMemo(
+    () => variation
+      ? [...sans.slice(0, variation.basePly), ...variation.sans]
+      : sans.slice(0, ply),
+    [sans, ply, variation]
+  );
+  /**
    * Stellung und der Zug, der zu ihr führte · in einem Durchgang nachgespielt,
    * weil das Brett beides zugleich zeigt.
    */
   const position = useMemo(
-    () => variation
-      ? replaySans([...sans.slice(0, variation.basePly), ...variation.sans], undefined, openedFen)
-      : replaySans(sans, ply, openedFen),
-    [sans, ply, variation, openedFen]
+    () => replaySans(shownSans, undefined, openedFen),
+    [shownSans, openedFen]
   );
+  /**
+   * Halbzüge vor dem ersten eigenen Zug · am freien Brett hinter einem
+   * geteilten Link fängt die Zählung nicht bei eins an, sondern dort, wo die
+   * geteilte Stellung steht.
+   */
+  const moveOffset = openedFen ? plyOffset(openedFen) : 0;
   const fen = position.fen;
   /**
    * Der markierte Zug. In der Ausgangsstellung einer geteilten Stellung gibt
@@ -860,6 +876,10 @@ export default function Analysis({
       // Stellung so ankommen, wie sie hier steht.
       lastMove: boardLastMove,
       line: best ? [{ from: best.slice(0, 2), to: best.slice(2, 4) }] : [],
+      // Wie die Stellung zustande kam · eine Analyse ohne ihre Züge ist nur ein
+      // Diagramm. Kam die Stellung selbst aus einem Link, führt dessen Zeile
+      // die eigenen Züge an.
+      history: shareHistory(shownSans, moveOffset, opened?.history),
       eval: liveEval ?? (currentMove
         ? { cp: currentMove.evalCp ?? null, mate: currentMove.mateIn ?? null }
         : null),
@@ -1151,12 +1171,22 @@ export default function Analysis({
         {/* Zugliste + Eval-Graph */}
         <div className="flex min-w-0 flex-col gap-4">
           <Card title={scratch ? t("an.freeBoard") : t("an.game")} pad={false} className="flex-1">
+            {/* Die Züge aus dem Link · sie stehen vor der eigenen Zugliste,
+                weil die Stellung genau dort herkommt. Nicht anklickbar: Die
+                Stellungen davor reisen nicht mit, nur ihre Notation. */}
+            {opened?.history && (
+              <p className="notation border-b border-line px-3 py-2 font-mono text-[12.5px] leading-relaxed text-ink3">
+                {opened.history}
+              </p>
+            )}
             <div className="max-h-[290px] overflow-y-auto p-3">
               <div className="flex flex-wrap gap-x-1 gap-y-1.5 text-[13.5px] leading-relaxed">
                 {viewMoves.map((m, i) => (
                   <span key={i} className="inline-flex items-center">
-                    {i % 2 === 0 && (
-                      <span className="mr-1 text-[12px] text-ink3">{i / 2 + 1}.</span>
+                    {(moveOffset + i) % 2 === 0 && (
+                      <span className="mr-1 text-[12px] text-ink3">
+                        {(moveOffset + i) / 2 + 1}.
+                      </span>
                     )}
                     <button
                       onClick={() => goToPly(i + 1)}

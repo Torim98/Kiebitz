@@ -276,6 +276,7 @@ export const de = {
   "sh.optLine": "Variante mitgeben",
   "sh.optSolution": "Lösung mitschicken",
   "sh.optVariation": "Buchzüge mitgeben",
+  "sh.optHistory": "Bisherige Züge mitgeben",
   "sh.optReveal": "Zug schon auf dem Bild zeigen",
   "sh.optFlip": "Brett drehen",
   "sh.share": "Teilen",

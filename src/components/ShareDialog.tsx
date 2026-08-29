@@ -49,6 +49,12 @@ export interface ShareSubject {
   rating?: number;
   theme?: string;
   /**
+   * Die Züge vor der Stellung, fertig gesetzt · siehe `share/notation.ts`.
+   * Bei Aufgabe und Endspiel bleibt sie leer: Dort gibt es keine Vorgeschichte,
+   * und ein Weg zur Stellung wäre schon ein Wink.
+   */
+  history?: string;
+  /**
    * Vorschlag für die Überschrift · der Name der Variante, der Titel des
    * Drills. Der Absender kann ihn überschreiben, aber er muss ihn nicht
    * abtippen, nur weil die Seite ihn längst kennt.
@@ -122,6 +128,7 @@ export default function ShareDialog({
   const [heading, setHeading] = useState(subject.title?.slice(0, 60) ?? "");
   const [flipped, setFlipped] = useState(false);
   const [withLine, setWithLine] = useState(true);
+  const [withHistory, setWithHistory] = useState(true);
   const [withEval, setWithEval] = useState(!puzzle);
   const [revealed, setRevealed] = useState(false);
   const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
@@ -149,12 +156,13 @@ export default function ShareDialog({
       eval: evaluation,
       title: heading.trim() || undefined,
       rating: subject.rating,
+      history: withHistory ? subject.history : undefined,
       // Das Motiv reist mit, die Landeseite hält es hinter derselben Klappe wie
       // die Lösung.
       theme: subject.theme,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [subject, orientation, withLine, evaluation, heading, line]
+    [subject, orientation, withLine, withHistory, evaluation, heading, line]
   );
 
   const url = useMemo(() => shareUrl(payload), [payload]);
@@ -316,6 +324,7 @@ export default function ShareDialog({
 
           <div className="mt-3 flex flex-col gap-2.5">
             {line.length > 0 && toggle(t(words.line), withLine, setWithLine)}
+            {subject.history ? toggle(t("sh.optHistory"), withHistory, setWithHistory) : null}
             {line.length > 0 && toggle(t("sh.optReveal"), revealed, setRevealed)}
             {subject.eval && toggle(t("sh.optEval"), withEval, setWithEval)}
             <button

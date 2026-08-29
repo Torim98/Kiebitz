@@ -18,6 +18,13 @@
  * abgeglichen von `npm run share:sync`. Änderungen am Format gehören deshalb
  * hinter eine neue Versionsnummer: Links, die jemand vor einem Jahr in einen
  * Chat gestellt hat, müssen weiter aufgehen.
+ *
+ * Ein neues Feld allein braucht die neue Nummer nicht, solange es ein eigenes
+ * Flag bekommt und hinten angehängt wird: Ein Leser, der das Flag nicht kennt,
+ * hört nach dem letzten ihm bekannten Feld auf und liest dieselbe Stellung wie
+ * bisher. Umgekehrt fehlt einem alten Link das Flag, und das Feld bleibt leer.
+ * Das gilt, solange nichts hinter das jüngste Feld rutscht · deshalb steht die
+ * Reihenfolge im Encoder, nicht im Kopf des Lesenden.
  */
 
 /** Aktuelle Formatversion · ältere Nutzlasten bleiben lesbar, neue nicht rückwärts. */
@@ -74,6 +81,18 @@ export interface SharePayload {
   rating?: number;
   /** Motivschlüssel des Puzzles ("fork", "backRankMate", …) · Lichess-Katalog. */
   theme?: string;
+  /**
+   * Die Züge vor der gezeigten Stellung, fertig gesetzt: "12.Nf3 Nc6 13.d4".
+   *
+   * Als Text und nicht als gepackte Zugpaare, weil beide Leser die Zeile nur
+   * anzeigen: Aus Feldpaaren würde erst wieder Notation, und dazu bräuchte die
+   * Landeseite die Ausgangsstellung und einen vollständigen SAN-Schreiber ·
+   * viel Maschinerie für eine Zeile, die die App längst gesetzt hat.
+   *
+   * Wer die Zeile baut, kürzt sie vorne (`trimNotation`): Der jüngste Teil
+   * einer Partie sagt am meisten, und ein Link soll eine Zeile bleiben.
+   */
+  history?: string;
 }
 
 const KINDS: ShareKind[] = ["analysis", "puzzle", "repertoire", "endgame"];
@@ -81,6 +100,9 @@ const KINDS: ShareKind[] = ["analysis", "puzzle", "repertoire", "endgame"];
 /** Figurenkennungen in der Reihenfolge ihrer Nibble-Codes. */
 const PIECES = "PNBRQKpnbrqk";
 
+// Die acht Bits des Flag-Bytes sind damit vergeben · das nächste Feld braucht
+// eine neue Formatversion oder ein zweites Flag-Byte hinter der bisherigen
+// Nutzlast, und beides muss der Worker gleichzeitig lernen.
 const FLAG_BLACK_VIEW = 1;
 const FLAG_LAST_MOVE = 2;
 const FLAG_LINE = 4;
@@ -88,11 +110,20 @@ const FLAG_EVAL = 8;
 const FLAG_TITLE = 16;
 const FLAG_RATING = 32;
 const FLAG_THEME = 64;
+const FLAG_HISTORY = 128;
 
 /** Längste Überschrift in Bytes · ein Link soll eine Zeile bleiben. */
 export const TITLE_MAX_BYTES = 80;
 /** Längste mitgegebene Zuglinie · deckt jede Aufgabe und jede sinnvolle Variante ab. */
 export const LINE_MAX_MOVES = 40;
+/**
+ * Längste mitgegebene Vorgeschichte in Bytes · gut ein Dutzend Züge.
+ *
+ * Sie steht am Ende der Nutzlast, damit ein Leser, der das Feld nicht kennt,
+ * einfach nichts mehr liest und dieselbe Stellung sieht wie bisher. Deshalb
+ * kommt hier auch nichts mehr dahinter.
+ */
+export const HISTORY_MAX_BYTES = 120;
 
 class Writer {
   private bytes: number[] = [];
@@ -328,6 +359,7 @@ export function encodeShare(payload: SharePayload): string {
   const title = payload.title?.trim() ?? "";
   const theme = payload.theme?.trim() ?? "";
   const line = (payload.line ?? []).slice(0, LINE_MAX_MOVES);
+  const history = payload.history?.trim() ?? "";
   const evaluation =
     payload.eval && (payload.eval.cp != null || payload.eval.mate != null) ? payload.eval : null;
 
@@ -339,6 +371,7 @@ export function encodeShare(payload: SharePayload): string {
   if (title) flags |= FLAG_TITLE;
   if (payload.rating) flags |= FLAG_RATING;
   if (theme) flags |= FLAG_THEME;
+  if (history) flags |= FLAG_HISTORY;
 
   const kind = KINDS.indexOf(payload.kind);
   out.u8(SHARE_VERSION);
@@ -366,6 +399,12 @@ export function encodeShare(payload: SharePayload): string {
   if (payload.rating) out.u16(Math.max(0, Math.min(65535, Math.round(payload.rating))));
   if (theme) {
     const bytes = utf8(theme, 40);
+    out.u8(bytes.length);
+    out.raw(bytes);
+  }
+  // Zuletzt, und dabei bleibt es · siehe HISTORY_MAX_BYTES.
+  if (history) {
+    const bytes = utf8(history, HISTORY_MAX_BYTES);
     out.u8(bytes.length);
     out.raw(bytes);
   }
@@ -415,6 +454,10 @@ export function decodeShare(text: string): SharePayload | null {
     if (flags & FLAG_THEME) {
       const length = input.u8();
       payload.theme = new TextDecoder().decode(input.raw(length));
+    }
+    if (flags & FLAG_HISTORY) {
+      const length = input.u8();
+      payload.history = new TextDecoder().decode(input.raw(length));
     }
     return payload;
   } catch {

@@ -66,6 +66,11 @@ vi.mock("../components/Board", () => ({
     </div>
   ),
 }));
+vi.mock("../components/ShareDialog", () => ({
+  default: ({ subject }: { subject: Record<string, unknown> }) => (
+    <div data-testid="share-subject">{JSON.stringify(subject)}</div>
+  ),
+}));
 vi.mock("../components/LiveEngine", () => ({
   default: ({ onMove }: { onMove?: (uci: string) => void }) => (
     <div data-testid="live-engine">
@@ -173,6 +178,42 @@ describe("Analysis page", () => {
     expect(screen.getByTestId("analysis-board").dataset.muted).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Zurück zur Partie" }));
     expect(screen.getByTestId("analysis-board").dataset.muted).toBe("false");
+  });
+
+  it("shares the position together with the moves that led to it", async () => {
+    render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+
+    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    // Zwei Halbzüge zurück: geteilt wird, was auf dem Brett steht.
+    fireEvent.click(screen.getByRole("button", { name: "e5" }));
+    fireEvent.click(screen.getByTitle("Stellung teilen"));
+
+    const subject = JSON.parse(screen.getByTestId("share-subject").textContent!);
+    expect(subject.kind).toBe("analysis");
+    expect(subject.history).toBe("1.e4 e5");
+  });
+
+  it("shows the notation a shared link brings and keeps counting from there", async () => {
+    const shared = {
+      kind: "analysis" as const,
+      // Nach 1.e4 · Schwarz ist am Zug.
+      fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+      orientation: "white" as const,
+      history: "1.e4",
+    };
+    render(<LocaleProvider><Analysis targetGameId={null} shared={shared} /></LocaleProvider>);
+
+    expect(await screen.findByText("1.e4")).toBeTruthy();
+
+    // Der eigene Anbau zählt weiter, statt wieder bei eins anzufangen · der
+    // erste Zug ist ein schwarzer und trägt deshalb gar keine eigene Nummer.
+    fireEvent.click(screen.getByRole("button", { name: "play e5" }));
+    expect(await screen.findByRole("button", { name: "e5" })).toBeTruthy();
+    expect(screen.queryByText("1.")).toBeNull();
+
+    fireEvent.click(screen.getByTitle("Stellung teilen"));
+    const subject = JSON.parse(screen.getByTestId("share-subject").textContent!);
+    expect(subject.history).toBe("1.e4 e5");
   });
 
   it("shows database player names with parenthesized ratings and previews the next move", async () => {

@@ -638,6 +638,77 @@ export default function App() {
     </Suspense>
   );
 
+  /**
+   * Der Update-Hinweis · auf dem Desktop eine Karte unten rechts, auf dem
+   * Handy eine Leiste über der Navigation.
+   *
+   * Fest an den unteren Rand geklebt liegt der Hinweis mobil auf der
+   * Navigation und, je nach Gerät, halb unter der Systemleiste · dann verdeckt
+   * er die Leiste und sein eigener Knopf ist kaum zu treffen. In der Spalte der
+   * Shell steht er stattdessen zwischen Inhalt und Leisten: Er nimmt die volle
+   * Breite, deckt nichts zu und schiebt die Navigation nicht weg.
+   */
+  const noticeShell = isMobile
+    ? "shrink-0 border-t border-line bg-panel2 px-4 py-3"
+    : "fixed bottom-4 right-4 z-50 rounded-lg border border-line bg-panel2 px-4 py-3 shadow-xl";
+
+  const updateNotice = update ? (
+    <div className={`flex items-center gap-2.5 text-[12.5px] text-ink2 ${noticeShell}`}>
+      <Loader2 size={15} className="animate-spin text-accent" />
+      {update.phase === "installing"
+        ? t("app.updateInstalling", { v: update.version })
+        : t("app.updateDownloading", { v: update.version })}
+    </div>
+  ) : (
+    available && (
+      <div className={`flex flex-col gap-2.5 ${isMobile ? "" : "w-[288px]"} ${noticeShell}`}>
+        <div className="flex items-start gap-2.5">
+          {updBusy ? (
+            <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin text-accent" />
+          ) : (
+            <RefreshCw
+              size={15}
+              className={`mt-0.5 shrink-0 ${updError ? "text-loss" : "text-accent"}`}
+            />
+          )}
+          <div className={`min-w-0 flex-1 text-[12.5px] ${updError ? "text-loss" : "text-ink2"}`}>
+            {updError
+              ? t("app.updateFailed", { e: updError })
+              : updBusy
+                ? t("app.updateStarting")
+                : playStore
+                  ? t("app.updatePlayAvailable")
+                  : t("app.updateAvailable", { v: available.version })}
+          </div>
+          <button
+            onClick={dismissUpdate}
+            aria-label={t("app.updateLater")}
+            className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-ink3 transition-colors hover:text-ink"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {!updBusy && (
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={dismissUpdate}
+              className="rounded-md px-2.5 py-1 text-[12px] text-ink3 transition-colors hover:text-ink"
+            >
+              {t("app.updateLater")}
+            </button>
+            <button
+              onClick={startUpdate}
+              className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
+            >
+              {updError ? <RefreshCw size={13} /> : <Download size={13} />}{" "}
+              {updError ? t("app.updateRetry") : t("app.updateNow")}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  );
+
   const overlays = (
     <>
       <PlusDialog openSettings={() => navigate("settings")} />
@@ -660,62 +731,6 @@ export default function App() {
             }}
           />
         </Suspense>
-      )}
-      {update ? (
-        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 text-[12.5px] text-ink2 shadow-xl">
-          <Loader2 size={15} className="animate-spin text-accent" />
-          {update.phase === "installing"
-            ? t("app.updateInstalling", { v: update.version })
-            : t("app.updateDownloading", { v: update.version })}
-        </div>
-      ) : (
-        available && (
-          <div className="fixed bottom-4 right-4 z-50 flex w-[288px] flex-col gap-2.5 rounded-lg border border-line bg-panel2 px-4 py-3 shadow-xl">
-            <div className="flex items-start gap-2.5">
-              {updBusy ? (
-                <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin text-accent" />
-              ) : (
-                <RefreshCw
-                  size={15}
-                  className={`mt-0.5 shrink-0 ${updError ? "text-loss" : "text-accent"}`}
-                />
-              )}
-              <div className={`min-w-0 text-[12.5px] ${updError ? "text-loss" : "text-ink2"}`}>
-                {updError
-                  ? t("app.updateFailed", { e: updError })
-                  : updBusy
-                    ? t("app.updateStarting")
-                    : playStore
-                      ? t("app.updatePlayAvailable")
-                      : t("app.updateAvailable", { v: available.version })}
-              </div>
-              <button
-                onClick={dismissUpdate}
-                aria-label={t("app.updateLater")}
-                className="-mr-1 -mt-0.5 shrink-0 rounded p-0.5 text-ink3 transition-colors hover:text-ink"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            {!updBusy && (
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={dismissUpdate}
-                  className="rounded-md px-2.5 py-1 text-[12px] text-ink3 transition-colors hover:text-ink"
-                >
-                  {t("app.updateLater")}
-                </button>
-                <button
-                  onClick={startUpdate}
-                  className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
-                >
-                  {updError ? <RefreshCw size={13} /> : <Download size={13} />}{" "}
-                  {updError ? t("app.updateRetry") : t("app.updateNow")}
-                </button>
-              </div>
-            )}
-          </div>
-        )
       )}
     </>
   );
@@ -753,6 +768,7 @@ export default function App() {
               className="pointer-events-none absolute inset-0 z-40 [&>*]:pointer-events-auto"
             />
           </div>
+          {updateNotice}
           {showAds && <AdBanner android={backend.info?.platform === "android"} />}
         </div>
         {!rail && (
@@ -816,6 +832,7 @@ export default function App() {
       {showAds && <AdBanner android={false} />}
       </div>
 
+      {updateNotice}
       {overlays}
     </div>
   );

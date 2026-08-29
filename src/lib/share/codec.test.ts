@@ -109,6 +109,49 @@ describe("share codec", () => {
     expect(payload.length).toBeLessThan(80);
   });
 
+  it("carries the moves before the position", () => {
+    const decoded = roundTrip({
+      kind: "repertoire",
+      fen: SICILIAN,
+      orientation: "white",
+      history: "1.e4 c5",
+    });
+    expect(decoded.history).toBe("1.e4 c5");
+  });
+
+  it("leaves the history out when there is none", () => {
+    expect(roundTrip({ kind: "analysis", fen: START, orientation: "white" }).history).toBeUndefined();
+    expect(
+      roundTrip({ kind: "analysis", fen: START, orientation: "white", history: "  " }).history
+    ).toBeUndefined();
+  });
+
+  /**
+   * Die Vorgeschichte steht als letztes Feld in der Nutzlast · ein Leser, der
+   * sie nicht kennt, hört davor auf und sieht dieselbe Stellung wie bisher.
+   * Genau das prüft dieser Fall: Ohne das Flag ist der Rest Byte für Byte der
+   * alte Link.
+   */
+  it("appends the history behind every field an older reader knows", () => {
+    const base: SharePayload = {
+      kind: "repertoire",
+      fen: SICILIAN,
+      orientation: "black",
+      lastMove: { from: "c7", to: "c5" },
+      line: [{ from: "g1", to: "f3" }],
+      eval: { cp: 21, mate: null },
+      title: "Sizilianisch",
+      theme: "fork",
+    };
+    const without = fromBase64Url(encodeShare(base));
+    const withHistory = fromBase64Url(encodeShare({ ...base, history: "1.e4 c5" }));
+    expect(withHistory.length).toBeGreaterThan(without.length);
+    // Nur das Flag-Byte (Index 2) unterscheidet sich, alles davor und danach
+    // bleibt gleich · der Anhang kommt hinten.
+    expect([...withHistory.subarray(3, without.length)]).toEqual([...without.subarray(3)]);
+    expect(withHistory[2]).toBe(without[2] | 128);
+  });
+
   it("returns null for anything that is not one of our payloads", () => {
     expect(decodeShare("")).toBeNull();
     expect(decodeShare("nonsense")).toBeNull();

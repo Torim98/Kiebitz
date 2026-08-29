@@ -96,6 +96,16 @@ const CASES = [
       title: "Umwandlung mit Matt · Übung",
     },
   },
+  {
+    name: "an analysis with the moves that led to it",
+    payload: {
+      kind: "analysis",
+      fen: "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+      orientation: "white",
+      lastMove: { from: "c7", to: "c5" },
+      history: "1.e4 c5",
+    },
+  },
 ];
 
 const vectors = {
