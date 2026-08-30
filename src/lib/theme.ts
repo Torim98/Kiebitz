@@ -13,11 +13,21 @@
  * Plus-Status. Jede Änderung läuft durch `apply()`, sodass es genau einen Weg
  * ans <html> gibt.
  */
+import { invoke } from "@tauri-apps/api/core";
+
 import type { Key } from "./i18n";
 import { featureUnlocked, subscribePlus } from "./plus/store";
 import { getSettings, type Settings } from "./settings";
 
-export type ThemeId = "dark" | "light" | "dusk" | "graphite" | "paper" | "contrast" | "signal";
+export type ThemeId =
+  | "dark"
+  | "light"
+  | "dusk"
+  | "graphite"
+  | "paper"
+  | "contrast"
+  | "signal"
+  | "rose";
 
 export interface ThemeDef {
   id: ThemeId;
@@ -54,6 +64,7 @@ export const THEMES: readonly ThemeDef[] = [
     descKey: "theme.contrastNote",
   },
   { id: "signal", plus: true, light: false, nameKey: "theme.signal", descKey: "theme.signalNote" },
+  { id: "rose", plus: true, light: false, nameKey: "theme.rose", descKey: "theme.roseNote" },
 ];
 
 export const DEFAULT_THEME: ThemeId = "dark";
@@ -277,9 +288,6 @@ function apply() {
   if (typeof document === "undefined") return;
   const theme = resolveTheme(appearance, { now: new Date(), systemDark: systemDark(), plus: plusUnlocked });
   const board = appearance.boardSet;
-  if (theme === applied && board === appliedBoard) return;
-  applied = theme;
-  appliedBoard = board;
 
   const root = document.documentElement;
   root.dataset.theme = theme;
@@ -287,6 +295,16 @@ function apply() {
   // überschriebe ein alter Wert weiterhin das Brett des Themas.
   if (board === DEFAULT_BOARD_SET) delete root.dataset.board;
   else root.dataset.board = board;
+
+  // Erst jetzt, mit gesetztem Attribut, stehen die Tokens des neuen Themas am
+  // <html> · und noch vor dem Ausstieg unten: Beim Start bestätigen die
+  // Einstellungen bloß das zwischengespeicherte Thema, die Titelleiste hat es
+  // dann aber noch nie gehört.
+  paintTitlebar(theme);
+
+  if (theme === applied && board === appliedBoard) return;
+  applied = theme;
+  appliedBoard = board;
 
   // Den Grundton für den nächsten Kaltstart mitnehmen, statt ihn ein zweites
   // Mal aufzuschreiben · gemessen wird, was die Themendatei gerade sagt.
@@ -296,6 +314,45 @@ function apply() {
   // so setzt das Startskript kein `data-board="auto"`, das es nicht gibt.
   writeCache({ theme, board: board === DEFAULT_BOARD_SET ? undefined : board, bg });
   window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT, { detail: theme }));
+}
+
+/**
+ * Die Windows-Titelleiste in den Farben des Themas.
+ *
+ * Sie gehört nicht zum Dokument, also erreicht sie kein Stylesheet · das
+ * Backend setzt die DWM-Attribute des Fensters. Die Werte kommen trotzdem aus
+ * `themes.css`: Hier wird gemessen, was am <html> gerade gilt, damit es keine
+ * zweite Farbtabelle in Rust gibt (siehe `src-tauri/src/titlebar.rs`).
+ *
+ * Schlägt der Aufruf fehl, gibt es keine Tauri-Shell (Web-Vorschau, Tests) ·
+ * dann bleibt es dabei, statt bei jedem Themenwechsel erneut anzuklopfen.
+ */
+let titlebar = true;
+let painted: ThemeId | null = null;
+
+function paintTitlebar(theme: ThemeId) {
+  if (!titlebar || theme === painted || typeof document === "undefined") return;
+  const style = getComputedStyle(document.documentElement);
+  const caption = style.getPropertyValue("--color-panel").trim();
+  const text = style.getPropertyValue("--color-ink").trim();
+  const border = style.getPropertyValue("--color-line").trim();
+  // Ohne geladenes Stylesheet ist nichts zu messen · dann lieber nichts sagen
+  // als die Leiste auf Schwarz ziehen. Der nächste Anlauf holt es nach.
+  if (!caption || !text || !border) return;
+  painted = theme;
+  try {
+    void invoke("set_titlebar", {
+      caption,
+      text,
+      border,
+      // Helle Schrift auf dunkler Leiste · steuert Hover und Systemmenü.
+      dark: !themeDef(theme).light,
+    }).catch(() => {
+      titlebar = false;
+    });
+  } catch {
+    titlebar = false;
+  }
 }
 
 /** Das gerade angewendete Thema (nicht unbedingt das gewählte). */

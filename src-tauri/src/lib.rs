@@ -21,7 +21,6 @@ mod settings;
 mod share;
 mod study;
 mod sync;
-#[cfg(windows)]
 mod titlebar;
 mod updater;
 mod widgets;
@@ -394,8 +393,9 @@ pub fn run() {
             // Datenbank nicht auf, ist immer noch ein Fenster da, das die
             // Meldung zeigen kann.
             if let Some(window) = app.get_webview_window("main") {
-                #[cfg(windows)]
-                titlebar::apply(&window);
+                // Der Standardton · das gewählte Thema meldet die Oberfläche
+                // gleich nach dem ersten Bild über `set_titlebar` nach.
+                titlebar::apply(&window, titlebar::DARK);
                 let _ = window.show();
             }
             if cfg!(debug_assertions) {
@@ -611,7 +611,8 @@ pub fn run() {
             diag::diag_clear,
             diag::diag_log_path,
             diag::diag_report,
-            diag::diag_save_report
+            diag::diag_save_report,
+            titlebar::set_titlebar
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

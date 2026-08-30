@@ -362,6 +362,60 @@
   --color-backdrop: rgba(230, 234, 238, 0.018);
 }
 
+/* ── Rosé · Plus ─────────────────────────────────────────────────────────────
+   Aubergine mit Rosé als Akzent · das wärmste der dunklen Themen. Der Grund ist
+   nicht neutralgrau, sondern leicht ins Violette gezogen; dadurch wirkt das
+   Rosa gesättigt, ohne dass es dafür grell sein müsste.
+
+   Sieg und Niederlage bleiben Grün und Rot: Der Akzent trägt hier keine
+   Aussage, und die Bilanzfarben sollen in jedem Thema dasselbe bedeuten. Damit
+   das Rot neben dem Rosé nicht als zweiter Akzent gelesen wird, steht es
+   dunkler und weniger gesättigt als in „Dunkel" (#e2645f statt #e66767). */
+[data-theme="rose"] {
+  --color-bg: #140f13;
+  --color-panel: #1d171c;
+  --color-panel2: #251e24;
+  --color-panel3: #2e252d;
+  --color-line: #322732;
+  --color-line2: #473948;
+
+  --color-ink: #f6ecf1;
+  --color-ink2: #c5b2bf;
+  --color-ink3: #a2919d;
+
+  --color-accent: #ef7aa8;
+  --color-accent-dim: #a8446a;
+  --color-accent-soft: #331f28;
+
+  --color-win: #4cc294;
+  --color-draw: #a2919d;
+  --color-loss: #e2645f;
+  --color-warn: #dda04e;
+
+  --color-blue: #7ba6e8;
+  --color-violet: #b295ea;
+  --color-gold: #d5a851;
+  --color-cc: #95bd66;
+
+  --color-accent-ink: #2c0d1b;
+  --color-accent-hover: #f892b9;
+  --color-loss-soft: #2e1618;
+  --color-loss-dim: #8c4442;
+  --color-gold-soft: #2c2416;
+  --color-gold-dim: #8a7030;
+
+  --color-board-light: #ecdae1;
+  --color-board-dark: #8f6377;
+  --color-board-light-muted: #ded2d7;
+  --color-board-dark-muted: #7d6f76;
+  --color-mark: rgba(239, 122, 168, 0.42);
+  --color-mark-soft: rgba(239, 122, 168, 0.3);
+
+  --color-overlay: #140f13d9;
+  --color-scroll: #473948;
+  --color-backdrop: rgba(246, 236, 241, 0.018);
+}
+
 /* ── Brett-Sets ──────────────────────────────────────────────────────────────
    Nur die Feldfarben. Ohne ausdrückliche Wahl ("auto") steht hier nichts und es
    bleibt beim Brett des Themas · deshalb stehen diese Blöcke hinter den

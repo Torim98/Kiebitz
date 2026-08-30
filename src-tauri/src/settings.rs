@@ -351,8 +351,8 @@ pub const LOCALES: [&str; 7] = ["en", "de", "es", "fr", "hi", "ar", "zh"];
 
 /// Farbwelten · muss mit THEMES in src/lib/theme.ts übereinstimmen. Der erste
 /// Eintrag ist die Rückfallebene.
-const THEMES: [&str; 7] = [
-    "dark", "light", "dusk", "graphite", "paper", "contrast", "signal",
+const THEMES: [&str; 8] = [
+    "dark", "light", "dusk", "graphite", "paper", "contrast", "signal", "rose",
 ];
 
 /// Brett-Sets · muss mit BOARD_SETS in src/lib/theme.ts übereinstimmen.

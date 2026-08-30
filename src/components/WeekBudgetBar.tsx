@@ -167,12 +167,9 @@ export function WeekNote({
   const { t } = useI18n();
   return (
     <div className={className}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="text-[12px] tabular-nums text-ink2">
-          {t("st.weekToday", { m: deInt(budget.today) })}
-        </span>
-        <span className="text-[11.5px] text-ink3">{t("st.weekMeasured")}</span>
-      </div>
+      <span className="text-[12px] tabular-nums text-ink2">
+        {t("st.weekToday", { m: deInt(budget.today) })}
+      </span>
       {source && <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink3">{source}</p>}
     </div>
   );
