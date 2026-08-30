@@ -49,7 +49,16 @@ vi.mock("./pages/Study", () => ({
     </div>
   ),
 }));
-vi.mock("./pages/InsightsV2", () => ({ default: () => <div>Insights</div> }));
+// Die Insights reichen ihre Absprünge genauso durch wie der Training-Hub ·
+// aus einem Befund heraus sind Repertoire und Endspiele eine Detailebene.
+vi.mock("./pages/InsightsV2", () => ({
+  default: ({ openRepertoire }: { openRepertoire?: () => void }) => (
+    <div>
+      <div>Insights</div>
+      <button onClick={() => openRepertoire?.()}>Zum Repertoire</button>
+    </div>
+  ),
+}));
 vi.mock("./pages/Settings", () => ({ default: () => <div>Settings</div> }));
 
 const realMatchMedia = window.matchMedia;
@@ -166,6 +175,58 @@ describe("mobile navigation", () => {
 
     fireEvent.click(bar.getByRole("button", { name: "Zurück" }));
     await waitFor(() => expect(pageTitle()).toBe("Study"));
+  });
+
+  it("comes back to the exact spot the jump started from", async () => {
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+    const bar = within(container.querySelector("header") as HTMLElement);
+    const main = container.querySelector("main") as HTMLElement;
+
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    const jump = await screen.findByRole("button", { name: "Zu den Puzzles" });
+    // So weit unten steht der Befund, aus dem der Nutzer abspringt.
+    main.scrollTop = 640;
+    fireEvent.click(jump);
+
+    await waitFor(() => expect(pageTitle()).toBe("Puzzles"));
+    // Die Detailebene selbst beginnt oben.
+    expect(main.scrollTop).toBe(0);
+
+    fireEvent.click(bar.getByRole("button", { name: "Zurück" }));
+    await waitFor(() => expect(pageTitle()).toBe("Study"));
+    expect(main.scrollTop).toBe(640);
+  });
+
+  it("forgets the spot when the next stop is a tab, not the way back", async () => {
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+    const main = container.querySelector("main") as HTMLElement;
+
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    main.scrollTop = 640;
+    fireEvent.click(await screen.findByRole("button", { name: "Zu den Puzzles" }));
+    await waitFor(() => expect(pageTitle()).toBe("Puzzles"));
+
+    // Über die Leiste zurück ins Training ist ein Tabwechsel · der beginnt oben.
+    fireEvent.click(bottomBar().getByRole("button", { name: "Training" }));
+    await waitFor(() => expect(pageTitle()).toBe("Study"));
+    expect(main.scrollTop).toBe(0);
+  });
+
+  it("opens the repertoire from an insight as a detail level", async () => {
+    const { container } = render(<LocaleProvider><App /></LocaleProvider>);
+    const bar = within(container.querySelector("header") as HTMLElement);
+    const main = container.querySelector("main") as HTMLElement;
+
+    fireEvent.click(bottomBar().getByRole("button", { name: "Insights" }));
+    const jump = await screen.findByRole("button", { name: "Zum Repertoire" });
+    main.scrollTop = 320;
+    fireEvent.click(jump);
+
+    await waitFor(() => expect(pageTitle()).toBe("Repertoire"));
+    // Der Pfeil führt zurück in die Insights · nicht auf den Start.
+    fireEvent.click(bar.getByRole("button", { name: "Zurück" }));
+    await waitFor(() => expect(pageTitle()).toBe("Insights"));
+    expect(main.scrollTop).toBe(320);
   });
 
   it("keeps the puzzle theme deep link under Training as well", async () => {

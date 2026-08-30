@@ -45,7 +45,8 @@ import {
   type UpdateState,
 } from "./lib/updater";
 import { useT, type Key } from "./lib/i18n";
-import { useNavStack, type PageId } from "./lib/nav";
+import { useNavStack, type PageId, type RouteParams } from "./lib/nav";
+import { forgetPages, keepScroll, rememberScroll, takeScroll } from "./lib/pageMemory";
 import {
   MobileAppBar,
   MobileNav,
@@ -153,8 +154,32 @@ export default function App() {
   // Der Stapel hält die Seite samt Deep-Link-Parametern und hängt an der
   // Session-History · siehe lib/nav.ts. Erst dadurch tut die Android-Zurück-
   // Taste etwas anderes, als die App zu beenden.
-  const { route, depth, navigate: goTo, push, back } = useNavStack();
+  const { route, depth, navigate: switchTo, push: pushLevel, back } = useNavStack();
   const page = route.page;
+  // Der Scroll-Container der Shell · dieselbe Fläche für alle Seiten.
+  const mainRef = useRef<HTMLElement>(null);
+  const depthRef = useRef(depth);
+  depthRef.current = depth;
+
+  // Absprung in eine Detailebene: vorher merken, wo der Nutzer stand · der
+  // Zurück-Pfeil bringt ihn dann wieder genau dorthin (siehe lib/pageMemory).
+  const push = useCallback(
+    (target: PageId, params?: RouteParams) => {
+      rememberScroll(depthRef.current, mainRef.current?.scrollTop ?? 0);
+      pushLevel(target, params);
+    },
+    [pushLevel]
+  );
+
+  // Der Tabwechsel bleibt ein Tabwechsel · er vergisst das Gemerkte, damit
+  // jedes Hauptziel wie bisher am Kopf der Seite beginnt.
+  const goTo = useCallback(
+    (target: PageId, params?: RouteParams) => {
+      forgetPages();
+      switchTo(target, params);
+    },
+    [switchTo]
+  );
   const backend = useBackendInfo();
   const t = useT();
   const storeCapture = isStoreCapture();
@@ -190,6 +215,10 @@ export default function App() {
   // ihn auch vorwählen können.
   const openEndgame = (category?: EndgameCategory) =>
     push("endgame", { endgameCategory: category });
+
+  // Aus einem Befund ins Repertoire ist ebenfalls eine Detailebene · aus dem
+  // Training ergibt sich das schon aus NAV_PARENT, aus den Insights nicht.
+  const openRepertoire = () => push("repertoire");
 
   // Rückmeldung ist immer eine Detailebene · Zurück führt dorthin zurück, wo
   // der Nutzer gerade war, egal ob er über die Einstellungen kam oder geschüttelt hat.
@@ -246,18 +275,21 @@ export default function App() {
     isMobilePreview();
   // Querformat auf Telefonhöhe: die Navigation tritt an die linke Kante.
   const rail = useLandscapePhone();
-  const mainRef = useRef<HTMLElement>(null);
 
   // Beide Shells behalten denselben Scroll-Container über alle Seiten hinweg.
   // Ohne Reset übernimmt der nächste Tab die Position des vorherigen und
   // beginnt dadurch irgendwo mitten im Inhalt · auf dem Desktop war das
   // besonders auffällig, weil die Seiten dort länger sind.
+  //
+  // Nach dem Zurück aus einer Detailebene steht dort stattdessen die gemerkte
+  // Position: Wer aus dem Coach abgesprungen ist, kommt genau bei seinem
+  // Befund wieder heraus, statt am Kopf der Seite.
   useLayoutEffect(() => {
     const main = mainRef.current;
     if (!main) return;
-    main.scrollTop = 0;
     main.scrollLeft = 0;
-  }, [page]);
+    return keepScroll(main, takeScroll(depth) ?? 0);
+  }, [page, depth]);
 
   // Kräftiges Schütteln öffnet auf dem Handy die Rückmeldung · vorgewählt als
   // Absturzbericht, weil man das Gerät selten aus Begeisterung schüttelt.
@@ -629,7 +661,13 @@ export default function App() {
         <Study go={navigate} openPuzzles={openPuzzles} openEndgame={openEndgame} />
       )}
       {page === "insights" && (
-        <Insights go={navigate} openPuzzles={openPuzzles} openAnalysis={openAnalysis} />
+        <Insights
+          go={navigate}
+          openPuzzles={openPuzzles}
+          openAnalysis={openAnalysis}
+          openRepertoire={openRepertoire}
+          openEndgame={openEndgame}
+        />
       )}
       {page === "settings" && (
         <SettingsPage openSupport={openSupport} startTour={() => setTourOpen(true)} />

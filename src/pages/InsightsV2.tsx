@@ -21,6 +21,7 @@ import { deepInsights, type DeepInsights } from "../lib/insights";
 import { buildDna } from "../lib/dna";
 import { buildFindings, findingsFor, type Finding, type FindingTab } from "../lib/findings";
 import { deInt } from "../lib/format";
+import { usePageMemory } from "../lib/pageMemory";
 import type { PageId } from "../App";
 import Overview from "./insights/Overview";
 import Strength from "./insights/Strength";
@@ -50,17 +51,29 @@ export default function InsightsV2({
   go,
   openPuzzles,
   openAnalysis,
+  openRepertoire,
+  openEndgame,
 }: {
   go: (page: PageId) => void;
   openPuzzles: (theme?: string) => void;
   openAnalysis: (gameId: number) => void;
+  /**
+   * Repertoire und Endspiele hängen unter dem Training · von hier aus sind sie
+   * trotzdem eine Detailebene, sonst führte der Zurück-Pfeil nach dem Absprung
+   * aus einem Befund auf den Start statt zurück auf den Befund.
+   */
+  openRepertoire?: () => void;
+  openEndgame?: () => void;
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
   const desktop = backend.mode === "desktop";
 
-  const [tab, setTab] = useState<InsightTab>("overview");
+  // Der Reiter übersteht einen Absprung in die Puzzles oder ins Repertoire ·
+  // ohne ihn käme man zwar an derselben Scroll-Position, aber auf einer anderen
+  // Seite heraus. Beim Tabwechsel ist er vergessen (siehe lib/pageMemory).
+  const [tab, setTab] = usePageMemory<InsightTab>("insights.tab", "overview");
   const deepGate = usePlusGate("full_insights");
   const [records, setRecords] = useState<GameSummary[]>([]);
   const [errors, setErrors] = useState<PhaseErrors[]>([]);
@@ -123,16 +136,19 @@ export default function InsightsV2({
     [deepData, live]
   );
 
+  const toRepertoire = () => (openRepertoire ? openRepertoire() : go("repertoire"));
+
   const onAction = (finding: Finding) => {
     switch (finding.action?.kind) {
       case "repertoire":
-        go("repertoire");
+        toRepertoire();
         break;
       case "puzzles":
         openPuzzles(finding.action.theme);
         break;
       case "endgame":
-        go("endgame");
+        if (openEndgame) openEndgame();
+        else go("endgame");
         break;
       case "analysis":
         go("analysis");
@@ -232,7 +248,7 @@ export default function InsightsV2({
                   findings={findingsFor(findings, "openings")}
                   onAction={onAction}
                   desktop={desktop}
-                  onOpenRepertoire={() => go("repertoire")}
+                  onOpenRepertoire={toRepertoire}
                 />
               )}
               {tab === "patterns" && (
