@@ -80,6 +80,27 @@ export type SectionId =
   | "about"
   | "reset";
 
+/**
+ * Gruppen der Einstellungen · sie beantworten die Frage, mit der man die Seite
+ * öffnet: „Wo suche ich?"
+ *
+ * Vorher war es eine Liste aus achtzehn gleichwertigen Karten mit einer
+ * einzigen Zwischenüberschrift ganz unten. Wer die Sprache umstellen wollte,
+ * las an Erinnerungen, Synchronisierung und Eröffnungsbuch vorbei.
+ *
+ * · `basics`   — einmal einstellen, gilt überall: Sprache, Thema, Rundgang.
+ * · `account`  — wer man ist und wo die Daten herkommen: Plus, Schachkonten,
+ *                Synchronisierung.
+ * · `training` — was beim Üben passiert: Klänge, Erinnerungen, Widgets.
+ * · `app`      — die App als Programm: Updates, Datenschutz, Rückmeldung,
+ *                Lizenzen.
+ * · `advanced` — was man einmal einrichtet und danach nie wieder anfasst,
+ *                plus alles, was Daten löschen kann.
+ */
+export const SECTION_GROUPS = ["basics", "account", "training", "app", "advanced"] as const;
+
+export type GroupId = (typeof SECTION_GROUPS)[number];
+
 export interface Section {
   id: SectionId;
   icon: LucideIcon;
@@ -87,9 +108,21 @@ export interface Section {
   /** Eine Zeile, die sagt, was der Bereich enthält. */
   summary: string;
   tone?: "accent" | "loss";
-  /** Selten gebraucht · steht hinter der Zwischenüberschrift "Erweitert". */
-  advanced?: boolean;
+  /** Bestimmt Zwischenüberschrift und Reihenfolge · siehe SECTION_GROUPS. */
+  group: GroupId;
   content: ReactNode;
+}
+
+/**
+ * Bereiche in Gruppenreihenfolge. Innerhalb einer Gruppe bleibt die
+ * Reihenfolge der Deklaration erhalten (`sort` ist stabil) · so steht die
+ * Gruppierung an einer Stelle und muss nicht zusätzlich in die Reihenfolge
+ * des Quelltexts einsortiert werden.
+ */
+export function inGroupOrder(sections: Section[]): Section[] {
+  return [...sections].sort(
+    (a, b) => SECTION_GROUPS.indexOf(a.group) - SECTION_GROUPS.indexOf(b.group)
+  );
 }
 
 /** DOM-Id der Sprungmarke eines Bereichs. */
@@ -194,13 +227,14 @@ export function SettingsSection({
 export function SectionNav({
   sections,
   active,
-  advancedLabel,
+  groupLabel,
   label,
   onJump,
 }: {
   sections: Section[];
   active: SectionId | null;
-  advancedLabel: string;
+  /** Überschrift einer Gruppe · dieselben Wörter wie in der Seite daneben. */
+  groupLabel: (group: GroupId) => string;
   label: string;
   onJump: (id: SectionId) => void;
 }) {
@@ -212,9 +246,9 @@ export function SectionNav({
           const current = section.id === active;
           return (
             <Fragment key={section.id}>
-              {section.advanced && !sections[index - 1]?.advanced && (
-                <div className="px-3 pb-1 pt-4 text-[10.5px] font-medium uppercase tracking-[0.12em] text-ink3">
-                  {advancedLabel}
+              {section.group !== sections[index - 1]?.group && (
+                <div className="px-3 pb-1 pt-4 text-[10.5px] font-medium uppercase tracking-[0.12em] text-ink3 first:pt-0">
+                  {groupLabel(section.group)}
                 </div>
               )}
               <button

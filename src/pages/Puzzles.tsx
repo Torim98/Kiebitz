@@ -38,7 +38,7 @@ import Board from "../components/Board";
 import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { moveBetween } from "../lib/position";
 import { Button, Card, Chip, Spark } from "../components/ui";
@@ -490,7 +490,7 @@ function TrainerView({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
@@ -525,20 +525,22 @@ function TrainerView({
             </span>
           </div>
 
-          <Board
-            boardId="puzzle"
-            fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
-            width={BOARD_WIDTH}
-            lastMove={lastMove}
-            draggable={status === "playing" && atLive}
-            onPieceDrop={tryMove}
-            onSquareClick={onSquareClick}
-            squareStyles={squareStyles}
-            orientation={orientation}
-            shake={shake}
-            end={boardEnd}
-            mouseDrag
-          />
+          <div className="board-bleed">
+            <Board
+              boardId="puzzle"
+              fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
+              width={BOARD_MAX}
+              lastMove={lastMove}
+              draggable={status === "playing" && atLive}
+              onPieceDrop={tryMove}
+              onSquareClick={onSquareClick}
+              squareStyles={squareStyles}
+              orientation={orientation}
+              shake={shake}
+              end={boardEnd}
+              mouseDrag
+            />
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
             <span className="text-[12.5px] text-ink2">{t("pz.positionHistory")}</span>
@@ -918,7 +920,7 @@ function DemoPuzzles() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
@@ -931,22 +933,24 @@ function DemoPuzzles() {
             </span>
           </div>
 
-          <Board
-            boardId="puzzle"
-            fen={fen}
-            width={BOARD_WIDTH}
-            lastMove={lastMove}
-            draggable={status !== "solved"}
-            onPieceDrop={tryMove}
-            onSquareClick={onSquareClick}
-            squareStyles={{
-              ...moveTargetStyles(fen, selected),
-              ...(selected ? { [selected]: { boxShadow: "inset 0 0 0 3px var(--color-accent)" } } : {}),
-            }}
-            orientation={puzzle.sideToMove}
-            shake={shake}
-            mouseDrag
-          />
+          <div className="board-bleed">
+            <Board
+              boardId="puzzle"
+              fen={fen}
+              width={BOARD_MAX}
+              lastMove={lastMove}
+              draggable={status !== "solved"}
+              onPieceDrop={tryMove}
+              onSquareClick={onSquareClick}
+              squareStyles={{
+                ...moveTargetStyles(fen, selected),
+                ...(selected ? { [selected]: { boxShadow: "inset 0 0 0 3px var(--color-accent)" } } : {}),
+              }}
+              orientation={puzzle.sideToMove}
+              shake={shake}
+              mouseDrag
+            />
+          </div>
 
           <div className="mt-3 flex h-[52px] items-center">
             {status === "solved" ? (

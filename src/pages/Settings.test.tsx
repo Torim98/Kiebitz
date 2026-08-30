@@ -229,32 +229,39 @@ describe("Settings loading", () => {
     fireEvent.click(soundToggle);
     expect(soundToggle.checked).toBe(false);
     expect(screen.getByText("set.engineNote")).toBeTruthy();
-    // Dieselbe Gliederung wie auf dem Handy: die Expertenbereiche stehen hinter
-    // einer Zwischenüberschrift · auf dem Desktop zusätzlich in der Sprungleiste.
-    expect(screen.getAllByText("set.advanced").length).toBe(2);
-    // Alltag zuerst, Erweitertes danach · und der Ton steht vor der Engine.
+    // Jede Gruppe trägt ihre Überschrift zweimal: in der Seite und in der
+    // Sprungleiste daneben.
+    for (const group of ["set.group.basics", "set.group.account", "set.group.training", "set.group.app", "set.advanced"]) {
+      expect(screen.getAllByText(group).length).toBe(2);
+    }
+    // Die Reihenfolge folgt den Gruppen, nicht der Reihenfolge im Quelltext:
+    // Grundlagen, Konto, Training, App, Erweitert.
     const order = screen
       .getAllByRole("heading", { level: 2 })
       .map((heading) => heading.textContent);
     expect(order).toEqual([
+      // Grundlagen
       "set.language",
       "set.appearance",
       "set.tour",
+      // Konto
       "plus.title",
       "set.accounts",
+      "set.sync",
+      // Training · Widgets fehlen bewusst: die Homescreen-Widgets gibt es nur
+      // unter Android · siehe eigener Test weiter unten.
       "set.sound",
       "set.notify",
-      // Widgets fehlen bewusst: die Homescreen-Widgets gibt es nur unter
-      // Android · siehe eigener Test weiter unten.
-      "set.sync",
+      // App
       "set.updates",
       "set.adsPrivacy",
       "set.support",
+      "set.about",
+      // Erweitert
       "set.engine",
       "set.database",
       "set.chessdb",
       "set.puzzleDb",
-      "set.about",
       "set.reset",
     ]);
   });

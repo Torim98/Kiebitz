@@ -10,11 +10,14 @@ import { Chess } from "chess.js";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   BookOpen,
+  ChevronDown,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Cpu,
+  FlipVertical2,
   ListChecks,
   Loader2,
   Save,
@@ -49,12 +52,12 @@ import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import type { SharePayload } from "../lib/share/codec";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition, gameEnd } from "../lib/boardEnd";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX } from "../lib/boardLayout";
 import CapturedPieces from "../components/CapturedPieces";
 import { capturedFromFen } from "../lib/captured";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
-import { Button, Card, ExtLink, ResultBadge } from "../components/ui";
+import { Button, Card, ExtLink, Menu, MenuItem, ResultBadge } from "../components/ui";
 import { PlusBadge } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
@@ -361,6 +364,16 @@ export default function Analysis({
   const [notesError, setNotesError] = useState<string | null>(null);
   const [sharing, setSharing] = useState<ShareSubject | null>(null);
   /**
+   * Brett von Hand gedreht.
+   *
+   * Ab Werk zeigt das Brett die eigene Seite (bzw. die Seite, die ein geteilter
+   * Link mitbringt) · das ist fast immer die richtige. „Fast" ist der Grund
+   * für diesen Schalter: Wer die Stellung des Gegners nachrechnet, dreht sie
+   * einmal um und will danach weiterblättern, ohne die Drehung zu verlieren.
+   * Eine andere Partie hebt sie wieder auf: Dort gilt wieder die eigene Seite.
+   */
+  const [flipped, setFlipped] = useState(false);
+  /**
    * Ausgangsstellung des freien Bretts · normalerweise die Grundstellung, nach
    * einem geteilten Link die Stellung aus dem Link.
    */
@@ -386,12 +399,19 @@ export default function Analysis({
     });
   }, [desktop, targetGameId, reloadGames]);
 
+  // Eine andere Partie fängt wieder aus der eigenen Sicht an · die Drehung
+  // gehört zu der Stellung, für die man sie gemacht hat.
+  useEffect(() => {
+    setFlipped(false);
+  }, [selectedId]);
+
   // Eine geteilte Stellung ersetzt die Auswahl: Sie gehört an das freie Brett,
   // nicht in eine importierte Partie.
   useEffect(() => {
     if (!shared) return;
     setOpened(shared);
     setSelectedId(null);
+    setFlipped(false);
     setScratchSans([]);
     setScratchSelected(null);
     setVariation(null);
@@ -660,17 +680,36 @@ export default function Analysis({
     }
   };
 
-  // Tastatur-Navigation.
+  /**
+   * Tastatur-Navigation · dieselben Tasten wie auf den großen Schachseiten:
+   * Pfeile blättern Halbzüge, Pos1/Ende springen an die Ränder, „f" dreht das
+   * Brett.
+   *
+   * Der Wächter oben ist kein Detail: Die Analyse hat ein Notizfeld, ein
+   * Tag-Eingabefeld und die Partieauswahl. Ohne ihn sprang beim Schreiben
+   * einer Notiz mit jedem Pfeil zusätzlich das Brett · der Cursor wanderte im
+   * Text, und die Stellung darunter wechselte gleich mit.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") {
-        setVariation(null);
-        setPly((p) => Math.max(0, p - 1));
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.isContentEditable
+        || ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName ?? "")
+      ) {
+        return;
       }
-      if (e.key === "ArrowRight") {
+      const jump = (next: (p: number) => number) => {
+        e.preventDefault();
         setVariation(null);
-        setPly((p) => Math.min(sans.length, p + 1));
-      }
+        setPly((p) => Math.max(0, Math.min(sans.length, next(p))));
+      };
+      if (e.key === "ArrowLeft") jump((p) => p - 1);
+      else if (e.key === "ArrowRight") jump((p) => p + 1);
+      else if (e.key === "Home") jump(() => 0);
+      else if (e.key === "End") jump(() => sans.length);
+      else if (e.key === "f" || e.key === "F") setFlipped((value) => !value);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -786,13 +825,34 @@ export default function Analysis({
   );
 
   const unanalyzed = games.filter((g) => !g.analyzed && !g.analysis_excluded);
+
+  /**
+   * In der Partienliste weiterblättern.
+   *
+   * Der Ablauf, den man an einem Abend am häufigsten wiederholt, ist „Partie
+   * ansehen · nächste Partie ansehen". Über die Auswahlliste sind das drei
+   * Griffe (aufklappen, suchen, treffen); hier ist es einer, und er steht
+   * direkt neben der Liste, aus der er blättert.
+   */
+  const gameIndex = selectedId == null ? -1 : games.findIndex((g) => g.id === selectedId);
+  const stepGame = (delta: number) => {
+    const next = gameIndex < 0 ? games[0] : games[gameIndex + delta];
+    if (next?.id != null) setSelectedId(next.id);
+  };
+  const canStepGame = (delta: number) =>
+    gameIndex < 0 ? games.length > 0 && delta > 0 : games[gameIndex + delta]?.id != null;
   // Ein geteilter Link bringt die Blickrichtung mit · so sieht der Empfänger
   // dieselbe Seite wie der Absender.
-  const orientation = opened
+  const baseOrientation = opened
     ? opened.orientation
     : live && game.color === "black"
       ? "black"
       : "white";
+  const orientation: "white" | "black" = flipped
+    ? baseOrientation === "white"
+      ? "black"
+      : "white"
+    : baseOrientation;
   const ownPlayerName = live
     ? game.my_name?.trim()
       || (game.source === "chess.com" ? playerProfile.cc : game.source === "lichess" ? playerProfile.li : "")
@@ -942,22 +1002,45 @@ export default function Analysis({
 
       {desktop && (
         <div
-          className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5"
+          className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-line bg-panel px-3 py-2.5"
           data-tour="analysis-run"
         >
-          <select
-            value={selectedId ?? ""}
-            onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
-            className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
-          >
-            <option value="">{t("an.freeBoard")}</option>
-            {games.map((g) => (
-              <option key={g.id} value={g.id ?? undefined}>
-                {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
-                {g.result === "win" ? t("common.win") : g.result === "loss" ? t("common.loss") : t("common.draw")}
-              </option>
-            ))}
-          </select>
+          {/* Links steht, welche Partie gezeigt wird · Auswahlliste und die
+              beiden Pfeile, die in ihr weiterblättern, gehören zusammen und
+              stehen deshalb in einer Gruppe. */}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <select
+              value={selectedId ?? ""}
+              onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
+              className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+            >
+              <option value="">{t("an.freeBoard")}</option>
+              {games.map((g) => (
+                <option key={g.id} value={g.id ?? undefined}>
+                  {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
+                  {g.result === "win" ? t("common.win") : g.result === "loss" ? t("common.loss") : t("common.draw")}
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={() => stepGame(-1)}
+              disabled={!canStepGame(-1)}
+              title={t("an.prevGame")}
+              label={t("an.prevGame")}
+              compact
+            >
+              <ChevronUp size={15} />
+            </Button>
+            <Button
+              onClick={() => stepGame(1)}
+              disabled={!canStepGame(1)}
+              title={t("an.nextGame")}
+              label={t("an.nextGame")}
+              compact
+            >
+              <ChevronDown size={15} />
+            </Button>
+          </div>
 
           {running ? (
             <>
@@ -986,7 +1069,12 @@ export default function Analysis({
               </Button>
             </>
           ) : (
-            <>
+            /* Rechts steht genau eine laute Schaltfläche: die Partie, die
+               gerade offen ist, rechnen zu lassen. Die Stapelläufe darunter
+               sind eine Entscheidung pro Import, keine pro Sitzung · als
+               vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
+               dass die Leiste keinen Hauptknopf mehr hatte. */
+            <div className="flex shrink-0 items-center gap-2">
               {selectedId != null && (
                 <Button
                   primary
@@ -1007,44 +1095,46 @@ export default function Analysis({
                   Historie ist die automatische Hintergrundanalyse und damit
                   eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
               {unanalyzed.length > 0 && (
-                <Button
-                  onClick={() => {
-                    if (!batchGate.unlocked) {
-                      openPlusDialog("background_analysis");
-                      return;
-                    }
-                    setNotice(null);
-                    setRunning(true);
-                    startAnalysis({ limit: 10 }).catch((e) => {
-                      setRunning(false);
-                      setNotice(String(e));
-                    });
-                  }}
-                >
-                  <ListChecks size={14} /> {t("an.nextTen", { n: unanalyzed.length })}
-                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-                </Button>
+                <Menu label={t("an.batchRuns")}>
+                  <MenuItem
+                    onClick={() => {
+                      if (!batchGate.unlocked) {
+                        openPlusDialog("background_analysis");
+                        return;
+                      }
+                      setNotice(null);
+                      setRunning(true);
+                      startAnalysis({ limit: 10 }).catch((e) => {
+                        setRunning(false);
+                        setNotice(String(e));
+                      });
+                    }}
+                  >
+                    <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
+                    {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
+                  </MenuItem>
+                  {unanalyzed.length > 10 && (
+                    <MenuItem
+                      onClick={() => {
+                        if (!batchGate.unlocked) {
+                          openPlusDialog("background_analysis");
+                          return;
+                        }
+                        setNotice(null);
+                        setRunning(true);
+                        startAnalysis({}).catch((e) => {
+                          setRunning(false);
+                          setNotice(String(e));
+                        });
+                      }}
+                    >
+                      <Zap size={15} /> {t("an.analyzeAll")}
+                      {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
+                    </MenuItem>
+                  )}
+                </Menu>
               )}
-              {unanalyzed.length > 10 && (
-                <Button
-                  onClick={() => {
-                    if (!batchGate.unlocked) {
-                      openPlusDialog("background_analysis");
-                      return;
-                    }
-                    setNotice(null);
-                    setRunning(true);
-                    startAnalysis({}).catch((e) => {
-                      setRunning(false);
-                      setNotice(String(e));
-                    });
-                  }}
-                >
-                  {t("an.analyzeAll")}
-                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-                </Button>
-              )}
-            </>
+            </div>
           )}
         </div>
       )}
@@ -1055,10 +1145,12 @@ export default function Analysis({
         </div>
       )}
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(400px,528px)_minmax(320px,1fr)] min-[1660px]:grid-cols-[560px_minmax(360px,1fr)_340px]">
-        {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe) */}
-        <div className="min-w-0 min-[1660px]:w-[560px]">
-          <div className="mb-2 flex min-h-[26px] items-start justify-between gap-3 pl-8 text-[12.5px]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,var(--board-col))_minmax(320px,1fr)] min-[1660px]:grid-cols-[minmax(0,var(--board-col))_minmax(360px,1fr)_340px]">
+        {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe). Die Spalte ist
+            so breit wie Brett plus Balken · das ist `--board-col`, und auf dem
+            Handy tritt sie über `board-bleed` bis an die Bildschirmkante. */}
+        <div className="board-bleed min-w-0 max-w-[var(--board-col)]">
+          <div className="mb-2 flex min-h-[26px] items-start justify-between gap-3 pl-[var(--board-gutter)] pr-[var(--board-bleed)] text-[12.5px]">
             <div className="min-w-0">
               <div className="truncate font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</div>
               <CapturedPieces
@@ -1079,15 +1171,31 @@ export default function Analysis({
           <div className="flex gap-3">
             <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
               {/* Weiß und Schwarz nehmen die Feldfarben des Bretts daneben ·
-                  so bleibt der Balken in jedem Thema hell über dunkel. */}
-              <div className="w-full bg-board-dark" style={{ height: `${100 - whitePct}%`, transition: "height 0.3s" }} />
-              <div className="w-full bg-board-light" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
+                  so bleibt der Balken in jedem Thema hell über dunkel.
+
+                  Der Balken dreht sich mit dem Brett: Wessen Seite unten
+                  spielt, dessen Anteil wächst hier von unten. Andernfalls
+                  zeigte er nach dem Drehen in die falsche Richtung. */}
+              <div
+                className={`w-full ${orientation === "white" ? "bg-board-dark" : "bg-board-light"}`}
+                style={{
+                  height: `${orientation === "white" ? 100 - whitePct : whitePct}%`,
+                  transition: "height 0.3s",
+                }}
+              />
+              <div
+                className={`w-full ${orientation === "white" ? "bg-board-light" : "bg-board-dark"}`}
+                style={{
+                  height: `${orientation === "white" ? whitePct : 100 - whitePct}%`,
+                  transition: "height 0.3s",
+                }}
+              />
             </div>
             <div className="min-w-0 flex-1">
               <Board
                 boardId="analysis"
                 fen={fen}
-                width={BOARD_WIDTH}
+                width={BOARD_MAX}
                 orientation={orientation}
                 draggable={scratch || live}
                 onPieceDrop={scratch || live ? playBoardMove : undefined}
@@ -1107,7 +1215,7 @@ export default function Analysis({
               />
             </div>
           </div>
-          <div className="mt-2 flex min-h-[26px] items-start justify-between gap-3 pl-8 text-[12.5px]">
+          <div className="mt-2 flex min-h-[26px] items-start justify-between gap-3 pl-[var(--board-gutter)] pr-[var(--board-bleed)] text-[12.5px]">
             <div className="min-w-0">
               <div className="truncate font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</div>
               <CapturedPieces
@@ -1126,51 +1234,99 @@ export default function Analysis({
             )}
           </div>
           {variation && (
-            <div className="ml-8 mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
+            <div className="ml-[var(--board-gutter)] mr-[var(--board-bleed)] mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
               <span className="text-ink2">{t("an.variationAt", { n: Math.floor(variation.basePly / 2) + 1 })}: <strong className="text-accent">{variation.sans.join(" ")}</strong></span>
               <button onClick={() => goToPly(variation.basePly)} className="ml-3 text-ink3 transition-colors hover:text-ink">
                 {t("an.returnToGame")}
               </button>
             </div>
           )}
-          {/* „Neu“, vier Sprungtasten und die Bewertung passen auf einem Telefon
-              nicht nebeneinander · früher schob das die Bewertung aus dem Bild.
-              „Neu“ ist deshalb ein eigenes Umbruch-Element: reicht die Breite
-              nicht, rückt es allein in die erste Zeile, während Sprungtasten und
-              Bewertung als Paar zusammenbleiben · die Bewertung immer rechts. */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 pl-8">
-            {scratch && (
+          {/* Eine Leiste statt einer Reihe verstreuter Knöpfe.
+
+              Links alles, was die gezeigte Stellung ändert: blättern, Brett
+              drehen, teilen und · am freien Brett · von vorn anfangen. Rechts
+              die Bewertung, unverrückbar. Beide Gruppen liegen in einer
+              gemeinsamen Fläche, damit die Leiste als ein Bedienelement
+              gelesen wird und nicht als sieben gleich laute Angebote.
+
+              Die Leiste bleibt einzeilig. Reicht die Breite auf einem sehr
+              schmalen Telefon nicht, wandert die Tastengruppe unter den Finger,
+              statt die Bewertung in eine zweite Zeile zu schieben · beim
+              Blättern zählt, dass die Bewertung an ihrem Platz steht, mehr als
+              dass jede Taste gleichzeitig sichtbar ist. Die Leiste beginnt am
+              Gutter und steht damit genau über der linken Brettkante. */}
+          <div className="ml-[var(--board-gutter)] mr-[var(--board-bleed)] mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-2 py-1.5">
+            <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               <Button
-                onClick={() => {
-                  setOpened(null);
-                  setScratchSans([]);
-                  setPly(0);
-                  setScratchSelected(null);
-                  setLiveEval(null);
-                  setLiveBestUci(null);
-                }}
+                onClick={() => goToPly(0)}
+                title={t("an.toStart")}
+                label={t("an.toStart")}
+                compact
               >
-                <RotateCcw size={15} /> {t("an.newBoard")}
+                <ChevronFirst size={15} />
               </Button>
-            )}
-            {/* Bewusst ohne `min-w-0`: Mit ihm dürfte dieser Block unter seine
-                Inhaltsbreite schrumpfen, und dann bricht die Zeile nie um — sie
-                quetscht sich, und die Bewertung rutscht rechts aus dem Bild.
-                Mit der automatischen Mindestbreite passt entweder alles in eine
-                Zeile, oder „Neu" rückt allein in die erste. */}
-            <div className="flex flex-1 items-center justify-between gap-2">
-              <div className="flex gap-1">
-                <Button onClick={() => goToPly(0)}><ChevronFirst size={15} /></Button>
-                <Button onClick={() => goToPly((variation?.basePly ?? ply) - 1)}><ChevronLeft size={15} /></Button>
-                <Button onClick={() => goToPly((variation?.basePly ?? ply) + 1)}><ChevronRight size={15} /></Button>
-                <Button onClick={() => goToPly(sans.length)}><ChevronLast size={15} /></Button>
-                <Button onClick={openShare} title={t("sh.title")} className="ml-1">
-                  <Share2 size={15} />
+              <Button
+                onClick={() => goToPly((variation?.basePly ?? ply) - 1)}
+                title={t("an.prevMove")}
+                label={t("an.prevMove")}
+                compact
+              >
+                <ChevronLeft size={15} />
+              </Button>
+              <Button
+                onClick={() => goToPly((variation?.basePly ?? ply) + 1)}
+                title={t("an.nextMove")}
+                label={t("an.nextMove")}
+                compact
+              >
+                <ChevronRight size={15} />
+              </Button>
+              <Button
+                onClick={() => goToPly(sans.length)}
+                title={t("an.toEnd")}
+                label={t("an.toEnd")}
+                compact
+              >
+                <ChevronLast size={15} />
+              </Button>
+              <span className="mx-1 h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
+              <Button
+                onClick={() => setFlipped((value) => !value)}
+                title={t("an.flip")}
+                label={t("an.flip")}
+                compact
+              >
+                <FlipVertical2 size={15} />
+              </Button>
+              <Button
+                onClick={openShare}
+                title={t("sh.title")}
+                label={t("sh.title")}
+                compact
+              >
+                <Share2 size={15} />
+              </Button>
+              {scratch && (
+                <Button
+                  onClick={() => {
+                    setOpened(null);
+                    setScratchSans([]);
+                    setPly(0);
+                    setScratchSelected(null);
+                    setLiveEval(null);
+                    setLiveBestUci(null);
+                  }}
+                  title={t("an.newBoard")}
+                >
+                  <RotateCcw size={15} /> {t("an.newBoard")}
                 </Button>
-              </div>
-              <div className="shrink-0 text-[15px] font-semibold tabular-nums" style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}>
-                {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
-              </div>
+              )}
+            </div>
+            <div
+              className="shrink-0 px-1.5 text-[15px] font-semibold tabular-nums"
+              style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}
+            >
+              {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
             </div>
           </div>
         </div>

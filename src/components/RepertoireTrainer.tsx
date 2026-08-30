@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { repDue, repReview, type DueItem, type RepNode } from "../lib/repertoire";
 import Board from "./Board";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX } from "../lib/boardLayout";
 import CapturedPieces from "./CapturedPieces";
 import { capturedFromFen } from "../lib/captured";
 import { useBoardSelection } from "../lib/boardMoves";
@@ -369,7 +369,7 @@ export default function RepertoireTrainer({
   const captured = capturedFromFen(fen);
 
   return (
-    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
       <div>
         <div className="mb-3 flex items-center justify-between text-[13px]">
           <span className="font-medium">
@@ -391,19 +391,21 @@ export default function RepertoireTrainer({
             advantage={item.side === "white" ? -captured.diff : captured.diff}
           />
         </div>
-        <Board
-          boardId="rep-train"
-          fen={fen}
-          width={BOARD_WIDTH}
-          lastMove={lastMove}
-          draggable={state === "ask" && atLive}
-          onPieceDrop={tryMove}
-          onSquareClick={trainSelection.onSquareClick}
-          squareStyles={trainSelection.squareStyles}
-          orientation={item.side}
-          shake={shake}
-          mouseDrag
-        />
+        <div className="board-bleed">
+          <Board
+            boardId="rep-train"
+            fen={fen}
+            width={BOARD_MAX}
+            lastMove={lastMove}
+            draggable={state === "ask" && atLive}
+            onPieceDrop={tryMove}
+            onSquareClick={trainSelection.onSquareClick}
+            squareStyles={trainSelection.squareStyles}
+            orientation={item.side}
+            shake={shake}
+            mouseDrag
+          />
+        </div>
         <div className="mt-2 empty:hidden">
           <CapturedPieces
             pieces={item.side === "white" ? captured.white : captured.black}

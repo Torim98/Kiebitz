@@ -48,7 +48,7 @@ import LiveEngine from "../components/LiveEngine";
 import RepertoireTrainer from "../components/RepertoireTrainer";
 import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useMobileShell } from "../components/MobileShell";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card, Chip } from "../components/ui";
 import { de } from "../lib/format";
@@ -761,18 +761,20 @@ function LiveRepertoire() {
 
   const boardPane = (
     <div>
-      <Board
-        boardId="repertoire"
-        fen={fen}
-        width={BOARD_WIDTH}
-        lastMove={lastMove}
-        draggable
-        onPieceDrop={startFromMove}
-        onSquareClick={browseSelection.onSquareClick}
-        squareStyles={browseSelection.squareStyles}
-        orientation={selected?.side ?? "white"}
-        mouseDrag
-      />
+      <div className="board-bleed">
+        <Board
+          boardId="repertoire"
+          fen={fen}
+          width={BOARD_MAX}
+          lastMove={lastMove}
+          draggable
+          onPieceDrop={startFromMove}
+          onSquareClick={browseSelection.onSquareClick}
+          squareStyles={browseSelection.squareStyles}
+          orientation={selected?.side ?? "white"}
+          mouseDrag
+        />
+      </div>
       <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
         <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
           {moveText(baseSans) || t("rep.startPos")}
@@ -1039,7 +1041,7 @@ function RepertoireGrid({
   details: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-1 items-start gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)] min-[1480px]:grid-cols-[280px_528px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-4 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)] min-[1480px]:grid-cols-[280px_minmax(0,var(--board-edge))_minmax(0,1fr)]">
       <div className="order-1 min-[1180px]:col-start-1 min-[1180px]:row-start-1 min-[1480px]:col-start-2">
         {board}
       </div>
@@ -1372,20 +1374,22 @@ function AddLine({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
       <div>
-        <Board
-          boardId="rep-add"
-          fen={fen}
-          width={BOARD_WIDTH}
-          lastMove={lastMove}
-          draggable
-          onPieceDrop={tryMove}
-          onSquareClick={addSelection.onSquareClick}
-          squareStyles={addSelection.squareStyles}
-          orientation={side}
-          mouseDrag
-        />
+        <div className="board-bleed">
+          <Board
+            boardId="rep-add"
+            fen={fen}
+            width={BOARD_MAX}
+            lastMove={lastMove}
+            draggable
+            onPieceDrop={tryMove}
+            onSquareClick={addSelection.onSquareClick}
+            squareStyles={addSelection.squareStyles}
+            orientation={side}
+            mouseDrag
+          />
+        </div>
         <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
           {moveText(sans) || t("rep.playOnBoard")}
         </div>
@@ -1542,7 +1546,9 @@ function DemoRepertoire() {
 
   const boardPane = (
     <div>
-      <Board boardId="repertoire" fen={fen} width={BOARD_WIDTH} lastMove={lastMove} />
+      <div className="board-bleed">
+        <Board boardId="repertoire" fen={fen} width={BOARD_MAX} lastMove={lastMove} />
+      </div>
       <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
         {moveText(visibleSans) || t("rep.startPos")}
       </div>

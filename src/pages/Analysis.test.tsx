@@ -40,12 +40,13 @@ vi.mock("../lib/analysis", () => ({
   startAnalysis: mocks.startAnalysis,
 }));
 vi.mock("../components/Board", () => ({
-  default: ({ fen, onPieceDrop, draggable, muted, mouseDrag, arrows, badges }: {
+  default: ({ fen, onPieceDrop, draggable, muted, mouseDrag, arrows, badges, orientation }: {
     fen: string;
     onPieceDrop?: (from: string, to: string) => boolean;
     draggable?: boolean;
     muted?: boolean;
     mouseDrag?: boolean;
+    orientation?: string;
     arrows?: unknown[];
     // `label` kann ein React-Element sein (Buch-Symbol) · nicht serialisierbar.
     badges?: { square: string; color: string; title?: string }[];
@@ -53,6 +54,7 @@ vi.mock("../components/Board", () => ({
     <div
       data-testid="analysis-board"
       data-fen={fen}
+      data-orientation={orientation}
       data-draggable={String(!!draggable)}
       data-mouse-drag={String(!!mouseDrag)}
       data-muted={String(!!muted)}
@@ -163,6 +165,80 @@ describe("Analysis page", () => {
     expect(screen.queryByRole("button", { name: /Nächste 10/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Diese Partie analysieren" }));
     expect(mocks.startAnalysis).toHaveBeenCalledWith({ gameIds: [7] });
+  });
+
+  describe("navigation", () => {
+    /** Zwei Partien in der Liste · nur so gibt es ein „weiter". */
+    const twoGames = [excludedGame, onlineGame];
+
+    it("steps to the next game without opening the picker", async () => {
+      mocks.listGames.mockResolvedValue(twoGames);
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+      fireEvent.click(screen.getByRole("button", { name: "Nächste Partie" }));
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+
+      // Am Ende der Liste hört das Blättern auf, statt umzulaufen.
+      expect((screen.getByRole("button", { name: "Nächste Partie" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(screen.getByRole("button", { name: "Vorherige Partie" }));
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    });
+
+    it("turns the board around and back", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      // Die Partie wurde als Weiß gespielt · so beginnt auch das Brett.
+      expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("white");
+
+      fireEvent.click(screen.getByRole("button", { name: "Brett drehen" }));
+      expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("black");
+      // Die Namen tauschen mit: oben steht jetzt, wer unten stand.
+      expect(screen.getByText("Dr. Tom Maurer (1500)")).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: "Brett drehen" }));
+      expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("white");
+    });
+
+    /**
+     * Der Grund für den Wächter in der Tastatur-Navigation: Ein Pfeil im
+     * Notizfeld gehört dem Cursor, nicht dem Brett.
+     */
+    it("leaves the arrow keys to the notes field while it has the focus", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      const atEnd = screen.getByTestId("analysis-board").dataset.fen;
+
+      fireEvent.keyDown(screen.getByPlaceholderText(/Gedanken zur Partie/), { key: "ArrowLeft" });
+      expect(screen.getByTestId("analysis-board").dataset.fen).toBe(atEnd);
+
+      // Außerhalb eines Eingabefelds blättert derselbe Tastendruck weiter.
+      fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+      expect(screen.getByTestId("analysis-board").dataset.fen).not.toBe(atEnd);
+      fireEvent.keyDown(document.body, { key: "End" });
+      expect(screen.getByTestId("analysis-board").dataset.fen).toBe(atEnd);
+    });
+
+    /**
+     * Die Stapelläufe stehen im Menü · in der Leiste soll genau eine
+     * Schaltfläche laut sein.
+     */
+    it("keeps the batch runs in a menu next to the primary action", async () => {
+      mocks.listGames.mockResolvedValue(twoGames);
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+      // Zugeklappt ist die Leiste eine Zeile mit einem Hauptknopf.
+      expect(screen.queryByRole("menuitem", { name: /Nächste 10/ })).toBeNull();
+      expect(screen.getByRole("button", { name: "Diese Partie analysieren" })).toBeTruthy();
+
+      const trigger = screen.getByRole("button", { name: "Mehrere Partien" });
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(trigger);
+
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      expect(screen.getByRole("menuitem", { name: /Nächste 10/ })).toBeTruthy();
+    });
   });
 
   it("lets desktop users branch from a played move with drag and drop", async () => {

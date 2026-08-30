@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { ExternalLink } from "lucide-react";
 import type { Result, Source } from "../data/demo";
 import { resultColor, type UiGame } from "../lib/gameUi";
@@ -165,6 +166,26 @@ export function ExtLink({ href, label, title }: { href: string; label?: string; 
   );
 }
 
+/**
+ * Aussehen einer Schaltfläche · als Zeichenkette, damit auch Elemente, die
+ * keine `Button` sein können (das Menü unten braucht eigene ARIA-Attribute),
+ * exakt gleich aussehen.
+ *
+ * `compact` ist ein Schalter und keine mitgegebene Klasse: Tailwind entscheidet
+ * bei zwei Klassen derselben Eigenschaft nach der Reihenfolge im erzeugten
+ * Stylesheet, nicht nach der Reihenfolge im `class`-Attribut · ein angehängtes
+ * `px-2.5` verliert deshalb gegen das `px-3.5` von hier.
+ */
+export function buttonCls(primary = false, className = "", compact = false): string {
+  return `inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg ${
+    compact ? "px-2.5" : "px-3.5"
+  } py-2 text-[13px] font-medium transition-colors [&>svg]:shrink-0 ${
+    primary
+      ? "bg-accent text-accent-ink hover:bg-accent-hover"
+      : "border border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
+  } disabled:cursor-not-allowed disabled:opacity-45 ${className}`;
+}
+
 export function Button({
   children,
   primary = false,
@@ -172,6 +193,8 @@ export function Button({
   className = "",
   disabled = false,
   title,
+  label,
+  compact = false,
 }: {
   children: ReactNode;
   primary?: boolean;
@@ -179,17 +202,112 @@ export function Button({
   className?: string;
   disabled?: boolean;
   title?: string;
+  /** Vorlesbarer Name, wenn die Schaltfläche nur ein Symbol trägt. */
+  label?: string;
+  /** Schmaler · für Schaltflächen, die nur ein Symbol tragen. */
+  compact?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[13px] font-medium transition-colors [&>svg]:shrink-0 ${
-        primary
-          ? "bg-accent text-accent-ink hover:bg-accent-hover"
-          : "border border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
-      } disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
+      aria-label={label}
+      className={buttonCls(primary, className, compact)}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Klapp-Menü für Aktionen, die eine Leiste sonst zumauern.
+ *
+ * Die Regel dahinter: Was man in einer Sitzung mehrmals anfasst, steht als
+ * eigene Schaltfläche da; was man einmal im Monat braucht, steht hier drin.
+ * Eine Leiste mit vier gleich lauten Knöpfen hat keinen Hauptknopf mehr.
+ */
+export function Menu({
+  label,
+  align = "end",
+  compact = false,
+  children,
+}: {
+  label: string;
+  /** An welcher Kante der Schaltfläche das Blatt aufgeht. */
+  align?: "start" | "end";
+  /** Nur der Pfeil · für Leisten, in denen kein Wort mehr Platz hat. */
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: Event) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    // pointerdown statt click: Das Menü soll schon zugehen, bevor der Klick
+    // auf dem Element darunter ankommt.
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        title={label}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={buttonCls(false, "", compact)}
+      >
+        {!compact && label}
+        <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          // Ein Eintrag im Menü führt immer irgendwohin · danach hat das Blatt
+          // seine Aufgabe erfüllt.
+          onClick={() => setOpen(false)}
+          className={`absolute top-full z-40 mt-1.5 flex min-w-[240px] flex-col gap-0.5 rounded-xl border border-line2 bg-panel p-1.5 shadow-2xl shadow-black/40 ${
+            align === "end" ? "right-0" : "left-0"
+          }`}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MenuItem({
+  children,
+  onClick,
+  disabled = false,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-ink2 transition-colors hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0"
     >
       {children}
     </button>

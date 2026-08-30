@@ -39,7 +39,7 @@ import {
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { useBackendInfo } from "../lib/backend";
 import { useMobileShell } from "../components/MobileShell";
-import { LOCALES, LOCALE_NAMES, useI18n, type Locale } from "../lib/i18n";
+import { LOCALES, LOCALE_NAMES, useI18n, type Key, type Locale } from "../lib/i18n";
 import {
   dbInfo,
   backupDatabase,
@@ -116,7 +116,9 @@ import {
   SettingsSection,
   WEEKDAY_KEYS,
   anchorId,
+  inGroupOrder,
   inputCls,
+  type GroupId,
   type Section,
   type SectionId,
 } from "./settings/SettingsLayout";
@@ -763,6 +765,7 @@ export default function SettingsPage({
   const allSections: Section[] = [
     {
       id: "language",
+      group: "basics",
       icon: Globe,
       title: t("set.language"),
       summary: t("set.languageSummary"),
@@ -787,6 +790,7 @@ export default function SettingsPage({
       // Direkt hinter der Sprache: Beides stellt man einmal ein und rührt es
       // danach selten wieder an, und beides betrifft die ganze App.
       id: "appearance",
+      group: "basics",
       icon: Palette,
       title: t("set.appearance"),
       summary: t("set.appearanceSummary"),
@@ -797,6 +801,7 @@ export default function SettingsPage({
       // tägliche Griff. Wer die Ersteinrichtung weggeklickt hat, findet die
       // Erklärung damit an der ersten Stelle, an der er nachsieht.
       id: "tour",
+      group: "basics",
       icon: Compass,
       title: t("set.tour"),
       summary: t("set.tourSummary"),
@@ -816,6 +821,7 @@ export default function SettingsPage({
       // sucht, sucht hier, und der Trial-Einstieg gehört an eine Stelle, die
       // man ohne Suchen findet.
       id: "plus",
+      group: "account",
       icon: Sparkles,
       title: t("plus.title"),
       summary: t("plus.summary"),
@@ -823,6 +829,7 @@ export default function SettingsPage({
     },
     {
       id: "accounts",
+      group: "account",
       icon: UserRound,
       title: t("set.accounts"),
       summary: t("set.accountsSummary"),
@@ -973,6 +980,7 @@ export default function SettingsPage({
     {
       // Brett & Ton · Zug- und Schlagklänge auf allen Brettern.
       id: "sound",
+      group: "training",
       icon: Volume2,
       title: t("set.sound"),
       summary: t("set.soundSummary"),
@@ -1043,6 +1051,7 @@ export default function SettingsPage({
     },
     {
       id: "notify",
+      group: "training",
       icon: Bell,
       title: t("set.notify"),
       summary: t("set.notifySummary"),
@@ -1107,6 +1116,7 @@ export default function SettingsPage({
       // Homescreen-Widgets · ausdrücklich nur Android. Für den Desktop sind
       // keine geplant, und das steht hier auch so.
       id: "widgets",
+      group: "training",
       icon: LayoutGrid,
       title: t("set.widgets"),
       summary: t("set.widgetsSummary"),
@@ -1148,6 +1158,7 @@ export default function SettingsPage({
     },
     {
       id: "sync",
+      group: "account",
       icon: Smartphone,
       title: t("set.sync"),
       summary: t("set.syncSummary"),
@@ -1359,6 +1370,7 @@ export default function SettingsPage({
     },
     {
       id: "updates",
+      group: "app",
       icon: RefreshCw,
       title: t("set.updates"),
       summary: t("set.updatesSummary"),
@@ -1454,6 +1466,7 @@ export default function SettingsPage({
     },
     {
       id: "privacy",
+      group: "app",
       icon: ShieldCheck,
       title: t("set.adsPrivacy"),
       summary: t("set.adsPrivacySummary"),
@@ -1496,6 +1509,7 @@ export default function SettingsPage({
     {
       // Rückmeldung · eigene Seite, hier nur der Einstieg.
       id: "support",
+      group: "app",
       icon: LifeBuoy,
       title: t("set.support"),
       summary: t("set.supportSummary"),
@@ -1518,10 +1532,10 @@ export default function SettingsPage({
     },
     {
       id: "engine",
+      group: "advanced",
       icon: Cpu,
       title: t("set.engine"),
       summary: t("set.engineSummary"),
-      advanced: true,
       content:
         desktop && draft ? (
           <>
@@ -1607,10 +1621,10 @@ export default function SettingsPage({
     },
     {
       id: "database",
+      group: "advanced",
       icon: Database,
       title: t("set.database"),
       summary: t("set.databaseSummary"),
-      advanced: true,
       content: desktop ? (
         <>
           {info ? (
@@ -1704,10 +1718,10 @@ export default function SettingsPage({
     },
     {
       id: "chessdb",
+      group: "advanced",
       icon: Globe,
       title: t("set.chessdb"),
       summary: t("set.chessdbSummary"),
-      advanced: true,
       content:
         desktop && draft ? (
           <>
@@ -1728,10 +1742,10 @@ export default function SettingsPage({
     },
     {
       id: "puzzles",
+      group: "advanced",
       icon: PuzzleIcon,
       title: t("set.puzzleDb"),
       summary: t("set.puzzleDbSummary"),
-      advanced: true,
       content: desktop ? (
         <>
           {pz ? (
@@ -1795,10 +1809,10 @@ export default function SettingsPage({
       // Die Bibliothekslizenzen verlangen, dass ihr Text das Binary
       // begleitet; hier ist die Stelle, an der er erreichbar ist.
       id: "about",
+      group: "app",
       icon: Scale,
       title: t("set.about"),
       summary: t("set.aboutSummary"),
-      advanced: true,
       content: (
         <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink2">
@@ -1884,11 +1898,11 @@ export default function SettingsPage({
     {
       // Zurücksetzen · bewusst ganz unten und in Warnfarbe.
       id: "reset",
+      group: "advanced",
       icon: AlertTriangle,
       title: t("set.reset"),
       summary: t("set.resetSummary"),
       tone: "loss",
-      advanced: true,
       content: desktop ? (
         <>
           <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.resetNote")}</p>
@@ -1911,7 +1925,21 @@ export default function SettingsPage({
   // Homescreen-Widgets gibt es nur unter Android · auf dem Desktop stand hier
   // bisher nur der Satz, dass es sie hier nicht gibt. Ein Bereich, der nichts
   // zu bedienen hat, gehört weder in die Seite noch in die Sprungleiste.
-  const sections = allSections.filter((section) => section.id !== "widgets" || android);
+  //
+  // `inGroupOrder` bringt die Bereiche anschließend in Gruppenreihenfolge:
+  // Die Deklaration oben ist nach Thema sortiert, die Anzeige nach Gruppe ·
+  // beides gleichzeitig von Hand zu pflegen, hält keine Änderung lange aus.
+  const sections = inGroupOrder(
+    allSections.filter((section) => section.id !== "widgets" || android)
+  );
+
+  /**
+   * Überschrift einer Gruppe. „Erweitert" gab es schon, bevor es Gruppen gab ·
+   * der Schlüssel bleibt, damit sechs Übersetzungen nicht zweimal dasselbe
+   * Wort führen.
+   */
+  const groupLabel = (group: GroupId) =>
+    t(group === "advanced" ? "set.advanced" : (`set.group.${group}` as Key));
 
   if (loading) {
     return (
@@ -1948,11 +1976,12 @@ export default function SettingsPage({
       )}
       {sections.map((section, index) => (
         <Fragment key={section.id}>
-          {/* Ab hier kommt, was man selten anfasst · eine Zwischenüberschrift
-              trennt die Expertenbereiche vom Alltag. */}
-          {section.advanced && !sections[index - 1]?.advanced && (
-            <div className="px-1 pt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-ink3">
-              {t("set.advanced")}
+          {/* Jede Gruppe bekommt ihre Überschrift · sie ist das, was man beim
+              Herunterscrollen liest, statt achtzehn gleich aussehende Karten
+              der Reihe nach abzusuchen. */}
+          {section.group !== sections[index - 1]?.group && (
+            <div className="px-1 pt-2 text-[11px] font-medium uppercase tracking-[0.12em] text-ink3 first:pt-0">
+              {groupLabel(section.group)}
             </div>
           )}
           <SettingsSection
@@ -2008,7 +2037,7 @@ export default function SettingsPage({
           <SectionNav
             sections={sections}
             active={activeSection}
-            advancedLabel={t("set.advanced")}
+            groupLabel={groupLabel}
             label={t("set.sections")}
             onJump={jumpTo}
           />

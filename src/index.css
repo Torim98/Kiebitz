@@ -210,6 +210,80 @@ html[data-store-capture="true"] .chess-backdrop {
   background: transparent;
 }
 
+/* ── Brettmaße ───────────────────────────────────────────────────────────────
+   Wie groß ein spielbares Brett werden darf, steht an genau einer Stelle:
+   hier. Alle Seiten lesen `--board-edge` · als Gitterspalte, als Maximalbreite
+   und über die Brett-Komponente auch als Pixelwert.
+
+   Die Rechnung hat zwei Grenzen. Nach oben `--board-max`, damit ein Brett auf
+   einem großen Monitor nicht zur Tapete wird. Nach unten die Höhe: ein Brett,
+   für das man scrollen muss, ist kein größeres Brett, sondern ein halbes.
+   `--board-chrome` ist der Platz, den Kopfzeile, Spielernamen und die Leiste
+   darunter in der Höhe verbrauchen.
+
+   `--board-gutter` ist der Streifen links neben dem Brett (Bewertungsbalken
+   plus Abstand). Spielernamen und Zugtasten der Analyse rücken um ihn ein und
+   stehen dadurch genau über der linken Brettkante · egal wie breit das Brett
+   gerade ist. */
+:root {
+  --board-max: 528px;
+  --board-chrome: 268px;
+  --board-gutter: 2rem;
+  --board-bleed: 0px;
+  --board-edge: min(var(--board-max), max(260px, calc(100dvh - var(--board-chrome))));
+  /* Brett samt Bewertungsbalken · die Spaltenbreite der Analyse. */
+  --board-col: calc(var(--board-edge) + var(--board-gutter));
+}
+
+/* Ältere WebViews kennen dvh nicht · dort zählt die statische Viewport-Höhe. */
+@supports not (height: 100dvh) {
+  :root {
+    --board-edge: min(var(--board-max), max(260px, calc(100vh - var(--board-chrome))));
+  }
+}
+
+/* Breite Fenster haben den Platz · dort darf das Brett mitwachsen, statt in
+   der Mitte einer leeren Fläche zu sitzen. */
+@media (min-width: 1400px) {
+  :root { --board-max: 616px; }
+}
+@media (min-width: 1720px) {
+  :root { --board-max: 704px; }
+}
+
+/* Auf dem Handy ist die Bildschirmbreite die Obergrenze · das Brett läuft von
+   Kante zu Kante. Im Hochformat gewinnt dadurch die Breite, im Querformat
+   bleibt die Höhengrenze der engere Wert. */
+[data-shell="mobile"] {
+  --board-max: 100vw;
+  --board-chrome: 150px;
+  --board-bleed: 1rem;
+}
+@media (orientation: landscape) and (max-height: 600px) {
+  [data-shell="mobile"] { --board-chrome: 118px; }
+}
+
+/* Wie weit ein Brett aus dem Seitenrand der Seite heraustreten darf. Auf dem
+   Desktop null · dort ist der Rand Teil der Ruhe. Auf dem Handy genau der
+   Seitenrand, sodass das Brett die Kante des Bildschirms erreicht.
+
+   `.board-bleed` hebt den Rand auf, `pr-[var(--board-bleed)]` holt ihn für
+   einzelne Zeilen zurück · Uhren und Bewertung sollen nicht an der Kante
+   kleben, das Brett darunter schon. */
+.board-bleed {
+  margin-inline: calc(-1 * var(--board-bleed));
+}
+
+/* Eine Leiste, die notfalls unter dem Finger wandert, statt umzubrechen ·
+   sichtbar wäre der Balken hier nur ein Strich quer durch die Tastenreihe. Auf
+   Geräten ab ca. 390 px Breite passt die Leiste ohnehin am Stück. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-5px); }

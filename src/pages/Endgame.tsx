@@ -26,7 +26,7 @@ import Board from "../components/Board";
 import ShareDialog, { type ShareSubject } from "../components/ShareDialog";
 import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition } from "../lib/boardEnd";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { useTrainingSession } from "../lib/session";
@@ -302,10 +302,10 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[528px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
         {/* Brett + Statuszeile · auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
-        <div className="max-w-[528px]">
+        <div className="max-w-[var(--board-edge)]">
           <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
               <Crown size={15} className="shrink-0 text-accent" />
@@ -326,20 +326,22 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
             </span>
           </div>
 
-          <Board
-            boardId="endgame"
-            fen={fen}
-            width={BOARD_WIDTH}
-            lastMove={lastMove}
-            draggable={status === "playing"}
-            onPieceDrop={tryMove}
-            onSquareClick={onSquareClick}
-            squareStyles={squareStyles}
-            orientation={drill.side}
-            shake={shake}
-            end={boardEnd}
-            mouseDrag
-          />
+          <div className="board-bleed">
+            <Board
+              boardId="endgame"
+              fen={fen}
+              width={BOARD_MAX}
+              lastMove={lastMove}
+              draggable={status === "playing"}
+              onPieceDrop={tryMove}
+              onSquareClick={onSquareClick}
+              squareStyles={squareStyles}
+              orientation={drill.side}
+              shake={shake}
+              end={boardEnd}
+              mouseDrag
+            />
+          </div>
 
           <div className="mt-3 min-h-[52px]">
             {status === "solved" || status === "failed" ? (
