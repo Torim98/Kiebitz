@@ -16,6 +16,7 @@ import CapturedPieces from "./CapturedPieces";
 import { capturedFromFen } from "../lib/captured";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card } from "./ui";
+import FocusBoard, { FocusButton } from "./FocusBoard";
 import { useT } from "../lib/i18n";
 import { fenAfter, replaySans } from "../lib/position";
 import { useBackendInfo } from "../lib/backend";
@@ -93,6 +94,8 @@ export default function RepertoireTrainer({
   const [idx, setIdx] = useState(0);
   const [state, setState] = useState<"ask" | "correct" | "wrong">("ask");
   const [shake, setShake] = useState(false);
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
   const [doneCount, setDoneCount] = useState({ ok: 0, fail: 0 });
   const [viewPly, setViewPly] = useState(0);
   /** Züge nach der Ausgangsstellung · eigene Antworten und Gegnerzüge. */
@@ -368,111 +371,147 @@ export default function RepertoireTrainer({
   const playedSan = played[played.length - 1] ?? expectedLabel;
   const captured = capturedFromFen(fen);
 
-  return (
-    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
-      <div>
-        <div className="mb-3 flex items-center justify-between text-[13px]">
-          <span className="font-medium">
-            {item.line || t("rep.fallbackLine")} ·{" "}
-            {item.side === "white" ? t("common.white") : t("common.black")}
+  /**
+   * Kopf, Brett und Bedienung als benannte Bausteine · die Seite und das
+   * Fokus-Brett zeigen dieselben. Das Brett bekommt je eine eigene Kennung,
+   * weil react-chessboard seine Instanzen daran unterscheidet.
+   */
+  const trainHead = (
+    <>
+      <div className="mb-3 flex items-center justify-between text-[13px]">
+        <span className="font-medium">
+          {item.line || t("rep.fallbackLine")} ·{" "}
+          {item.side === "white" ? t("common.white") : t("common.black")}
+        </span>
+        <span className="text-ink3">
+          {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
+        </span>
+      </div>
+      {/* Eine Repertoire-Zeile läuft aus der Grundstellung · was fehlt, wurde
+          wirklich geschlagen, also steht es an der Seite, die es schlug. Ohne
+          Namen bleibt es bei den Figuren allein; in einer Eröffnung ist meist
+          nichts geschlagen, und dann entfällt die Zeile ganz. */}
+      <div className="mb-2 empty:hidden">
+        <CapturedPieces
+          pieces={item.side === "white" ? captured.black : captured.white}
+          color={item.side === "white" ? "white" : "black"}
+          advantage={item.side === "white" ? -captured.diff : captured.diff}
+        />
+      </div>
+    </>
+  );
+
+  const trainBoard = (boardId: string) => (
+    <>
+      <div className="board-bleed">
+        <Board
+          boardId={boardId}
+          fen={fen}
+          width={BOARD_MAX}
+          lastMove={lastMove}
+          draggable={state === "ask" && atLive}
+          onPieceDrop={tryMove}
+          onSquareClick={trainSelection.onSquareClick}
+          squareStyles={trainSelection.squareStyles}
+          orientation={item.side}
+          shake={shake}
+          mouseDrag
+        />
+      </div>
+      <div className="mt-2 empty:hidden">
+        <CapturedPieces
+          pieces={item.side === "white" ? captured.white : captured.black}
+          color={item.side === "white" ? "black" : "white"}
+          advantage={item.side === "white" ? captured.diff : -captured.diff}
+        />
+      </div>
+    </>
+  );
+
+  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  const trainControls = (inFocus: boolean) => (
+    <>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
+        <span className="text-[12.5px] text-ink2">{t("rep.lastMove", { move: previousMove })}</span>
+        <div className="flex items-center gap-1">
+          <Button onClick={() => setViewPly(0)} title={t("rep.firstPosition")} compact>
+            <ChevronFirst size={14} />
+          </Button>
+          <Button
+            onClick={() => setViewPly((value) => Math.max(0, value - 1))}
+            title={t("rep.previousPosition")}
+            compact
+          >
+            <ChevronLeft size={14} />
+          </Button>
+          <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
+            {viewPly} / {lineSans.length}
           </span>
-          <span className="text-ink3">
-            {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
-          </span>
+          <Button
+            onClick={() => setViewPly((value) => Math.min(lineSans.length, value + 1))}
+            title={t("rep.nextPosition")}
+            compact
+          >
+            <ChevronRight size={14} />
+          </Button>
+          <Button
+            onClick={() => setViewPly(lineSans.length)}
+            title={t("rep.promptPosition")}
+            compact
+          >
+            <ChevronLast size={14} />
+          </Button>
+          {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
         </div>
-        {/* Eine Repertoire-Zeile läuft aus der Grundstellung · was fehlt, wurde
-            wirklich geschlagen, also steht es an der Seite, die es schlug. Ohne
-            Namen bleibt es bei den Figuren allein; in einer Eröffnung ist meist
-            nichts geschlagen, und dann entfällt die Zeile ganz. */}
-        <div className="mb-2 empty:hidden">
-          <CapturedPieces
-            pieces={item.side === "white" ? captured.black : captured.white}
-            color={item.side === "white" ? "white" : "black"}
-            advantage={item.side === "white" ? -captured.diff : captured.diff}
-          />
-        </div>
-        <div className="board-bleed">
-          <Board
-            boardId="rep-train"
-            fen={fen}
-            width={BOARD_MAX}
-            lastMove={lastMove}
-            draggable={state === "ask" && atLive}
-            onPieceDrop={tryMove}
-            onSquareClick={trainSelection.onSquareClick}
-            squareStyles={trainSelection.squareStyles}
-            orientation={item.side}
-            shake={shake}
-            mouseDrag
-          />
-        </div>
-        <div className="mt-2 empty:hidden">
-          <CapturedPieces
-            pieces={item.side === "white" ? captured.white : captured.black}
-            color={item.side === "white" ? "black" : "white"}
-            advantage={item.side === "white" ? captured.diff : -captured.diff}
-          />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
-          <span className="text-[12.5px] text-ink2">{t("rep.lastMove", { move: previousMove })}</span>
-          <div className="flex items-center gap-1">
-            <Button onClick={() => setViewPly(0)} className="px-2" title={t("rep.firstPosition")}>
-              <ChevronFirst size={14} />
-            </Button>
-            <Button
-              onClick={() => setViewPly((value) => Math.max(0, value - 1))}
-              className="px-2"
-              title={t("rep.previousPosition")}
-            >
-              <ChevronLeft size={14} />
-            </Button>
-            <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
-              {viewPly} / {lineSans.length}
+      </div>
+      <div className="mt-3 flex min-h-[52px] items-center">
+        {state === "correct" ? (
+          <div className="flex w-full items-center gap-2 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[13.5px] font-medium text-accent">
+            <Check size={17} /> {t("rep.correct", { san: playedSan })}
+          </div>
+        ) : state === "wrong" ? (
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
+            <span className="text-[13.5px] text-loss">
+              {t("rep.bookMoveIs", { san: expectedLabel })}
             </span>
-            <Button
-              onClick={() => setViewPly((value) => Math.min(lineSans.length, value + 1))}
-              className="px-2"
-              title={t("rep.nextPosition")}
-            >
-              <ChevronRight size={14} />
-            </Button>
-            <Button
-              onClick={() => setViewPly(lineSans.length)}
-              className="px-2"
-              title={t("rep.promptPosition")}
-            >
-              <ChevronLast size={14} />
+            <Button onClick={revealAndNext} title={t("rep.revealShortcut")}>
+              {t("rep.showAndNext")}
             </Button>
           </div>
-        </div>
-        <div className="mt-3 flex min-h-[52px] items-center">
-          {state === "correct" ? (
-            <div className="flex w-full items-center gap-2 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[13.5px] font-medium text-accent">
-              <Check size={17} /> {t("rep.correct", { san: playedSan })}
-            </div>
-          ) : state === "wrong" ? (
-            <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
-              <span className="text-[13.5px] text-loss">
-                {t("rep.bookMoveIs", { san: expectedLabel })}
-              </span>
-              <Button onClick={revealAndNext} title={t("rep.revealShortcut")}>
-                {t("rep.showAndNext")}
-              </Button>
-            </div>
-          ) : (
-            <div className="flex w-full flex-wrap items-center justify-between gap-2">
-              <span className="text-[13px] text-ink3">
-                {t("rep.whatToPlay", {
-                  n: moveNo,
-                  side: item.side === "white" ? t("common.white") : t("common.black"),
-                })}
-              </span>
-              <Button onClick={reveal} title={t("rep.revealShortcut")}>
-                <Lightbulb size={14} /> {t("rep.reveal")}
-              </Button>
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <span className="text-[13px] text-ink3">
+              {t("rep.whatToPlay", {
+                n: moveNo,
+                side: item.side === "white" ? t("common.white") : t("common.black"),
+              })}
+            </span>
+            <Button onClick={reveal} title={t("rep.revealShortcut")}>
+              <Lightbulb size={14} /> {t("rep.reveal")}
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
+      <div className="max-w-[var(--board-edge)]">
+        {trainHead}
+        {trainBoard("rep-train")}
+        {trainControls(false)}
+
+        <FocusBoard
+          open={focused}
+          onClose={() => setFocused(false)}
+          title={t("rep.trainerTitle")}
+          subtitle={item.line || t("rep.fallbackLine")}
+          above={trainHead}
+          below={trainControls(true)}
+        >
+          {trainBoard("rep-train-focus")}
+        </FocusBoard>
       </div>
 
       <div className="flex max-w-[420px] flex-col gap-4">

@@ -42,6 +42,7 @@ import { BOARD_MAX } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { moveBetween } from "../lib/position";
 import { Button, Card, Chip, Spark } from "../components/ui";
+import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import { dateLocale, deInt } from "../lib/format";
@@ -185,6 +186,8 @@ function TrainerView({
   const [selected, setSelected] = useState<string | null>(null);
   const [ratingDelta, setRatingDelta] = useState<number | null>(null);
   const [sharing, setSharing] = useState<ShareSubject | null>(null);
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
   // Vorbelegt aus dem Trainingsplan ("schwächstes Motiv, Band 1420–1580").
   const [theme, setTheme] = useState<string>(initialTheme);
   const [source, setSource] = useState<"all" | "lichess" | "own">("all");
@@ -465,6 +468,158 @@ function TrainerView({
     .filter((t) => !["short", "long", "veryLong", "oneMove", "advantage", "crushing", "equality", "mate", "middlegame", "opening", "ownGame", "blunder", "mistake"].includes(t.theme))
     .slice(0, 5);
 
+  /**
+   * Aufgabe, Brett und Bedienung als benannte Bausteine · die Seite und das
+   * Fokus-Brett zeigen dieselben, nur in unterschiedlicher Umgebung. Das Brett
+   * bekommt je eine eigene Kennung, weil react-chessboard seine Instanzen
+   * daran unterscheidet.
+   */
+  const puzzleHead = (
+    <div className="mb-3 flex items-center justify-between">
+      <div className="flex items-center gap-2 text-[13.5px]">
+        <Target size={15} className="text-accent" />
+        {puzzle?.source !== "own" && mainTheme && themeHidden ? (
+          <button
+            type="button"
+            onClick={() => setThemeRevealed(true)}
+            title={t("pz.themeRevealHint")}
+            className="rounded-md border border-dashed border-line2 px-2 py-0.5 text-[12px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
+          >
+            {t("pz.themeHidden")}
+          </button>
+        ) : (
+          <span className="font-medium">
+            {puzzle?.source === "own" ? t("pz.missedMove") : mainTheme ? themeLabel(mainTheme, locale) : "…"}
+          </span>
+        )}
+        {puzzle && <span className="text-ink3">· Rating {puzzle.rating}</span>}
+        {puzzle?.source === "own" && (
+          <span className="rounded-md border border-accent-dim bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">
+            {t("pz.fromOwnGame")}
+          </span>
+        )}
+      </div>
+      <span className="text-[12.5px] text-ink3">
+        {status === "loading"
+          ? t("pz.loading")
+          : orientation === "white"
+            ? t("pz.whiteToMove")
+            : t("pz.blackToMove")}
+      </span>
+    </div>
+  );
+
+  const puzzleBoard = (boardId: string) => (
+    <div className="board-bleed">
+      <Board
+        boardId={boardId}
+        fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
+        width={BOARD_MAX}
+        lastMove={lastMove}
+        draggable={status === "playing" && atLive}
+        onPieceDrop={tryMove}
+        onSquareClick={onSquareClick}
+        squareStyles={squareStyles}
+        orientation={orientation}
+        shake={shake}
+        end={boardEnd}
+        mouseDrag
+      />
+    </div>
+  );
+
+  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  const puzzleHistory = (inFocus: boolean) => (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
+      <span className="text-[12.5px] text-ink2">{t("pz.positionHistory")}</span>
+      <div className="flex items-center gap-1">
+        <Button onClick={() => goToPly(0)} title={t("pz.firstPosition")} compact>
+          <ChevronFirst size={14} />
+        </Button>
+        <Button onClick={() => goToPly(viewPly - 1)} title={t("pz.previousPosition")} compact>
+          <ChevronLeft size={14} />
+        </Button>
+        <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
+          {viewPly} / {lastPly}
+        </span>
+        <Button onClick={() => goToPly(viewPly + 1)} title={t("pz.nextPosition")} compact>
+          <ChevronRight size={14} />
+        </Button>
+        <Button onClick={() => goToPly(lastPly)} title={t("pz.currentPosition")} compact>
+          <ChevronLast size={14} />
+        </Button>
+        <Button
+          onClick={openShare}
+          className="ml-1"
+          title={t("sh.title")}
+          disabled={!puzzle}
+          compact
+        >
+          <Share2 size={14} />
+        </Button>
+        {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
+      </div>
+    </div>
+  );
+
+  const puzzleActions = (
+    <>
+      <div className="mt-3 flex min-h-[52px] items-center">
+        {status === "solved" ? (
+          <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
+            <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
+              <CheckCircle2 size={17} />
+              {failedRef.current ? t("pz.solvedWithHelp") : t("pz.correct")}
+              {ratingDelta != null &&
+                t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
+            </div>
+            <div className="flex gap-2">
+              <Button primary onClick={() => load()}>
+                <SkipForward size={15} /> {t("common.next")}
+              </Button>
+            </div>
+          </div>
+        ) : wrong ? (
+          <div className="flex w-full items-center justify-between rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
+            <span className="text-[13.5px] text-loss">
+              {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
+            </span>
+            <div className="flex gap-2">
+              <Button onClick={() => setShowHint(true)}>
+                <Lightbulb size={15} /> {t("pz.hint")}
+              </Button>
+              <Button onClick={revealSolution}>
+                <Eye size={15} /> {t("pz.solution")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex w-full items-center justify-between">
+            <span className="text-[13px] text-ink3">
+              {status === "loading"
+                ? t("pz.loadingNext")
+                : status === "empty"
+                  ? t("pz.noneFound")
+                  : t("pz.findBest")}
+            </span>
+            {status === "playing" && (
+              <Button onClick={() => setShowHint(true)}>
+                <Lightbulb size={15} /> {t("pz.hint")}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+      {showHint && status === "playing" && (
+        <div className="rounded-lg border border-line bg-panel px-4 py-2.5 text-[12.5px] text-ink2">
+          {t("pz.hintText", {
+            theme: mainTheme ? t("pz.hintTheme", { m: themeLabel(mainTheme, locale) }) : "",
+          })}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
@@ -491,141 +646,14 @@ function TrainerView({
       </header>
 
       <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[13.5px]">
-              <Target size={15} className="text-accent" />
-              {puzzle?.source !== "own" && mainTheme && themeHidden ? (
-                <button
-                  type="button"
-                  onClick={() => setThemeRevealed(true)}
-                  title={t("pz.themeRevealHint")}
-                  className="rounded-md border border-dashed border-line2 px-2 py-0.5 text-[12px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
-                >
-                  {t("pz.themeHidden")}
-                </button>
-              ) : (
-                <span className="font-medium">
-                  {puzzle?.source === "own" ? t("pz.missedMove") : mainTheme ? themeLabel(mainTheme, locale) : "…"}
-                </span>
-              )}
-              {puzzle && <span className="text-ink3">· Rating {puzzle.rating}</span>}
-              {puzzle?.source === "own" && (
-                <span className="rounded-md border border-accent-dim bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">
-                  {t("pz.fromOwnGame")}
-                </span>
-              )}
-            </div>
-            <span className="text-[12.5px] text-ink3">
-              {status === "loading"
-                ? t("pz.loading")
-                : orientation === "white"
-                  ? t("pz.whiteToMove")
-                  : t("pz.blackToMove")}
-            </span>
-          </div>
-
-          <div className="board-bleed">
-            <Board
-              boardId="puzzle"
-              fen={fen || "8/8/8/8/8/8/8/8 w - - 0 1"}
-              width={BOARD_MAX}
-              lastMove={lastMove}
-              draggable={status === "playing" && atLive}
-              onPieceDrop={tryMove}
-              onSquareClick={onSquareClick}
-              squareStyles={squareStyles}
-              orientation={orientation}
-              shake={shake}
-              end={boardEnd}
-              mouseDrag
-            />
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2">
-            <span className="text-[12.5px] text-ink2">{t("pz.positionHistory")}</span>
-            <div className="flex items-center gap-1">
-              <Button onClick={() => goToPly(0)} className="px-2" title={t("pz.firstPosition")}>
-                <ChevronFirst size={14} />
-              </Button>
-              <Button onClick={() => goToPly(viewPly - 1)} className="px-2" title={t("pz.previousPosition")}>
-                <ChevronLeft size={14} />
-              </Button>
-              <span className="min-w-[54px] text-center text-[11.5px] tabular-nums text-ink3">
-                {viewPly} / {lastPly}
-              </span>
-              <Button onClick={() => goToPly(viewPly + 1)} className="px-2" title={t("pz.nextPosition")}>
-                <ChevronRight size={14} />
-              </Button>
-              <Button onClick={() => goToPly(lastPly)} className="px-2" title={t("pz.currentPosition")}>
-                <ChevronLast size={14} />
-              </Button>
-              <Button
-                onClick={openShare}
-                className="ml-1 px-2"
-                title={t("sh.title")}
-                disabled={!puzzle}
-              >
-                <Share2 size={14} />
-              </Button>
-            </div>
-          </div>
+        <div className="max-w-[var(--board-edge)]">
+          {puzzleHead}
+          {puzzleBoard("puzzle")}
+          {puzzleHistory(false)}
 
           {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
 
-          <div className="mt-3 flex min-h-[52px] items-center">
-            {status === "solved" ? (
-              <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
-                <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
-                  <CheckCircle2 size={17} />
-                  {failedRef.current ? t("pz.solvedWithHelp") : t("pz.correct")}
-                  {ratingDelta != null &&
-                    t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
-                </div>
-                <div className="flex gap-2">
-                  <Button primary onClick={() => load()}>
-                    <SkipForward size={15} /> {t("common.next")}
-                  </Button>
-                </div>
-              </div>
-            ) : wrong ? (
-              <div className="flex w-full items-center justify-between rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
-                <span className="text-[13.5px] text-loss">
-                  {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
-                </span>
-                <div className="flex gap-2">
-                  <Button onClick={() => setShowHint(true)}>
-                    <Lightbulb size={15} /> {t("pz.hint")}
-                  </Button>
-                  <Button onClick={revealSolution}>
-                    <Eye size={15} /> {t("pz.solution")}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex w-full items-center justify-between">
-                <span className="text-[13px] text-ink3">
-                  {status === "loading"
-                    ? t("pz.loadingNext")
-                    : status === "empty"
-                      ? t("pz.noneFound")
-                      : t("pz.findBest")}
-                </span>
-                {status === "playing" && (
-                  <Button onClick={() => setShowHint(true)}>
-                    <Lightbulb size={15} /> {t("pz.hint")}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-          {showHint && status === "playing" && (
-            <div className="rounded-lg border border-line bg-panel px-4 py-2.5 text-[12.5px] text-ink2">
-              {t("pz.hintText", {
-                theme: mainTheme ? t("pz.hintTheme", { m: themeLabel(mainTheme, locale) }) : "",
-              })}
-            </div>
-          )}
+          {puzzleActions}
         </div>
 
         <div className="flex max-w-[528px] flex-col gap-4">
@@ -739,6 +767,22 @@ function TrainerView({
           <PuzzleHistory />
         </div>
       </div>
+
+      <FocusBoard
+        open={focused}
+        onClose={() => setFocused(false)}
+        title={t("pz.title")}
+        subtitle={puzzle ? `Rating ${puzzle.rating}` : undefined}
+        above={puzzleHead}
+        below={
+          <>
+            {puzzleHistory(true)}
+            {puzzleActions}
+          </>
+        }
+      >
+        {puzzleBoard("puzzle-focus")}
+      </FocusBoard>
     </div>
   );
 }
@@ -921,7 +965,7 @@ function DemoPuzzles() {
       </header>
 
       <div className="grid grid-cols-1 gap-6 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
-        <div>
+        <div className="max-w-[var(--board-edge)]">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-[13.5px]">
               <Target size={15} className="text-accent" />

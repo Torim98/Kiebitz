@@ -58,6 +58,7 @@ import { capturedFromFen } from "../lib/captured";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
 import { Button, Card, ExtLink, Menu, MenuItem, ResultBadge } from "../components/ui";
+import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { PlusBadge } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
@@ -373,6 +374,8 @@ export default function Analysis({
    * Eine andere Partie hebt sie wieder auf: Dort gilt wieder die eigene Seite.
    */
   const [flipped, setFlipped] = useState(false);
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
   /**
    * Ausgangsstellung des freien Bretts · normalerweise die Grundstellung, nach
    * einem geteilten Link die Stellung aus dem Link.
@@ -979,6 +982,196 @@ export default function Analysis({
         ? `${captureWhite} vs. ${captureBlack} · Rapid · 1–0`
         : `${featuredGame.white} vs. ${featuredGame.black} · ${featuredGame.event} · ${featuredGame.result}`;
 
+  /**
+   * Die Bestandteile der Brettspalte · einmal beschrieben, zweimal gerendert:
+   * hier in der Seite und im Fokus-Brett. Nur die Kennung des Bretts
+   * unterscheidet sich, weil react-chessboard seine Instanzen daran auseinander
+   * hält · alles andere ist derselbe Zustand und dieselbe Bedienung.
+   *
+   * Die Einrückung rechnet mit dem Bewertungsbalken: `--board-gutter` minus
+   * dem Rand, um den das Brett nach außen tritt. So steht der Spielername in
+   * beiden Umgebungen genau über der linken Brettkante.
+   */
+  const playerLine = (top: boolean) => {
+    // Wer in dieser Zeile steht · oben spielt die Seite, die *nicht* unten
+    // spielt. Uhr, geschlagene Figuren und Vorteil hängen alle daran.
+    const white = top ? topIsWhite : !topIsWhite;
+    return (
+      <div
+        className={`flex min-h-[26px] items-start justify-between gap-3 pl-[calc(var(--board-gutter)-var(--board-bleed))] text-[12.5px] ${
+          top ? "mb-2" : "mt-2"
+        }`}
+      >
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-ink2">
+            {(top ? topPlayer : bottomPlayer).name}
+            {(top ? topPlayer : bottomPlayer).elo > 0
+              ? ` (${(top ? topPlayer : bottomPlayer).elo})`
+              : ""}
+          </div>
+          <CapturedPieces
+            pieces={white ? captured.white : captured.black}
+            color={white ? "black" : "white"}
+            advantage={white ? captured.diff : -captured.diff}
+          />
+        </div>
+        {hasClocks && (
+          <ClockBadge
+            centiseconds={white ? clockView.white : clockView.black}
+            active={white === whiteToMove}
+            spent={spentBy(white)}
+            locale={locale}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const boardRow = (boardId: string) => (
+    <div className="board-bleed flex gap-3">
+      <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
+        {/* Weiß und Schwarz nehmen die Feldfarben des Bretts daneben · so
+            bleibt der Balken in jedem Thema hell über dunkel.
+
+            Der Balken dreht sich mit dem Brett: Wessen Seite unten spielt,
+            dessen Anteil wächst hier von unten. Andernfalls zeigte er nach dem
+            Drehen in die falsche Richtung. */}
+        <div
+          className={`w-full ${orientation === "white" ? "bg-board-dark" : "bg-board-light"}`}
+          style={{
+            height: `${orientation === "white" ? 100 - whitePct : whitePct}%`,
+            transition: "height 0.3s",
+          }}
+        />
+        <div
+          className={`w-full ${orientation === "white" ? "bg-board-light" : "bg-board-dark"}`}
+          style={{
+            height: `${orientation === "white" ? whitePct : 100 - whitePct}%`,
+            transition: "height 0.3s",
+          }}
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <Board
+          boardId={boardId}
+          fen={fen}
+          width={BOARD_MAX}
+          orientation={orientation}
+          draggable={scratch || live}
+          onPieceDrop={scratch || live ? playBoardMove : undefined}
+          onSquareClick={scratch || live ? onBoardSquareClick : undefined}
+          lastMove={boardLastMove}
+          squareStyles={selectionStyles(fen, scratchSelected)}
+          arrows={variation || scratch ? liveArrows : previewArrows}
+          badges={currentQuality && currentTarget ? [{
+            square: currentTarget,
+            label: judgmentMark(currentQuality),
+            color: JUDGMENT_COLOR[currentQuality],
+            title: judgmentLabel(t, currentQuality),
+          }] : []}
+          muted={!!variation}
+          end={boardEnd}
+          mouseDrag
+        />
+      </div>
+    </div>
+  );
+
+  const variationHint = variation ? (
+    <div className="ml-[calc(var(--board-gutter)-var(--board-bleed))] mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
+      <span className="text-ink2">
+        {t("an.variationAt", { n: Math.floor(variation.basePly / 2) + 1 })}:{" "}
+        <strong className="text-accent">{variation.sans.join(" ")}</strong>
+      </span>
+      <button
+        onClick={() => goToPly(variation.basePly)}
+        className="ml-3 text-ink3 transition-colors hover:text-ink"
+      >
+        {t("an.returnToGame")}
+      </button>
+    </div>
+  ) : null;
+
+  /**
+   * Eine Leiste statt einer Reihe verstreuter Knöpfe.
+   *
+   * Links alles, was die gezeigte Stellung ändert: blättern, Brett drehen,
+   * teilen, in den Fokus gehen und · am freien Brett · von vorn anfangen.
+   * Rechts die Bewertung, unverrückbar. Beide Gruppen liegen in einer
+   * gemeinsamen Fläche, damit die Leiste als ein Bedienelement gelesen wird
+   * und nicht als acht gleich laute Angebote.
+   *
+   * Die Leiste bleibt einzeilig. Reicht die Breite auf einem sehr schmalen
+   * Telefon nicht, wandert die Tastengruppe unter den Finger, statt die
+   * Bewertung in eine zweite Zeile zu schieben · beim Blättern zählt, dass die
+   * Bewertung an ihrem Platz steht, mehr als dass jede Taste gleichzeitig
+   * sichtbar ist.
+   *
+   * Im Fokus fehlt der Griff zum Fokus · dort ist man schon.
+   */
+  const boardControls = (inFocus: boolean) => (
+    <div className="ml-[calc(var(--board-gutter)-var(--board-bleed))] mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-2 py-1.5">
+      <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        <Button onClick={() => goToPly(0)} title={t("an.toStart")} label={t("an.toStart")} compact>
+          <ChevronFirst size={15} />
+        </Button>
+        <Button
+          onClick={() => goToPly((variation?.basePly ?? ply) - 1)}
+          title={t("an.prevMove")}
+          label={t("an.prevMove")}
+          compact
+        >
+          <ChevronLeft size={15} />
+        </Button>
+        <Button
+          onClick={() => goToPly((variation?.basePly ?? ply) + 1)}
+          title={t("an.nextMove")}
+          label={t("an.nextMove")}
+          compact
+        >
+          <ChevronRight size={15} />
+        </Button>
+        <Button onClick={() => goToPly(sans.length)} title={t("an.toEnd")} label={t("an.toEnd")} compact>
+          <ChevronLast size={15} />
+        </Button>
+        <span className="mx-1 h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
+        <Button
+          onClick={() => setFlipped((value) => !value)}
+          title={t("an.flip")}
+          label={t("an.flip")}
+          compact
+        >
+          <FlipVertical2 size={15} />
+        </Button>
+        <Button onClick={openShare} title={t("sh.title")} label={t("sh.title")} compact>
+          <Share2 size={15} />
+        </Button>
+        {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
+        {scratch && (
+          <Button
+            onClick={() => {
+              setOpened(null);
+              setScratchSans([]);
+              setPly(0);
+              setScratchSelected(null);
+              setLiveEval(null);
+              setLiveBestUci(null);
+            }}
+            title={t("an.newBoard")}
+          >
+            <RotateCcw size={15} /> {t("an.newBoard")}
+          </Button>
+        )}
+      </div>
+      <div
+        className="shrink-0 px-1.5 text-[15px] font-semibold tabular-nums"
+        style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}
+      >
+        {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
+      </div>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
       <header className="mb-4 flex items-end justify-between">
@@ -1146,189 +1339,14 @@ export default function Analysis({
       )}
 
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,var(--board-col))_minmax(320px,1fr)] min-[1660px]:grid-cols-[minmax(0,var(--board-col))_minmax(360px,1fr)_340px]">
-        {/* Brett + Eval-Bar (Bar streckt sich auf Board-Höhe). Die Spalte ist
-            so breit wie Brett plus Balken · das ist `--board-col`, und auf dem
-            Handy tritt sie über `board-bleed` bis an die Bildschirmkante. */}
-        <div className="board-bleed min-w-0 max-w-[var(--board-col)]">
-          <div className="mb-2 flex min-h-[26px] items-start justify-between gap-3 pl-[var(--board-gutter)] pr-[var(--board-bleed)] text-[12.5px]">
-            <div className="min-w-0">
-              <div className="truncate font-semibold text-ink2">{topPlayer.name}{topPlayer.elo > 0 ? ` (${topPlayer.elo})` : ""}</div>
-              <CapturedPieces
-                pieces={topIsWhite ? captured.white : captured.black}
-                color={topIsWhite ? "black" : "white"}
-                advantage={topIsWhite ? captured.diff : -captured.diff}
-              />
-            </div>
-            {hasClocks && (
-              <ClockBadge
-                centiseconds={orientation === "white" ? clockView.black : clockView.white}
-                active={orientation === "white" ? !whiteToMove : whiteToMove}
-                spent={spentBy(orientation !== "white")}
-                locale={locale}
-              />
-            )}
-          </div>
-          <div className="flex gap-3">
-            <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
-              {/* Weiß und Schwarz nehmen die Feldfarben des Bretts daneben ·
-                  so bleibt der Balken in jedem Thema hell über dunkel.
-
-                  Der Balken dreht sich mit dem Brett: Wessen Seite unten
-                  spielt, dessen Anteil wächst hier von unten. Andernfalls
-                  zeigte er nach dem Drehen in die falsche Richtung. */}
-              <div
-                className={`w-full ${orientation === "white" ? "bg-board-dark" : "bg-board-light"}`}
-                style={{
-                  height: `${orientation === "white" ? 100 - whitePct : whitePct}%`,
-                  transition: "height 0.3s",
-                }}
-              />
-              <div
-                className={`w-full ${orientation === "white" ? "bg-board-light" : "bg-board-dark"}`}
-                style={{
-                  height: `${orientation === "white" ? whitePct : 100 - whitePct}%`,
-                  transition: "height 0.3s",
-                }}
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <Board
-                boardId="analysis"
-                fen={fen}
-                width={BOARD_MAX}
-                orientation={orientation}
-                draggable={scratch || live}
-                onPieceDrop={scratch || live ? playBoardMove : undefined}
-                onSquareClick={scratch || live ? onBoardSquareClick : undefined}
-                lastMove={boardLastMove}
-                squareStyles={selectionStyles(fen, scratchSelected)}
-                arrows={variation || scratch ? liveArrows : previewArrows}
-                badges={currentQuality && currentTarget ? [{
-                  square: currentTarget,
-                  label: judgmentMark(currentQuality),
-                  color: JUDGMENT_COLOR[currentQuality],
-                  title: judgmentLabel(t, currentQuality),
-                }] : []}
-                muted={!!variation}
-                end={boardEnd}
-                mouseDrag
-              />
-            </div>
-          </div>
-          <div className="mt-2 flex min-h-[26px] items-start justify-between gap-3 pl-[var(--board-gutter)] pr-[var(--board-bleed)] text-[12.5px]">
-            <div className="min-w-0">
-              <div className="truncate font-semibold text-ink2">{bottomPlayer.name}{bottomPlayer.elo > 0 ? ` (${bottomPlayer.elo})` : ""}</div>
-              <CapturedPieces
-                pieces={topIsWhite ? captured.black : captured.white}
-                color={topIsWhite ? "white" : "black"}
-                advantage={topIsWhite ? -captured.diff : captured.diff}
-              />
-            </div>
-            {hasClocks && (
-              <ClockBadge
-                centiseconds={orientation === "white" ? clockView.white : clockView.black}
-                active={orientation === "white" ? whiteToMove : !whiteToMove}
-                spent={spentBy(orientation === "white")}
-                locale={locale}
-              />
-            )}
-          </div>
-          {variation && (
-            <div className="ml-[var(--board-gutter)] mr-[var(--board-bleed)] mt-2 flex items-center justify-between rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12px]">
-              <span className="text-ink2">{t("an.variationAt", { n: Math.floor(variation.basePly / 2) + 1 })}: <strong className="text-accent">{variation.sans.join(" ")}</strong></span>
-              <button onClick={() => goToPly(variation.basePly)} className="ml-3 text-ink3 transition-colors hover:text-ink">
-                {t("an.returnToGame")}
-              </button>
-            </div>
-          )}
-          {/* Eine Leiste statt einer Reihe verstreuter Knöpfe.
-
-              Links alles, was die gezeigte Stellung ändert: blättern, Brett
-              drehen, teilen und · am freien Brett · von vorn anfangen. Rechts
-              die Bewertung, unverrückbar. Beide Gruppen liegen in einer
-              gemeinsamen Fläche, damit die Leiste als ein Bedienelement
-              gelesen wird und nicht als sieben gleich laute Angebote.
-
-              Die Leiste bleibt einzeilig. Reicht die Breite auf einem sehr
-              schmalen Telefon nicht, wandert die Tastengruppe unter den Finger,
-              statt die Bewertung in eine zweite Zeile zu schieben · beim
-              Blättern zählt, dass die Bewertung an ihrem Platz steht, mehr als
-              dass jede Taste gleichzeitig sichtbar ist. Die Leiste beginnt am
-              Gutter und steht damit genau über der linken Brettkante. */}
-          <div className="ml-[var(--board-gutter)] mr-[var(--board-bleed)] mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-2 py-1.5">
-            <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              <Button
-                onClick={() => goToPly(0)}
-                title={t("an.toStart")}
-                label={t("an.toStart")}
-                compact
-              >
-                <ChevronFirst size={15} />
-              </Button>
-              <Button
-                onClick={() => goToPly((variation?.basePly ?? ply) - 1)}
-                title={t("an.prevMove")}
-                label={t("an.prevMove")}
-                compact
-              >
-                <ChevronLeft size={15} />
-              </Button>
-              <Button
-                onClick={() => goToPly((variation?.basePly ?? ply) + 1)}
-                title={t("an.nextMove")}
-                label={t("an.nextMove")}
-                compact
-              >
-                <ChevronRight size={15} />
-              </Button>
-              <Button
-                onClick={() => goToPly(sans.length)}
-                title={t("an.toEnd")}
-                label={t("an.toEnd")}
-                compact
-              >
-                <ChevronLast size={15} />
-              </Button>
-              <span className="mx-1 h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
-              <Button
-                onClick={() => setFlipped((value) => !value)}
-                title={t("an.flip")}
-                label={t("an.flip")}
-                compact
-              >
-                <FlipVertical2 size={15} />
-              </Button>
-              <Button
-                onClick={openShare}
-                title={t("sh.title")}
-                label={t("sh.title")}
-                compact
-              >
-                <Share2 size={15} />
-              </Button>
-              {scratch && (
-                <Button
-                  onClick={() => {
-                    setOpened(null);
-                    setScratchSans([]);
-                    setPly(0);
-                    setScratchSelected(null);
-                    setLiveEval(null);
-                    setLiveBestUci(null);
-                  }}
-                  title={t("an.newBoard")}
-                >
-                  <RotateCcw size={15} /> {t("an.newBoard")}
-                </Button>
-              )}
-            </div>
-            <div
-              className="shrink-0 px-1.5 text-[15px] font-semibold tabular-nums"
-              style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}
-            >
-              {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
-            </div>
-          </div>
+        {/* Brett + Eval-Bar. Die Spalte ist so breit wie Brett plus Balken ·
+            das ist `--board-col`. */}
+        <div className="min-w-0 max-w-[var(--board-col)]">
+          {playerLine(true)}
+          {boardRow("analysis")}
+          {playerLine(false)}
+          {variationHint}
+          {boardControls(false)}
         </div>
 
         {/* Zugliste + Eval-Graph */}
@@ -1628,6 +1646,24 @@ export default function Analysis({
           )}
         </div>
       </div>
+
+      <FocusBoard
+        open={focused}
+        onClose={() => setFocused(false)}
+        title={t("an.title")}
+        subtitle={headerSub}
+        frameWidth="var(--board-col)"
+        above={playerLine(true)}
+        below={
+          <>
+            {playerLine(false)}
+            {variationHint}
+            {boardControls(true)}
+          </>
+        }
+      >
+        {boardRow("analysis-focus")}
+      </FocusBoard>
 
       {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
     </div>

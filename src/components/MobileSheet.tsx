@@ -20,6 +20,7 @@ import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "re
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useT } from "../lib/i18n";
+import { useBackDismiss } from "../lib/backDismiss";
 
 /** Ziel des Portals · liegt in der mobilen Shell deckungsgleich über <main>. */
 export const SHEET_ROOT_ID = "mobile-sheet-root";
@@ -32,14 +33,6 @@ const SWIPE_RATIO = 1.3;
 const AXIS_LOCK = 10;
 
 type Gesture = { x: number; y: number; axis: "x" | "y" | null };
-
-/** Wie viele Blätter offen sind · nur der letzte räumt den History-Eintrag ab. */
-let openSheets = 0;
-
-/** Steht die eigene Marke im aktuellen History-Eintrag? */
-function sheetState(state: unknown): boolean {
-  return (state as { sheet?: boolean } | null)?.sheet === true;
-}
 
 export default function MobileSheet({
   ariaLabel,
@@ -101,38 +94,9 @@ export default function MobileSheet({
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
   }, [scrollKey]);
 
-  // Android-Zurück soll das Blatt schließen und nicht die App verlassen.
-  // Dafür bekommt es einen eigenen History-Eintrag auf derselben Stapeltiefe:
-  // der Seiten-Stapel (lib/nav) vergleicht nur `kd` und lässt ihn in Ruhe.
-  //
-  // Beide Seiten sind gegen den doppelten Effektlauf des StrictMode gesichert ·
-  // ein zweiter Eintrag entsteht nicht (die Marke steht schon), und das
-  // Abräumen prüft erst im nächsten Task, ob wirklich kein Blatt mehr offen ist.
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    if (!sheetState(window.history.state)) {
-      const depth = (window.history.state as { kd?: number } | null)?.kd ?? 1;
-      window.history.pushState({ kd: depth, sheet: true }, "");
-    }
-    openSheets += 1;
-    let popped = false;
-    const onPop = () => {
-      popped = true;
-      closeRef.current();
-    };
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      openSheets -= 1;
-      if (popped) return;
-      // Über die Schaltfläche geschlossen · den eigenen Eintrag abräumen,
-      // sofern das Blatt nicht sofort wieder aufgeht (StrictMode).
-      setTimeout(() => {
-        if (openSheets === 0 && sheetState(window.history.state)) window.history.back();
-      }, 0);
-    };
-  }, []);
+  // Android-Zurück schließt das Blatt, statt die App zu verlassen · dieselbe
+  // Mechanik nutzt auch das Fokus-Brett, deshalb steht sie in lib/backDismiss.
+  useBackDismiss(onClose);
 
   const shift = (dx: number, snapBack: boolean) => {
     const el = panelRef.current;

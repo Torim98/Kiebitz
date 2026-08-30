@@ -220,6 +220,33 @@ describe("Analysis page", () => {
     });
 
     /**
+     * Das Fokus-Brett zeigt dieselbe Stellung ohne Zugliste, Kurve und
+     * Engine-Panel · dieselben Namen, dieselbe Bedienung.
+     */
+    it("opens the same position as a focus board and closes it again", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      expect(screen.getAllByTestId("analysis-board")).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole("button", { name: "Fokus-Brett öffnen" }));
+
+      const focus = screen.getByTestId("focus-board");
+      expect(focus.getAttribute("aria-label")).toBe("Analyse");
+      // Zwei Bretter: das der Seite dahinter und das im Fokus · beide zeigen
+      // dieselbe Stellung.
+      const boards = screen.getAllByTestId("analysis-board");
+      expect(boards).toHaveLength(2);
+      expect(boards[1].dataset.fen).toBe(boards[0].dataset.fen);
+      expect(within(focus).getByText("Dr. Tom Maurer (1500)")).toBeTruthy();
+      // Im Fokus fehlt der Griff zum Fokus · dort ist man schon.
+      expect(within(focus).queryByRole("button", { name: "Fokus-Brett öffnen" })).toBeNull();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByTestId("focus-board")).toBeNull();
+      expect(screen.getAllByTestId("analysis-board")).toHaveLength(1);
+    });
+
+    /**
      * Die Stapelläufe stehen im Menü · in der Leiste soll genau eine
      * Schaltfläche laut sein.
      */

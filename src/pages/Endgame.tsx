@@ -31,6 +31,7 @@ import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { useTrainingSession } from "../lib/session";
 import { Button, Card } from "../components/ui";
+import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { deInt } from "../lib/format";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 
@@ -74,6 +75,8 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const [shake, setShake] = useState(false);
   const [stats, setStats] = useState<Record<string, DrillStat>>({});
   const [sharing, setSharing] = useState<ShareSubject | null>(null);
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
 
   const chessRef = useRef(new Chess(drill.fen));
   // Läuft eine Engine-Anfrage noch, während der Drill gewechselt wird,
@@ -279,6 +282,120 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     return null;
   };
 
+  /**
+   * Statuszeile, Brett und Bedienung als benannte Bausteine · die Seite und
+   * das Fokus-Brett zeigen dieselben. Das Brett bekommt je eine eigene
+   * Kennung, weil react-chessboard seine Instanzen daran unterscheidet.
+   */
+  const drillHead = (
+    <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
+        <Crown size={15} className="shrink-0 text-accent" />
+        <span className="font-medium">{drillText(drill.name, locale)}</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10.5px] ${
+            drill.goal === "win" ? "bg-accent-soft text-accent" : "bg-panel3 text-gold"
+          }`}
+        >
+          {drill.goal === "win" ? t("eg.goalWin") : t("eg.goalDraw")}
+        </span>
+      </div>
+      <span
+        data-testid="endgame-status"
+        className="min-h-10 text-right text-[12.5px] leading-5 text-ink3"
+      >
+        {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
+      </span>
+    </div>
+  );
+
+  const drillBoard = (boardId: string) => (
+    <div className="board-bleed">
+      <Board
+        boardId={boardId}
+        fen={fen}
+        width={BOARD_MAX}
+        lastMove={lastMove}
+        draggable={status === "playing"}
+        onPieceDrop={tryMove}
+        onSquareClick={onSquareClick}
+        squareStyles={squareStyles}
+        orientation={drill.side}
+        shake={shake}
+        end={boardEnd}
+        mouseDrag
+      />
+    </div>
+  );
+
+  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  const drillActions = (inFocus: boolean) => {
+    const focusButton = inFocus ? null : <FocusButton onClick={() => setFocused(true)} />;
+    return (
+      <div className="mt-3 min-h-[52px]">
+        {status === "solved" || status === "failed" ? (
+          <div
+            className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5 ${
+              status === "solved"
+                ? "border border-accent-dim bg-accent-soft"
+                : "border border-loss-dim bg-loss-soft"
+            }`}
+          >
+            <div
+              className={`flex items-center gap-2 text-[13.5px] font-medium ${
+                status === "solved" ? "text-accent" : "text-loss"
+              }`}
+            >
+              {status === "solved" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+              {endMsg ? t(endMsg) : ""}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => start(drill)}>
+                <RotateCcw size={14} /> {t("eg.retry")}
+              </Button>
+              {shareButton}
+              {focusButton}
+              {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
+              {status === "solved" && drill.category === "random" && (
+                <Button primary onClick={() => start(randomDrill())}>
+                  <Shuffle size={15} /> {t("eg.randomNext")}
+                </Button>
+              )}
+              {status === "solved" && drill.category !== "random" && nextUnsolved() && (
+                <Button primary onClick={() => start(nextUnsolved()!)}>
+                  <SkipForward size={15} /> {t("eg.nextDrill")}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-end gap-2">
+              {desktop && status === "playing" && (
+                <Button onClick={showHint}>
+                  {hintLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Lightbulb size={14} />
+                  )}{" "}
+                  {t("eg.hintMove")}
+                </Button>
+              )}
+              <Button onClick={() => start(drill)}>
+                <RotateCcw size={14} /> {t("eg.restart")}
+              </Button>
+              {shareButton}
+              {focusButton}
+            </div>
+            <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
+              {drillText(drill.hint, locale)}
+            </p>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
@@ -306,102 +423,9 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
         {/* Brett + Statuszeile · auf Brettbreite begrenzt, damit lange
             Hinweistexte die auto-Grid-Spalte nicht aufblähen. */}
         <div className="max-w-[var(--board-edge)]">
-          <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
-              <Crown size={15} className="shrink-0 text-accent" />
-              <span className="font-medium">{drillText(drill.name, locale)}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10.5px] ${
-                  drill.goal === "win" ? "bg-accent-soft text-accent" : "bg-panel3 text-gold"
-                }`}
-              >
-                {drill.goal === "win" ? t("eg.goalWin") : t("eg.goalDraw")}
-              </span>
-            </div>
-            <span
-              data-testid="endgame-status"
-              className="min-h-10 text-right text-[12.5px] leading-5 text-ink3"
-            >
-              {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
-            </span>
-          </div>
-
-          <div className="board-bleed">
-            <Board
-              boardId="endgame"
-              fen={fen}
-              width={BOARD_MAX}
-              lastMove={lastMove}
-              draggable={status === "playing"}
-              onPieceDrop={tryMove}
-              onSquareClick={onSquareClick}
-              squareStyles={squareStyles}
-              orientation={drill.side}
-              shake={shake}
-              end={boardEnd}
-              mouseDrag
-            />
-          </div>
-
-          <div className="mt-3 min-h-[52px]">
-            {status === "solved" || status === "failed" ? (
-              <div
-                className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5 ${
-                  status === "solved"
-                    ? "border border-accent-dim bg-accent-soft"
-                    : "border border-loss-dim bg-loss-soft"
-                }`}
-              >
-                <div
-                  className={`flex items-center gap-2 text-[13.5px] font-medium ${
-                    status === "solved" ? "text-accent" : "text-loss"
-                  }`}
-                >
-                  {status === "solved" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
-                  {endMsg ? t(endMsg) : ""}
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => start(drill)}>
-                    <RotateCcw size={14} /> {t("eg.retry")}
-                  </Button>
-                  {shareButton}
-                  {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
-                  {status === "solved" && drill.category === "random" && (
-                    <Button primary onClick={() => start(randomDrill())}>
-                      <Shuffle size={15} /> {t("eg.randomNext")}
-                    </Button>
-                  )}
-                  {status === "solved" && drill.category !== "random" && nextUnsolved() && (
-                    <Button primary onClick={() => start(nextUnsolved()!)}>
-                      <SkipForward size={15} /> {t("eg.nextDrill")}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex justify-end gap-2">
-                  {desktop && status === "playing" && (
-                    <Button onClick={showHint}>
-                      {hintLoading ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Lightbulb size={14} />
-                      )}{" "}
-                      {t("eg.hintMove")}
-                    </Button>
-                  )}
-                  <Button onClick={() => start(drill)}>
-                    <RotateCcw size={14} /> {t("eg.restart")}
-                  </Button>
-                  {shareButton}
-                </div>
-                <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
-                  {drillText(drill.hint, locale)}
-                </p>
-              </>
-            )}
-          </div>
+          {drillHead}
+          {drillBoard("endgame")}
+          {drillActions(false)}
 
           {error && (
             <div className="mt-2 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
@@ -410,6 +434,17 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
           )}
 
           {sharing && <ShareDialog subject={sharing} onClose={() => setSharing(null)} />}
+
+          <FocusBoard
+            open={focused}
+            onClose={() => setFocused(false)}
+            title={t("eg.title")}
+            subtitle={drillText(drill.name, locale)}
+            above={drillHead}
+            below={drillActions(true)}
+          >
+            {drillBoard("endgame-focus")}
+          </FocusBoard>
         </div>
 
         {/* Aufgabenliste */}

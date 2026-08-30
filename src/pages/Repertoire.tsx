@@ -51,6 +51,7 @@ import { useMobileShell } from "../components/MobileShell";
 import { BOARD_MAX } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card, Chip } from "../components/ui";
+import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { de } from "../lib/format";
 import { errorMessage } from "../lib/errors";
 import { replaySans } from "../lib/position";
@@ -757,33 +758,61 @@ function LiveRepertoire() {
       return false;
     }
   };
+  const [focused, setFocused] = useState(false);
   const browseSelection = useBoardSelection(fen, startFromMove);
 
-  const boardPane = (
-    <div>
-      <div className="board-bleed">
-        <Board
-          boardId="repertoire"
-          fen={fen}
-          width={BOARD_MAX}
-          lastMove={lastMove}
-          draggable
-          onPieceDrop={startFromMove}
-          onSquareClick={browseSelection.onSquareClick}
-          squareStyles={browseSelection.squareStyles}
-          orientation={selected?.side ?? "white"}
-          mouseDrag
-        />
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
-        <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
-          {moveText(baseSans) || t("rep.startPos")}
-        </span>
-        <Button onClick={openShare} className="shrink-0 px-2" title={t("sh.title")}>
+  /**
+   * Brett und Zugzeile als benannte Bausteine · die Seite und das Fokus-Brett
+   * zeigen dieselben. Das Brett bekommt je eine eigene Kennung, weil
+   * react-chessboard seine Instanzen daran unterscheidet.
+   */
+  const browseBoard = (boardId: string) => (
+    <div className="board-bleed">
+      <Board
+        boardId={boardId}
+        fen={fen}
+        width={BOARD_MAX}
+        lastMove={lastMove}
+        draggable
+        onPieceDrop={startFromMove}
+        onSquareClick={browseSelection.onSquareClick}
+        squareStyles={browseSelection.squareStyles}
+        orientation={selected?.side ?? "white"}
+        mouseDrag
+      />
+    </div>
+  );
+
+  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  const browseMoves = (inFocus: boolean) => (
+    <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
+      <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
+        {moveText(baseSans) || t("rep.startPos")}
+      </span>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button onClick={openShare} title={t("sh.title")} label={t("sh.title")} compact>
           <Share2 size={14} />
         </Button>
+        {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
       </div>
+    </div>
+  );
+
+  const boardPane = (
+    <div className="max-w-[var(--board-edge)]">
+      {browseBoard("repertoire")}
+      {browseMoves(false)}
       <p className="mt-2 px-1 text-[12px] leading-relaxed text-ink3">{t("rep.playToAdd")}</p>
+
+      <FocusBoard
+        open={focused}
+        onClose={() => setFocused(false)}
+        title={t("rep.title")}
+        subtitle={selected ? moveLabel(selected) : undefined}
+        below={browseMoves(true)}
+      >
+        {browseBoard("repertoire-focus")}
+      </FocusBoard>
     </div>
   );
 
@@ -1241,6 +1270,8 @@ function AddLine({
   const [side, setSide] = useState<"white" | "black">(baseSide ?? "white");
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [twins, setTwins] = useState<RepNode[]>([]);
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
   const chessRef = useRef<Chess>(new Chess());
 
   const sans = useMemo(() => [...baseSans, ...draft], [baseSans, draft]);
@@ -1307,6 +1338,37 @@ function AddLine({
       clearTimeout(timer);
     };
   }, [fen]);
+
+  /**
+   * Brett und Zugzeile als benannte Bausteine · die Seite und das Fokus-Brett
+   * zeigen dieselben. Die Kennung unterscheidet die beiden Brett-Instanzen.
+   */
+  const addBoard = (boardId: string) => (
+    <div className="board-bleed">
+      <Board
+        boardId={boardId}
+        fen={fen}
+        width={BOARD_MAX}
+        lastMove={lastMove}
+        draggable
+        onPieceDrop={tryMove}
+        onSquareClick={addSelection.onSquareClick}
+        squareStyles={addSelection.squareStyles}
+        orientation={side}
+        mouseDrag
+      />
+    </div>
+  );
+
+  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  const addMoves = (inFocus: boolean) => (
+    <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-3 py-2.5">
+      <span className="min-w-0 font-mono text-[12.5px] leading-relaxed text-ink2">
+        {moveText(sans) || t("rep.playOnBoard")}
+      </span>
+      {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
+    </div>
+  );
 
   const tryMove = (from: string, to: string): boolean => {
     try {
@@ -1375,25 +1437,20 @@ function AddLine({
 
   return (
     <div className="grid grid-cols-1 gap-4 min-[1180px]:grid-cols-[minmax(0,var(--board-edge))_minmax(0,1fr)]">
-      <div>
-        <div className="board-bleed">
-          <Board
-            boardId="rep-add"
-            fen={fen}
-            width={BOARD_MAX}
-            lastMove={lastMove}
-            draggable
-            onPieceDrop={tryMove}
-            onSquareClick={addSelection.onSquareClick}
-            squareStyles={addSelection.squareStyles}
-            orientation={side}
-            mouseDrag
-          />
-        </div>
-        <div className="mt-3 rounded-lg border border-line bg-panel px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink2">
-          {moveText(sans) || t("rep.playOnBoard")}
-        </div>
+      <div className="max-w-[var(--board-edge)]">
+        {addBoard("rep-add")}
+        {addMoves(false)}
         <p className="mt-2 px-1 text-[12px] leading-relaxed text-ink3">{t("rep.undoMoveHint")}</p>
+
+        <FocusBoard
+          open={focused}
+          onClose={() => setFocused(false)}
+          title={t("rep.newVariant")}
+          subtitle={side === "white" ? t("common.asWhite") : t("common.asBlack")}
+          below={addMoves(true)}
+        >
+          {addBoard("rep-add-focus")}
+        </FocusBoard>
       </div>
       <div className="flex max-w-[420px] flex-col gap-3">
         <Card title={t("rep.newVariant")}>
@@ -1545,7 +1602,7 @@ function DemoRepertoire() {
   );
 
   const boardPane = (
-    <div>
+    <div className="max-w-[var(--board-edge)]">
       <div className="board-bleed">
         <Board boardId="repertoire" fen={fen} width={BOARD_MAX} lastMove={lastMove} />
       </div>

@@ -13,6 +13,8 @@ vi.mock("../lib/i18n", () => ({
     locale: "en",
     t: (key: string) => key,
   }),
+  // Das Fokus-Brett und seine Schaltfläche beschriften sich selbst.
+  useT: () => (key: string) => key,
 }));
 
 vi.mock("../lib/endgame", () => ({

@@ -31,8 +31,9 @@ import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
 import { tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
-import { BOARD_WIDTH } from "../lib/boardLayout";
+import { BOARD_MAX, BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
+import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { useMobileShell } from "../components/MobileShell";
 import MobileSheet from "../components/MobileSheet";
 import TagEditor from "../components/TagEditor";
@@ -108,6 +109,8 @@ export default function Games({
   const [opponent, setOpponent] = useState(initialFilter?.opponent ?? "");
   const [opening, setOpening] = useState(initialFilter?.opening ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Vorschau allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
   const [pageSize, setPageSize] = useState(readStoredPageSize);
   const [page, setPage] = useState(1);
   // Inline-Eingabe zum direkten Springen auf eine bestimmte Seite.
@@ -523,26 +526,53 @@ export default function Games({
   // ── Detailbausteine ────────────────────────────────────────────────────────
   // Dieselben drei Blöcke tragen beide Ansichten: auf dem Desktop stehen sie in
   // zwei Karten neben der Liste, mobil im Blatt über der Liste.
+  /**
+   * Die Vorschau bleibt in der Liste bewusst klein · daneben steht eine
+   * Tabelle, und ein Diagramm neben einer Tabelle ist eine Abbildung. Wer die
+   * Stellung wirklich sehen will, holt sie über den Fokus groß heraus: Dort
+   * gilt dann `--board-edge` wie bei jedem anderen Brett.
+   */
+  const previewBoard = (boardId: string, width: number) => (
+    <Board
+      boardId={boardId}
+      fen={previewFen}
+      width={width}
+      lastMove={previewLastMove}
+      orientation={selected?.color ?? "white"}
+      silent
+    />
+  );
+
+  const previewName = (top: boolean) => {
+    const player = top ? previewTop : previewBottom;
+    return (
+      <div className={`min-w-0 text-[12.5px] ${top ? "mb-2" : "mt-2"}`}>
+        <div className="truncate font-semibold text-ink2">
+          {player.name}{player.elo > 0 ? ` (${player.elo})` : ""}
+        </div>
+      </div>
+    );
+  };
+
   const detailBoard = selected && (
     <div className="mx-auto max-w-[528px]">
-      <div className="mb-2 min-w-0 text-[12.5px]">
-        <div className="truncate font-semibold text-ink2">
-          {previewTop.name}{previewTop.elo > 0 ? ` (${previewTop.elo})` : ""}
-        </div>
+      <div className="flex items-start justify-between gap-2">
+        {previewName(true)}
+        <FocusButton onClick={() => setFocused(true)} />
       </div>
-      <Board
-        boardId="games-preview"
-        fen={previewFen}
-        width={BOARD_WIDTH}
-        lastMove={previewLastMove}
-        orientation={selected.color}
-        silent
-      />
-      <div className="mt-2 min-w-0 text-[12.5px]">
-        <div className="truncate font-semibold text-ink2">
-          {previewBottom.name}{previewBottom.elo > 0 ? ` (${previewBottom.elo})` : ""}
-        </div>
-      </div>
+      {previewBoard("games-preview", BOARD_WIDTH)}
+      {previewName(false)}
+
+      <FocusBoard
+        open={focused}
+        onClose={() => setFocused(false)}
+        title={t("nav.games")}
+        subtitle={`${previewTop.name} vs. ${previewBottom.name}`}
+        above={previewName(true)}
+        below={previewName(false)}
+      >
+        <div className="board-bleed">{previewBoard("games-preview-focus", BOARD_MAX)}</div>
+      </FocusBoard>
     </div>
   );
 

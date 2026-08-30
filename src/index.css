@@ -274,6 +274,33 @@ html[data-store-capture="true"] .chess-backdrop {
   margin-inline: calc(-1 * var(--board-bleed));
 }
 
+/* ── Fokus-Brett ─────────────────────────────────────────────────────────────
+   Im Fokus gilt der ganze Schirm statt der Spalte einer Seite. Die Rechnung
+   ist dieselbe wie oben · nur mit anderen Grenzen, und sie muss hier stehen,
+   weil `--board-edge` seine `var()` schon dort auflöst, wo es deklariert ist:
+   ein überschriebenes `--board-max` allein bliebe folgenlos. */
+.board-focus {
+  --board-max: min(92vw, 880px);
+  --board-chrome: 300px;
+  --board-bleed: 0px;
+  --board-gutter: 2rem;
+  --board-edge: min(var(--board-max), max(260px, calc(100dvh - var(--board-chrome))));
+  --board-col: calc(var(--board-edge) + var(--board-gutter));
+}
+
+/* Auf dem Handy ist der Fokus ein eigener Schirm · dort zählt die volle
+   Breite, und das Brett tritt aus dem Innenabstand heraus. */
+[data-shell="mobile"] .board-focus {
+  --board-max: 100vw;
+  --board-bleed: 0.75rem;
+}
+
+@supports not (height: 100dvh) {
+  .board-focus {
+    --board-edge: min(var(--board-max), max(260px, calc(100vh - var(--board-chrome))));
+  }
+}
+
 /* Eine Leiste, die notfalls unter dem Finger wandert, statt umzubrechen ·
    sichtbar wäre der Balken hier nur ein Strich quer durch die Tastenreihe. Auf
    Geräten ab ca. 390 px Breite passt die Leiste ohnehin am Stück. */

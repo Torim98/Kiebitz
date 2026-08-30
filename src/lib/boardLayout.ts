@@ -20,10 +20,16 @@
 
 /**
  * Obergrenze eines mitwachsenden Bretts in px · derselbe Wert wie das größte
- * `--board-max` im Stylesheet. Bretter, die die Variable benutzen, reichen ihn
- * als `width` durch: die tatsächliche Größe misst die Komponente am Container.
+ * `--board-max` im Stylesheet, und das steht im Fokus-Brett. Bretter reichen
+ * ihn als `width` durch: Wie groß es wirklich wird, misst die Komponente am
+ * Container, und der ist über `--board-edge` schon passend begrenzt.
+ *
+ * Deshalb muss jeder Container eines mitwachsenden Bretts diese Grenze auch
+ * tragen (`max-w-[var(--board-edge)]` oder eine entsprechende Gitterspalte) ·
+ * sonst gilt in einer einspaltigen Ansicht nur noch dieser Wert, und das Brett
+ * ignoriert die Fensterhöhe.
  */
-export const BOARD_MAX = 704;
+export const BOARD_MAX = 880;
 
 /**
  * Kantenlänge der festen Vorschaubretter (Partienliste, Repertoire-Vorschau).
