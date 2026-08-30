@@ -21,7 +21,7 @@ mod settings;
 mod share;
 mod study;
 mod sync;
-mod titlebar;
+mod systembars;
 mod updater;
 mod widgets;
 
@@ -371,7 +371,11 @@ pub fn run() {
             .plugin(billing::init())
             // Geteilte Stellungen gehen über das Systemblatt hinaus · den Weg
             // dorthin kennt nur Android selbst.
-            .plugin(share::init());
+            .plugin(share::init())
+            // Status- und Navigationsleiste folgen dem Thema, nicht dem
+            // Nachtmodus des Geräts · sonst stehen bei einem hellen Thema
+            // weiße Symbole auf hellem Grund.
+            .plugin(systembars::init());
         // Die Play-In-App-Review-API existiert nur im Play-Build. Der
         // eigentliche Aufruf kommt aus der UI ausschließlich nach einem
         // Erfolgsmoment; beim App-Start wird bewusst nichts angefordert.
@@ -394,8 +398,8 @@ pub fn run() {
             // Meldung zeigen kann.
             if let Some(window) = app.get_webview_window("main") {
                 // Der Standardton · das gewählte Thema meldet die Oberfläche
-                // gleich nach dem ersten Bild über `set_titlebar` nach.
-                titlebar::apply(&window, titlebar::DARK);
+                // gleich nach dem ersten Bild über `set_system_bars` nach.
+                systembars::apply_default(&window);
                 let _ = window.show();
             }
             if cfg!(debug_assertions) {
@@ -612,7 +616,7 @@ pub fn run() {
             diag::diag_log_path,
             diag::diag_report,
             diag::diag_save_report,
-            titlebar::set_titlebar
+            systembars::set_system_bars
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

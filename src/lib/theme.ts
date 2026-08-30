@@ -298,9 +298,9 @@ function apply() {
 
   // Erst jetzt, mit gesetztem Attribut, stehen die Tokens des neuen Themas am
   // <html> · und noch vor dem Ausstieg unten: Beim Start bestätigen die
-  // Einstellungen bloß das zwischengespeicherte Thema, die Titelleiste hat es
-  // dann aber noch nie gehört.
-  paintTitlebar(theme);
+  // Einstellungen bloß das zwischengespeicherte Thema, die Systemleisten haben
+  // es dann aber noch nie gehört.
+  paintSystemBars(theme);
 
   if (theme === applied && board === appliedBoard) return;
   applied = theme;
@@ -317,21 +317,22 @@ function apply() {
 }
 
 /**
- * Die Windows-Titelleiste in den Farben des Themas.
+ * Die Systemleisten des Fensters in den Farben des Themas · die Titelleiste
+ * unter Windows, Status- und Navigationsleiste unter Android.
  *
- * Sie gehört nicht zum Dokument, also erreicht sie kein Stylesheet · das
- * Backend setzt die DWM-Attribute des Fensters. Die Werte kommen trotzdem aus
- * `themes.css`: Hier wird gemessen, was am <html> gerade gilt, damit es keine
- * zweite Farbtabelle in Rust gibt (siehe `src-tauri/src/titlebar.rs`).
+ * Sie gehören nicht zum Dokument, also erreicht sie kein Stylesheet; das
+ * Backend setzt sie am Fenster. Die Werte kommen trotzdem aus `themes.css`:
+ * Hier wird gemessen, was am <html> gerade gilt, damit es keine zweite
+ * Farbtabelle in Rust gibt (siehe `src-tauri/src/systembars.rs`).
  *
  * Schlägt der Aufruf fehl, gibt es keine Tauri-Shell (Web-Vorschau, Tests) ·
  * dann bleibt es dabei, statt bei jedem Themenwechsel erneut anzuklopfen.
  */
-let titlebar = true;
+let systemBars = true;
 let painted: ThemeId | null = null;
 
-function paintTitlebar(theme: ThemeId) {
-  if (!titlebar || theme === painted || typeof document === "undefined") return;
+function paintSystemBars(theme: ThemeId) {
+  if (!systemBars || theme === painted || typeof document === "undefined") return;
   const style = getComputedStyle(document.documentElement);
   const caption = style.getPropertyValue("--color-panel").trim();
   const text = style.getPropertyValue("--color-ink").trim();
@@ -341,17 +342,18 @@ function paintTitlebar(theme: ThemeId) {
   if (!caption || !text || !border) return;
   painted = theme;
   try {
-    void invoke("set_titlebar", {
+    void invoke("set_system_bars", {
       caption,
       text,
       border,
-      // Helle Schrift auf dunkler Leiste · steuert Hover und Systemmenü.
+      // Helle Schrift auf dunkler Leiste · steuert unter Windows Hover und
+      // Systemmenü, unter Android Uhrzeit und Symbole der Statusleiste.
       dark: !themeDef(theme).light,
     }).catch(() => {
-      titlebar = false;
+      systemBars = false;
     });
   } catch {
-    titlebar = false;
+    systemBars = false;
   }
 }
 
