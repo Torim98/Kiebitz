@@ -161,7 +161,7 @@ describe("Board badges", () => {
     );
 
     let styles = boardMock.props?.customSquareStyles as Record<string, { background: string }>;
-    expect(String(styles.e2.background)).toBe("rgba(34, 192, 138, 0.32)");
+    expect(String(styles.e2.background)).toBe("var(--color-mark-soft)");
     // Was die Seite selbst setzt, schlägt die Markierung.
     expect(String(styles.e4.background)).toBe("own");
 

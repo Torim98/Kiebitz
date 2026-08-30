@@ -698,7 +698,7 @@ export default function App() {
             </button>
             <button
               onClick={startUpdate}
-              className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
+              className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-accent-ink transition-colors hover:bg-accent-hover"
             >
               {updError ? <RefreshCw size={13} /> : <Download size={13} />}{" "}
               {updError ? t("app.updateRetry") : t("app.updateNow")}

@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitDataChange } from "./changes";
 // Nur der Typ · zur Laufzeit importiert i18n dieses Modul, nicht umgekehrt.
 import type { Locale } from "./i18n";
+// Ebenso: theme.ts liest die Einstellungen, nicht umgekehrt.
+import type { AutoMode, BoardSetId, ThemeId } from "./theme";
 
 /** Spiegelt settings::Settings aus dem Rust-Backend. */
 export interface Settings {
@@ -21,6 +23,17 @@ export interface Settings {
   li_user: string;
   /** Anzeigename fürs Dashboard (leer = Benutzername). */
   display_name: string;
+  /** Farbwelt der Oberfläche · siehe lib/theme.ts. */
+  theme: ThemeId;
+  /** Feldfarben des Bretts ("auto" = das Brett des Themas). */
+  board_set: BoardSetId;
+  /** Wann `theme_night` übernimmt ("off" | "system" | "time"). */
+  theme_auto: AutoMode;
+  /** Thema der Dunkelphase des automatischen Wechsels. */
+  theme_night: ThemeId;
+  /** Nachtfenster als lokale "HH:MM" (nur bei theme_auto = "time"). */
+  theme_night_from: string;
+  theme_night_to: string;
   import_months: number;
   puzzle_goal: number;
   /** Motiv der laufenden Aufgabe im Puzzle-Training verdecken. */

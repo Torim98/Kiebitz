@@ -1,0 +1,392 @@
+/* ── Farbwelten ──────────────────────────────────────────────────────────────
+   Die einzige Stelle mit Farbwerten der Oberfläche. Jedes Thema setzt denselben
+   Satz Tokens neu, den `index.css` im @theme-Block als Standard (= "dark")
+   anlegt · deshalb braucht keine Komponente eine Fallunterscheidung und keine
+   Datei eine zweite Palette.
+
+   Die Blöcke stehen bewusst OHNE @layer: Tailwind legt die Standardwerte in
+   `@layer theme` ab, und ungeschichtete Regeln gewinnen gegen jede Schicht.
+
+   Der Selektor greift auf jedem Element, nicht nur am <html>. Die Themenauswahl
+   in den Einstellungen setzt `data-theme` deshalb einfach an ihre
+   Vorschaukachel und bekommt eine echte Vorschau, statt die Farben ein zweites
+   Mal in JavaScript zu führen.
+
+   Kontrast: Haupttext ≥ 12:1, Sekundärtext ≥ 6.8:1, Tertiärtext ≥ 4.5:1 und
+   Akzent ≥ 5.3:1 gegen --color-panel (WCAG-Verhältnis). Wer hier Werte ändert,
+   rechnet bitte nach; die Tertiärfarbe ist überall der knappste Wert.
+
+   Reihenfolge wie in der Auswahl: erst die beiden freien, dann die von Kiebitz
+   Plus. Die Brett-Sets stehen am Ende, damit eine ausdrückliche Wahl das Brett
+   des Themas überschreibt. */
+
+/* ── Dunkel · Standard, frei ─────────────────────────────────────────────────
+   Identisch mit den Standardwerten aus index.css. Der Block steht trotzdem
+   hier: Er macht die Rückkehr aus einem anderen Thema zu einem Attributwechsel
+   statt zu einem Sonderfall, und die Vorschaukachel braucht ihn ohnehin. */
+[data-theme="dark"] {
+  --color-bg: #0e0e0d;
+  --color-panel: #171716;
+  --color-panel2: #1e1e1d;
+  --color-panel3: #262625;
+  --color-line: #292927;
+  --color-line2: #3a3a37;
+
+  --color-ink: #f2f1ec;
+  --color-ink2: #b9b8ae;
+  --color-ink3: #8b8a82;
+
+  --color-accent: #22c08a;
+  --color-accent-dim: #17835e;
+  --color-accent-soft: #103528;
+
+  --color-win: #22c08a;
+  --color-draw: #8b8a82;
+  --color-loss: #e66767;
+  --color-warn: #e08a3c;
+
+  --color-blue: #3987e5;
+  --color-violet: #9085e9;
+  --color-gold: #d9a028;
+  --color-cc: #81b64c;
+
+  --color-accent-ink: #06251a;
+  --color-accent-hover: #2bd49b;
+  --color-loss-soft: #2a1414;
+  --color-loss-dim: #8a3535;
+  --color-gold-soft: #2a2414;
+  --color-gold-dim: #8a6a24;
+
+  --color-board-light: #e6e3d3;
+  --color-board-dark: #6f8155;
+  --color-board-light-muted: #d0d0c8;
+  --color-board-dark-muted: #68716b;
+  --color-mark: rgba(34, 192, 138, 0.42);
+  --color-mark-soft: rgba(34, 192, 138, 0.32);
+
+  --color-overlay: #0e0e0dd9;
+  --color-scroll: #3a3a37;
+  --color-backdrop: rgba(242, 241, 236, 0.014);
+}
+
+/* ── Hell · frei ─────────────────────────────────────────────────────────────
+   Für Tageslicht. Der Akzent wird dunkler als im dunklen Thema (#0f7a56 statt
+   #22c08a): Dasselbe Grün läge auf Weiß bei 2:1 und wäre als Text unlesbar. */
+[data-theme="light"] {
+  --color-bg: #f7f6f2;
+  --color-panel: #ffffff;
+  --color-panel2: #f1efe9;
+  --color-panel3: #e8e5dd;
+  --color-line: #e0ddd4;
+  --color-line2: #cbc7bb;
+
+  --color-ink: #1b1b19;
+  --color-ink2: #55534c;
+  --color-ink3: #767369;
+
+  --color-accent: #0f7a56;
+  --color-accent-dim: #0b5c41;
+  --color-accent-soft: #dff0e7;
+
+  --color-win: #0f7a56;
+  --color-draw: #767369;
+  --color-loss: #c0392f;
+  --color-warn: #a75c14;
+
+  --color-blue: #2563c9;
+  --color-violet: #6d5fd6;
+  --color-gold: #855c07;
+  --color-cc: #4a7326;
+
+  --color-accent-ink: #ffffff;
+  --color-accent-hover: #0c6547;
+  --color-loss-soft: #fbe9e7;
+  --color-loss-dim: #e0b4ae;
+  --color-gold-soft: #fdf1d9;
+  --color-gold-dim: #d9b878;
+
+  --color-board-light: #e6e3d3;
+  --color-board-dark: #6f8155;
+  --color-board-light-muted: #d0d0c8;
+  --color-board-dark-muted: #68716b;
+  --color-mark: rgba(15, 122, 86, 0.45);
+  --color-mark-soft: rgba(15, 122, 86, 0.32);
+
+  --color-overlay: #ffffffe0;
+  --color-scroll: #cbc7bb;
+  --color-backdrop: rgba(27, 27, 25, 0.03);
+}
+
+/* ── Dämmerung · Plus ────────────────────────────────────────────────────────
+   Warm und blauarm für den Abend. Das Weiß ist auf #ece2d2 gedämpft: Reines
+   #f2f1ec auf Fast-Schwarz franst bei Dunkelheit sichtbar aus (Halation), und
+   genau davon handelt die Rückmeldung. */
+[data-theme="dusk"] {
+  --color-bg: #16130f;
+  --color-panel: #1f1b16;
+  --color-panel2: #262119;
+  --color-panel3: #2f281f;
+  --color-line: #2e2823;
+  --color-line2: #43392e;
+
+  --color-ink: #ece2d2;
+  --color-ink2: #b6a891;
+  --color-ink3: #9a8d79;
+
+  --color-accent: #46bb87;
+  --color-accent-dim: #2b7f5d;
+  --color-accent-soft: #1d2a1f;
+
+  --color-win: #46bb87;
+  --color-draw: #9a8d79;
+  --color-loss: #e08a72;
+  --color-warn: #d99a4a;
+
+  --color-blue: #6f9fd8;
+  --color-violet: #a692cf;
+  --color-gold: #d7a95a;
+  --color-cc: #97b26a;
+
+  --color-accent-ink: #0d2318;
+  --color-accent-hover: #5bcb99;
+  --color-loss-soft: #2c1a15;
+  --color-loss-dim: #8a4a3a;
+  --color-gold-soft: #2c2416;
+  --color-gold-dim: #8a7030;
+
+  --color-board-light: #e3d8c1;
+  --color-board-dark: #7d7a52;
+  --color-board-light-muted: #d5cec0;
+  --color-board-dark-muted: #77746a;
+  --color-mark: rgba(70, 187, 135, 0.42);
+  --color-mark-soft: rgba(70, 187, 135, 0.3);
+
+  --color-overlay: #16130fd9;
+  --color-scroll: #43392e;
+  --color-backdrop: rgba(236, 226, 210, 0.016);
+}
+
+/* ── Graphit · Plus ──────────────────────────────────────────────────────────
+   Neutralgrau mit bewusst hellerem Grund (#1a1c1e statt #0e0e0d). Der Kontrast
+   bleibt über 12:1, aber der Sprung von Grund zu Text ist kleiner · das ist das
+   Thema für die dreistündige Sitzung. */
+[data-theme="graphite"] {
+  --color-bg: #1a1c1e;
+  --color-panel: #212427;
+  --color-panel2: #282c2f;
+  --color-panel3: #313539;
+  --color-line: #33383c;
+  --color-line2: #454b50;
+
+  --color-ink: #dfe3e6;
+  --color-ink2: #a8aeb4;
+  --color-ink3: #8d949a;
+
+  --color-accent: #35b98c;
+  --color-accent-dim: #227f60;
+  --color-accent-soft: #17322a;
+
+  --color-win: #35b98c;
+  --color-draw: #8d949a;
+  --color-loss: #e08080;
+  --color-warn: #d9954f;
+
+  --color-blue: #5b9bf0;
+  --color-violet: #9a93ea;
+  --color-gold: #d3a648;
+  --color-cc: #8cbb5c;
+
+  --color-accent-ink: #0d2a20;
+  --color-accent-hover: #48c99b;
+  --color-loss-soft: #2a1c1c;
+  --color-loss-dim: #8a4a4a;
+  --color-gold-soft: #2a2418;
+  --color-gold-dim: #8a7038;
+
+  --color-board-light: #c9ccd1;
+  --color-board-dark: #5a6169;
+  --color-board-light-muted: #c8cacc;
+  --color-board-dark-muted: #5f6367;
+  --color-mark: rgba(53, 185, 140, 0.42);
+  --color-mark-soft: rgba(53, 185, 140, 0.3);
+
+  --color-overlay: #1a1c1ed9;
+  --color-scroll: #454b50;
+  --color-backdrop: rgba(223, 227, 230, 0.018);
+}
+
+/* ── Papier · Plus ───────────────────────────────────────────────────────────
+   Warmes Hell für lange Lesestrecken (Erkenntnisse, Repertoire, PGN) · ohne die
+   Blendung, die von reinem Weiß ausgeht. */
+[data-theme="paper"] {
+  --color-bg: #f2ece0;
+  --color-panel: #faf6ec;
+  --color-panel2: #ece5d6;
+  --color-panel3: #e2dac8;
+  --color-line: #ddd4c1;
+  --color-line2: #c4b9a3;
+
+  --color-ink: #24211c;
+  --color-ink2: #5b554a;
+  --color-ink3: #6f6a5d;
+
+  --color-accent: #0e6f4f;
+  --color-accent-dim: #0a563d;
+  --color-accent-soft: #dcebdf;
+
+  --color-win: #0e6f4f;
+  --color-draw: #6f6a5d;
+  --color-loss: #b23a2c;
+  --color-warn: #9c5a10;
+
+  --color-blue: #2a5ec2;
+  --color-violet: #64559f;
+  --color-gold: #7d5807;
+  --color-cc: #4a7326;
+
+  --color-accent-ink: #f7f4ea;
+  --color-accent-hover: #0b5c41;
+  --color-loss-soft: #f7e2dd;
+  --color-loss-dim: #d3a79c;
+  --color-gold-soft: #f6ecd2;
+  --color-gold-dim: #cbae72;
+
+  --color-board-light: #ecdcc2;
+  --color-board-dark: #a98a63;
+  --color-board-light-muted: #ddd6c8;
+  --color-board-dark-muted: #97918a;
+  --color-mark: rgba(14, 111, 79, 0.45);
+  --color-mark-soft: rgba(14, 111, 79, 0.32);
+
+  --color-overlay: #faf6ece0;
+  --color-scroll: #c4b9a3;
+  --color-backdrop: rgba(36, 33, 28, 0.035);
+}
+
+/* ── Hochkontrast · Plus ─────────────────────────────────────────────────────
+   AAA über die ganze Fläche, kräftigere Linien. Deckt Sehschwäche ebenso ab wie
+   sehr helle Umgebungen. */
+[data-theme="contrast"] {
+  --color-bg: #000000;
+  --color-panel: #0b0b0b;
+  --color-panel2: #141414;
+  --color-panel3: #1d1d1d;
+  --color-line: #454545;
+  --color-line2: #6a6a6a;
+
+  --color-ink: #ffffff;
+  --color-ink2: #e0e0e0;
+  --color-ink3: #b8b8b8;
+
+  --color-accent: #4ce0a8;
+  --color-accent-dim: #2f9e75;
+  --color-accent-soft: #0d2b20;
+
+  --color-win: #4ce0a8;
+  --color-draw: #b8b8b8;
+  --color-loss: #ff8a80;
+  --color-warn: #ffb74d;
+
+  --color-blue: #7cb2ff;
+  --color-violet: #b3aaff;
+  --color-gold: #ffcc4d;
+  --color-cc: #a4d96a;
+
+  --color-accent-ink: #000000;
+  --color-accent-hover: #6cf0bf;
+  --color-loss-soft: #2a0f0f;
+  --color-loss-dim: #b06a66;
+  --color-gold-soft: #2a2410;
+  --color-gold-dim: #b09a4a;
+
+  --color-board-light: #e8edf5;
+  --color-board-dark: #4a6da7;
+  --color-board-light-muted: #dfe2e6;
+  --color-board-dark-muted: #5e6b7d;
+  --color-mark: rgba(76, 224, 168, 0.5);
+  --color-mark-soft: rgba(76, 224, 168, 0.36);
+
+  --color-overlay: #000000e6;
+  --color-scroll: #6a6a6a;
+  --color-backdrop: rgba(255, 255, 255, 0.02);
+}
+
+/* ── Signal · Plus ───────────────────────────────────────────────────────────
+   Farbsicher: Sieg und Niederlage laufen über Blau und Orange statt über Grün
+   und Rot. Bei Deuteranopie sind #22c08a und #e66767 kaum zu unterscheiden ·
+   das betrifft Bilanzbalken, Patzermarken und die Bewertungsleiste in der
+   ganzen App. Der Akzent bleibt grün: Er trägt keine Aussage, die von einer
+   zweiten Farbe abgegrenzt werden müsste. */
+[data-theme="signal"] {
+  --color-bg: #101215;
+  --color-panel: #181b1f;
+  --color-panel2: #1f2328;
+  --color-panel3: #272c32;
+  --color-line: #2a2f35;
+  --color-line2: #3c434b;
+
+  --color-ink: #e6eaee;
+  --color-ink2: #aab2ba;
+  --color-ink3: #868e96;
+
+  --color-accent: #35b98c;
+  --color-accent-dim: #227f60;
+  --color-accent-soft: #14302a;
+
+  --color-win: #6ab7ff;
+  --color-draw: #868e96;
+  --color-loss: #ff9d3c;
+  --color-warn: #ffd166;
+
+  --color-blue: #6ab7ff;
+  --color-violet: #b39ddb;
+  --color-gold: #ffd166;
+  --color-cc: #8cbb5c;
+
+  --color-accent-ink: #0b2a20;
+  --color-accent-hover: #48c99b;
+  --color-loss-soft: #2c2015;
+  --color-loss-dim: #a8703a;
+  --color-gold-soft: #2b2718;
+  --color-gold-dim: #a08a44;
+
+  --color-board-light: #dce4ef;
+  --color-board-dark: #61799e;
+  --color-board-light-muted: #dde0e4;
+  --color-board-dark-muted: #6e7580;
+  --color-mark: rgba(53, 185, 140, 0.44);
+  --color-mark-soft: rgba(53, 185, 140, 0.32);
+
+  --color-overlay: #101215d9;
+  --color-scroll: #3c434b;
+  --color-backdrop: rgba(230, 234, 238, 0.018);
+}
+
+/* ── Brett-Sets ──────────────────────────────────────────────────────────────
+   Nur die Feldfarben. Ohne ausdrückliche Wahl ("auto") steht hier nichts und es
+   bleibt beim Brett des Themas · deshalb stehen diese Blöcke hinter den
+   Themen. */
+[data-board="forest"] {
+  --color-board-light: #e6e3d3;
+  --color-board-dark: #6f8155;
+}
+
+[data-board="graphite"] {
+  --color-board-light: #c9ccd1;
+  --color-board-dark: #5a6169;
+}
+
+[data-board="sepia"] {
+  --color-board-light: #ecdcc2;
+  --color-board-dark: #a98a63;
+}
+
+[data-board="ice"] {
+  --color-board-light: #dce4ef;
+  --color-board-dark: #61799e;
+}
+
+[data-board="contrast"] {
+  --color-board-light: #e8edf5;
+  --color-board-dark: #4a6da7;
+}

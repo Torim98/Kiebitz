@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
+import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
@@ -122,7 +122,7 @@ export default function Time({
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+            <Tooltip content={<ChartTooltip />} cursor={barCursor} />
             <Bar dataKey="errors_per_100" name={t("ins.tmErrorsPer100")} radius={[4, 4, 0, 0]}>
               {speedData.map((bucket) => (
                 <Cell
@@ -250,7 +250,7 @@ export default function Time({
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} />
+            <Tooltip content={<ChartTooltip />} />
             <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"
@@ -472,7 +472,7 @@ export default function Time({
     return (
       <div
         className={`mb-4 flex gap-3 rounded-lg border px-3.5 py-3 ${
-          switching ? "border-gold/40 bg-[#2a2414]" : "border-accent-dim bg-accent-soft"
+          switching ? "border-gold-dim bg-gold-soft" : "border-accent-dim bg-accent-soft"
         }`}
       >
         <Lightbulb

@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
+import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useI18n, type Key } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
 import type { PhaseErrors } from "../../lib/analysis";
@@ -141,7 +141,7 @@ export default function Strength({
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
               <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
-              <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+              <Tooltip content={<ChartTooltip />} cursor={barCursor} />
               <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="inaccuracy" name={t("ins.legInaccuracies")} stackId="e" fill={chart.inaccuracy} />
               <Bar dataKey="mistake" name={t("ins.legMistakes")} stackId="e" fill={chart.mistake} />
@@ -180,7 +180,7 @@ export default function Strength({
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
                 <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
-                <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+                <Tooltip content={<ChartTooltip />} cursor={barCursor} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="me" name={t("ins.stMe")} fill={chart.accent} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="field" name={t("ins.stField")} fill={chart.axis} radius={[4, 4, 0, 0]} />

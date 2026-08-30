@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
+import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useI18n } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
 import type { DeepInsights } from "../../lib/insights";
@@ -96,7 +96,7 @@ export default function Patterns({
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+            <Tooltip content={<ChartTooltip />} cursor={barCursor} />
             <Bar dataKey="score_pct" name={t("ins.scoreRate")} radius={[4, 4, 0, 0]}>
               {indexData.map((bucket) => (
                 <Cell
@@ -272,7 +272,7 @@ export default function Patterns({
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} />
+            <Tooltip content={<ChartTooltip />} />
             <Line
               type="monotone"
               dataKey="scorePct"

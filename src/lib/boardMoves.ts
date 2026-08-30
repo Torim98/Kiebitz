@@ -6,7 +6,8 @@
 import { Chess } from "chess.js";
 import { useEffect, useState, type CSSProperties } from "react";
 
-const DOT = "rgba(34, 192, 138, 0.42)";
+/** Farbe der Markierungen · kommt aus dem Thema, siehe src/themes.css. */
+const DOT = "var(--color-mark)";
 
 /** Ruhiger Zug: kleiner Punkt in der Feldmitte. */
 const quietStyle: CSSProperties = {
@@ -19,7 +20,7 @@ const captureStyle: CSSProperties = {
 };
 
 /** Hervorhebung des gewählten Feldes. */
-export const selectedStyle: CSSProperties = { background: "rgba(34, 192, 138, 0.42)" };
+export const selectedStyle: CSSProperties = { background: "var(--color-mark)" };
 
 /**
  * Der zuletzt gespielte Zug · beide Felder liegen in einem hellen Grün.
@@ -28,7 +29,7 @@ export const selectedStyle: CSSProperties = { background: "rgba(34, 192, 138, 0.
  * Stellung aufschlägt, sieht sofort, woher sie kommt, ohne die Zugliste lesen
  * zu müssen. Blasser als die Auswahl, denn sie ist Auskunft und nicht Angebot.
  */
-export const lastMoveStyle: CSSProperties = { background: "rgba(34, 192, 138, 0.32)" };
+export const lastMoveStyle: CSSProperties = { background: "var(--color-mark-soft)" };
 
 /** Beide Felder eines Zuges · leeres Objekt ohne Zug. */
 export function lastMoveStyles(

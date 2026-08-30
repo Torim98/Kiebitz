@@ -328,14 +328,14 @@ function VariationList({
                           </span>
                           <span className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px] leading-5">
                             <span
-                              className={`rounded px-1 ${active && selectedPly === -1 ? "bg-accent text-[#06251a]" : "text-ink3"}`}
+                              className={`rounded px-1 ${active && selectedPly === -1 ? "bg-accent text-accent-ink" : "text-ink3"}`}
                             >
                               {t("rep.startShort")}
                             </span>
                             {line.sans.map((san, ply) => (
                               <span
                                 key={`${ply}:${san}`}
-                                className={`rounded px-1 ${active && selectedPly === ply ? "bg-accent text-[#06251a]" : "bg-panel3/70 text-ink2"}`}
+                                className={`rounded px-1 ${active && selectedPly === ply ? "bg-accent text-accent-ink" : "bg-panel3/70 text-ink2"}`}
                               >
                                 {ply % 2 === 0 ? `${ply / 2 + 1}.${san}` : san}
                               </span>
@@ -374,7 +374,7 @@ function VariationList({
                             aria-label={t("rep.deleteLine", { name: line.name })}
                             title={t("rep.deleteVariant")}
                             onClick={() => onDelete(line)}
-                            className="flex w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-panel2/60 text-ink3 transition-colors hover:border-[#8a3535] hover:text-loss focus:outline-none focus:ring-2 focus:ring-accent-dim"
+                            className="flex w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-panel2/60 text-ink3 transition-colors hover:border-loss-dim hover:text-loss focus:outline-none focus:ring-2 focus:ring-accent-dim"
                           >
                             <Trash2 aria-hidden="true" size={14} />
                           </button>
@@ -832,7 +832,7 @@ function LiveRepertoire() {
               onError={(e) => setNotice(e)}
             />
             {twinsOf(selected).length > 0 && (
-              <div className="mt-3 flex gap-2 rounded-lg border border-gold/40 bg-[#2a2414] px-3 py-2 text-[12px] leading-relaxed text-gold">
+              <div className="mt-3 flex gap-2 rounded-lg border border-gold-dim bg-gold-soft px-3 py-2 text-[12px] leading-relaxed text-gold">
                 <Shuffle size={14} className="mt-0.5 shrink-0" />
                 <span>
                   {t("rep.transposition", {
@@ -980,7 +980,7 @@ function LiveRepertoire() {
         >
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
             <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
                 <AlertTriangle size={18} />
               </div>
               <div>
@@ -1001,7 +1001,7 @@ function LiveRepertoire() {
                 type="button"
                 autoFocus
                 onClick={confirmDelete}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d]"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss"
               >
                 <Trash2 size={14} /> {t("rep.deleteConfirmAction")}
               </button>
@@ -1412,7 +1412,7 @@ function AddLine({
             className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-[13px] text-ink placeholder:text-ink3 focus:border-accent-dim focus:outline-none"
           />
           {twins.length > 0 && (
-            <div className="mt-3 flex gap-2 rounded-lg border border-gold/40 bg-[#2a2414] px-3 py-2 text-[12px] leading-relaxed text-gold">
+            <div className="mt-3 flex gap-2 rounded-lg border border-gold-dim bg-gold-soft px-3 py-2 text-[12px] leading-relaxed text-gold">
               <Shuffle size={14} className="mt-0.5 shrink-0" />
               <span>{t("rep.transpositionAdd", { n: twins.length })}</span>
             </div>

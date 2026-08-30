@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
+import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
@@ -263,7 +263,7 @@ export default function Openings({
               tickLine={false}
               axisLine={false}
             />
-            <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+            <Tooltip content={<ChartTooltip />} cursor={barCursor} />
             <Bar dataKey="win" name={t("ins.winRate")} radius={[0, 4, 4, 0]}>
               {live.openings.map((opening) => (
                 <Cell key={opening.name} fill={opening.win >= 50 ? chart.win : chart.loss} />
@@ -272,7 +272,7 @@ export default function Openings({
                 dataKey="win"
                 position="right"
                 formatter={(value: number) => `${value} %`}
-                style={{ fill: "#b9b8ae", fontSize: 11 }}
+                style={{ fill: "var(--color-ink2)", fontSize: 11 }}
               />
             </Bar>
           </BarChart>

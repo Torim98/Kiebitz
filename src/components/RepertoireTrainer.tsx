@@ -449,7 +449,7 @@ export default function RepertoireTrainer({
               <Check size={17} /> {t("rep.correct", { san: playedSan })}
             </div>
           ) : state === "wrong" ? (
-            <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
+            <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
               <span className="text-[13.5px] text-loss">
                 {t("rep.bookMoveIs", { san: expectedLabel })}
               </span>

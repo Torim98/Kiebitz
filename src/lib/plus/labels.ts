@@ -15,6 +15,7 @@ export const FEATURE_NAME_KEY: Record<PlusOnlyFeature, Key> = {
   adaptive_plan: "plus.f.plan",
   automatic_lan_sync: "plus.f.lanSync",
   widgets: "plus.f.widgets",
+  advanced_themes: "plus.f.themes",
   no_ads: "plus.f.noAds",
 };
 
@@ -25,6 +26,7 @@ export const FEATURE_DESC_KEY: Record<PlusOnlyFeature, Key> = {
   adaptive_plan: "plus.d.plan",
   automatic_lan_sync: "plus.d.lanSync",
   widgets: "plus.d.widgets",
+  advanced_themes: "plus.d.themes",
   no_ads: "plus.d.noAds",
 };
 

@@ -407,8 +407,8 @@ function TrainerView({
   const squareStyles: Record<string, React.CSSProperties> = {
     ...(status === "playing" && atLive ? moveTargetStyles(fen, selected) : {}),
   };
-  if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
-  if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px #d9a028" };
+  if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px var(--color-accent)" };
+  if (showHint && hintSquare) squareStyles[hintSquare] = { boxShadow: "inset 0 0 0 3px var(--color-gold)" };
 
   // Endet die Kombination mit Matt, bekommt der König sein Zeichen. Mehr
   // nicht: eine gelöste Aufgabe ist keine gewonnene Partie, ein
@@ -587,7 +587,7 @@ function TrainerView({
                 </div>
               </div>
             ) : wrong ? (
-              <div className="flex w-full items-center justify-between rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
+              <div className="flex w-full items-center justify-between rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
                 <span className="text-[13.5px] text-loss">
                   {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
                 </span>
@@ -941,7 +941,7 @@ function DemoPuzzles() {
             onSquareClick={onSquareClick}
             squareStyles={{
               ...moveTargetStyles(fen, selected),
-              ...(selected ? { [selected]: { boxShadow: "inset 0 0 0 3px #22c08a" } } : {}),
+              ...(selected ? { [selected]: { boxShadow: "inset 0 0 0 3px var(--color-accent)" } } : {}),
             }}
             orientation={puzzle.sideToMove}
             shake={shake}
@@ -960,7 +960,7 @@ function DemoPuzzles() {
                 </Button>
               </div>
             ) : status === "wrong" ? (
-              <div className="flex w-full items-center rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5">
+              <div className="flex w-full items-center rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
                 <span className="text-[13.5px] text-loss">{t("pz.wrong", { d: "" })}</span>
               </div>
             ) : (

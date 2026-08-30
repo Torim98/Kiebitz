@@ -27,6 +27,7 @@ describe("board move hints", () => {
   it("highlights the selected square alongside its targets", () => {
     const styles = selectionStyles(START, "g1");
     expect(Object.keys(styles).sort()).toEqual(["f3", "g1", "h3"]);
-    expect(String(styles.g1.background)).toContain("rgba(34, 192, 138");
+    // Die Farbe kommt aus dem Thema · geprüft wird, dass markiert wird.
+    expect(String(styles.g1.background)).toBe("var(--color-mark)");
   });
 });

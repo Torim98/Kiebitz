@@ -190,7 +190,7 @@ export function ImportView({
           </>
         )}
         {error && (
-          <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+          <div className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12px] text-loss">
             {error}
           </div>
         )}

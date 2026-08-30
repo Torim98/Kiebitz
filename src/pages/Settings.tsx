@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   AlertTriangle,
@@ -22,6 +23,7 @@ import {
   LifeBuoy,
   Loader2,
   ExternalLink,
+  Palette,
   Puzzle as PuzzleIcon,
   QrCode,
   RefreshCw,
@@ -93,6 +95,14 @@ import PlusSection from "./settings/PlusSection";
 import { PlusBadgeButton } from "../components/PlusLock";
 import { usePlus, usePlusGate } from "../lib/plus/usePlus";
 import { openPlusDialog } from "../lib/plus/dialog";
+import AppearanceSection from "./settings/AppearanceSection";
+import {
+  currentAppearance,
+  setAppearance as applyAppearance,
+  settingsFromAppearance,
+  subscribeAppearance,
+  type Appearance,
+} from "../lib/theme";
 import { Button, Chip } from "../components/ui";
 import { dateLocale, deInt } from "../lib/format";
 import { errorMessage } from "../lib/errors";
@@ -356,6 +366,29 @@ export default function SettingsPage({
       }
       setNotice(t("set.saved"));
       setTimeout(() => setNotice(null), 2500);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
+  /**
+   * Erscheinungsbild · wirkt sofort und wird sofort gespeichert.
+   *
+   * Ein Thema, das man erst mit „Speichern" bestätigen müsste, wäre ein
+   * schlechter Handel: Man wählt es, weil man es gerade sehen will, und der
+   * Blick auf die Kachel ist die Bestätigung. Deshalb geht die Wahl nicht über
+   * den Entwurf, sondern direkt an das Backend · der übrige, noch nicht
+   * gespeicherte Entwurf bleibt davon unberührt.
+   */
+  const appearance = useSyncExternalStore(subscribeAppearance, currentAppearance);
+
+  const changeAppearance = async (next: Appearance) => {
+    applyAppearance(next);
+    const fields = settingsFromAppearance(next);
+    patch(fields);
+    if (!saved) return;
+    try {
+      setSaved(await setSettings({ ...saved, ...fields }));
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -751,6 +784,15 @@ export default function SettingsPage({
       ),
     },
     {
+      // Direkt hinter der Sprache: Beides stellt man einmal ein und rührt es
+      // danach selten wieder an, und beides betrifft die ganze App.
+      id: "appearance",
+      icon: Palette,
+      title: t("set.appearance"),
+      summary: t("set.appearanceSummary"),
+      content: <AppearanceSection appearance={appearance} onChange={changeAppearance} />,
+    },
+    {
       // Direkt hinter der Sprache: Beides ist "ich bin hier neu" und nicht der
       // tägliche Griff. Wer die Ersteinrichtung weggeklickt hat, findet die
       // Erklärung damit an der ersten Stelle, an der er nachsieht.
@@ -913,7 +955,7 @@ export default function SettingsPage({
                 type="checkbox"
                 checked={draft.auto_import}
                 onChange={(e) => patch({ auto_import: e.target.checked })}
-                className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                className="mt-0.5 h-4 w-4 accent-accent"
               />
               <span>
                 <span className="block text-[13px] text-ink">{t("set.autoImportToggle")}</span>
@@ -945,7 +987,7 @@ export default function SettingsPage({
                   patch({ sound_enabled: e.target.checked });
                   setBoardSoundEnabled(e.target.checked);
                 }}
-                className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                className="mt-0.5 h-4 w-4 accent-accent"
               />
               <span>
                 <span className="block text-[13px] text-ink">{t("set.soundToggle")}</span>
@@ -970,7 +1012,7 @@ export default function SettingsPage({
                     setBoardSoundVolume(value / 100);
                     previewBoardSound();
                   }}
-                  className="min-w-0 flex-1 accent-[#22c08a] disabled:opacity-40"
+                  className="min-w-0 flex-1 accent-accent disabled:opacity-40"
                 />
                 <span className="w-10 shrink-0 text-right text-[12px] tabular-nums text-ink2">
                   {draft.sound_volume} %
@@ -985,7 +1027,7 @@ export default function SettingsPage({
                 type="checkbox"
                 checked={draft.puzzle_hide_theme}
                 onChange={(e) => patch({ puzzle_hide_theme: e.target.checked })}
-                className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                className="mt-0.5 h-4 w-4 accent-accent"
               />
               <span>
                 <span className="block text-[13px] text-ink">{t("set.puzzleHideTheme")}</span>
@@ -1012,7 +1054,7 @@ export default function SettingsPage({
                 type="checkbox"
                 checked={draft.notify_enabled}
                 onChange={(e) => patch({ notify_enabled: e.target.checked })}
-                className="h-4 w-4 accent-[#22c08a]"
+                className="h-4 w-4 accent-accent"
               />
               <span className="text-[13px] text-ink">{t("set.notifyToggle")}</span>
             </label>
@@ -1049,7 +1091,7 @@ export default function SettingsPage({
                     checked={draft[key]}
                     disabled={!draft.notify_enabled}
                     onChange={(e) => patch({ [key]: e.target.checked })}
-                    className="h-4 w-4 accent-[#22c08a] disabled:opacity-40"
+                    className="h-4 w-4 accent-accent disabled:opacity-40"
                   />
                   <span className={`text-[13px] ${draft.notify_enabled ? "text-ink" : "text-ink3"}`}>{label}</span>
                 </label>
@@ -1118,7 +1160,7 @@ export default function SettingsPage({
                   type="checkbox"
                   checked={draft.sync_enabled}
                   onChange={(e) => enableSyncServer(e.target.checked)}
-                  className="h-4 w-4 accent-[#22c08a]"
+                  className="h-4 w-4 accent-accent"
                 />
                 <span className="text-[13px] text-ink">{t("set.syncEnableToggle")}</span>
               </label>
@@ -1164,7 +1206,7 @@ export default function SettingsPage({
                 </div>
               )}
               {syncErr && (
-                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                <div className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
                   {t("set.syncFailed", { e: syncErr })}
                 </div>
               )}
@@ -1240,7 +1282,7 @@ export default function SettingsPage({
                     checked={draft.sync_auto && autoSyncGate.unlocked}
                     disabled={!autoSyncGate.unlocked && !autoSyncGate.pending}
                     onChange={(e) => patch({ sync_auto: e.target.checked })}
-                    className="h-4 w-4 accent-[#22c08a] disabled:opacity-45"
+                    className="h-4 w-4 accent-accent disabled:opacity-45"
                   />
                   <span className="text-[13px] text-ink">{t("set.syncAutoToggle")}</span>
                 </label>
@@ -1277,7 +1319,7 @@ export default function SettingsPage({
                 </div>
               )}
               {syncErr && (
-                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                <div className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
                   {t("set.syncFailed", { e: syncErr })}
                 </div>
               )}
@@ -1329,7 +1371,7 @@ export default function SettingsPage({
                     type="checkbox"
                     checked={draft.auto_update}
                     onChange={(e) => patch({ auto_update: e.target.checked })}
-                    className="h-4 w-4 accent-[#22c08a]"
+                    className="h-4 w-4 accent-accent"
                   />
                   <span className="text-[13px] text-ink">{t("set.autoUpdateToggle")}</span>
                 </label>
@@ -1356,7 +1398,7 @@ export default function SettingsPage({
                 </div>
               )}
               {!updState && updError && (
-                <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+                <div className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
                   {t("set.updateFailed", { e: updError })}
                 </div>
               )}
@@ -1364,7 +1406,7 @@ export default function SettingsPage({
                 <div
                   className={`mt-3 rounded-lg px-3 py-2 text-[12.5px] ${
                     updCheck.available
-                      ? "border border-gold/40 bg-[#2a2414] text-gold"
+                      ? "border border-gold-dim bg-gold-soft text-gold"
                       : "border border-accent-dim bg-accent-soft text-accent"
                   }`}
                 >
@@ -1442,7 +1484,7 @@ export default function SettingsPage({
                   type="checkbox"
                   checked={draft.analytics_enabled}
                   onChange={(e) => patch({ analytics_enabled: e.target.checked })}
-                  className="h-4 w-4 accent-[#22c08a]"
+                  className="h-4 w-4 accent-accent"
                 />
                 <span className="text-[13px] text-ink">{t("set.analyticsToggle")}</span>
               </label>
@@ -1501,7 +1543,7 @@ export default function SettingsPage({
                 className={`mt-2 rounded-lg px-3 py-2 text-[12.5px] ${
                   engineResult.ok
                     ? "border border-accent-dim bg-accent-soft text-accent"
-                    : "border border-[#8a3535] bg-[#2a1414] text-loss"
+                    : "border border-loss-dim bg-loss-soft text-loss"
                 }`}
               >
                 {engineResult.ok
@@ -1649,7 +1691,7 @@ export default function SettingsPage({
               </div>
             </Field>
             {dbFeedback && (
-              <div className={`rounded-lg border px-3 py-2 text-[12.5px] ${dbFeedback.error ? "border-[#8a3535] bg-[#2a1414] text-loss" : "border-accent-dim bg-accent-soft text-accent"}`}>
+              <div className={`rounded-lg border px-3 py-2 text-[12.5px] ${dbFeedback.error ? "border-loss-dim bg-loss-soft text-loss" : "border-accent-dim bg-accent-soft text-accent"}`}>
                 {dbFeedback.text}
               </div>
             )}
@@ -1674,7 +1716,7 @@ export default function SettingsPage({
                 type="checkbox"
                 checked={draft.chessdb_enabled}
                 onChange={(e) => patch({ chessdb_enabled: e.target.checked })}
-                className="h-4 w-4 accent-[#22c08a]"
+                className="h-4 w-4 accent-accent"
               />
               <span className="text-[13px] text-ink">{t("set.chessdbToggle")}</span>
             </label>
@@ -1854,7 +1896,7 @@ export default function SettingsPage({
             type="button"
             disabled={resetBusy}
             onClick={() => setResetOpen(true)}
-            className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3.5 py-2 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
+            className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-2 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:cursor-not-allowed disabled:opacity-45"
           >
             {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
             {t("set.resetAction")}
@@ -1895,7 +1937,7 @@ export default function SettingsPage({
   const sectionList = (
     <div className="flex min-w-0 flex-col gap-4">
       {dirty && (
-        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-gold/40 bg-[#2a2414] px-4 py-2.5 text-[12.5px] text-gold">
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-gold-dim bg-gold-soft px-4 py-2.5 text-[12.5px] text-gold">
           {t("set.dirtyHint")}
           {desktop && draft && (
             <Button primary onClick={save}>
@@ -1954,7 +1996,7 @@ export default function SettingsPage({
         </div>
       )}
       {error && (
-        <div className="mb-4 rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5 text-[12.5px] text-loss">
+        <div className="mb-4 rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5 text-[12.5px] text-loss">
           {error}
         </div>
       )}
@@ -2027,7 +2069,7 @@ export default function SettingsPage({
         >
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
             <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
                 <AlertTriangle size={18} />
               </div>
               <div>
@@ -2042,7 +2084,7 @@ export default function SettingsPage({
                 type="button"
                 disabled={resetBusy}
                 onClick={runFactoryReset}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d] disabled:opacity-45"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:opacity-45"
               >
                 {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 {t("set.resetAction")}

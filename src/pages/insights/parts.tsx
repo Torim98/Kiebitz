@@ -183,7 +183,7 @@ export function Stat({ label, value, hint }: { label: string; value: string; hin
 
 const TONE_STYLE: Record<Tone, { border: string; icon: typeof TrendingDown; color: string }> = {
   bad: { border: "border-loss/40", icon: TrendingDown, color: "text-loss" },
-  warn: { border: "border-gold/40", icon: TrendingDown, color: "text-gold" },
+  warn: { border: "border-gold-dim", icon: TrendingDown, color: "text-gold" },
   good: { border: "border-win/40", icon: TrendingUp, color: "text-win" },
 };
 

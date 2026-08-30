@@ -108,16 +108,21 @@ const NAG: Record<MoveJudgment, string> = {
   blunder: "??",
 };
 
+/**
+ * Farbe je Bewertung · Tokens statt Werte, damit die Zugliste dem Thema folgt.
+ * Im farbsicheren Thema hängt daran mehr als der Farbton: Dort laufen `win`
+ * und `loss` über Blau und Orange, und genau hier wird das gebraucht.
+ */
 const JUDGMENT_COLOR: Record<MoveJudgment, string> = {
-  book: "#a88865",
-  brilliant: "#22c08a",
-  great: "#3987e5",
-  best: "#22c08a",
-  excellent: "#63bca9",
-  good: "#8b8a82",
-  inaccuracy: "#d9a028",
-  mistake: "#e08a3c",
-  blunder: "#e66767",
+  book: "var(--color-gold-dim)",
+  brilliant: "var(--color-win)",
+  great: "var(--color-blue)",
+  best: "var(--color-win)",
+  excellent: "var(--color-accent)",
+  good: "var(--color-draw)",
+  inaccuracy: "var(--color-gold)",
+  mistake: "var(--color-warn)",
+  blunder: "var(--color-loss)",
 };
 
 /** Bewertungen, die in der Zugliste ein Kürzel hinter dem Zug tragen. */
@@ -179,7 +184,7 @@ function ClockBadge({
         className={`rounded-md border px-2 py-0.5 text-[13px] font-semibold tabular-nums ${
           active
             ? low
-              ? "border-loss/50 bg-[#2a1414] text-loss"
+              ? "border-loss/50 bg-loss-soft text-loss"
               : "border-accent-dim bg-accent-soft text-accent"
             : "border-line bg-panel2 text-ink3"
         }`}
@@ -1073,8 +1078,10 @@ export default function Analysis({
           </div>
           <div className="flex gap-3">
             <div className="flex w-5 shrink-0 flex-col self-stretch overflow-hidden rounded-md border border-line">
-              <div className="w-full" style={{ height: `${100 - whitePct}%`, background: "#3a3a37", transition: "height 0.3s" }} />
-              <div className="w-full bg-[#e6e3d3]" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
+              {/* Weiß und Schwarz nehmen die Feldfarben des Bretts daneben ·
+                  so bleibt der Balken in jedem Thema hell über dunkel. */}
+              <div className="w-full bg-board-dark" style={{ height: `${100 - whitePct}%`, transition: "height 0.3s" }} />
+              <div className="w-full bg-board-light" style={{ height: `${whitePct}%`, transition: "height 0.3s" }} />
             </div>
             <div className="min-w-0 flex-1">
               <Board
@@ -1228,7 +1235,7 @@ export default function Analysis({
                     onClick={(e) => e?.activeLabel != null && goToPly(Number(e.activeLabel))}>
                     <XAxis dataKey="ply" hide />
                     <YAxis domain={[-6, 6]} hide />
-                    <ReferenceLine y={0} stroke="#3a3a37" />
+                    <ReferenceLine y={0} stroke="var(--color-line2)" />
                     {/* Phasengrenzen: dünne Linie mit stehendem Namen. */}
                     {phaseMarkers.map((marker) => (
                       <ReferenceLine
@@ -1261,8 +1268,8 @@ export default function Analysis({
                         ) : null
                       }
                     />
-                    <Area type="monotone" dataKey="eval" stroke="#22c08a" strokeWidth={2}
-                      fill="#22c08a" fillOpacity={0.12} />
+                    <Area type="monotone" dataKey="eval" stroke="var(--color-accent)" strokeWidth={2}
+                      fill="var(--color-accent)" fillOpacity={0.12} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -1347,7 +1354,7 @@ export default function Analysis({
                 </Button>
               </div>
               {notesError && (
-                <div className="mt-2 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+                <div className="mt-2 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12px] text-loss">
                   {notesError}
                 </div>
               )}

@@ -148,7 +148,7 @@ function RepeatForm({
           type="button"
           disabled={busy || !until}
           onClick={() => onApply(rule, until)}
-          className="rounded-md bg-accent px-2 py-1 text-[10.5px] font-medium text-[#06251a] disabled:opacity-45"
+          className="rounded-md bg-accent px-2 py-1 text-[10.5px] font-medium text-accent-ink disabled:opacity-45"
         >
           {t("common.save")}
         </button>

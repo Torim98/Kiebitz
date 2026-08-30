@@ -25,6 +25,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "store-assets:marketing": "python scripts/compose-store-assets-v3.py artifacts/store-assets artifacts/store-assets-v3 artifacts/Kiebitz-Play-Store-Assets-v3.zip",
     "locales:check": "node scripts/check-locales.mjs",
+    "themes:check": "node scripts/check-theme-contrast.mjs",
     "licenses": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
     "openings:generate": "node scripts/generate-opening-names.mjs",

@@ -24,7 +24,10 @@ const limits = {
   startupRouteJs: 900 * 1024,
   startupRouteGzip: 275 * 1024,
   singleJs: 450 * 1024,
-  css: 60 * 1024,
+  // Sieben Farbwelten kosten rund 6 KiB CSS (src/themes.css) · das ist der
+  // Preis dafür, dass der Themenwechsel ein Attributwechsel bleibt und kein
+  // Nachladen. Der Wert unten ist die alte Grenze plus diesen Block.
+  css: 68 * 1024,
   fonts: 140 * 1024,
 };
 

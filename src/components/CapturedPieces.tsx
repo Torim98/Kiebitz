@@ -62,7 +62,7 @@ export default function CapturedPieces({
       <span
         className={
           pieces.length > 0
-            ? "flex items-center rounded-[3px] bg-[#e6e3d3] px-[3px] py-px"
+            ? "flex items-center rounded-[3px] bg-board-light px-[3px] py-px"
             : "flex items-center"
         }
       >

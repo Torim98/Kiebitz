@@ -443,7 +443,7 @@ export default function PlusSection() {
                 setBlockedProviders([]);
                 setDeleteOpen(true);
               }}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#351919]"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss"
             >
               <Trash2 size={13} /> {t("plus.delete")}
             </button>
@@ -457,7 +457,7 @@ export default function PlusSection() {
         </p>
       )}
       {error && (
-        <p className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+        <p className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
           {error}
         </p>
       )}
@@ -475,7 +475,7 @@ export default function PlusSection() {
         >
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
             <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
                 <AlertTriangle size={18} />
               </div>
               <h2 id="plus-delete-title" className="text-[16px] font-semibold">
@@ -485,7 +485,7 @@ export default function PlusSection() {
             <div className="px-5 py-4">
               <p className="text-[13px] leading-relaxed text-ink2">{t("plus.deleteConfirm")}</p>
               {blockedProviders.length > 0 && (
-                <div className="mt-3 rounded-lg border border-gold/40 bg-[#2a2414] px-3 py-2.5 text-[12.5px] leading-relaxed text-gold">
+                <div className="mt-3 rounded-lg border border-gold-dim bg-gold-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-gold">
                   {t("plus.deleteBlocked")}
                   <div className="mt-2 flex flex-wrap gap-2">
                     {blockedProviders.includes("stripe") && (
@@ -510,7 +510,7 @@ export default function PlusSection() {
                 type="button"
                 disabled={busy === "delete"}
                 onClick={doDelete}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d] disabled:opacity-45"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:opacity-45"
               >
                 {busy === "delete" ? (
                   <Loader2 size={14} className="animate-spin" />

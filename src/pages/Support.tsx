@@ -178,7 +178,7 @@ export default function Support({ initialType = "feedback" }: { initialType?: Re
         </div>
       )}
       {error && (
-        <div className="mb-4 rounded-lg border border-[#8a3535] bg-[#2a1414] px-4 py-2.5 text-[12.5px] text-loss">
+        <div className="mb-4 rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5 text-[12.5px] text-loss">
           {error}
         </div>
       )}
@@ -259,7 +259,7 @@ export default function Support({ initialType = "feedback" }: { initialType?: Re
                     type="checkbox"
                     checked={attach}
                     onChange={(event) => setAttach(event.target.checked)}
-                    className="mt-0.5 h-4 w-4 accent-[#22c08a]"
+                    className="mt-0.5 h-4 w-4 accent-accent"
                   />
                   <span>
                     <span className="block text-[13px] text-ink">{t("sup.attach")}</span>

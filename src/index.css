@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Alle Farbwerte der Themen · der @theme-Block unten führt nur den Standard
+   ("dark"), damit Tailwind daraus seine Hilfsklassen erzeugt. */
+@import "./themes.css";
 
 /* Kiebitz-Oberflächen verwenden lateinische Schrift. Für Chinesisch,
    Devanagari und Arabisch greifen die System-Fallbacks aus --font-sans; nicht
@@ -55,11 +58,39 @@ html[data-store-capture="true"] :focus {
   --color-win: #22c08a;
   --color-draw: #8b8a82;
   --color-loss: #e66767;
+  /* Ungenauigkeit/Fehler in den Diagrammen · zwischen Gold und Niederlage. */
+  --color-warn: #e08a3c;
 
   --color-blue: #3987e5;
   --color-violet: #9085e9;
   --color-gold: #d9a028;
   --color-cc: #81b64c;
+
+  /* Flächen und Ränder der Zustandsmeldungen (Fehler, Warnung) sowie die
+     Schrift auf einer Akzentfläche · in hellen Themen sind das keine
+     abgedunkelten, sondern eigene Werte. */
+  --color-accent-ink: #06251a;
+  --color-accent-hover: #2bd49b;
+  --color-loss-soft: #2a1414;
+  --color-loss-dim: #8a3535;
+  --color-gold-soft: #2a2414;
+  --color-gold-dim: #8a6a24;
+
+  /* Brett und Brettmarkierungen · das Brett liegt in jedem Thema auf eigenen
+     Feldfarben, und die Zugpunkte folgen dem Akzent des Themas. */
+  --color-board-light: #e6e3d3;
+  --color-board-dark: #6f8155;
+  /* Nebenvariante: dasselbe Brett, entsättigt · siehe Board.tsx. */
+  --color-board-light-muted: #d0d0c8;
+  --color-board-dark-muted: #68716b;
+  --color-mark: rgba(34, 192, 138, 0.42);
+  --color-mark-soft: rgba(34, 192, 138, 0.32);
+
+  /* Flächen, die vor dem Grund liegen (Ergebnisstreifen), der Rollbalken und
+     das angedeutete Brett im Hintergrund. */
+  --color-overlay: #0e0e0dd9;
+  --color-scroll: #3a3a37;
+  --color-backdrop: rgba(242, 241, 236, 0.014);
 }
 
 html,
@@ -97,7 +128,7 @@ body {
   z-index: -1;
   pointer-events: none;
   background-image: repeating-conic-gradient(
-    rgba(242, 241, 236, 0.014) 0% 25%,
+    var(--color-backdrop) 0% 25%,
     transparent 0% 50%
   );
   background-size: 72px 72px;
@@ -164,7 +195,7 @@ html[data-store-capture="true"] .chess-backdrop {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a37 transparent;
+  scrollbar-color: var(--color-scroll) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -172,7 +203,7 @@ html[data-store-capture="true"] .chess-backdrop {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3a3a37;
+  background: var(--color-scroll);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {

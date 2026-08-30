@@ -21,7 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, DarkTooltip } from "../../components/chartTheme";
+import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
 import { dateLocale, de, deInt } from "../../lib/format";
@@ -157,7 +157,7 @@ export default function Training({
               tickLine={false}
               axisLine={false}
             />
-            <Tooltip content={<DarkTooltip />} />
+            <Tooltip content={<ChartTooltip />} />
             <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
             <Line
               yAxisId="accuracy"
@@ -195,7 +195,7 @@ export default function Training({
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={18} />
             <YAxis yAxisId="left" tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
             <YAxis yAxisId="right" orientation="right" tick={chart.tick} tickLine={false} axisLine={false} />
-            <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+            <Tooltip content={<ChartTooltip />} cursor={barCursor} />
             <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
             <Bar
               yAxisId="left"
@@ -359,7 +359,7 @@ export default function Training({
                 tickLine={false}
                 axisLine={false}
               />
-              <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+              <Tooltip content={<ChartTooltip />} cursor={barCursor} />
               <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
               {(
                 [
@@ -457,7 +457,7 @@ export default function Training({
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
                 <YAxis domain={["dataMin - 40", "dataMax + 40"]} tick={chart.tick} tickLine={false} axisLine={false} />
-                <Tooltip content={<DarkTooltip />} />
+                <Tooltip content={<ChartTooltip />} />
                 <Line type="monotone" dataKey="rating" name={t("ins.pzRating")} stroke={chart.accent} strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -466,7 +466,7 @@ export default function Training({
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
                 <YAxis tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+                <Tooltip content={<ChartTooltip />} cursor={barCursor} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="solved" name={t("ins.pzSolved")} stackId="a" fill={chart.win} />
                 <Bar dataKey="failed" name={t("ins.pzFailed")} stackId="a" fill={chart.loss} radius={[4, 4, 0, 0]} />
@@ -532,7 +532,7 @@ export default function Training({
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
               <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
-              <Tooltip content={<DarkTooltip />} cursor={barCursor} />
+              <Tooltip content={<ChartTooltip />} cursor={barCursor} />
               <Bar dataKey="rate" name={t("ins.pzSolveRate")} radius={[4, 4, 0, 0]}>
                 {activeHours.map((slot) => (
                   <Cell

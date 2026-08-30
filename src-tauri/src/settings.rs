@@ -38,6 +38,20 @@ pub struct Settings {
     pub li_user: String,
     /// Anzeigename fürs Dashboard (leer = chess.com-/Lichess-Benutzername).
     pub display_name: String,
+    /// Farbwelt der Oberfläche · Liste in THEMES, Farben in src/themes.css.
+    /// Gerätelokal und bewusst nicht im Sync: Das Handy am Abend und der
+    /// Desktop am Tag dürfen verschieden stehen.
+    pub theme: String,
+    /// Feldfarben des Bretts ("auto" = das Brett des Themas).
+    pub board_set: String,
+    /// Wann `theme_night` übernimmt: "off", "system" (Vorgabe des
+    /// Betriebssystems) oder "time" (Nachtfenster unten).
+    pub theme_auto: String,
+    /// Thema der Dunkelphase des automatischen Wechsels.
+    pub theme_night: String,
+    /// Nachtfenster als lokale "HH:MM" · nur bei theme_auto = "time".
+    pub theme_night_from: String,
+    pub theme_night_to: String,
     /// Monatsfenster für den Schnell-Import ("Neueste importieren").
     pub import_months: u32,
     /// Puzzle-Tagesziel (Versuche pro Tag) für Dashboard und Lernplan.
@@ -156,18 +170,36 @@ fn normalize_installation_id(value: &str) -> String {
     }
 }
 
-/// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf 18:00 zurück.
-fn normalize_time(value: &str) -> String {
+/// "HH:MM" auf eine gültige Uhrzeit begrenzen; Unsinn fällt auf `fallback`
+/// zurück. Die Erinnerung und das Nachtfenster haben verschiedene Vorgaben.
+fn normalize_time_or(value: &str, fallback: &str) -> String {
     let (Some(hours), Some(minutes)) = (
         value.get(0..2).and_then(|h| h.parse::<u32>().ok()),
         value.get(3..5).and_then(|m| m.parse::<u32>().ok()),
     ) else {
-        return "18:00".into();
+        return fallback.into();
     };
     if value.as_bytes().get(2) != Some(&b':') || hours > 23 || minutes > 59 {
-        return "18:00".into();
+        return fallback.into();
     }
     format!("{hours:02}:{minutes:02}")
+}
+
+/// Uhrzeit der täglichen Erinnerung; Unsinn fällt auf 18:00 zurück.
+fn normalize_time(value: &str) -> String {
+    normalize_time_or(value, "18:00")
+}
+
+/// Ein Wert aus `allowed` oder dessen erster Eintrag als Rückfallebene.
+/// Deckt alte Dateien und ein Gerät ab, das eine neuere Fassung geschrieben
+/// hat: Ein unbekanntes Thema soll die Oberfläche nicht farblos lassen.
+fn normalize_choice(value: &str, allowed: &[&str]) -> String {
+    let value = value.trim();
+    if allowed.contains(&value) {
+        value.to_string()
+    } else {
+        allowed[0].to_string()
+    }
 }
 
 impl Default for Settings {
@@ -195,6 +227,12 @@ impl Default for Settings {
             cc_user: String::new(),
             li_user: String::new(),
             display_name: String::new(),
+            theme: "dark".into(),
+            board_set: "auto".into(),
+            theme_auto: "off".into(),
+            theme_night: "dusk".into(),
+            theme_night_from: "19:00".into(),
+            theme_night_to: "07:00".into(),
             import_months: 3,
             puzzle_goal: 20,
             puzzle_hide_theme: false,
@@ -311,6 +349,18 @@ pub fn refresh_study_prefs(app: &tauri::AppHandle, conn: &Connection) -> bool {
 /// Ein unbekannter Wert (alte Datei, fremdes Gerät) fällt auf Englisch zurück.
 pub const LOCALES: [&str; 7] = ["en", "de", "es", "fr", "hi", "ar", "zh"];
 
+/// Farbwelten · muss mit THEMES in src/lib/theme.ts übereinstimmen. Der erste
+/// Eintrag ist die Rückfallebene.
+const THEMES: [&str; 7] = [
+    "dark", "light", "dusk", "graphite", "paper", "contrast", "signal",
+];
+
+/// Brett-Sets · muss mit BOARD_SETS in src/lib/theme.ts übereinstimmen.
+const BOARD_SETS: [&str; 6] = ["auto", "forest", "graphite", "sepia", "ice", "contrast"];
+
+/// Auslöser des automatischen Themenwechsels.
+const AUTO_MODES: [&str; 3] = ["off", "system", "time"];
+
 fn normalize(mut s: Settings) -> Settings {
     if !LOCALES.contains(&s.locale.as_str()) {
         s.locale = "en".into();
@@ -352,6 +402,12 @@ fn normalize(mut s: Settings) -> Settings {
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty());
     s.notify_time = normalize_time(&s.notify_time);
+    s.theme = normalize_choice(&s.theme, &THEMES);
+    s.board_set = normalize_choice(&s.board_set, &BOARD_SETS);
+    s.theme_auto = normalize_choice(&s.theme_auto, &AUTO_MODES);
+    s.theme_night = normalize_choice(&s.theme_night, &THEMES);
+    s.theme_night_from = normalize_time_or(&s.theme_night_from, "19:00");
+    s.theme_night_to = normalize_time_or(&s.theme_night_to, "07:00");
     s.sync_fingerprint = s
         .sync_fingerprint
         .trim()
@@ -830,6 +886,39 @@ mod tests {
             .notify_time,
             "18:00"
         );
+    }
+
+    /// Ein unbekanntes Thema darf die Oberfläche nicht farblos lassen: Es
+    /// fällt auf den Standard zurück, ebenso ein unbrauchbares Nachtfenster.
+    #[test]
+    fn normalize_repairs_the_appearance() {
+        let s = normalize(Settings {
+            theme: "neon".into(),
+            board_set: "marmor".into(),
+            theme_auto: "vielleicht".into(),
+            theme_night: " dusk ".into(),
+            theme_night_from: "25:00".into(),
+            theme_night_to: "6:5".into(),
+            ..Settings::default()
+        });
+        assert_eq!(s.theme, "dark");
+        assert_eq!(s.board_set, "auto");
+        assert_eq!(s.theme_auto, "off");
+        assert_eq!(s.theme_night, "dusk");
+        assert_eq!(s.theme_night_from, "19:00");
+        assert_eq!(s.theme_night_to, "07:00");
+
+        let kept = normalize(Settings {
+            theme: "paper".into(),
+            board_set: "sepia".into(),
+            theme_auto: "time".into(),
+            theme_night_from: "20:15".into(),
+            ..Settings::default()
+        });
+        assert_eq!(kept.theme, "paper");
+        assert_eq!(kept.board_set, "sepia");
+        assert_eq!(kept.theme_auto, "time");
+        assert_eq!(kept.theme_night_from, "20:15");
     }
 
     #[test]

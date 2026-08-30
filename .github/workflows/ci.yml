@@ -26,6 +26,9 @@ jobs:
       - name: Lokalisierungen prüfen
         run: npm run locales:check
 
+      - name: Farbwelten prüfen
+        run: npm run themes:check
+
       - name: Tests
         run: npm run test:run
 

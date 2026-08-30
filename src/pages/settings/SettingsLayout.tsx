@@ -62,6 +62,7 @@ export function NumberField({
 /** Bereichskennung · trägt Sprungmarke, Navigationseintrag und Nachladen. */
 export type SectionId =
   | "language"
+  | "appearance"
   | "tour"
   | "plus"
   | "accounts"

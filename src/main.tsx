@@ -2,7 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LocaleProvider } from "./lib/i18n";
+import { initAppearance } from "./lib/theme";
 import "./index.css";
+
+// Vor dem ersten Bild: Das Startskript in index.html hat den letzten Stand
+// bereits gesetzt, hier übernimmt die Steuerung (Einstellungen, Systemvorgabe,
+// Uhrzeit, Plus-Status).
+initAppearance();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

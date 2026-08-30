@@ -625,7 +625,7 @@ export default function Games({
             type="button"
             disabled={deleting}
             onClick={() => setDeleteConfirmOpen(true)}
-            className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#713636] bg-[#251515] px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-[#a64b4b] hover:bg-[#321919] disabled:cursor-not-allowed disabled:opacity-45"
+            className="ml-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:cursor-not-allowed disabled:opacity-45"
           >
             {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
             {deleting ? t("games.deleting") : t("games.delete")}
@@ -633,7 +633,7 @@ export default function Games({
         )}
       </div>
       {deleteError && (
-        <div className="mt-3 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12px] text-loss">
+        <div className="mt-3 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12px] text-loss">
           {deleteError}
         </div>
       )}
@@ -732,9 +732,9 @@ export default function Games({
       {importMsg && (
         <div className={`mb-4 rounded-lg border px-4 py-2.5 text-[12.5px] ${
           importTone === "warning"
-            ? "border-[#8a6a24] bg-[#2a2110] text-gold"
+            ? "border-gold-dim bg-gold-soft text-gold"
             : importTone === "error"
-              ? "border-[#8a3535] bg-[#2a1414] text-loss"
+              ? "border-loss-dim bg-loss-soft text-loss"
               : "border-accent-dim bg-accent-soft text-accent"
         }`}>
           {importMsg}
@@ -772,7 +772,7 @@ export default function Games({
           >
             <SlidersHorizontal size={17} />
             {activeFilters.length > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-[#06251a]">
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-accent-ink">
                 {activeFilters.length}
               </span>
             )}
@@ -1225,7 +1225,7 @@ export default function Games({
         >
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
             <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#2a1717] text-loss">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
                 <AlertTriangle size={18} />
               </div>
               <div>
@@ -1242,7 +1242,7 @@ export default function Games({
                 type="button"
                 disabled={deleting}
                 onClick={deleteSelected}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#8a3535] bg-[#351919] px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:bg-[#441d1d] disabled:opacity-45"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:opacity-45"
               >
                 {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                 {deleting ? t("games.deleting") : t("games.deleteConfirmAction")}

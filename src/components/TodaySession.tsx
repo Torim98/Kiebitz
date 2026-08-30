@@ -147,7 +147,7 @@ export function SessionHero({
           <button
             type="button"
             onClick={item.action.run}
-            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-accent font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b] ${
+            className={`inline-flex items-center justify-center gap-2 rounded-lg bg-accent font-medium text-accent-ink transition-colors hover:bg-accent-hover ${
               mobile ? "h-[46px] flex-1 text-[14px] font-semibold" : "px-4 py-2.5 text-[13px]"
             }`}
           >
@@ -252,7 +252,7 @@ function Mark({ item, mobile }: { item: SessionItem; mobile: boolean }) {
         mobile ? "h-[22px] w-[22px]" : "h-5 w-5"
       } ${item.done ? "border-accent bg-accent" : "border-line2"}`}
     >
-      {item.done && <Check size={mobile ? 13 : 12} strokeWidth={3} className="text-[#06251a]" />}
+      {item.done && <Check size={mobile ? 13 : 12} strokeWidth={3} className="text-accent-ink" />}
     </span>
   );
 

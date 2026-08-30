@@ -230,9 +230,9 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     // Zugpunkte wie im Analyse-Brett.
     ...(status === "playing" ? moveTargetStyles(fen, selected) : {}),
   };
-  if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px #22c08a" };
+  if (selected) squareStyles[selected] = { boxShadow: "inset 0 0 0 3px var(--color-accent)" };
   if (hintMove) {
-    squareStyles[hintMove.slice(0, 2)] = { boxShadow: "inset 0 0 0 3px #d9a028" };
+    squareStyles[hintMove.slice(0, 2)] = { boxShadow: "inset 0 0 0 3px var(--color-gold)" };
     squareStyles[hintMove.slice(2, 4)] = { boxShadow: "inset 0 0 0 3px #d9a02888" };
   }
 
@@ -347,7 +347,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
                 className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5 ${
                   status === "solved"
                     ? "border border-accent-dim bg-accent-soft"
-                    : "border border-[#8a3535] bg-[#2a1414]"
+                    : "border border-loss-dim bg-loss-soft"
                 }`}
               >
                 <div
@@ -402,7 +402,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
           </div>
 
           {error && (
-            <div className="mt-2 rounded-lg border border-[#8a3535] bg-[#2a1414] px-3 py-2 text-[12.5px] text-loss">
+            <div className="mt-2 rounded-lg border border-loss-dim bg-loss-soft px-3 py-2 text-[12.5px] text-loss">
               {error}
             </div>
           )}

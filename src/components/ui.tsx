@@ -187,7 +187,7 @@ export function Button({
       title={title}
       className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-[13px] font-medium transition-colors [&>svg]:shrink-0 ${
         primary
-          ? "bg-accent text-[#06251a] hover:bg-[#2bd49b]"
+          ? "bg-accent text-accent-ink hover:bg-accent-hover"
           : "border border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
       } disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
     >

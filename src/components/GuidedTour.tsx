@@ -373,7 +373,7 @@ export default function GuidedTour({
               <button
                 type="button"
                 onClick={() => (last ? onDone() : setIndex((i) => i + 1))}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-medium text-[#06251a] transition-colors hover:bg-[#2bd49b]"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-medium text-accent-ink transition-colors hover:bg-accent-hover"
               >
                 {last ? (
                   <>

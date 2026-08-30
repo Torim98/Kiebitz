@@ -14,9 +14,14 @@ import { lastMoveStyles, moveTargetStyles, selectionStyles } from "../lib/boardM
 import { soundsForTransition } from "../lib/boardSound";
 import { playBoardSound } from "../lib/sound";
 
+/**
+ * Feldfarben kommen aus dem Thema (src/themes.css) · react-chessboard setzt
+ * sie als CSS-Eigenschaft, deshalb trägt eine Variable hier genauso wie ein
+ * Farbwert, und der Themenwechsel braucht kein Neurendern des Bretts.
+ */
 const boardTheme = {
-  customDarkSquareStyle: { backgroundColor: "#6f8155" },
-  customLightSquareStyle: { backgroundColor: "#e6e3d3" },
+  customDarkSquareStyle: { backgroundColor: "var(--color-board-dark)" },
+  customLightSquareStyle: { backgroundColor: "var(--color-board-light)" },
   customBoardStyle: {
     borderRadius: "10px",
     overflow: "hidden",
@@ -24,9 +29,10 @@ const boardTheme = {
   },
 };
 
+/** Nebenvariante · dasselbe Brett, entsättigt. */
 const mutedBoardTheme = {
-  customDarkSquareStyle: { backgroundColor: "#68716b" },
-  customLightSquareStyle: { backgroundColor: "#d0d0c8" },
+  customDarkSquareStyle: { backgroundColor: "var(--color-board-dark-muted)" },
+  customLightSquareStyle: { backgroundColor: "var(--color-board-light-muted)" },
 };
 
 const EMPTY_ARROWS: [string, string, string?][] = [];
@@ -735,7 +741,7 @@ export default function Board({
                   onClick={() => setEndDismissed(true)}
                   title={end.dismissLabel}
                   aria-label={`${end.label} · ${end.dismissLabel}`}
-                  className="board-end-strip max-w-full truncate rounded-lg border border-white/15 bg-[#0e0e0dd9] px-3.5 py-1.5 text-[clamp(11px,1.25vw,13.5px)] font-semibold text-ink shadow-xl backdrop-blur-[2px] transition-colors hover:bg-[#0e0e0d]"
+                  className="board-end-strip max-w-full truncate rounded-lg border border-line2 bg-overlay px-3.5 py-1.5 text-[clamp(11px,1.25vw,13.5px)] font-semibold text-ink shadow-xl backdrop-blur-[2px] transition-colors hover:bg-bg"
                 >
                   {end.label}
                 </button>
