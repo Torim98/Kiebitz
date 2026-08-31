@@ -112,6 +112,14 @@ function convert(setId, piece) {
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/>\s+</g, "><")
     .trim();
+  // Ein fehlgeschlagener Download ist eine HTML-Fehlerseite mit der Endung
+  // .svg · die läuft hier sonst durch und die Figur fehlt still im Brett.
+  if (!svg.startsWith("<svg")) {
+    throw new Error(
+      `${setId}/${piece}.svg fängt nicht mit <svg an · vermutlich kein Bild, sondern:\n` +
+        `${svg.slice(0, 200)}`
+    );
+  }
   svg = inlineStyles(svg);
   svg = namespaceIds(svg, `${setId}-${piece}-`);
   // Die Datei misst sich selbst in Millimetern oder gar nicht · beides ist im

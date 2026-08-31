@@ -211,6 +211,13 @@ export default function StudyPlanner({
   const storeCapture = isStoreCapture();
   // Der Plan ist der Hauptinhalt; die Einheiten bleiben bis zum Aufklappen aus dem Weg.
   const [libraryOpen, setLibraryOpen] = useState(false);
+  /**
+   * Die Einheiten-Liste steht unter dem Tageskasten · auf dem Telefon so weit
+   * darunter, dass „+ Einheit" oben nichts Sichtbares tat. Der Knopf klappt
+   * sie deshalb nicht nur auf, er holt sie auch ins Bild.
+   */
+  const libraryRef = useRef<HTMLDivElement | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [windowStart, setWindowStart] = useState(() => dayStart(new Date()));
   const [calendar, setCalendar] = useState<StudyCalendar>({ templates: [], events: [], days: [] });
   const [planningDay, setPlanningDay] = useState(() => isoDay(new Date()));
@@ -334,6 +341,15 @@ export default function StudyPlanner({
     }, ["study", "database"]);
     return unsubscribe;
   }, [desktop, refresh]);
+
+  // Erst nach dem Aufklappen scrollen · vorher ist die Liste noch leer und
+  // stünde nach dem Ausklappen wieder halb außerhalb des Bildes.
+  useEffect(() => {
+    if (!showLibrary) return;
+    setShowLibrary(false);
+    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    libraryRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  }, [showLibrary]);
 
   const mutate = async (operation: () => Promise<unknown>) => {
     setBusy(true);
@@ -679,6 +695,7 @@ export default function StudyPlanner({
                   onClick={() => {
                     setPlanningDay(selectedRow.day);
                     setLibraryOpen(true);
+                    setShowLibrary(true);
                   }}
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-line bg-panel px-3 text-[11.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 min-[1100px]:min-h-0 min-[1100px]:px-2.5 min-[1100px]:py-1.5"
                 >
@@ -830,8 +847,11 @@ export default function StudyPlanner({
 
         {mobile && proposalAction}
 
-        <div className="rounded-xl border border-line bg-panel2 p-3">
-          <div className="flex items-center justify-between gap-2">
+        <div ref={libraryRef} className="scroll-mt-4 rounded-xl border border-line bg-panel2 p-3">
+          {/* Schmal stehen Titel und Schalter untereinander · nebeneinander
+              blieben für den Hinweis unter „Lerneinheiten" drei gequetschte
+              Zeilen neben dem Raster-Feld übrig. */}
+          <div className="flex flex-col gap-2 min-[700px]:flex-row min-[700px]:items-center min-[700px]:justify-between">
             <button
               type="button"
               onClick={() => setLibraryOpen((value) => !value)}
@@ -849,7 +869,7 @@ export default function StudyPlanner({
                 <span className="block text-[11.5px] text-ink3">{t("st.dragHint")}</span>
               </span>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end gap-2">
               <label className="hidden text-[11px] text-ink3 min-[700px]:block">
                 {t("st.planFor")}{" "}
                 <input

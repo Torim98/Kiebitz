@@ -191,4 +191,22 @@ describe("Plantafel", () => {
       expect(screen.getByRole("button", { name: area })).toBeTruthy();
     }
   });
+
+  it("holt die Einheiten-Liste ins Bild, wenn „Einheit\" sie aufklappt", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(
+      <LocaleProvider>
+        <StudyPlanner desktop />
+      </LocaleProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Einheit$/ }));
+
+    // Aufgeklappt · die Einheiten stehen jetzt im DOM.
+    await waitFor(() => expect(document.querySelector('[data-study-template="3"]')).toBeTruthy());
+    // Und zwar die Liste selbst, nicht irgendein Element auf dem Weg dorthin.
+    const library = screen.getByText("Lerneinheiten").closest("div.rounded-xl");
+    expect(scrolled.mock.instances).toContain(library);
+    scrolled.mockRestore();
+  });
 });
