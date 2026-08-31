@@ -543,10 +543,17 @@ export default function Games({
     />
   );
 
+  /**
+   * Der Name trägt seinen Abstand nicht selbst: Über dem Brett steht er in
+   * einer Zeile mit dem Griff zum Fokus, im Fokus setzt die Spalte die
+   * Abstände. Ein eigener Rand käme dort doppelt und ließe hier den Griff
+   * schief neben dem Namen hängen · die Analyse hält es mit ihren
+   * Spielerzeilen genauso.
+   */
   const previewName = (top: boolean) => {
     const player = top ? previewTop : previewBottom;
     return (
-      <div className={`min-w-0 text-[12.5px] ${top ? "mb-2" : "mt-2"}`}>
+      <div className="min-w-0 text-[12.5px]">
         <div className="truncate font-semibold text-ink2">
           {player.name}{player.elo > 0 ? ` (${player.elo})` : ""}
         </div>
@@ -556,12 +563,15 @@ export default function Games({
 
   const detailBoard = selected && (
     <div className="mx-auto max-w-[528px]">
-      <div className="flex items-start justify-between gap-2">
+      {/* Name und Griff teilen sich eine Mittellinie · der Griff ist höher als
+          die Zeile, und oben ausgerichtet stünde er sonst über dem Namen und
+          zugleich auf der Brettkante. */}
+      <div className="mb-2 flex min-h-[33px] items-center justify-between gap-2">
         {previewName(true)}
         <FocusButton onClick={() => setFocused(true)} />
       </div>
       {previewBoard("games-preview", BOARD_WIDTH)}
-      {previewName(false)}
+      <div className="mt-2">{previewName(false)}</div>
 
       <FocusBoard
         open={focused}
