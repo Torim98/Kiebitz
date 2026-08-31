@@ -116,9 +116,19 @@ export function translator(locale: Locale): TFunc {
   return (key, params) => translate(locale, key, params);
 }
 
-/** Loads a language first for non-React callers such as notifications. */
+/**
+ * Loads a language first for non-React callers such as notifications.
+ *
+ * Setzt dabei auch das Zahlformat. Diese Aufrufer bauen Text außerhalb des
+ * Providers zusammen, und seit der Wochenbericht Kennzahlen in seinen
+ * Aufmacher schreibt, stünde dort sonst „4.1" neben einem deutschen Satz,
+ * solange der Provider noch nicht gerendert hat. Ein Widerspruch zur
+ * Oberfläche kann daraus nicht entstehen: beide lesen dieselbe Locale aus den
+ * Einstellungen.
+ */
 export async function loadTranslator(locale: Locale): Promise<TFunc> {
   await loadLocale(locale);
+  setFormatLocale(LOCALE_TAGS[locale]);
   return translator(locale);
 }
 

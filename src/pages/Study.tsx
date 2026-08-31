@@ -36,23 +36,38 @@ import {
 } from "../lib/study";
 import { getSettings, trainingDayList } from "../lib/settings";
 import { buildInsights } from "../lib/stats";
-import { deepInsights, studyMetrics, type FindingWindow } from "../lib/insights";
+import {
+  deepInsights,
+  studyMetrics,
+  type FindingWindow,
+  type MetricWindow,
+} from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
 import {
   buildPlan,
   buildWeekPlan,
   sessionMinutes,
   type PlannedUnit,
+  type Prescription,
   type TrainingPlan,
 } from "../lib/plan";
 import { measureRating, ratingNoise, type RatingEffect } from "../lib/effect";
 import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "../lib/week";
+import {
+  buildWeeklyReport,
+  markWeeklyReportSeen,
+  previousWeek,
+  reportWeek,
+  weeklyReportSeen,
+  type WeeklyReport,
+} from "../lib/weekly";
 import { Button, Card } from "../components/ui";
 import { PlusBadge } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import StudyPlanner from "../components/StudyPlanner";
 import PrescriptionCard from "../components/PrescriptionCard";
+import WeeklyReportDialog, { WeeklyReportButton } from "../components/WeeklyReportDialog";
 import WeekBudgetBar, {
   WeekAreaList,
   WeekBar,
@@ -85,6 +100,8 @@ export interface StudyState {
   /** Geplante Einheiten der nächsten sieben Tage, ab heute. */
   events: StudyEvent[];
   rating: RatingEffect | null;
+  /** Rückblick auf die zuletzt abgeschlossene Woche · null, wenn sie leer war. */
+  weekly: WeeklyReport | null;
   /** Trainingstage aus den Einstellungen, Index 0 = Montag. */
   trainingDays: boolean[];
   /** Beobachtetes Wochenmittel der letzten acht Wochen. */
@@ -115,6 +132,14 @@ export default function Study({
   const [busy, setBusy] = useState(false);
   /** Die Wochenzahlen mobil · zugeklappt ist die Karte eine Zeile. */
   const [weekOpen, setWeekOpen] = useState(false);
+  /**
+   * Gelesene Berichtswoche · der Merker liegt im WebView-Speicher und wird hier
+   * nur gespiegelt, damit das Öffnen sofort auf das Symbol durchschlägt und
+   * nicht erst beim nächsten Laden der Seite.
+   */
+  const [reportSeen, setReportSeen] = useState(0);
+  /** Liegt der Bericht gerade im Vordergrund? */
+  const [reportOpen, setReportOpen] = useState(false);
   const planGate = usePlusGate("adaptive_plan");
 
   const loadRef = useRef<Promise<void> | null>(null);
@@ -152,10 +177,36 @@ export default function Study({
     // kommen. Ohne Fenster (zu wenig Material) gibt es keine Zahl: „+140 Elo
     // seit 2021" beantwortet keine Frage, die auf dieser Seite gestellt wird.
     const findingWindow = deep?.window ?? { days: 0, from_ts: 0, games: 0, analyzed: 0 };
-    const measured =
+
+    // Drei Fenster in einem Aufruf: das Befundfenster für den Ratingstand oben
+    // und die zwei abgeschlossenen Wochen des Berichts. Der Backend-Befehl geht
+    // die Datenbank je Aufruf einmal komplett durch · getrennt gefragt wäre es
+    // dreimal dieselbe Runde.
+    const week = reportWeek(new Date());
+    const before = previousWeek(week);
+    const specs: { from_ts: number; to_ts: number }[] = [];
+    const ratingSpec =
       findingWindow.days > 0
-        ? await studyMetrics([{ from_ts: findingWindow.from_ts, to_ts: now + 1 }]).catch(() => [])
-        : [];
+        ? specs.push({ from_ts: findingWindow.from_ts, to_ts: now + 1 }) - 1
+        : -1;
+    const weekSpec = specs.push({ from_ts: week.start, to_ts: week.end }) - 1;
+    const beforeSpec = specs.push({ from_ts: before.start, to_ts: before.end }) - 1;
+    const measured = await studyMetrics(specs).catch(() => [] as MetricWindow[]);
+
+    // Der Wochenbericht braucht beide Fenster und die gemessenen Tage · fehlt
+    // eines davon, gibt es keinen. Ein Rückblick auf halbe Daten wäre schlimmer
+    // als keiner.
+    const weekly =
+      measured[weekSpec] && measured[beforeSpec] && program
+        ? buildWeeklyReport({
+            week,
+            metrics: measured[weekSpec],
+            previous: measured[beforeSpec],
+            days: program.days,
+            allocation: plan?.allocation ?? [],
+            prescriptions: plan?.prescriptions ?? [],
+          })
+        : null;
 
     // Die nächsten sieben Tage, nicht nur heute: der Tagesplan ist ein
     // Ausschnitt davon, und der Wochenvorschlag muss wissen, was in diesem
@@ -176,7 +227,8 @@ export default function Study({
       window: findingWindow,
       templates: calendar.templates,
       events: calendar.events,
-      rating: measureRating(measured),
+      rating: ratingSpec >= 0 && measured[ratingSpec] ? measureRating([measured[ratingSpec]]) : null,
+      weekly,
       trainingDays,
       observedWeeklyMinutes: program?.observed_weekly_minutes ?? 0,
       budgetSet: (settings?.weekly_minutes ?? 0) > 0,
@@ -662,6 +714,74 @@ export default function Study({
       </div>
     ) : undefined;
 
+  /**
+   * Der Knopf einer Verordnung · dieselbe Handlung im Coach wie im
+   * Wochenbericht. Sie stand einmal nur in der Coach-Karte; der Bericht endet
+   * aber in genau derselben Verordnung, und zwei Wege in denselben Trainer
+   * wären zwei Stellen, an denen der Endspieltyp verloren gehen kann.
+   */
+  const runPrescription = useCallback(
+    (prescription: Prescription) => {
+      const action = prescription.action;
+      if (!action) return;
+      if (action.kind === "puzzles") {
+        openPuzzles(action.theme, {
+          minRating: action.minRating,
+          maxRating: action.maxRating,
+        });
+      } else if (action.kind === "repertoire") go("repertoire");
+      else if (action.kind === "endgame") {
+        // Der Befund nennt den Endspieltyp aus der Materialsignatur · daraus
+        // wird die Drill-Kategorie.
+        const type = prescription.finding.params.type;
+        const category = typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
+        if (openEndgame) openEndgame(category);
+        else go("endgame");
+      } else if (action.kind === "analysis") go("analysis");
+      else go("games");
+    },
+    [go, openPuzzles, openEndgame]
+  );
+
+  /**
+   * Der Wochenbericht · ein Symbol im Kopf, der Bericht im Vordergrund.
+   *
+   * Als Karte über der Seite nahm er den halben Bildschirm ein und verdrängte
+   * an jedem ungelesenen Tag die Frage, mit der man den Reiter öffnet. Als
+   * Symbol kostet er eine Zeile im Kopf, leuchtet, solange er ungelesen ist,
+   * und bleibt danach die Woche über erreichbar — das erste Wegklicken macht
+   * ihn nicht mehr unwiederbringlich.
+   */
+  const weekly = state?.weekly ?? null;
+  // Der Merker wird je Berichtswoche einmal gelesen und nicht bei jedem
+  // Rendern · `reportSeen` trägt das Öffnen im selben Besuch nach.
+  const seen = useMemo(() => (weekly ? weeklyReportSeen(weekly.week) : true), [weekly]);
+  const reportUnread = Boolean(weekly) && !seen && reportSeen !== weekly?.week.start;
+
+  const openReport = useCallback(() => {
+    if (!weekly) return;
+    // Geöffnet ist gelesen · das Symbol hört auf zu leuchten, sobald der
+    // Bericht im Vordergrund steht, und nicht erst beim Schließen.
+    markWeeklyReportSeen(weekly.week);
+    setReportSeen(weekly.week.start);
+    setReportOpen(true);
+  }, [weekly]);
+
+  const weeklyDialog =
+    weekly && reportOpen ? (
+      <WeeklyReportDialog
+        report={weekly}
+        mobile={mobile}
+        onClose={() => setReportOpen(false)}
+        onAction={() => {
+          // Der Absprung schließt den Bericht · sonst läge er über dem
+          // Trainer, in den er gerade geführt hat.
+          setReportOpen(false);
+          if (weekly.next) runPrescription(weekly.next);
+        }}
+      />
+    ) : null;
+
   const coachCard = (
     <Card
       title={
@@ -693,26 +813,7 @@ export default function Study({
               mobile={mobile}
               index={index}
               total={plan.prescriptions.length}
-              onAction={() => {
-                const action = prescription.action;
-                if (!action) return;
-                if (action.kind === "puzzles") {
-                  openPuzzles(action.theme, {
-                    minRating: action.minRating,
-                    maxRating: action.maxRating,
-                  });
-                } else if (action.kind === "repertoire") go("repertoire");
-                else if (action.kind === "endgame") {
-                  // Der Befund nennt den Endspieltyp aus der Materialsignatur ·
-                  // daraus wird die Drill-Kategorie.
-                  const type = prescription.finding.params.type;
-                  const category =
-                    typeof type === "string" ? ENDGAME_TYPE_CATEGORY[type] : undefined;
-                  if (openEndgame) openEndgame(category);
-                  else go("endgame");
-                } else if (action.kind === "analysis") go("analysis");
-                else go("games");
-              }}
+              onAction={() => runPrescription(prescription)}
             />
           ))}
         </div>
@@ -789,8 +890,12 @@ export default function Study({
             <p className="mt-0.5 text-[13px] text-ink3">{t("st.subtitle")}</p>
           </div>
         )}
-        {/* Zwei Kennzahlen, eine Leiste · getrennte Kästen ließen sie wie zwei
-            Bedienelemente aussehen, die sie nicht sind. */}
+        {/* Rechts im Kopf steht, was über die Woche zu sagen ist: der Bericht,
+            die Ratingveränderung, die Serie. Der Bericht bekommt ein eigenes
+            Feld, weil er als einziges anklickbar ist · in der Leiste daneben
+            sähen die beiden Kennzahlen sonst auch nach Knöpfen aus. */}
+        <div className="flex flex-wrap items-center gap-2">
+        {weekly && <WeeklyReportButton unread={reportUnread} onClick={openReport} />}
         {(state?.rating || (data && data.streak_days > 0)) && (
           <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-panel">
             {state?.rating && (
@@ -822,6 +927,7 @@ export default function Study({
             )}
           </div>
         )}
+        </div>
       </header>
 
       {!desktop && !storeCapture && (
@@ -964,6 +1070,8 @@ export default function Study({
           {hygieneCard}
         </>
       )}
+
+      {weeklyDialog}
     </div>
   );
 }

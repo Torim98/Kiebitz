@@ -18,7 +18,16 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { loadTranslator, type TFunc } from "./i18n";
 import { getSettings, type Settings } from "./settings";
-import { getStudyCalendar, studyData } from "./study";
+import { dayMinutes, getStudyCalendar, studyData, trainingProgram } from "./study";
+import { studyMetrics } from "./insights";
+import { featureUnlocked } from "./plus/store";
+import {
+  buildWeeklyReport,
+  previousWeek,
+  reportHeadline,
+  reportWeek,
+  type WeeklyReport,
+} from "./weekly";
 import type { BackendInfo } from "./backend";
 
 const LAST_SENT_KEY = "kiebitz.notify.lastDay";
@@ -27,9 +36,9 @@ const CHECK_INTERVAL_MS = 60_000;
  * Feste IDs der geplanten Android-Alarme, damit sie ersetzbar bleiben.
  *
  * Sieben statt einem: Ein `Schedule.interval` ohne Wochentag wiederholt sich
- * täglich mit *demselben* Text — der Wochenrückblick würde damit auch am
- * Montag und Dienstag erscheinen. Mit einem Wochentag je Alarm trägt jeder
- * Abend den Text, der zu ihm gehört, und der Sonntag den Rückblick.
+ * täglich mit *demselben* Text — der Wochenbericht würde damit auch am
+ * Dienstag und Mittwoch erscheinen. Mit einem Wochentag je Alarm trägt jeder
+ * Abend den Text, der zu ihm gehört, und der Montag den Bericht.
  *
  * `weekday` zählt im Plugin ab Sonntag = 1.
  */
@@ -148,6 +157,13 @@ export interface ReminderInput {
   todayMinutes: number;
   /** Diese Woche bereits gemessene Minuten. */
   weekMinutes: number;
+  /**
+   * Der Bericht über die zuletzt abgeschlossene Woche · nur am Berichtstag
+   * und nur mit Kiebitz Plus. Ohne ihn bleibt es beim Minutenstand.
+   */
+  report: WeeklyReport | null;
+  /** Gemessene Minuten derselben abgeschlossenen Woche. */
+  lastWeekMinutes: number;
 }
 
 /** Eine fertige Benachrichtigung · Titel, Aufmacher und Aufzählung. */
@@ -203,15 +219,24 @@ export function reminderBody(t: TFunc, settings: Settings, input: ReminderInput)
 }
 
 /**
- * Ist heute der letzte Tag der Woche?
+ * Ist heute der Tag des Wochenberichts?
  *
- * Sonntag · dann tritt an die Stelle der Erinnerung der Rückblick. Bewusst
- * *statt* und nicht *zusätzlich*: Zwei Meldungen an einem Abend sind eine zu
- * viel, und wer am Sonntagabend noch trainiert, weiß auch ohne Aufzählung, was
- * offen ist.
+ * Montag · dann liegt die Woche vollständig hinter einem, und erst dann kann
+ * der Bericht sagen, was sie gebracht hat. Am Sonntagabend, wo der Rückblick
+ * früher stand, lief die Woche noch: was dort stand, war eine Zwischenzahl,
+ * und ein Vergleich mit der Vorwoche wäre ein halber gegen einen ganzen
+ * Zeitraum gewesen.
+ *
+ * Bewusst *statt* der Erinnerung und nicht *zusätzlich*: Zwei Meldungen an
+ * einem Abend sind eine zu viel.
  */
-export function isWeekEnd(now: Date): boolean {
-  return now.getDay() === 0;
+export function isReviewDay(now: Date): boolean {
+  return now.getDay() === 1;
+}
+
+/** Berichtstag *und* eingeschaltet · die Meldung ist abwählbar wie jede andere. */
+function isReview(settings: Settings, now: Date): boolean {
+  return settings.notify_weekly && isReviewDay(now);
 }
 
 /**
@@ -228,10 +253,14 @@ export function reminderLead(
   input: ReminderInput,
   now: Date
 ): string {
-  if (isWeekEnd(now)) {
+  if (isReview(settings, now)) {
+    // Der Bericht ist der Aufmacher, sobald es einen gibt · er sagt in einem
+    // Satz, was die Woche verändert hat. Ohne ihn bleibt die Minutenzahl, mit
+    // der diese Meldung schon vorher auskam.
+    if (input.report) return reportHeadline(input.report, t);
     return settings.weekly_minutes > 0
-      ? t("notify.leadWeekReview", { a: input.weekMinutes, m: settings.weekly_minutes })
-      : t("notify.leadWeekReviewOpen", { a: input.weekMinutes });
+      ? t("notify.leadWeekReview", { a: input.lastWeekMinutes, m: settings.weekly_minutes })
+      : t("notify.leadWeekReviewOpen", { a: input.lastWeekMinutes });
   }
   // Eine Serie ist das Einzige, was ein verpasster Abend endgültig kostet ·
   // deshalb steht sie vorn, sobald sie wirklich auf dem Spiel steht.
@@ -259,7 +288,7 @@ export function reminderMessage(
   now: Date
 ): ReminderMessage | null {
   const detail = reminderBody(t, settings, input) ?? "";
-  const review = isWeekEnd(now);
+  const review = isReview(settings, now);
   if (!detail && !review) return null;
   const lead = reminderLead(t, settings, input, now);
   return {
@@ -272,8 +301,56 @@ export function reminderMessage(
   };
 }
 
+/**
+ * Der Wochenbericht für die Meldung am Montag.
+ *
+ * Bewusst *ohne* Prüfung auf den Wochentag: Android plant alle sieben Abende
+ * im Voraus, und der Montagstext muss deshalb auch an einem Donnerstag
+ * entstehen können. Der Alarm trägt dann den zuletzt bekannten Bericht — wie
+ * jede andere vorausgeplante Zeile auch, und die App plant bei jedem Start neu.
+ *
+ * Geholt wird er nur, wenn er überhaupt vorkommen kann: mit eingeschalteter
+ * Wochenmeldung und mit Kiebitz Plus. Die Tiefenanalyse bleibt außen vor — der
+ * Aufmacher braucht nur die Veränderung, und `deep_insights` ist der teuerste
+ * Aufruf der App. Der dritte Block des Berichts („was jetzt dran ist") steht
+ * dafür in der Karte im Study-Reiter, wohin die Meldung ohnehin führt.
+ */
+async function weeklyContext(
+  now: Date,
+  settings?: Settings
+): Promise<{ report: WeeklyReport | null; minutes: number }> {
+  const off = { report: null, minutes: 0 };
+  if (settings && !settings.notify_weekly) return off;
+
+  const week = reportWeek(now);
+  const program = await trainingProgram().catch(() => null);
+  if (!program) return off;
+  const minutes = program.days
+    .filter((day) => day.day_ts >= week.start && day.day_ts < week.end)
+    .reduce((sum, day) => sum + dayMinutes(day), 0);
+
+  // Der Bericht gehört zu Kiebitz Plus · ohne ihn bleibt der Minutenstand, mit
+  // dem diese Meldung schon vorher auskam.
+  if (!featureUnlocked("adaptive_plan")) return { report: null, minutes };
+  const before = previousWeek(week);
+  const measured = await studyMetrics([
+    { from_ts: week.start, to_ts: week.end },
+    { from_ts: before.start, to_ts: before.end },
+  ]).catch(() => []);
+  if (measured.length < 2) return { report: null, minutes };
+  return {
+    report: buildWeeklyReport({
+      week,
+      metrics: measured[0],
+      previous: measured[1],
+      days: program.days,
+    }),
+    minutes,
+  };
+}
+
 /** Fälligkeiten für heute einsammeln. */
-export async function collectDue(now = new Date()): Promise<ReminderInput> {
+export async function collectDue(now = new Date(), settings?: Settings): Promise<ReminderInput> {
   const today = localDay(now);
   // Der Kalender kommt jetzt für die ganze Woche · aus denselben Tagen, aus
   // denen die App ihre Wochenbilanz rechnet. Ein zweiter Zeitraum für dieselbe
@@ -281,9 +358,10 @@ export async function collectDue(now = new Date()): Promise<ReminderInput> {
   const weekday = now.getDay() || 7;
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - weekday + 1);
   const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-  const [data, calendar] = await Promise.all([
+  const [data, calendar, weekly] = await Promise.all([
     studyData(),
     getStudyCalendar(localDay(monday), localDay(sunday)).catch(() => null),
+    weeklyContext(now, settings).catch(() => ({ report: null, minutes: 0 })),
   ]);
   const openUnits = (calendar?.events ?? []).filter(
     (event) => event.day === today && !event.completed
@@ -298,6 +376,8 @@ export async function collectDue(now = new Date()): Promise<ReminderInput> {
     streakDays: Math.max(0, data.streak_days),
     todayMinutes: days.find((day) => day.day === today)?.actual_minutes ?? 0,
     weekMinutes: days.reduce((sum, day) => sum + day.actual_minutes, 0),
+    report: weekly.report,
+    lastWeekMinutes: weekly.minutes,
   };
 }
 
@@ -389,10 +469,10 @@ export async function applyReminderSchedule(): Promise<void> {
     const t = await loadTranslator(settings.locale);
     // Vor dem Planen · die Alarme tragen den Kanal, den es dann geben muss.
     await ensureNotificationChannel(t);
-    const due = await collectDue().catch(() => null);
+    const due = await collectDue(new Date(), settings).catch(() => null);
     const [hour, minute] = settings.notify_time.split(":").map(Number);
     // Je Wochentag ein Alarm mit dem Text, der an diesem Abend gilt · der
-    // Sonntag bekommt den Rückblick, die übrigen sechs die Erinnerung. Der
+    // Montag bekommt den Wochenbericht, die übrigen sechs die Erinnerung. Der
     // Datenstand ist für alle derselbe (der des letzten App-Starts); was sich
     // unterscheidet, ist die *Form* der Meldung, und die hängt am Wochentag.
     const batch = SCHEDULED_IDS.map((id, index) => {
@@ -424,7 +504,7 @@ export async function applyReminderSchedule(): Promise<void> {
   await invoke<string>("sync_reminder_schedule").catch(() => "");
   if (!settings.notify_enabled) return;
   const t = await loadTranslator(settings.locale);
-  const due = await collectDue().catch(() => null);
+  const due = await collectDue(new Date(), settings).catch(() => null);
   const message = due && reminderMessage(t, settings, due, new Date());
   if (message) {
     await invoke("save_reminder_snapshot", {
@@ -442,7 +522,7 @@ export async function sendTestReminder(): Promise<void> {
   // vorher angelegten Kanal käme sie im Vorgabekanal „Default" an.
   if (await isMobile()) await ensureNotificationChannel(t);
   const now = new Date();
-  const message = reminderMessage(t, settings, await collectDue(now), now);
+  const message = reminderMessage(t, settings, await collectDue(now, settings), now);
   // Der Testknopf zeigt immer etwas · sonst wäre „nichts passiert" nicht von
   // „Benachrichtigungen kommen nicht durch" zu unterscheiden.
   await notify(message?.title ?? t("notify.title"), message?.body ?? t("notify.allDone"));
@@ -459,7 +539,7 @@ async function runCheck(): Promise<void> {
   // Fall „App läuft gerade“ auf dem Desktop.
   if (await isMobile()) return;
   const t = await loadTranslator(settings.locale);
-  const message = reminderMessage(t, settings, await collectDue(now), now);
+  const message = reminderMessage(t, settings, await collectDue(now, settings), now);
   // Auch ein stiller Tag gilt als erledigt · höchstens eine Erinnerung pro Tag.
   localStorage.setItem(LAST_SENT_KEY, today);
   if (message) await notify(message.title, message.body).catch(() => {});

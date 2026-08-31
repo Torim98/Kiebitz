@@ -1092,6 +1092,9 @@ export default function SettingsPage({
                   ["notify_puzzles", t("set.notifyPuzzles")],
                   ["notify_endgame", t("set.notifyEndgame")],
                   ["notify_analysis", t("set.notifyAnalysis")],
+                  // Der Wochenbericht ist keine Fälligkeit, sondern die Form,
+                  // die die Meldung am Montag annimmt · abwählbar wie der Rest.
+                  ["notify_weekly", t("set.notifyWeekly")],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex cursor-pointer items-center gap-3">

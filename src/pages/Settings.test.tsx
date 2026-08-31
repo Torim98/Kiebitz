@@ -120,6 +120,7 @@ const androidSettings = {
   notify_puzzles: true,
   notify_endgame: true,
   notify_analysis: true,
+  notify_weekly: true,
   weekly_minutes: 0,
   training_days: 0,
   goal_date: "",

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { translator } from "./i18n";
+import { setFormatLocale } from "./format";
 import type { Settings } from "./settings";
 import {
   applyReminderSchedule,
@@ -18,7 +19,13 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const t = translator("de");
 
-beforeEach(() => invokeMock.mockReset());
+beforeEach(() => {
+  invokeMock.mockReset();
+  // Wie in der App: `loadTranslator` stellt das Zahlformat auf die Sprache der
+  // Meldung. Der Aufmacher des Wochenberichts trägt Kennzahlen, und die müssen
+  // dem Satz folgen, in dem sie stehen.
+  setFormatLocale("de-DE");
+});
 
 function settings(overrides: Partial<Settings> = {}): Settings {
   return {
@@ -63,6 +70,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     notify_puzzles: true,
     notify_endgame: true,
     notify_analysis: true,
+    notify_weekly: true,
     weekly_minutes: 0,
     training_days: 0,
     goal_date: "",
@@ -83,7 +91,44 @@ function due(overrides: Partial<ReminderInput> = {}): ReminderInput {
     streakDays: 0,
     todayMinutes: 0,
     weekMinutes: 0,
+    report: null,
+    lastWeekMinutes: 0,
     ...overrides,
+  };
+}
+
+/**
+ * Ein Bericht mit genau einer Aussage · mehr braucht der Aufmacher nicht, und
+ * die Rechnung dahinter prüft `weekly.test.ts`.
+ */
+function weeklyReport(): NonNullable<ReminderInput["report"]> {
+  const week = { start: 1_786_060_800, end: 1_786_060_800 + 7 * 86_400 };
+  return {
+    week,
+    games: 14,
+    previousGames: 11,
+    minutes: 196,
+    previousMinutes: 142,
+    target: 240,
+    activeDays: 5,
+    byArea: [],
+    changes: [
+      {
+        key: "blunders_per100",
+        from: 4.1,
+        to: 2.8,
+        delta: -1.3,
+        unit: "per100",
+        lowerIsBetter: true,
+        n: 612,
+        noise: 0.8,
+        moved: true,
+        better: true,
+      },
+    ],
+    quiet: null,
+    rating: null,
+    next: null,
   };
 }
 
@@ -127,9 +172,9 @@ describe("reminder text", () => {
   });
 });
 
-// Mittwoch bzw. Sonntag · der Wochentag entscheidet über die Form der Meldung.
+// Mittwoch bzw. Montag · der Wochentag entscheidet über die Form der Meldung.
 const WEDNESDAY = new Date(2026, 7, 12, 18, 0);
-const SUNDAY = new Date(2026, 7, 16, 18, 0);
+const MONDAY = new Date(2026, 7, 17, 18, 0);
 
 describe("reminder message", () => {
   it("puts the reason first and the list below it", () => {
@@ -166,26 +211,49 @@ describe("reminder message", () => {
     expect(message?.lead).toBe("Noch 90 Min. bis zum Wochenziel.");
   });
 
-  it("reviews the week on sunday, even with nothing left to do", () => {
-    // Unter der Woche schweigt Kiebitz, wenn nichts offen ist · der Rückblick
-    // berichtet aber über die Woche und nicht über diesen Abend.
+  it("reports the finished week on monday, even with nothing left to do", () => {
+    // Unter der Woche schweigt Kiebitz, wenn nichts offen ist · der Bericht
+    // erzählt aber von der vergangenen Woche und nicht von diesem Abend.
     expect(reminderMessage(t, settings(), due(), WEDNESDAY)).toBeNull();
 
     const review = reminderMessage(
       t,
       settings({ weekly_minutes: 180 }),
-      due({ weekMinutes: 145 }),
-      SUNDAY
+      // Der Montag steht am Anfang seiner eigenen Woche · berichtet wird über
+      // die abgeschlossene davor.
+      due({ weekMinutes: 0, lastWeekMinutes: 145 }),
+      MONDAY
     );
     expect(review?.title).toBe("Deine Woche");
-    expect(review?.lead).toBe("145 von 180 Min. diese Woche.");
+    expect(review?.lead).toBe("145 von 180 Min. letzte Woche.");
     expect(review?.detail).toBe("");
-    expect(review?.body).toBe("145 von 180 Min. diese Woche.");
+    expect(review?.body).toBe("145 von 180 Min. letzte Woche.");
   });
 
-  it("reviews without a budget too", () => {
-    const review = reminderMessage(t, settings(), due({ weekMinutes: 45 }), SUNDAY);
-    expect(review?.lead).toBe("45 Min. diese Woche trainiert.");
+  it("reports without a budget too", () => {
+    const review = reminderMessage(t, settings(), due({ lastWeekMinutes: 45 }), MONDAY);
+    expect(review?.lead).toBe("45 Min. letzte Woche trainiert.");
+  });
+
+  it("leads with the report itself once there is one", () => {
+    // Der Wochenbericht schlägt die Minutenzahl · er sagt in einem Satz, was
+    // die Woche verändert hat, und genau dafür gibt es ihn.
+    const review = reminderMessage(
+      t,
+      settings({ weekly_minutes: 180 }),
+      due({ lastWeekMinutes: 145, report: weeklyReport() }),
+      MONDAY
+    );
+    expect(review?.title).toBe("Deine Woche");
+    expect(review?.lead).toBe("Besser geworden: Patzer/100 Züge von 4,1 auf 2,8.");
+  });
+
+  it("keeps monday an ordinary evening once the weekly report is switched off", () => {
+    const off = settings({ notify_weekly: false, weekly_minutes: 180 });
+    expect(reminderMessage(t, off, due({ lastWeekMinutes: 145 }), MONDAY)).toBeNull();
+    expect(reminderMessage(t, off, due({ repertoire: 3, weekMinutes: 20 }), MONDAY)?.title).toBe(
+      "Training"
+    );
   });
 });
 
@@ -317,11 +385,14 @@ describe("native notification bridge", () => {
           entry.schedule.interval.interval.weekday
       )
     ).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    // Der Sonntag trägt den Rückblick, die übrigen sechs die Erinnerung.
-    expect(batch[0].title).toBe("Deine Woche");
-    expect(batch.slice(1).every((entry: { title: string }) => entry.title === "Training")).toBe(
-      true
-    );
+    // Der Montag trägt den Wochenbericht, die übrigen sechs die Erinnerung ·
+    // `weekday` zählt ab Sonntag = 1, der Montag ist also der zweite Alarm.
+    expect(batch[1].title).toBe("Deine Woche");
+    expect(
+      batch
+        .filter((_: unknown, index: number) => index !== 1)
+        .every((entry: { title: string }) => entry.title === "Training")
+    ).toBe(true);
 
     expect(batch[1]).toEqual(
       expect.objectContaining({

@@ -35,7 +35,11 @@ on your device. Devices sync directly with each other over the local network.
   measured time covers them, and what a week leaves open carries into the next.
   What to work on is read from the stretch you actually played in — a few weeks
   if you play daily, a quarter if you play now and then — so the advice moves
-  when your play moves.
+  when your play moves. A symbol in the header lights up once a week for a
+  report on the week that just ended — what changed, what the training did,
+  what to work on now — and opens it over the page. Every number in it is
+  checked against the noise its own sample carries, so a quiet week is
+  reported as a quiet week and not as progress.
 - **Sharing** — send a position from the analysis board, a puzzle from the
   trainer, an opening line from the repertoire or an endgame drill: a picture
   card in Kiebitz' own colours plus a link that opens the position anywhere.

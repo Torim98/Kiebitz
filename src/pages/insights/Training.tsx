@@ -25,6 +25,7 @@ import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
 import { dateLocale, de, deInt } from "../../lib/format";
+import { isoWeek } from "../../lib/dates";
 import { themeLabel, type PuzzleInsights } from "../../lib/puzzles";
 import { studyMetrics, type DeepInsights, type MetricWindow } from "../../lib/insights";
 import { trainingProgram, type TrainingProgram } from "../../lib/study";
@@ -34,21 +35,6 @@ import { Empty, FindingStrip, Kpi, MetricBar, Section, Stat, Versus } from "./pa
 
 function solveRate(entry: { attempts: number; solved: number }): number {
   return entry.attempts === 0 ? 0 : Math.round((entry.solved / entry.attempts) * 100);
-}
-
-/** ISO-Kalenderwoche · Beschriftung der Wochenbalken. */
-function isoWeek(date: Date): number {
-  const target = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
-  );
-  // Auf den Donnerstag derselben Woche schieben · dessen Jahr bestimmt nach
-  // ISO 8601 die Wochennummer.
-  target.setUTCDate(target.getUTCDate() + 3 - ((target.getUTCDay() + 6) % 7));
-  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-  firstThursday.setUTCDate(
-    firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7)
-  );
-  return 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
 }
 
 export default function Training({

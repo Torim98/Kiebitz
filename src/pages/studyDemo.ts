@@ -9,9 +9,42 @@
 import { isoDay } from "../lib/dates";
 import type { Locale } from "../lib/i18n";
 import type { Finding } from "../lib/findings";
+import type { Prescription } from "../lib/plan";
+import { reportWeek, type WeeklyChange } from "../lib/weekly";
 import type { StudyState } from "./Study";
 
 const DAY = 86_400;
+
+/**
+ * Eine Veränderung für den Demo-Wochenbericht.
+ *
+ * `moved` wird gerechnet und nicht gesetzt: Sonst ließe sich hier eine
+ * Bewegung als Aussage ausweisen, die ihre eigene Rauschgrenze nicht erreicht
+ * — genau der Fehler, den der Bericht verhindern soll.
+ */
+function demoChange(
+  key: string,
+  from: number,
+  to: number,
+  unit: WeeklyChange["unit"],
+  lowerIsBetter: boolean,
+  n: number,
+  noise: number
+): WeeklyChange {
+  const delta = Math.round((to - from) * 10) / 10;
+  return {
+    key,
+    from,
+    to,
+    delta,
+    unit,
+    lowerIsBetter,
+    n,
+    noise,
+    moved: Math.abs(delta) > noise,
+    better: lowerIsBetter ? delta < 0 : delta > 0,
+  };
+}
 
 export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
   const now = Math.floor(Date.now() / 1000);
@@ -65,6 +98,38 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
     },
   ];
 
+  // Die Verordnungen stehen vor dem Zustand, weil der Wochenbericht mit
+  // derselben endet, die auch im Coach oben steht · zwei Kopien wären zwei
+  // Gelegenheiten, sie auseinanderlaufen zu lassen.
+  const prescriptions: Prescription[] = [
+    {
+      id: "time-trouble",
+      area: "play",
+      finding: findings[0],
+      doseKey: "plan.dosePlay",
+      doseParams: { m: 65 },
+    },
+    {
+      id: "punishment",
+      area: "tactics",
+      finding: findings[1],
+      doseKey: "plan.dosePuzzlesTheme",
+      doseParams: { n: 15, lo: 1420, hi: 1670, theme: "fork" },
+      action: { kind: "puzzles", theme: "fork", minRating: 1420, maxRating: 1670 },
+    },
+    {
+      id: "opening-black-name:sicilian defense",
+      area: "openings",
+      finding: findings[2],
+      doseKey: "plan.doseOpenings",
+      doseParams: { m: 12, d: 5 },
+      action: { kind: "repertoire" },
+    },
+  ];
+
+  // Die zuletzt abgeschlossene Woche · dieselbe Rechnung wie in der App.
+  const demoWeek = reportWeek(new Date());
+
   return {
     data: {
       due_now: 14,
@@ -114,31 +179,7 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
         { area: "endgames", target: 10, minutes: 24, evidence: 0.3 },
         { area: "analysis", target: 11, minutes: 27, evidence: 0 },
       ],
-      prescriptions: [
-        {
-          id: "time-trouble",
-          area: "play",
-          finding: findings[0],
-          doseKey: "plan.dosePlay",
-          doseParams: { m: 65 },
-        },
-        {
-          id: "punishment",
-          area: "tactics",
-          finding: findings[1],
-          doseKey: "plan.dosePuzzlesTheme",
-          doseParams: { n: 15, lo: 1420, hi: 1670, theme: "fork" },
-          action: { kind: "puzzles", theme: "fork", minRating: 1420, maxRating: 1670 },
-        },
-        {
-          id: "opening-black-name:sicilian defense",
-          area: "openings",
-          finding: findings[2],
-          doseKey: "plan.doseOpenings",
-          doseParams: { m: 12, d: 5 },
-          action: { kind: "repertoire" },
-        },
-      ],
+      prescriptions,
       hygiene: [
         // Blitz ist in der Demo zugleich das meistgespielte und das schwächere
         // Format · deshalb bestätigt der Coach den Trainingsfokus.
@@ -216,6 +257,45 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       },
     ],
     rating: { delta: 34, confidence: "measured", pools: 2, games: 118 },
+    // Der Wochenbericht der Vorwoche · in der Vorschau ist er die Karte, mit
+    // der die Seite aufmacht. Die Zahlen sind so gewählt, dass alle drei
+    // Blöcke etwas zu sagen haben: eine Kennzahl über der Rauschgrenze, eine
+    // Woche mit gemessener Zeit, und eine Verordnung mit Knopf am Ende.
+    weekly: {
+      week: demoWeek,
+      games: 14,
+      previousGames: 11,
+      minutes: 196,
+      previousMinutes: 142,
+      target: 240,
+      activeDays: 5,
+      byArea: [
+        { area: "play", minutes: 84, previous: 71, target: 65, change: null },
+        {
+          area: "tactics",
+          minutes: 62,
+          previous: 31,
+          target: 74,
+          change: demoChange("blunders_per100", 4.1, 2.8, "per100", true, 612, 0.8),
+        },
+        {
+          area: "openings",
+          minutes: 26,
+          previous: 18,
+          target: 50,
+          change: demoChange("in_book_pct", 61.5, 68.2, "pct", false, 13, 9.4),
+        },
+        { area: "endgames", minutes: 12, previous: 0, target: 24, change: null },
+        { area: "analysis", minutes: 12, previous: 22, target: 27, change: null },
+      ],
+      changes: [
+        demoChange("blunders_per100", 4.1, 2.8, "per100", true, 612, 0.8),
+        demoChange("acc_overall", 78.4, 81.1, "pct", false, 14, 2.1),
+      ],
+      quiet: null,
+      rating: { delta: 21, confidence: "measured", pools: 1, games: 14 },
+      next: prescriptions[1],
+    },
     trainingDays: [true, true, false, true, true, false, true],
     observedWeeklyMinutes: 201,
     budgetSet: true,

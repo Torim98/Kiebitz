@@ -5,6 +5,7 @@ import { ShellProvider } from "../components/MobileShell";
 import Study from "./Study";
 import { demoDeepInsights } from "./insights/demo";
 import { grantPlus } from "../test/plus";
+import { reportWeek } from "../lib/weekly";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
@@ -51,7 +52,8 @@ interface BackendOptions {
   deep?: unknown;
   program?: ReturnType<typeof emptyProgram>;
   puzzles?: unknown;
-  metrics?: unknown[];
+  /** Feste Antwort oder eine Funktion, die je Fenster eine baut. */
+  metrics?: unknown[] | ((spec: { from_ts: number; to_ts: number }) => unknown);
   settings?: Record<string, unknown>;
 }
 
@@ -64,7 +66,7 @@ function mockBackend(options: BackendOptions = {}) {
     metrics = [],
     settings = {},
   } = options;
-  invokeMock.mockImplementation((command: string) => {
+  invokeMock.mockImplementation((command: string, args?: unknown) => {
     switch (command) {
       case "app_info":
         return Promise.resolve({ version: "0.4.4", backend: "tauri", platform: "windows" });
@@ -85,7 +87,15 @@ function mockBackend(options: BackendOptions = {}) {
       case "puzzle_insights":
         return Promise.resolve(puzzles);
       case "study_metrics":
-        return Promise.resolve(metrics);
+        // Der Aufruf trägt inzwischen mehrere Fenster (Befundfenster plus die
+        // zwei Wochen des Berichts). Die Antwort folgt deshalb den Fenstern
+        // und nicht ihrer Reihenfolge · sonst hinge der Test an der internen
+        // Sortierung der Seite.
+        return Promise.resolve(
+          typeof metrics === "function"
+            ? (args as { windows: { from_ts: number; to_ts: number }[] }).windows.map(metrics)
+            : metrics
+        );
       case "study_calendar":
         return Promise.resolve({
           templates: [
@@ -368,6 +378,116 @@ describe("Study page", () => {
       const call = invokeMock.mock.calls.find(([command]) => command === "schedule_study_unit");
       expect(call?.[1]).toMatchObject({ templateId: 1 });
       expect(call?.[1].plannedMin).toBeGreaterThanOrEqual(10);
+    });
+  });
+  describe("weekly report", () => {
+    /**
+     * Kennzahlen je Fenster · die berichtete Woche steht besser da als die
+     * davor. Alles außerhalb der beiden Wochen bekommt dieselben Zahlen wie
+     * die Vorwoche: das Befundfenster spielt für den Bericht keine Rolle.
+     */
+    function reportMetrics() {
+      const week = reportWeek(new Date());
+      return (spec: { from_ts: number }) => ({
+        from_ts: spec.from_ts,
+        to_ts: spec.from_ts + 7 * DAY,
+        games: 12,
+        ratings: [],
+        metrics: [
+          {
+            key: "blunders_per100",
+            value: spec.from_ts === week.start ? 2.3 : 4.4,
+            n: 600,
+            sd: null,
+            unit: "per100",
+            lower_is_better: true,
+          },
+        ],
+      });
+    }
+
+    /** Eine gemessene Trainingswoche in genau dem berichteten Zeitraum. */
+    function reportedDays() {
+      const week = reportWeek(new Date());
+      return [0, 1, 2, 3, 4, 5, 6].map((offset) => ({
+        day_ts: week.start + offset * DAY,
+        play: 12,
+        tactics: 9,
+        openings: 0,
+        endgames: 0,
+        analysis: 0,
+      }));
+    }
+
+    const backend = () => ({
+      deep: demoDeepInsights(),
+      program: emptyProgram({ days: reportedDays() }),
+      metrics: reportMetrics(),
+    });
+
+    it("stays out of the page until the symbol in the header is used", async () => {
+      mockBackend(backend());
+      renderStudy();
+
+      // Ungelesen leuchtet das Symbol · der Bericht selbst nimmt der Seite
+      // keinen Platz weg, solange ihn niemand aufgemacht hat.
+      const open = await screen.findByRole("button", { name: /Neuer Wochenbericht/ });
+      expect(screen.queryByText(/Besser geworden/)).toBeNull();
+      expect(document.querySelector("[data-weekly-report]")).toBeNull();
+
+      fireEvent.click(open);
+
+      expect(await screen.findByText(/Besser geworden: Patzer\/100 Züge/)).toBeTruthy();
+      // Die drei Blöcke des Berichts · sie sind seine ganze Aussage.
+      expect(document.querySelector("[data-weekly-block='changes']")).toBeTruthy();
+      expect(document.querySelector("[data-weekly-block='effect']")).toBeTruthy();
+      expect(document.querySelector("[data-weekly-block='next']")).toBeTruthy();
+      // Gemessene Zeit der berichteten Woche, nicht der laufenden.
+      expect(screen.getByText("147")).toBeTruthy();
+      // Als Dialog über der Seite, nicht als Karte darin.
+      expect(document.querySelector("[role='dialog']")).toBeTruthy();
+    });
+
+    it("stops flagging the report as new once it has been opened", async () => {
+      mockBackend(backend());
+      renderStudy();
+
+      fireEvent.click(await screen.findByRole("button", { name: /Neuer Wochenbericht/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Bericht schließen" }));
+      expect(document.querySelector("[data-weekly-report]")).toBeNull();
+
+      // Gelesen ist gelesen · das Symbol bleibt aber stehen, der Bericht ist
+      // die Woche über erreichbar. Auch nach einem Neustart der Seite: der
+      // Merker liegt im Speicher der Installation und trägt den Wochenanfang.
+      cleanup();
+      mockBackend(backend());
+      renderStudy();
+      const again = await screen.findByRole("button", { name: "Wochenbericht öffnen" });
+      fireEvent.click(again);
+      expect(screen.getByText(/Besser geworden/)).toBeTruthy();
+    });
+
+    it("closes itself on the way into the trainer it points at", async () => {
+      mockBackend(backend());
+      const openPuzzles = vi.fn();
+      renderStudy(vi.fn(), openPuzzles);
+
+      fireEvent.click(await screen.findByRole("button", { name: /Neuer Wochenbericht/ }));
+      const next = document.querySelector("[data-weekly-block='next'] button");
+      fireEvent.click(next!);
+
+      expect(openPuzzles).toHaveBeenCalled();
+      // Sonst läge der Bericht über dem Trainer, in den er gerade geführt hat.
+      expect(document.querySelector("[data-weekly-report]")).toBeNull();
+    });
+
+    it("has no report for a week that was neither played nor trained", async () => {
+      mockBackend({ deep: demoDeepInsights(), metrics: () => null });
+      renderStudy();
+      await screen.findByText("3 / 10");
+      // Kein Bericht, kein Symbol · ein Knopf, der eine leere Woche aufmacht,
+      // wäre ein Versprechen ohne Inhalt.
+      expect(document.querySelector("[data-weekly-open]")).toBeNull();
     });
   });
 });

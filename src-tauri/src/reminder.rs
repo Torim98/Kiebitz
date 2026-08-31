@@ -38,6 +38,10 @@ pub struct DueSummary {
     pub today_minutes: i64,
     /// Diese Woche gemessene Minuten (Montag bis heute).
     pub week_minutes: i64,
+    /// Gemessene Minuten der zuletzt abgeschlossenen Woche · die Zahl des
+    /// Wochenberichts am Montag. Ohne sie stünde dort der Stand des laufenden
+    /// Montags, also fast immer eine Null.
+    pub last_week_minutes: i64,
 }
 
 /// Eine fertige Benachrichtigung · Aufmacher und Aufzählung.
@@ -86,7 +90,10 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
     let my_move = "((side = 'white' AND depth % 2 = 1) OR (side = 'black' AND depth % 2 = 0))";
     let today = crate::study::iso_day(day_start);
     // Montag bis heute · derselbe Zeitraum, den auch das Wochenbudget zeigt.
-    let week = crate::study::study_days(conn, week_start(day_start), day_start, now)?;
+    let monday = week_start(day_start);
+    let week = crate::study::study_days(conn, monday, day_start, now)?;
+    // Die abgeschlossene Woche davor · sie trägt den Wochenbericht am Montag.
+    let last_week = crate::study::study_days(conn, monday - 7 * 86_400, monday - 86_400, now)?;
     Ok(DueSummary {
         study: conn
             .query_row(
@@ -122,12 +129,13 @@ pub fn collect_due(conn: &Connection, now: i64, puzzle_goal: i64) -> Result<DueS
         streak_days: crate::study::training_streak(conn, day_start / 86_400).unwrap_or(0),
         today_minutes: week.last().map(|day| day.actual_minutes).unwrap_or(0),
         week_minutes: week.iter().map(|day| day.actual_minutes).sum(),
+        last_week_minutes: last_week.iter().map(|day| day.actual_minutes).sum(),
     })
 }
 
 /// Montag der laufenden Woche als Tagesbeginn in Sekunden.
 ///
-/// Wie `is_week_end` ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist
+/// Wie `is_review_day` ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist
 /// der Wochentag `(Tage + 3) mod 7` mit Montag = 0.
 #[cfg(any(desktop, test))]
 fn week_start(day_start: i64) -> i64 {
@@ -216,33 +224,33 @@ fn template(locale: &str, key: &str) -> &'static str {
             _ => "{n} min left to your weekly goal.",
         },
         "leadWeekReviewOpen" => match locale {
-            "de" => "{n} Min. diese Woche trainiert.",
-            "es" => "{n} min entrenados esta semana.",
-            "fr" => "{n} min travaillées cette semaine.",
-            "hi" => "इस सप्ताह {n} मिनट अभ्यास।",
-            "ar" => "{n} دقيقة تدريب هذا الأسبوع.",
-            "zh" => "本周训练 {n} 分钟。",
-            _ => "{n} min trained this week.",
+            "de" => "{n} Min. letzte Woche trainiert.",
+            "es" => "{n} min entrenados la semana pasada.",
+            "fr" => "{n} min travaillées la semaine dernière.",
+            "hi" => "पिछले सप्ताह {n} मिनट अभ्यास।",
+            "ar" => "{n} دقيقة تدريب الأسبوع الماضي.",
+            "zh" => "上周训练 {n} 分钟。",
+            _ => "{n} min trained last week.",
         },
         _ => "",
     }
 }
 
-/// Zweistellige Vorlagen · der Wochenrückblick nennt Ist und Soll.
+/// Zweistellige Vorlagen · der Wochenbericht nennt Ist und Soll.
 #[cfg(any(desktop, test))]
 fn week_review(locale: &str, actual: i64, target: i64) -> String {
     match locale {
-        "de" => format!("{actual} von {target} Min. diese Woche."),
-        "es" => format!("{actual} de {target} min esta semana."),
-        "fr" => format!("{actual} sur {target} min cette semaine."),
-        "hi" => format!("इस सप्ताह {target} में से {actual} मिनट।"),
-        "ar" => format!("{actual} من {target} دقيقة هذا الأسبوع."),
-        "zh" => format!("本周 {actual} / {target} 分钟。"),
-        _ => format!("{actual} of {target} min this week."),
+        "de" => format!("{actual} von {target} Min. letzte Woche."),
+        "es" => format!("{actual} de {target} min la semana pasada."),
+        "fr" => format!("{actual} sur {target} min la semaine dernière."),
+        "hi" => format!("पिछले सप्ताह {target} में से {actual} मिनट।"),
+        "ar" => format!("{actual} من {target} دقيقة الأسبوع الماضي."),
+        "zh" => format!("上周 {actual} / {target} 分钟。"),
+        _ => format!("{actual} of {target} min last week."),
     }
 }
 
-/// Titel des Wochenrückblicks.
+/// Titel des Wochenberichts.
 #[cfg(any(desktop, test))]
 pub fn title_week(locale: &str) -> String {
     match locale {
@@ -303,15 +311,21 @@ pub fn reminder_body(settings: &Settings, due: &DueSummary) -> Option<String> {
     }
 }
 
-/// Ist der Zeitpunkt ein Sonntag? Dann tritt der Rückblick an die Stelle der
-/// Erinnerung · dieselbe Regel wie in `notify.ts`.
+/// Ist der Zeitpunkt ein Montag? Dann tritt der Wochenbericht an die Stelle
+/// der Erinnerung · dieselbe Regel wie in `notify.ts`.
 ///
-/// Ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist Sonntag der Rest 3
+/// Ohne `chrono`: Der 1.1.1970 war ein Donnerstag, also ist Montag der Rest 4
 /// der ganzzahligen Tage seit der Epoche. `rem_euclid` hält das auch für
 /// Zeitpunkte vor 1970 richtig.
 #[cfg(any(desktop, test))]
-pub fn is_week_end(now: i64) -> bool {
-    now.div_euclid(86_400).rem_euclid(7) == 3
+pub fn is_review_day(now: i64) -> bool {
+    now.div_euclid(86_400).rem_euclid(7) == 4
+}
+
+/// Berichtstag *und* eingeschaltet · wie `isReview` im Frontend.
+#[cfg(any(desktop, test))]
+fn is_review(settings: &Settings, now: i64) -> bool {
+    settings.notify_weekly && is_review_day(now)
 }
 
 /// Der Aufmacher · eine Zeile, die sagt, warum die Meldung heute kommt.
@@ -322,11 +336,15 @@ pub fn is_week_end(now: i64) -> bool {
 pub fn reminder_lead(settings: &Settings, due: &DueSummary, now: i64) -> String {
     let locale = settings.locale.as_str();
     let target = settings.weekly_minutes as i64;
-    if is_week_end(now) {
+    if is_review(settings, now) {
+        // Der Hintergrundlauf kennt die Kennzahlen des Berichts nicht — die
+        // rechnet das Frontend (`weekly.ts`). Bleibt die Minutenzahl der
+        // abgeschlossenen Woche · dieselbe Zeile, mit der diese Meldung schon
+        // vor dem Bericht auskam.
         return if target > 0 {
-            week_review(locale, due.week_minutes, target)
+            week_review(locale, due.last_week_minutes, target)
         } else {
-            phrase(locale, "leadWeekReviewOpen", due.week_minutes)
+            phrase(locale, "leadWeekReviewOpen", due.last_week_minutes)
         };
     }
     if due.streak_days >= 2 && due.today_minutes == 0 {
@@ -340,9 +358,9 @@ pub fn reminder_lead(settings: &Settings, due: &DueSummary, now: i64) -> String 
 
 /// Die fertige Meldung; None = nichts zu sagen.
 ///
-/// Am Sonntag ist das anders als unter der Woche: Der Rückblick lohnt sich
-/// auch ohne offene Punkte, denn er berichtet über die Woche und nicht über
-/// diesen Abend.
+/// Am Montag ist das anders als unter der Woche: Der Wochenbericht lohnt sich
+/// auch ohne offene Punkte, denn er berichtet über die vergangene Woche und
+/// nicht über diesen Abend.
 #[cfg(any(desktop, test))]
 pub fn reminder_message(
     settings: &Settings,
@@ -350,7 +368,7 @@ pub fn reminder_message(
     now: i64,
 ) -> Option<ReminderMessage> {
     let detail = reminder_body(settings, due).unwrap_or_default();
-    let review = is_week_end(now);
+    let review = is_review(settings, now);
     if detail.is_empty() && !review {
         return None;
     }
@@ -948,17 +966,18 @@ mod tests {
         );
     }
 
-    /// Mittwoch, 12.08.2026, 18:00 UTC · und der Sonntag derselben Woche.
+    /// Mittwoch, 12.08.2026, 18:00 UTC · und der Montag der Folgewoche.
     const WEDNESDAY: i64 = 1_786_492_800 + 18 * 3_600;
-    const SUNDAY: i64 = WEDNESDAY + 4 * 86_400;
+    const MONDAY: i64 = WEDNESDAY + 5 * 86_400;
 
     #[test]
-    fn week_end_is_sunday() {
-        assert!(!is_week_end(WEDNESDAY));
-        assert!(is_week_end(SUNDAY));
+    fn review_day_is_monday() {
+        assert!(!is_review_day(WEDNESDAY));
+        assert!(is_review_day(MONDAY));
         // Und auch über die Jahresgrenze hinweg, ohne Kalenderbibliothek.
-        assert!(is_week_end(SUNDAY + 7 * 86_400));
-        assert!(!is_week_end(SUNDAY + 86_400));
+        assert!(is_review_day(MONDAY + 7 * 86_400));
+        // Der Sonntag davor trägt ihn nicht mehr · dort lief die Woche noch.
+        assert!(!is_review_day(MONDAY - 86_400));
     }
 
     #[test]
@@ -1015,29 +1034,39 @@ mod tests {
     }
 
     #[test]
-    fn sunday_reviews_the_week_even_with_nothing_left() {
+    fn monday_reports_the_finished_week_even_with_nothing_left() {
         let done = DueSummary {
             endgame_done: true,
-            week_minutes: 145,
+            // Der Montag steht am Anfang seiner eigenen Woche · berichtet wird
+            // über die abgeschlossene, und nur deren Zahl darf hier stehen.
+            week_minutes: 0,
+            last_week_minutes: 145,
             ..DueSummary::default()
         };
-        // Unter der Woche schweigt Kiebitz · der Rückblick berichtet aber über
-        // die Woche und nicht über diesen Abend.
+        // Unter der Woche schweigt Kiebitz · der Bericht erzählt aber von der
+        // vergangenen Woche und nicht von diesem Abend.
         assert!(reminder_message(&settings(), &done, WEDNESDAY).is_none());
 
         let with_budget = Settings {
             weekly_minutes: 180,
             ..settings()
         };
-        let review = reminder_message(&with_budget, &done, SUNDAY).unwrap();
+        let review = reminder_message(&with_budget, &done, MONDAY).unwrap();
         assert_eq!(review.title, "Deine Woche");
-        assert_eq!(review.lead, "145 von 180 Min. diese Woche.");
+        assert_eq!(review.lead, "145 von 180 Min. letzte Woche.");
         assert_eq!(review.detail, "");
-        assert_eq!(review.body(), "145 von 180 Min. diese Woche.");
+        assert_eq!(review.body(), "145 von 180 Min. letzte Woche.");
 
-        // Ohne Budget nennt der Rückblick nur das Ist.
-        let open = reminder_message(&settings(), &done, SUNDAY).unwrap();
-        assert_eq!(open.lead, "145 Min. diese Woche trainiert.");
+        // Ohne Budget nennt der Bericht nur das Ist.
+        let open = reminder_message(&settings(), &done, MONDAY).unwrap();
+        assert_eq!(open.lead, "145 Min. letzte Woche trainiert.");
+
+        // Abgeschaltet ist der Montag ein Abend wie jeder andere.
+        let off = Settings {
+            notify_weekly: false,
+            ..with_budget
+        };
+        assert!(reminder_message(&off, &done, MONDAY).is_none());
     }
 
     #[test]

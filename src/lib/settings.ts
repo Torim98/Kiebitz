@@ -68,6 +68,8 @@ export interface Settings {
   notify_puzzles: boolean;
   notify_endgame: boolean;
   notify_analysis: boolean;
+  /** Der Wochenbericht am Montagabend statt der Erinnerung dieses Tages. */
+  notify_weekly: boolean;
   /** Trainingsbudget in Minuten pro Woche (0 = aus der Aktivität ableiten). */
   weekly_minutes: number;
   /** Trainingstage als Bitmaske, Bit 0 = Montag (0 = keine Vorgabe). */

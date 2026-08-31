@@ -96,6 +96,9 @@ pub struct Settings {
     pub notify_puzzles: bool,
     pub notify_endgame: bool,
     pub notify_analysis: bool,
+    /// Wochenbericht am Montagabend statt der Erinnerung dieses Tages.
+    /// Ab Werk an · er ersetzt die Meldung, statt eine zweite zu sein.
+    pub notify_weekly: bool,
     /// Trainingsbudget in Minuten pro Woche · Obergrenze für den Wochenplan.
     /// 0 = keine Vorgabe, dann leitet der Plan das Budget aus der bisherigen
     /// Aktivität ab (die Historie weiß besser als die Selbsteinschätzung, was
@@ -256,6 +259,7 @@ impl Default for Settings {
             notify_puzzles: true,
             notify_endgame: true,
             notify_analysis: true,
+            notify_weekly: true,
             weekly_minutes: 0,
             training_days: 0,
             goal_date: String::new(),
