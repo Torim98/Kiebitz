@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach } from "vitest";
 import CapturedPieces from "./CapturedPieces";
 import { PIECE_GLYPH } from "./pieceGlyphs";
+import { DEFAULT_APPEARANCE, setAppearance, setPlusUnlocked } from "../lib/theme";
 
 afterEach(cleanup);
 
@@ -19,6 +20,24 @@ describe("Schlagliste", () => {
     // zwei Figurens\u00e4tze, die bei einem Update auseinanderlaufen.
     const { container } = render(<CapturedPieces pieces={["n"]} color="white" advantage={0} />);
     expect(container.querySelector("[data-glyph='wN']")?.innerHTML).toBe(PIECE_GLYPH.wN);
+  });
+
+  // Ein gewähltes Set kommt nachgeladen (`lib/pieces/glyphs.ts`). Bis es da
+  // ist, steht der klassische Satz auf dem Brett · danach muss der Tausch von
+  // allein passieren, sonst zeigt die Schlagliste dauerhaft die falschen
+  // Figuren.
+  it("tauscht die Zeichnungen, sobald das gewählte Set da ist", async () => {
+    setPlusUnlocked(true);
+    act(() => setAppearance({ ...DEFAULT_APPEARANCE, pieceSet: "merida" }));
+    const { container } = render(<CapturedPieces pieces={["n"]} color="white" advantage={0} />);
+    const glyph = () => container.querySelector("[data-glyph='wN']")?.innerHTML ?? "";
+
+    expect(glyph()).toBe(PIECE_GLYPH.wN);
+    await waitFor(() => expect(glyph()).toContain("merida-wN-"));
+
+    act(() => setAppearance(DEFAULT_APPEARANCE));
+    setPlusUnlocked(null);
+    await waitFor(() => expect(glyph()).toBe(PIECE_GLYPH.wN));
   });
 
   it("nennt den Materialvorsprung nur, wenn es einen gibt", () => {

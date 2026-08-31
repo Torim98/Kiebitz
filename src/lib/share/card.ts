@@ -14,7 +14,8 @@
  * Die Beschriftungen kommen fertig übersetzt herein. Diese Datei kennt keine
  * Sprache, nur Text und Layout.
  */
-import type { PieceSetId } from "../pieces/sets";
+import { loadPieceGlyphs } from "../pieces/glyphs";
+import { DEFAULT_PIECE_SET, pieceSetDef, type PieceSetId } from "../pieces/sets";
 import { boardCoordinates, boardSvg } from "./board";
 import type { ShareMove } from "./codec";
 
@@ -181,6 +182,10 @@ async function readyFonts(): Promise<void> {
  */
 export async function renderShareCard(options: ShareCardOptions): Promise<Blob> {
   await readyFonts();
+  // Die Figuren des Absenders kommen nachgeladen · ohne dieses Warten trüge
+  // die Karte den klassischen Satz, während auf dem Bildschirm ein anderer
+  // steht (`lib/pieces/glyphs.ts`).
+  await loadPieceGlyphs(options.pieceSet ?? DEFAULT_PIECE_SET);
 
   const size = CARD_SIZE;
   const canvas = document.createElement("canvas");
@@ -303,13 +308,17 @@ export async function renderShareCard(options: ShareCardOptions): Promise<Blob> 
   ctx.fillStyle = INK3;
   ctx.fillText(options.tagline, pad + hostWidth + 18, footerY - 15);
 
-  // Die Figuren stehen unter CC BY-SA · das Bild wandert ohne die Landeseite
-  // weiter, also muss der Nachweis auf dem Bild selbst stehen.
-  ctx.font = `400 16px ${FONT}`;
-  ctx.fillStyle = "rgba(139, 138, 130, 0.65)";
-  ctx.textAlign = "right";
-  ctx.fillText("Figuren: Cburnett · CC BY-SA 3.0", size - pad, footerY + 22);
-  ctx.textAlign = "left";
+  // Fremde Zeichnungen wollen ihren Nachweis · das Bild wandert ohne die
+  // Landeseite weiter, also muss er auf dem Bild selbst stehen. Welcher es ist,
+  // hängt am gewählten Satz; die eigenen Sätze brauchen keinen.
+  const credit = pieceSetDef(options.pieceSet ?? DEFAULT_PIECE_SET).credit;
+  if (credit) {
+    ctx.font = `400 16px ${FONT}`;
+    ctx.fillStyle = "rgba(139, 138, 130, 0.65)";
+    ctx.textAlign = "right";
+    ctx.fillText(`Figuren: ${credit}`, size - pad, footerY + 22);
+    ctx.textAlign = "left";
+  }
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {

@@ -12,8 +12,9 @@ import {
   type ReactNode,
 } from "react";
 import { lastMoveStyles, moveTargetStyles, selectionStyles } from "../lib/boardMoves";
-import { DEFAULT_PIECE_SET, PIECE_VIEWBOX, pieceGlyphs, type PieceSetId } from "../lib/pieces/sets";
-import { usePieceSet } from "../lib/pieces/usePieceSet";
+import { PIECE_VIEWBOX } from "../lib/pieces/glyphs";
+import { PIECE_GLYPH } from "./pieceGlyphs";
+import { usePieceGlyphs } from "../lib/pieces/usePieceSet";
 import { soundsForTransition } from "../lib/boardSound";
 import { playBoardSound } from "../lib/sound";
 
@@ -46,19 +47,21 @@ const mutedBoardTheme = {
  * dieselben Zeichnungen nur ein Risiko. Erst ein gewähltes Set legt eine
  * eigene Zeichnung über jedes Feld.
  *
- * Gebaut wird je Set genau einmal: Die Zeichnungen sind unveränderlich, und
- * das Brett fragt bei jedem Zug erneut.
+ * Der Schlüssel ist die Tabelle selbst und nicht die Kennung des Sets: Die
+ * Zeichnungen kommen nachgeladen (`lib/pieces/glyphs.ts`), und bis dahin
+ * liefert dieselbe Kennung noch den klassischen Satz. Über die Tabelle gebaut,
+ * merkt das Brett den Wechsel von allein.
  */
 /** Der Typ steht nicht im Paketexport · deshalb aus den Props abgelesen. */
 type CustomPieces = NonNullable<ComponentProps<typeof Chessboard>["customPieces"]>;
 
-const customPieceCache = new Map<PieceSetId, CustomPieces>();
+const customPieceCache = new WeakMap<Record<string, string>, CustomPieces>();
 
-function customPiecesFor(set: PieceSetId): CustomPieces | undefined {
-  if (set === DEFAULT_PIECE_SET) return undefined;
-  const cached = customPieceCache.get(set);
+function customPiecesFor(glyphs: Record<string, string>): CustomPieces | undefined {
+  // Der klassische Satz · auch das, was ein noch nicht geladenes Set liefert.
+  if (glyphs === PIECE_GLYPH) return undefined;
+  const cached = customPieceCache.get(glyphs);
   if (cached) return cached;
-  const glyphs = pieceGlyphs(set);
   const pieces: CustomPieces = {};
   for (const [code, glyph] of Object.entries(glyphs)) {
     pieces[code as keyof CustomPieces] = ({ squareWidth }) => (
@@ -71,7 +74,7 @@ function customPiecesFor(set: PieceSetId): CustomPieces | undefined {
       />
     );
   }
-  customPieceCache.set(set, pieces);
+  customPieceCache.set(glyphs, pieces);
   return pieces;
 }
 
@@ -181,7 +184,7 @@ type BoardSurfaceProps = {
   squareStyles: Record<string, CSSProperties>;
   lastMove: { from: string; to: string } | null;
   muted: boolean;
-  pieceSet: PieceSetId;
+  pieceGlyphs: Record<string, string>;
   android: boolean;
   hasDropHandler: boolean;
   hasSquareClickHandler: boolean;
@@ -209,7 +212,7 @@ const BoardSurface = memo(
     squareStyles,
     lastMove,
     muted,
-    pieceSet,
+    pieceGlyphs,
     android,
     hasDropHandler,
     hasSquareClickHandler,
@@ -245,7 +248,7 @@ const BoardSurface = memo(
         // change. react-chessboard would otherwise lock that board for the
         // animation duration after every user move.
         animationDuration={mouseDrag || android ? 0 : 150}
-        customPieces={customPiecesFor(pieceSet)}
+        customPieces={customPiecesFor(pieceGlyphs)}
         {...boardTheme}
         {...(muted ? mutedBoardTheme : {})}
       />
@@ -262,7 +265,7 @@ const BoardSurface = memo(
     && previous.lastMove?.from === next.lastMove?.from
     && previous.lastMove?.to === next.lastMove?.to
     && previous.muted === next.muted
-    && previous.pieceSet === next.pieceSet
+    && previous.pieceGlyphs === next.pieceGlyphs
     && previous.android === next.android
     && previous.hasDropHandler === next.hasDropHandler
     && previous.hasSquareClickHandler === next.hasSquareClickHandler
@@ -395,7 +398,7 @@ export default function Board({
   end = null,
 }: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const pieceSet = usePieceSet();
+  const pieceGlyphs = usePieceGlyphs();
   const [w, setW] = useState(width);
   const [dragSource, setDragSource] = useState<string | null>(null);
   const dropRef = useRef(onPieceDrop);
@@ -736,7 +739,7 @@ export default function Board({
           onPieceDrop={handlePieceDrop}
           onSquareClick={handleSquareClick}
           orientation={orientation}
-          pieceSet={pieceSet}
+          pieceGlyphs={pieceGlyphs}
           lastMove={lastMove}
           squareStyles={squareStyles ?? EMPTY_STYLES}
           width={w}

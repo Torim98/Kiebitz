@@ -13,13 +13,8 @@
  * irgendein Brett. Welches Set das ist, reicht der Aufrufer herein: Hier soll
  * nichts über Freischaltung und Einstellungen wissen müssen.
  */
-import {
-  DEFAULT_PIECE_SET,
-  PIECE_VIEWBOX,
-  glyphKey,
-  pieceGlyphs,
-  type PieceSetId,
-} from "../pieces/sets";
+import { PIECE_VIEWBOX, pieceGlyphs } from "../pieces/glyphs";
+import { DEFAULT_PIECE_SET, glyphKey, type PieceSetId } from "../pieces/sets";
 import type { ShareMove } from "./codec";
 
 /** Feldfarben des Kiebitz-Bretts · gleich wie in `components/Board.tsx`. */

@@ -2,7 +2,7 @@
  * Die geschlagenen Figuren einer Seite · als Zeile unter dem Namen.
  *
  * Die Zeichnungen sind dieselben wie auf dem Brett daneben, nicht bloß
- * ähnliche: Sie kommen aus demselben Figurenset (`lib/pieces/sets.ts`), und
+ * ähnliche: Sie kommen aus demselben Figurenset (`lib/pieces/glyphs.ts`), und
  * beim klassischen Satz heißt das aus `pieceGlyphs.ts`, das
  * `scripts/generate-piece-glyphs.mjs` aus einem echten Brett ausliest. Ein
  * Springer, der knapp nicht der Springer vom Brett ist, fällt sofort auf.
@@ -11,7 +11,7 @@
  * kosten — so hält es auch chess.com.
  */
 import type { PieceKind } from "../lib/captured";
-import { PIECE_VIEWBOX } from "../lib/pieces/sets";
+import { PIECE_VIEWBOX } from "../lib/pieces/glyphs";
 import { usePieceGlyphs } from "../lib/pieces/usePieceSet";
 
 function Glyph({

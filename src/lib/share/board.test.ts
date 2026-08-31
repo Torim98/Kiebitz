@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pieceGlyphs } from "../pieces/sets";
+import { loadPieceGlyphs, pieceGlyphs } from "../pieces/glyphs";
 import { boardSvg, squareOrigin } from "./board";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -14,7 +14,13 @@ describe("share board", () => {
 
   // Die geteilte Stellung zeigt die Figuren des Absenders · ohne Angabe bleibt
   // es beim klassischen Satz, damit ein Link ohne Kontext nicht rät.
-  it("draws the chosen piece set", () => {
+  //
+  // Geholt werden die Zeichnungen vorher: `boardSvg` zeichnet, was zur Hand
+  // ist, und ein Set kommt nachgeladen. Die Karte wartet dafür an einer Stelle
+  // (`renderShareCard`), damit das Bild nicht den klassischen Satz trägt,
+  // während auf dem Bildschirm ein anderer steht.
+  it("draws the chosen piece set", async () => {
+    await loadPieceGlyphs("kiebitz");
     const plain = boardSvg({ fen: START, orientation: "white", size: 800 });
     const own = boardSvg({ fen: START, orientation: "white", size: 800, pieceSet: "kiebitz" });
     expect(plain).toContain(pieceGlyphs("classic").wK);

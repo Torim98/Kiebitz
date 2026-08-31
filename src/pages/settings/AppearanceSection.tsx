@@ -9,17 +9,19 @@
  * davon.
  */
 import { Crown, Lock, Palette, Sparkles } from "lucide-react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Button, Chip } from "../../components/ui";
 import { useI18n } from "../../lib/i18n";
 import { openPlusDialog } from "../../lib/plus/dialog";
 import { usePlusGate } from "../../lib/plus/usePlus";
 import {
-  PIECE_SETS,
   PIECE_VIEWBOX,
+  glyphsVersion,
+  loadPieceGlyphs,
   pieceGlyphs,
-  pieceSetDef,
-  type PieceSetId,
-} from "../../lib/pieces/sets";
+  subscribeGlyphs,
+} from "../../lib/pieces/glyphs";
+import { PIECE_SETS, pieceSetDef, type PieceSetId } from "../../lib/pieces/sets";
 import {
   BOARD_SETS,
   THEMES,
@@ -95,6 +97,13 @@ export default function AppearanceSection({
 }) {
   const { t } = useI18n();
   const gate = usePlusGate(THEME_FEATURE);
+  // Die Vorschau zeigt jedes Set nebeneinander · dafür müssen hier ausnahmsweise
+  // alle Zeichnungen her, nicht nur die des geltenden Sets. Sie kommen einzeln
+  // an, und jede angekommene färbt ihre Kachel nach.
+  useEffect(() => {
+    for (const set of PIECE_SETS) void loadPieceGlyphs(set.id);
+  }, []);
+  useSyncExternalStore(subscribeGlyphs, glyphsVersion, glyphsVersion);
   // Solange der Plus-Zustand geprüft wird, bleiben die Kacheln offen: Ein
   // Schloss, das nach einer Sekunde verschwindet, ist schlechter als eines,
   // das eine Sekunde später erscheint.

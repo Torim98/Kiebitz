@@ -362,7 +362,9 @@ const THEMES: [&str; 8] = [
 const BOARD_SETS: [&str; 6] = ["auto", "forest", "graphite", "sepia", "ice", "contrast"];
 
 /// Figurensets · muss mit PIECE_SETS in src/lib/pieces/sets.ts übereinstimmen.
-const PIECE_SETS: [&str; 3] = ["classic", "kiebitz", "monolith"];
+const PIECE_SETS: [&str; 6] = [
+    "classic", "kiebitz", "monolith", "merida", "fantasy", "chessnut",
+];
 
 /// Auslöser des automatischen Themenwechsels.
 const AUTO_MODES: [&str; 3] = ["off", "system", "time"];

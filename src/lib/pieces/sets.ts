@@ -1,24 +1,26 @@
 /**
- * Die Figurensets · Liste, Freischaltung und Zeichnungen.
+ * Die Figurensets · Liste und Freischaltung.
  *
  * Ein Set ist nichts weiter als eine Tabelle von zwölf SVG-Schnipseln mit den
  * Schlüsseln "wP" … "bK". Damit ist es dort einsetzbar, wo bisher der
  * klassische Satz stand: auf dem Brett (`components/Board.tsx`), in der
  * Schlagliste und auf der geteilten Bildkarte. Keine dieser Stellen muss
- * wissen, welches Set gerade gilt · sie fragt hier nach und zeichnet.
+ * wissen, welches Set gerade gilt · sie fragt hier nach, welche es gibt, und
+ * holt die Zeichnungen aus `./glyphs.ts`.
  *
- * Der klassische Satz bleibt der Vorgabewert und kommt weiterhin aus dem
- * Brett selbst (`components/pieceGlyphs.ts`, erzeugt aus `react-chessboard`).
- * Die beiden gezeichneten Sets liegen daneben in `./kiebitz.ts` und
- * `./monolith.ts`.
+ * Diese Datei bleibt bewusst leicht: Sie hängt am Erscheinungsbild und damit am
+ * Start der App. Die Zeichnungen stehen deshalb nebenan, jedes Set in einer
+ * eigenen Datei und jede erst geladen, wenn ihr Set gewählt ist.
  */
-import { PIECE_GLYPH, PIECE_VIEWBOX } from "../../components/pieceGlyphs";
 import type { Key } from "../i18n";
-import { buildGlyphs } from "./art";
-import { KIEBITZ_ART } from "./kiebitz";
-import { MONOLITH_ART } from "./monolith";
 
-export type PieceSetId = "classic" | "kiebitz" | "monolith";
+export type PieceSetId =
+  | "classic"
+  | "kiebitz"
+  | "monolith"
+  | "merida"
+  | "fantasy"
+  | "chessnut";
 
 export interface PieceSetDef {
   id: PieceSetId;
@@ -26,6 +28,15 @@ export interface PieceSetDef {
   plus: boolean;
   nameKey: Key;
   descKey: Key;
+  /**
+   * Nachweis für fremde Zeichnungen · fehlt bei den eigenen.
+   *
+   * Er steht hier und nicht in den Wörterbüchern: Ein Name und eine Lizenz
+   * werden nicht übersetzt, und er muss auch dort auftauchen, wo keine
+   * Oberfläche daneben steht — auf dem geteilten Bild, das ohne Landeseite
+   * weiterwandert (`lib/share/card.ts`).
+   */
+  credit?: string;
 }
 
 /** Reihenfolge in der Auswahl: erst frei, dann Plus. */
@@ -35,6 +46,7 @@ export const PIECE_SETS: readonly PieceSetDef[] = [
     plus: false,
     nameKey: "pieces.classic",
     descKey: "pieces.classicNote",
+    credit: "Cburnett · CC BY-SA 3.0",
   },
   {
     id: "kiebitz",
@@ -47,6 +59,27 @@ export const PIECE_SETS: readonly PieceSetDef[] = [
     plus: true,
     nameKey: "pieces.monolith",
     descKey: "pieces.monolithNote",
+  },
+  {
+    id: "merida",
+    plus: true,
+    nameKey: "pieces.merida",
+    descKey: "pieces.meridaNote",
+    credit: "Merida: Armando H. Marroquin · GPLv2+",
+  },
+  {
+    id: "fantasy",
+    plus: true,
+    nameKey: "pieces.fantasy",
+    descKey: "pieces.fantasyNote",
+    credit: "Fantasy: Maurizio Monge · MIT",
+  },
+  {
+    id: "chessnut",
+    plus: true,
+    nameKey: "pieces.chessnut",
+    descKey: "pieces.chessnutNote",
+    credit: "Chessnut: Alexis Luengas · Apache 2.0",
   },
 ];
 
@@ -62,28 +95,6 @@ export function pieceSetDef(id: PieceSetId): PieceSetDef {
 export function isPieceSetId(value: unknown): value is PieceSetId {
   return typeof value === "string" && SET_BY_ID.has(value as PieceSetId);
 }
-
-/**
- * Die zwölf Zeichnungen eines Sets · beim ersten Zugriff gebaut und behalten.
- *
- * Das Brett fragt bei jedem Neuzeichnen danach; die Zeichnungen sind aber
- * unveränderlich, also lohnt sich die Tabelle einmal und nie wieder.
- */
-const built = new Map<PieceSetId, Record<string, string>>([["classic", PIECE_GLYPH]]);
-
-export function pieceGlyphs(id: PieceSetId): Record<string, string> {
-  const cached = built.get(id);
-  if (cached) return cached;
-  const glyphs = buildGlyphs(id === "kiebitz" ? KIEBITZ_ART : MONOLITH_ART);
-  built.set(id, glyphs);
-  return glyphs;
-}
-
-/**
- * Ausschnitt um eine Figur · für alle Sets derselbe, damit eine geschlagene
- * Figur genauso beschnitten ist wie dieselbe Figur auf dem Brett.
- */
-export { PIECE_VIEWBOX };
 
 /** Der Figurenbuchstabe eines FEN als Schlüssel ("P" → "wP", "k" → "bK"). */
 export function glyphKey(piece: string): string {

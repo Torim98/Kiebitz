@@ -40,6 +40,44 @@ The offline opening-name lookup is generated from the public
 dataset at commit `51b886249b9e418498d25b6e39b926c3de99c29a`, released under the CC0 1.0
 public domain dedication.
 
+## Additional piece sets (Merida, Fantasy, Chessnut)
+
+Kiebitz Plus offers three further piece sets. They are **not** Kiebitz artwork:
+each one is bundled unmodified, keeps its own license, and is credited here, in
+the generated module, and on the picture card the app exports.
+
+Set | Artwork | License
+--- | --- | ---
+Merida | Armando Hernandez Marroquin | [GPLv2+](https://www.gnu.org/licenses/gpl-2.0.txt)
+Fantasy | [Maurizio Monge](https://github.com/maurimo/chess-art) | [MIT](https://github.com/maurimo/chess-art/blob/main/LICENSE)
+Chessnut | [Alexis Luengas](https://github.com/LexLuengas/chessnut-pieces) | [Apache 2.0](https://github.com/LexLuengas/chessnut-pieces/blob/master/LICENSE.txt)
+
+All three are taken from the piece sets distributed with
+[`lichess-org/lila`](https://github.com/lichess-org/lila/tree/master/public/piece),
+whose [COPYING.md](https://github.com/lichess-org/lila/blob/master/COPYING.md)
+records the authors and licenses above. Sets that lichess lists as non-free or
+non-commercial are deliberately absent: Kiebitz Plus is a paid product.
+
+The twelve original SVG files of each set live unmodified in
+[`src/lib/pieces/vendor/`](src/lib/pieces/vendor/) so the source of the artwork
+is in the repository and the licenses refer to something that can be checked.
+[`scripts/generate-vendor-pieces.mjs`](scripts/generate-vendor-pieces.mjs) turns
+them into the modules the app loads. It changes no shape and no colour; it only
+makes twelve drawings survive sharing one document: element ids are prefixed per
+set and piece, `<style>` rules become `style` attributes so no stylesheet leaks
+into the app, and each file is given the 45x45 size the board draws in.
+
+Regenerate after replacing an original:
+
+```sh
+npm run pieces:sync
+```
+
+The GPLv2+ of Merida applies to that artwork, not to Kiebitz' own code: the
+drawings are data the app renders, they are unmodified, and the complete
+corresponding source of the artwork is the SVG files in this repository. The
+same holds for the picture card: it carries the credit of whichever set drew it.
+
 ## Chess piece artwork (CC BY-SA 3.0)
 
 The pieces on every board are the **SVG chess pieces** by Wikimedia Commons user
