@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { ShellProvider } from "../components/MobileShell";
+import { grantPlus, revokePlus } from "../test/plus";
 import Analysis from "./Analysis";
 
 const mocks = vi.hoisted(() => ({
@@ -146,6 +148,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // Eine im Test erteilte Berechtigung ist ein Modul-Singleton · ohne das
+  // Zurücksetzen liefe der nächste Test unbemerkt mit Plus weiter.
+  revokePlus();
 });
 
 describe("Analysis page", () => {
@@ -224,6 +229,9 @@ describe("Analysis page", () => {
      * Engine-Panel · dieselben Namen, dieselbe Bedienung.
      */
     it("opens the same position as a focus board and closes it again", async () => {
+      // Das Fokus-Brett gehört zu Kiebitz Plus · hier geht es um die Ansicht,
+      // nicht um das Gate davor. Das prüft components/FocusBoard.test.tsx.
+      grantPlus();
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
       await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
       expect(screen.getAllByTestId("analysis-board")).toHaveLength(1);
@@ -265,6 +273,30 @@ describe("Analysis page", () => {
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
       expect(screen.getByRole("menuitem", { name: /Nächste 10/ })).toBeTruthy();
+    });
+
+    /**
+     * Auf Handybreite ist für acht Tasten und die Bewertung kein Platz. Die
+     * Leiste bleibt trotzdem einzeilig und vollständig sichtbar: Blättern
+     * steht da, alles Seltenere klappt darüber auf.
+     */
+    it("folds the rare board actions into a menu on the phone", async () => {
+      grantPlus();
+      render(
+        <ShellProvider mobile>
+          <LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>
+        </ShellProvider>
+      );
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+
+      // Blättern bleibt in der Leiste, das Seltenere ist zugeklappt.
+      expect(screen.getByRole("button", { name: "An den Anfang" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Brett drehen" })).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Weitere Brettaktionen" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Brett drehen" }));
+
+      expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("black");
     });
   });
 

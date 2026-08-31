@@ -16,6 +16,7 @@ export const FEATURE_NAME_KEY: Record<PlusOnlyFeature, Key> = {
   automatic_lan_sync: "plus.f.lanSync",
   widgets: "plus.f.widgets",
   advanced_themes: "plus.f.themes",
+  focus_board: "plus.f.focus",
   no_ads: "plus.f.noAds",
 };
 
@@ -27,6 +28,7 @@ export const FEATURE_DESC_KEY: Record<PlusOnlyFeature, Key> = {
   automatic_lan_sync: "plus.d.lanSync",
   widgets: "plus.d.widgets",
   advanced_themes: "plus.d.themes",
+  focus_board: "plus.d.focus",
   no_ads: "plus.d.noAds",
 };
 

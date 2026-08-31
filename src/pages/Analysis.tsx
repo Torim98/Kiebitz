@@ -20,6 +20,7 @@ import {
   FlipVertical2,
   ListChecks,
   Loader2,
+  MoreHorizontal,
   Save,
   Search,
   Share2,
@@ -54,11 +55,12 @@ import { useBoardEndView } from "../components/BoardEndView";
 import { endForPosition, gameEnd } from "../lib/boardEnd";
 import { BOARD_MAX } from "../lib/boardLayout";
 import CapturedPieces from "../components/CapturedPieces";
+import { useMobileShell } from "../components/MobileShell";
 import { capturedFromFen } from "../lib/captured";
 import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
 import { Button, Card, ExtLink, Menu, MenuItem, ResultBadge } from "../components/ui";
-import FocusBoard, { FocusButton } from "../components/FocusBoard";
+import FocusBoard, { FocusButton, FocusMenuItem } from "../components/FocusBoard";
 import { PlusBadge } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
@@ -335,6 +337,9 @@ export default function Analysis({
   const { locale, t } = useI18n();
   const storeCapture = isStoreCapture();
   const desktop = backend.mode === "desktop";
+  // Die Bedienleiste unter dem Brett fasst auf Handybreite ihre Nebenaktionen
+  // zusammen · siehe `boardControls`.
+  const mobile = useMobileShell();
   // Analysebudget: die Zeit, die vor einer Partie verbracht wird. Bisher zählte
   // nur ein im Kalender abgehakter Termin · eine Engine, die im Hintergrund
   // 1.000 Partien rechnet, hat nie ein Partie-Review ersetzt, aber wer eine
@@ -1101,76 +1106,108 @@ export default function Analysis({
    * gemeinsamen Fläche, damit die Leiste als ein Bedienelement gelesen wird
    * und nicht als acht gleich laute Angebote.
    *
-   * Die Leiste bleibt einzeilig. Reicht die Breite auf einem sehr schmalen
-   * Telefon nicht, wandert die Tastengruppe unter den Finger, statt die
-   * Bewertung in eine zweite Zeile zu schieben · beim Blättern zählt, dass die
-   * Bewertung an ihrem Platz steht, mehr als dass jede Taste gleichzeitig
-   * sichtbar ist.
+   * Die Leiste bleibt einzeilig · und auf dem Telefon auch vollständig
+   * sichtbar. Dort ist für acht Tasten und die Bewertung kein Platz, und eine
+   * Leiste, die man erst zur Seite schieben muss, um an das Drehen des Bretts
+   * zu kommen, ist keine Leiste mehr, sondern ein Versteck. Deshalb greift
+   * dort die Regel, nach der die App ihre Menüs baut (siehe `Menu` in
+   * components/ui.tsx): Was beim Durchsehen einer Partie ständig gebraucht
+   * wird · Blättern · bleibt als eigene Taste stehen; was einmal pro Partie
+   * vorkommt · Brett drehen, teilen, Fokus, neues Brett · rückt in ein Blatt
+   * am Ende der Tastengruppe. Es klappt nach oben auf, weil unter der Leiste
+   * die Navigationsleiste steht.
+   *
+   * Auf dem Desktop bleibt alles nebeneinander: Dort ist die Breite da, und
+   * ein Klick weniger ist besser als ein aufgeräumteres Blatt.
    *
    * Im Fokus fehlt der Griff zum Fokus · dort ist man schon.
    */
-  const boardControls = (inFocus: boolean) => (
-    <div className="ml-[calc(var(--board-gutter)-var(--board-bleed))] mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-2 py-1.5">
-      <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        <Button onClick={() => goToPly(0)} title={t("an.toStart")} label={t("an.toStart")} compact>
-          <ChevronFirst size={15} />
-        </Button>
-        <Button
-          onClick={() => goToPly((variation?.basePly ?? ply) - 1)}
-          title={t("an.prevMove")}
-          label={t("an.prevMove")}
-          compact
-        >
-          <ChevronLeft size={15} />
-        </Button>
-        <Button
-          onClick={() => goToPly((variation?.basePly ?? ply) + 1)}
-          title={t("an.nextMove")}
-          label={t("an.nextMove")}
-          compact
-        >
-          <ChevronRight size={15} />
-        </Button>
-        <Button onClick={() => goToPly(sans.length)} title={t("an.toEnd")} label={t("an.toEnd")} compact>
-          <ChevronLast size={15} />
-        </Button>
-        <span className="mx-1 h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
-        <Button
-          onClick={() => setFlipped((value) => !value)}
-          title={t("an.flip")}
-          label={t("an.flip")}
-          compact
-        >
-          <FlipVertical2 size={15} />
-        </Button>
-        <Button onClick={openShare} title={t("sh.title")} label={t("sh.title")} compact>
-          <Share2 size={15} />
-        </Button>
-        {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
-        {scratch && (
-          <Button
-            onClick={() => {
-              setOpened(null);
-              setScratchSans([]);
-              setPly(0);
-              setScratchSelected(null);
-              setLiveEval(null);
-              setLiveBestUci(null);
-            }}
-            title={t("an.newBoard")}
-          >
-            <RotateCcw size={15} /> {t("an.newBoard")}
+  const boardControls = (inFocus: boolean) => {
+    const flip = () => setFlipped((value) => !value);
+    const newBoard = () => {
+      setOpened(null);
+      setScratchSans([]);
+      setPly(0);
+      setScratchSelected(null);
+      setLiveEval(null);
+      setLiveBestUci(null);
+    };
+    return (
+      <div className="ml-[calc(var(--board-gutter)-var(--board-bleed))] mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-2 py-1.5">
+        <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <Button onClick={() => goToPly(0)} title={t("an.toStart")} label={t("an.toStart")} compact>
+            <ChevronFirst size={15} />
           </Button>
+          <Button
+            onClick={() => goToPly((variation?.basePly ?? ply) - 1)}
+            title={t("an.prevMove")}
+            label={t("an.prevMove")}
+            compact
+          >
+            <ChevronLeft size={15} />
+          </Button>
+          <Button
+            onClick={() => goToPly((variation?.basePly ?? ply) + 1)}
+            title={t("an.nextMove")}
+            label={t("an.nextMove")}
+            compact
+          >
+            <ChevronRight size={15} />
+          </Button>
+          <Button onClick={() => goToPly(sans.length)} title={t("an.toEnd")} label={t("an.toEnd")} compact>
+            <ChevronLast size={15} />
+          </Button>
+          {!mobile && (
+            <>
+              <span className="mx-1 h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
+              <Button
+                onClick={flip}
+                title={t("an.flip")}
+                label={t("an.flip")}
+                compact
+              >
+                <FlipVertical2 size={15} />
+              </Button>
+              <Button onClick={openShare} title={t("sh.title")} label={t("sh.title")} compact>
+                <Share2 size={15} />
+              </Button>
+              {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
+              {scratch && (
+                <Button onClick={newBoard} title={t("an.newBoard")}>
+                  <RotateCcw size={15} /> {t("an.newBoard")}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        {mobile && (
+          <>
+            <span className="h-6 w-px shrink-0 bg-line2" aria-hidden="true" />
+            <Menu label={t("an.boardActions")} align="end" up compact icon={<MoreHorizontal size={15} />}>
+              <MenuItem onClick={flip}>
+                <FlipVertical2 size={15} /> {t("an.flip")}
+              </MenuItem>
+              <MenuItem onClick={openShare}>
+                <Share2 size={15} /> {t("sh.title")}
+              </MenuItem>
+              {!inFocus && <FocusMenuItem onClick={() => setFocused(true)} />}
+              {scratch && (
+                <MenuItem onClick={newBoard}>
+                  <RotateCcw size={15} /> {t("an.newBoard")}
+                </MenuItem>
+              )}
+            </Menu>
+          </>
         )}
+        <div
+          className="shrink-0 px-1.5 text-[15px] font-semibold tabular-nums"
+          style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}
+        >
+          {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
+        </div>
       </div>
-      <div
-        className="shrink-0 px-1.5 text-[15px] font-semibold tabular-nums"
-        style={{ color: shownEval >= 0 ? "var(--color-ink)" : "var(--color-ink2)" }}
-      >
-        {liveEval?.mate != null ? `#${liveEval.mate}` : evalLabel(shownEval)}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">

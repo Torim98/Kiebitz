@@ -22,6 +22,7 @@ export const PLUS_ONLY_FEATURES = [
   "automatic_lan_sync",
   "widgets",
   "advanced_themes",
+  "focus_board",
   "no_ads",
 ] as const;
 

@@ -231,6 +231,8 @@ export function Menu({
   label,
   align = "end",
   compact = false,
+  up = false,
+  icon,
   children,
 }: {
   label: string;
@@ -238,6 +240,14 @@ export function Menu({
   align?: "start" | "end";
   /** Nur der Pfeil · für Leisten, in denen kein Wort mehr Platz hat. */
   compact?: boolean;
+  /**
+   * Nach oben aufklappen · für Leisten am unteren Rand ihrer Fläche. Unter dem
+   * Brett bliebe ein Blatt, das nach unten aufgeht, halb im Nichts stehen: auf
+   * dem Handy hinter der Navigationsleiste, im Fokus-Brett abgeschnitten.
+   */
+  up?: boolean;
+  /** Ersetzt den Pfeil · für Leisten, in denen das Blatt keine Liste ist. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -273,7 +283,9 @@ export function Menu({
         className={buttonCls(false, "", compact)}
       >
         {!compact && label}
-        <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        {icon ?? (
+          <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        )}
       </button>
       {open && (
         <div
@@ -281,7 +293,9 @@ export function Menu({
           // Ein Eintrag im Menü führt immer irgendwohin · danach hat das Blatt
           // seine Aufgabe erfüllt.
           onClick={() => setOpen(false)}
-          className={`absolute top-full z-40 mt-1.5 flex min-w-[240px] flex-col gap-0.5 rounded-xl border border-line2 bg-panel p-1.5 shadow-2xl shadow-black/40 ${
+          className={`absolute z-40 flex min-w-[240px] flex-col gap-0.5 rounded-xl border border-line2 bg-panel p-1.5 shadow-2xl shadow-black/40 ${
+            up ? "bottom-full mb-1.5" : "top-full mt-1.5"
+          } ${
             align === "end" ? "right-0" : "left-0"
           }`}
         >

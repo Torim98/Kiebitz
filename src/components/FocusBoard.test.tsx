@@ -1,11 +1,33 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import FocusBoard, { FocusButton } from "./FocusBoard";
 import { ShellProvider } from "./MobileShell";
+import type { PlusFeature } from "../lib/plus/types";
 
 vi.mock("../lib/i18n", () => ({
   useT: () => (key: string) => key,
 }));
+
+/**
+ * Das Fokus-Brett gehört zu Kiebitz Plus. Hier geht es um die Ansicht selbst
+ * und um das, was der Griff im gesperrten Fall tut · den Zustand dahinter
+ * prüft plus/store.test.ts.
+ */
+const gate = { unlocked: true, pending: false };
+vi.mock("../lib/plus/usePlus", () => ({
+  usePlusGate: () => ({ ...gate, plus: {} }),
+}));
+
+const opened = vi.fn();
+vi.mock("../lib/plus/dialog", () => ({
+  openPlusDialog: (feature: PlusFeature) => opened(feature),
+}));
+
+beforeEach(() => {
+  gate.unlocked = true;
+  gate.pending = false;
+  opened.mockClear();
+});
 
 afterEach(cleanup);
 
@@ -98,5 +120,33 @@ describe("focus board", () => {
     render(<FocusButton onClick={onClick} />);
     fireEvent.click(screen.getByRole("button", { name: "board.focusOpen" }));
     expect(onClick).toHaveBeenCalled();
+  });
+
+  /**
+   * Gesperrt bleibt der Griff stehen und erklärt sich · verschwinden würde er
+   * nur als Fehler gelesen (siehe components/PlusLock.tsx).
+   */
+  it("sends the handle into the Plus explanation while it is locked", () => {
+    gate.unlocked = false;
+    const onClick = vi.fn();
+    render(<FocusButton onClick={onClick} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "board.focusPlus" }));
+    expect(onClick).not.toHaveBeenCalled();
+    expect(opened).toHaveBeenCalledWith("focus_board");
+  });
+
+  it("stays closed without Plus, even when a page asks for it", () => {
+    gate.unlocked = false;
+    open(false);
+    expect(screen.queryByTestId("focus-board")).toBeNull();
+  });
+
+  /** Solange der Plus-Zustand lädt, bleibt alles offen · kein Aufblitzen. */
+  it("keeps showing while the entitlement is still loading", () => {
+    gate.unlocked = false;
+    gate.pending = true;
+    open(false);
+    expect(screen.getByTestId("focus-board")).toBeTruthy();
   });
 });
