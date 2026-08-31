@@ -3,7 +3,7 @@ import { emitDataChange } from "./changes";
 // Nur der Typ · zur Laufzeit importiert i18n dieses Modul, nicht umgekehrt.
 import type { Locale } from "./i18n";
 // Ebenso: theme.ts liest die Einstellungen, nicht umgekehrt.
-import type { AutoMode, BoardSetId, ThemeId } from "./theme";
+import type { AutoMode, BoardSetId, PieceSetId, ThemeId } from "./theme";
 
 /** Spiegelt settings::Settings aus dem Rust-Backend. */
 export interface Settings {
@@ -27,6 +27,8 @@ export interface Settings {
   theme: ThemeId;
   /** Feldfarben des Bretts ("auto" = das Brett des Themas). */
   board_set: BoardSetId;
+  /** Zeichnungen der Figuren ("classic" = der Satz des Bretts). */
+  piece_set: PieceSetId;
   /** Wann `theme_night` übernimmt ("off" | "system" | "time"). */
   theme_auto: AutoMode;
   /** Thema der Dunkelphase des automatischen Wechsels. */

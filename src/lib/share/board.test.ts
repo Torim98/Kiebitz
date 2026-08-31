@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pieceGlyphs } from "../pieces/sets";
 import { boardSvg, squareOrigin } from "./board";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -9,6 +10,17 @@ describe("share board", () => {
     expect(svg.match(/<rect /g)).toHaveLength(64);
     // Jede Figur ist ein eingebettetes <svg> mit dem Ausschnitt des Bretts.
     expect(svg.match(/viewBox="1 1 43 43"/g)).toHaveLength(32);
+  });
+
+  // Die geteilte Stellung zeigt die Figuren des Absenders · ohne Angabe bleibt
+  // es beim klassischen Satz, damit ein Link ohne Kontext nicht rät.
+  it("draws the chosen piece set", () => {
+    const plain = boardSvg({ fen: START, orientation: "white", size: 800 });
+    const own = boardSvg({ fen: START, orientation: "white", size: 800, pieceSet: "kiebitz" });
+    expect(plain).toContain(pieceGlyphs("classic").wK);
+    expect(own).toContain(pieceGlyphs("kiebitz").wK);
+    expect(own).not.toContain(pieceGlyphs("classic").wK);
+    expect(own.match(/viewBox="1 1 43 43"/g)).toHaveLength(32);
   });
 
   it("puts a1 in the lower left and turns the board around with the view", () => {

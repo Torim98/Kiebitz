@@ -38,6 +38,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     display_name: "",
     theme: "dark",
     board_set: "auto",
+    piece_set: "classic",
     theme_auto: "off",
     theme_night: "dusk",
     theme_night_from: "19:00",

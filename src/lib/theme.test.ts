@@ -3,6 +3,7 @@ import {
   DEFAULT_APPEARANCE,
   appearanceFromSettings,
   inNightWindow,
+  resolvePieceSet,
   resolveTheme,
   settingsFromAppearance,
   type Appearance,
@@ -76,6 +77,24 @@ describe("resolve", () => {
   });
 });
 
+describe("piece sets", () => {
+  it("keeps a free set whatever the entitlement says", () => {
+    for (const plus of [true, false, null]) {
+      expect(resolvePieceSet(appearance({ pieceSet: "classic" }), plus)).toBe("classic");
+    }
+  });
+
+  it("falls back to the classic set without Plus", () => {
+    expect(resolvePieceSet(appearance({ pieceSet: "kiebitz" }), false)).toBe("classic");
+    expect(resolvePieceSet(appearance({ pieceSet: "monolith" }), false)).toBe("classic");
+  });
+
+  it("keeps the choice while the entitlement is still being checked", () => {
+    expect(resolvePieceSet(appearance({ pieceSet: "kiebitz" }), null)).toBe("kiebitz");
+    expect(resolvePieceSet(appearance({ pieceSet: "kiebitz" }), true)).toBe("kiebitz");
+  });
+});
+
 describe("settings", () => {
   const stored = (overrides: Partial<Settings>) =>
     appearanceFromSettings({ ...(overrides as Settings) });
@@ -84,6 +103,7 @@ describe("settings", () => {
     const result = stored({
       theme: "neongrün" as never,
       board_set: "marmor" as never,
+      piece_set: "origami" as never,
       theme_auto: "vielleicht" as never,
       theme_night: "dusk",
       theme_night_from: "25:00",
@@ -92,6 +112,7 @@ describe("settings", () => {
     expect(result).toEqual({
       theme: "dark",
       boardSet: "auto",
+      pieceSet: "classic",
       auto: "off",
       night: "dusk",
       nightFrom: "19:00",
@@ -107,6 +128,7 @@ describe("settings", () => {
     const prefs = appearance({
       theme: "graphite",
       boardSet: "sepia",
+      pieceSet: "kiebitz",
       auto: "time",
       night: "contrast",
       nightFrom: "20:15",

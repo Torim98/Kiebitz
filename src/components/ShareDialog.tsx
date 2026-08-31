@@ -30,6 +30,7 @@ import { errorMessage } from "../lib/errors";
 import { useI18n, type Key } from "../lib/i18n";
 import { evalLabel } from "../lib/evaluation";
 import { themeLabel } from "../lib/puzzles";
+import { appliedPieceSet } from "../lib/theme";
 import { renderShareCard } from "../lib/share/card";
 import type { ShareEval, ShareKind, ShareMove, SharePayload } from "../lib/share/codec";
 import { copyImage, copyText, saveImage, shareNative, shareTargets } from "../lib/share/deliver";
@@ -193,6 +194,8 @@ export default function ShareDialog({
         chips,
         badge: t(words.badge),
         tagline: t("sh.tagline"),
+        // Das geteilte Bild zeigt die Figuren, die der Absender vor sich hat.
+        pieceSet: appliedPieceSet(),
       })
         .then((blob) => {
           if (!alive) return;

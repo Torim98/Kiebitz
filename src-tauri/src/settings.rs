@@ -44,6 +44,8 @@ pub struct Settings {
     pub theme: String,
     /// Feldfarben des Bretts ("auto" = das Brett des Themas).
     pub board_set: String,
+    /// Zeichnungen der Figuren ("classic" = der Satz des Bretts).
+    pub piece_set: String,
     /// Wann `theme_night` übernimmt: "off", "system" (Vorgabe des
     /// Betriebssystems) oder "time" (Nachtfenster unten).
     pub theme_auto: String,
@@ -229,6 +231,7 @@ impl Default for Settings {
             display_name: String::new(),
             theme: "dark".into(),
             board_set: "auto".into(),
+            piece_set: "classic".into(),
             theme_auto: "off".into(),
             theme_night: "dusk".into(),
             theme_night_from: "19:00".into(),
@@ -358,6 +361,9 @@ const THEMES: [&str; 8] = [
 /// Brett-Sets · muss mit BOARD_SETS in src/lib/theme.ts übereinstimmen.
 const BOARD_SETS: [&str; 6] = ["auto", "forest", "graphite", "sepia", "ice", "contrast"];
 
+/// Figurensets · muss mit PIECE_SETS in src/lib/pieces/sets.ts übereinstimmen.
+const PIECE_SETS: [&str; 3] = ["classic", "kiebitz", "monolith"];
+
 /// Auslöser des automatischen Themenwechsels.
 const AUTO_MODES: [&str; 3] = ["off", "system", "time"];
 
@@ -404,6 +410,7 @@ fn normalize(mut s: Settings) -> Settings {
     s.notify_time = normalize_time(&s.notify_time);
     s.theme = normalize_choice(&s.theme, &THEMES);
     s.board_set = normalize_choice(&s.board_set, &BOARD_SETS);
+    s.piece_set = normalize_choice(&s.piece_set, &PIECE_SETS);
     s.theme_auto = normalize_choice(&s.theme_auto, &AUTO_MODES);
     s.theme_night = normalize_choice(&s.theme_night, &THEMES);
     s.theme_night_from = normalize_time_or(&s.theme_night_from, "19:00");
@@ -895,6 +902,7 @@ mod tests {
         let s = normalize(Settings {
             theme: "neon".into(),
             board_set: "marmor".into(),
+            piece_set: "origami".into(),
             theme_auto: "vielleicht".into(),
             theme_night: " dusk ".into(),
             theme_night_from: "25:00".into(),
@@ -903,6 +911,7 @@ mod tests {
         });
         assert_eq!(s.theme, "dark");
         assert_eq!(s.board_set, "auto");
+        assert_eq!(s.piece_set, "classic");
         assert_eq!(s.theme_auto, "off");
         assert_eq!(s.theme_night, "dusk");
         assert_eq!(s.theme_night_from, "19:00");
@@ -911,12 +920,14 @@ mod tests {
         let kept = normalize(Settings {
             theme: "paper".into(),
             board_set: "sepia".into(),
+            piece_set: "kiebitz".into(),
             theme_auto: "time".into(),
             theme_night_from: "20:15".into(),
             ..Settings::default()
         });
         assert_eq!(kept.theme, "paper");
         assert_eq!(kept.board_set, "sepia");
+        assert_eq!(kept.piece_set, "kiebitz");
         assert_eq!(kept.theme_auto, "time");
         assert_eq!(kept.theme_night_from, "20:15");
     }

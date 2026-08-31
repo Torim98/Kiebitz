@@ -2,18 +2,27 @@
  * Die geschlagenen Figuren einer Seite · als Zeile unter dem Namen.
  *
  * Die Zeichnungen sind dieselben wie auf dem Brett daneben, nicht bloß
- * ähnliche: sie stammen aus `pieceGlyphs.ts`, das `scripts/generate-piece-
- * glyphs.mjs` aus einem echten Brett ausliest. Ein zweites, selbst gezeichnetes
- * Figurenset wäre bei jedem Update auseinandergelaufen · und ein Springer, der
- * knapp nicht der Springer vom Brett ist, fällt sofort auf.
+ * ähnliche: Sie kommen aus demselben Figurenset (`lib/pieces/sets.ts`), und
+ * beim klassischen Satz heißt das aus `pieceGlyphs.ts`, das
+ * `scripts/generate-piece-glyphs.mjs` aus einem echten Brett ausliest. Ein
+ * Springer, der knapp nicht der Springer vom Brett ist, fällt sofort auf.
  *
  * Gleiche Figuren überlappen leicht, damit acht Bauern nicht die halbe Zeile
  * kosten — so hält es auch chess.com.
  */
 import type { PieceKind } from "../lib/captured";
-import { PIECE_GLYPH, PIECE_VIEWBOX } from "./pieceGlyphs";
+import { PIECE_VIEWBOX } from "../lib/pieces/sets";
+import { usePieceGlyphs } from "../lib/pieces/usePieceSet";
 
-function Glyph({ kind, color }: { kind: PieceKind; color: "white" | "black" }) {
+function Glyph({
+  kind,
+  color,
+  glyphs,
+}: {
+  kind: PieceKind;
+  color: "white" | "black";
+  glyphs: Record<string, string>;
+}) {
   const code = `${color === "white" ? "w" : "b"}${kind.toUpperCase()}`;
   return (
     <svg
@@ -24,7 +33,7 @@ function Glyph({ kind, color }: { kind: PieceKind; color: "white" | "black" }) {
       className="h-[15px] w-[15px] shrink-0"
       aria-hidden="true"
       // Vorgefertigte, im Repo erzeugte Zeichnungen · keine Fremdeingabe.
-      dangerouslySetInnerHTML={{ __html: PIECE_GLYPH[code] ?? "" }}
+      dangerouslySetInnerHTML={{ __html: glyphs[code] ?? "" }}
     />
   );
 }
@@ -47,6 +56,7 @@ export default function CapturedPieces({
   /** Vorgelesener Text, z. B. „Materialvorsprung 2". */
   label?: string;
 }) {
+  const glyphs = usePieceGlyphs();
   if (pieces.length === 0 && advantage <= 0) return null;
   return (
     <div
@@ -68,7 +78,7 @@ export default function CapturedPieces({
       >
         {pieces.map((kind, i) => (
           <span key={i} style={{ marginLeft: i === 0 ? 0 : pieces[i - 1] === kind ? -6 : 2 }}>
-            <Glyph kind={kind} color={color} />
+            <Glyph kind={kind} color={color} glyphs={glyphs} />
           </span>
         ))}
       </span>

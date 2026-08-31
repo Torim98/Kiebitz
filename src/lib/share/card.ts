@@ -14,6 +14,7 @@
  * Die Beschriftungen kommen fertig übersetzt herein. Diese Datei kennt keine
  * Sprache, nur Text und Layout.
  */
+import type { PieceSetId } from "../pieces/sets";
 import { boardCoordinates, boardSvg } from "./board";
 import type { ShareMove } from "./codec";
 
@@ -60,6 +61,8 @@ export interface ShareCardOptions extends ShareCardText {
   lastMove?: ShareMove | null;
   /** Pfeil auf der Karte · bei verdeckten Aufgaben bleibt er weg. */
   arrow?: ShareMove | null;
+  /** Figurenset der Karte · ohne Angabe der klassische Satz. */
+  pieceSet?: PieceSetId;
 }
 
 /** Rechteck mit runden Ecken · `roundRect` fehlt in älteren WebViews. */
@@ -258,6 +261,7 @@ export async function renderShareCard(options: ShareCardOptions): Promise<Blob> 
       size: boardSize,
       lastMove: options.lastMove,
       arrow: options.arrow,
+      pieceSet: options.pieceSet,
     })
   );
 

@@ -8,11 +8,18 @@
  * Figuren und Pfeil, die sich in ein Bild rastern lässt und sich in einem Test
  * ohne Browser prüfen lässt.
  *
- * Die Figuren stammen aus `components/pieceGlyphs.ts` und damit wörtlich aus
- * demselben Satz, den das Brett in der App zeigt · eine geteilte Stellung sieht
- * aus wie Kiebitz und nicht wie irgendein Brett.
+ * Die Figuren stammen aus demselben Set, das das Brett in der App gerade
+ * zeigt · eine geteilte Stellung sieht aus wie Kiebitz und nicht wie
+ * irgendein Brett. Welches Set das ist, reicht der Aufrufer herein: Hier soll
+ * nichts über Freischaltung und Einstellungen wissen müssen.
  */
-import { PIECE_GLYPH, PIECE_VIEWBOX } from "../../components/pieceGlyphs";
+import {
+  DEFAULT_PIECE_SET,
+  PIECE_VIEWBOX,
+  glyphKey,
+  pieceGlyphs,
+  type PieceSetId,
+} from "../pieces/sets";
 import type { ShareMove } from "./codec";
 
 /** Feldfarben des Kiebitz-Bretts · gleich wie in `components/Board.tsx`. */
@@ -30,6 +37,8 @@ export interface BoardSvgOptions {
   lastMove?: ShareMove | null;
   /** Zug, der als Pfeil darüberliegt · Bestzug oder aufgedeckte Lösung. */
   arrow?: ShareMove | null;
+  /** Figurenset der Karte · ohne Angabe der klassische Satz. */
+  pieceSet?: PieceSetId;
 }
 
 /** Die 64 Felder eines FEN, Index 0 ist a8 · dieselbe Lesefolge wie im Codec. */
@@ -70,11 +79,6 @@ export function squareOrigin(
   const column = orientation === "white" ? file : 7 - file;
   const row = orientation === "white" ? 7 - rank : rank;
   return { x: column * unit, y: row * unit };
-}
-
-/** Der Figurenbuchstabe des FEN als Schlüssel der Zeichnungen ("wP", "bK"). */
-function glyphKey(piece: string): string {
-  return (piece === piece.toUpperCase() ? "w" : "b") + piece.toUpperCase();
 }
 
 function round(value: number): string {
@@ -126,6 +130,7 @@ function arrowPath(from: string, to: string, orientation: "white" | "black", siz
  */
 export function boardSvg(options: BoardSvgOptions): string {
   const { fen, orientation, size } = options;
+  const glyphs = pieceGlyphs(options.pieceSet ?? DEFAULT_PIECE_SET);
   const unit = size / 8;
   const board = squares(fen);
   const parts: string[] = [];
@@ -156,7 +161,7 @@ export function boardSvg(options: BoardSvgOptions): string {
   for (let i = 0; i < 64; i++) {
     const piece = board[i];
     if (!piece) continue;
-    const glyph = PIECE_GLYPH[glyphKey(piece)];
+    const glyph = glyphs[glyphKey(piece)];
     if (!glyph) continue;
     const { x, y } = squareOrigin(nameAt(i), orientation, size);
     parts.push(

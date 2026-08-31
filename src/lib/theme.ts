@@ -16,6 +16,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { Key } from "./i18n";
+import {
+  DEFAULT_PIECE_SET,
+  isPieceSetId,
+  pieceSetDef,
+  type PieceSetId,
+} from "./pieces/sets";
 import { featureUnlocked, subscribePlus } from "./plus/store";
 import { getSettings, type Settings } from "./settings";
 
@@ -105,6 +111,14 @@ export function isBoardSetId(value: unknown): value is BoardSetId {
   return typeof value === "string" && BOARD_IDS.has(value as BoardSetId);
 }
 
+/**
+ * Figurensets liegen vollständig in `lib/pieces/sets.ts`; hier gehören sie nur
+ * zum Erscheinungsbild dazu. Weitergereicht wird deshalb allein der Typ · wer
+ * die Liste oder die Zeichnungen braucht, holt sie dort und nicht auf einem
+ * zweiten Weg über dieses Modul.
+ */
+export type { PieceSetId } from "./pieces/sets";
+
 /** Wann ein zweites Thema übernimmt. */
 export type AutoMode = "off" | "system" | "time";
 
@@ -119,6 +133,8 @@ export interface Appearance {
   /** Ausdrückliche Wahl bzw. Tagseite eines automatischen Wechsels. */
   theme: ThemeId;
   boardSet: BoardSetId;
+  /** Zeichnungen der Figuren ("classic" = der Satz des Bretts). */
+  pieceSet: PieceSetId;
   auto: AutoMode;
   /** Nachtseite eines automatischen Wechsels. */
   night: ThemeId;
@@ -130,6 +146,7 @@ export interface Appearance {
 export const DEFAULT_APPEARANCE: Appearance = {
   theme: DEFAULT_THEME,
   boardSet: DEFAULT_BOARD_SET,
+  pieceSet: DEFAULT_PIECE_SET,
   auto: "off",
   night: "dusk",
   nightFrom: "19:00",
@@ -141,6 +158,7 @@ export function appearanceFromSettings(settings: Settings): Appearance {
   return {
     theme: isThemeId(settings.theme) ? settings.theme : DEFAULT_APPEARANCE.theme,
     boardSet: isBoardSetId(settings.board_set) ? settings.board_set : DEFAULT_APPEARANCE.boardSet,
+    pieceSet: isPieceSetId(settings.piece_set) ? settings.piece_set : DEFAULT_APPEARANCE.pieceSet,
     auto: isAutoMode(settings.theme_auto) ? settings.theme_auto : DEFAULT_APPEARANCE.auto,
     night: isThemeId(settings.theme_night) ? settings.theme_night : DEFAULT_APPEARANCE.night,
     nightFrom: normalizeTime(settings.theme_night_from, DEFAULT_APPEARANCE.nightFrom),
@@ -153,6 +171,7 @@ export function settingsFromAppearance(appearance: Appearance): Partial<Settings
   return {
     theme: appearance.theme,
     board_set: appearance.boardSet,
+    piece_set: appearance.pieceSet,
     theme_auto: appearance.auto,
     theme_night: appearance.night,
     theme_night_from: appearance.nightFrom,
@@ -221,6 +240,19 @@ function allowed(id: ThemeId, plus: boolean | null): ThemeId {
 }
 
 /**
+ * Das Figurenset, das gelten soll.
+ *
+ * Dieselbe Regel wie beim Thema: Ohne Plus fällt ein Plus-Set auf den
+ * klassischen Satz zurück, solange die Freischaltung geprüft wird (`null`)
+ * bleibt die Wahl aber stehen · sonst tauschte das Brett beim Start einmal
+ * alle Figuren aus.
+ */
+export function resolvePieceSet(appearance: Appearance, plus: boolean | null): PieceSetId {
+  const def = pieceSetDef(appearance.pieceSet);
+  return def.plus && plus === false ? DEFAULT_PIECE_SET : def.id;
+}
+
+/**
  * Zwischenspeicher für den Kaltstart.
  *
  * Die Einstellungen kommen aus dem Backend und damit erst nach dem ersten
@@ -235,6 +267,8 @@ interface CachedAppearance {
   theme: ThemeId;
   /** Fehlt, wenn das Brett dem Thema folgt. */
   board?: BoardSetId;
+  /** Fehlt beim klassischen Satz · das Startskript kennt keine Figuren. */
+  pieces?: PieceSetId;
   /**
    * Grundton des Themas, wie er zuletzt tatsächlich gemessen wurde. Das
    * Startskript malt damit die Seite, bevor das Stylesheet steht · so kommt es
@@ -249,11 +283,12 @@ function readCache(): CachedAppearance | null {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const { theme, board, bg } = parsed as Record<string, unknown>;
+    const { theme, board, pieces, bg } = parsed as Record<string, unknown>;
     if (!isThemeId(theme)) return null;
     return {
       theme,
       board: isBoardSetId(board) ? board : DEFAULT_BOARD_SET,
+      pieces: isPieceSetId(pieces) ? pieces : DEFAULT_PIECE_SET,
       bg: typeof bg === "string" ? bg : undefined,
     };
   } catch {
@@ -276,6 +311,7 @@ let appearance: Appearance = DEFAULT_APPEARANCE;
 let plusUnlocked: boolean | null = null;
 let applied: ThemeId | null = null;
 let appliedBoard: BoardSetId | null = null;
+let appliedPieces: PieceSetId | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 function systemDark(): boolean | null {
@@ -288,6 +324,7 @@ function apply() {
   if (typeof document === "undefined") return;
   const theme = resolveTheme(appearance, { now: new Date(), systemDark: systemDark(), plus: plusUnlocked });
   const board = appearance.boardSet;
+  const pieces = resolvePieceSet(appearance, plusUnlocked);
 
   const root = document.documentElement;
   root.dataset.theme = theme;
@@ -302,9 +339,10 @@ function apply() {
   // es dann aber noch nie gehört.
   paintSystemBars(theme);
 
-  if (theme === applied && board === appliedBoard) return;
+  if (theme === applied && board === appliedBoard && pieces === appliedPieces) return;
   applied = theme;
   appliedBoard = board;
+  appliedPieces = pieces;
 
   // Den Grundton für den nächsten Kaltstart mitnehmen, statt ihn ein zweites
   // Mal aufzuschreiben · gemessen wird, was die Themendatei gerade sagt.
@@ -312,8 +350,17 @@ function apply() {
   if (bg) root.style.background = bg;
   // Das Brett steht nur im Zwischenspeicher, wenn es vom Thema abweicht ·
   // so setzt das Startskript kein `data-board="auto"`, das es nicht gibt.
-  writeCache({ theme, board: board === DEFAULT_BOARD_SET ? undefined : board, bg });
+  writeCache({
+    theme,
+    board: board === DEFAULT_BOARD_SET ? undefined : board,
+    pieces: pieces === DEFAULT_PIECE_SET ? undefined : pieces,
+    bg,
+  });
   window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT, { detail: theme }));
+  // Die Figuren hängen nicht an CSS · wer sie zeichnet, hört auf denselben
+  // Abonnentenkreis wie die Einstellungsseite und braucht diesen Anstoß auch
+  // dann, wenn sich nur die Freischaltung geändert hat.
+  notify();
 }
 
 /**
@@ -363,6 +410,16 @@ export function appliedTheme(): ThemeId {
 }
 
 /**
+ * Das gerade angewendete Figurenset (nicht unbedingt das gewählte).
+ *
+ * Brett, Schlagliste und Bildkarte fragen hier · sie sollen die Figuren
+ * zeigen, die gelten dürfen, und nicht die, die jemand ohne Plus gewählt hat.
+ */
+export function appliedPieceSet(): PieceSetId {
+  return appliedPieces ?? readCache()?.pieces ?? DEFAULT_PIECE_SET;
+}
+
+/**
  * Übernimmt eine neue Wahl. Die Einstellungsseite ruft das beim Antippen einer
  * Kachel auf, damit das Thema sofort steht und nicht erst nach dem Speichern.
  */
@@ -370,7 +427,7 @@ export function setAppearance(next: Appearance) {
   appearance = next;
   syncTimer();
   apply();
-  for (const listener of listeners) listener();
+  notify();
 }
 
 /**
@@ -383,6 +440,10 @@ export function currentAppearance(): Appearance {
 }
 
 const listeners = new Set<() => void>();
+
+function notify() {
+  for (const listener of listeners) listener();
+}
 
 /**
  * Abonniert die Wahl (für `useSyncExternalStore`). Die Einstellungsseite hängt
@@ -438,6 +499,7 @@ export function initAppearance() {
   if (cached) {
     applied = cached.theme;
     appliedBoard = cached.board ?? DEFAULT_BOARD_SET;
+    appliedPieces = cached.pieces ?? DEFAULT_PIECE_SET;
   }
 
   if (typeof window !== "undefined" && typeof window.matchMedia === "function") {

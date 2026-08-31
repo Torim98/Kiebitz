@@ -1,16 +1,25 @@
 /**
- * Erscheinungsbild: Farbwelt, Brett und automatischer Wechsel.
+ * Erscheinungsbild: Farbwelt, Brett, Figuren und automatischer Wechsel.
  *
  * Die Vorschau ist keine Nachbildung, sondern die Sache selbst: Jede Kachel
  * trägt `data-theme` ihres Themas, und die Farbtokens darin gelten für ihren
  * Inhalt. Deshalb steht in dieser Datei kein einziger Farbwert — was in
- * `src/themes.css` steht, ist auch in der Kachel zu sehen.
+ * `src/themes.css` steht, ist auch in der Kachel zu sehen. Für die Figuren
+ * gilt dasselbe: Die Vorschau zeichnet die Figuren des Sets, nicht ein Bild
+ * davon.
  */
-import { Lock, Palette, Sparkles } from "lucide-react";
+import { Crown, Lock, Palette, Sparkles } from "lucide-react";
 import { Button, Chip } from "../../components/ui";
 import { useI18n } from "../../lib/i18n";
 import { openPlusDialog } from "../../lib/plus/dialog";
 import { usePlusGate } from "../../lib/plus/usePlus";
+import {
+  PIECE_SETS,
+  PIECE_VIEWBOX,
+  pieceGlyphs,
+  pieceSetDef,
+  type PieceSetId,
+} from "../../lib/pieces/sets";
 import {
   BOARD_SETS,
   THEMES,
@@ -31,6 +40,35 @@ function ThemePreview() {
         <span className="h-1.5 w-1/3 rounded-full bg-accent" />
       </span>
       <BoardPreview />
+    </span>
+  );
+}
+
+/**
+ * Drei Figuren eines Sets auf einem Stück Brett · die Vorschau zeigt die
+ * Zeichnungen selbst und nicht ihre Beschreibung. Dame, Springer und Bauer
+ * sind die drei, an denen ein Set als erstes auseinandergeht.
+ */
+function PiecePreview({ set }: { set: PieceSetId }) {
+  const glyphs = pieceGlyphs(set);
+  return (
+    <span className="flex items-center gap-px overflow-hidden rounded-sm">
+      {(["wQ", "bN", "wP"] as const).map((code, index) => (
+        <span
+          key={code}
+          className={`flex h-7 w-7 items-center justify-center ${
+            index % 2 === 0 ? "bg-board-light" : "bg-board-dark"
+          }`}
+        >
+          <svg
+            viewBox={PIECE_VIEWBOX}
+            className="h-full w-full"
+            aria-hidden="true"
+            // Im Repo erzeugte Zeichnungen · keine Fremdeingabe.
+            dangerouslySetInnerHTML={{ __html: glyphs[code] ?? "" }}
+          />
+        </span>
+      ))}
     </span>
   );
 }
@@ -65,6 +103,7 @@ export default function AppearanceSection({
   const pickTheme = (theme: ThemeId) => onChange({ ...appearance, theme });
   const pickNight = (night: ThemeId) => onChange({ ...appearance, night });
   const pickBoard = (boardSet: BoardSetId) => onChange({ ...appearance, boardSet });
+  const pickPieces = (pieceSet: PieceSetId) => onChange({ ...appearance, pieceSet });
 
   /** Kachel eines Themas · gesperrte führen zur Plus-Erklärung. */
   const themeTile = (id: ThemeId, selected: boolean, onPick: (id: ThemeId) => void) => {
@@ -144,6 +183,39 @@ export default function AppearanceSection({
           </button>
         ))}
       </div>
+
+      {/* ── Figuren ───────────────────────────────────────────────────────── */}
+      <h4 className="mt-5 flex items-center gap-2 text-[13px] font-medium text-ink">
+        <Crown size={14} className="text-ink3" /> {t("set.pieceSet")}
+      </h4>
+      <p className="mt-1 text-[12px] leading-relaxed text-ink3">{t("set.pieceSetNote")}</p>
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {PIECE_SETS.map((set) => {
+          const blocked = set.plus && locked;
+          const selected = appearance.pieceSet === set.id;
+          return (
+            <button
+              key={set.id}
+              onClick={() => (blocked ? openPlusDialog(THEME_FEATURE) : pickPieces(set.id))}
+              aria-pressed={selected}
+              title={t(set.descKey)}
+              className={`flex items-center gap-2 rounded-lg border p-1.5 pe-2.5 text-[12.5px] transition-colors ${
+                selected
+                  ? "border-accent-dim bg-accent-soft text-accent"
+                  : "border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
+              } ${blocked ? "opacity-70" : ""}`}
+            >
+              <PiecePreview set={set.id} />
+              {t(set.nameKey)}
+              {set.plus && blocked && <Lock size={12} className="text-ink3" />}
+              {set.plus && !blocked && <Sparkles size={12} className="text-accent" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+        {t(pieceSetDef(appearance.pieceSet).descKey)}
+      </p>
 
       {/* ── Automatischer Wechsel ─────────────────────────────────────────── */}
       <h4 className="mt-5 text-[13px] font-medium text-ink">{t("set.themeAuto")}</h4>
