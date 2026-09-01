@@ -2,17 +2,20 @@ mod ads;
 mod analysis;
 mod billing;
 mod build_info;
+mod cbh;
 mod chess;
 mod chessdb;
 mod db;
 mod diag;
 mod endgame;
 mod engine;
+mod explorer;
 mod insights;
 mod legal;
 mod live;
 mod plus;
 mod puzzles;
+mod refdb;
 mod reminder;
 mod rep_pgn;
 mod repertoire;
@@ -478,6 +481,7 @@ pub fn run() {
             app.manage(live::LiveEngine::default());
             app.manage(endgame::EndgameEngine::default());
             app.manage(puzzles::PuzzleImportState::default());
+            app.manage(refdb::RefDbState::default());
             app.manage(sync::SyncServer::default());
 
             // Sync-Server (Desktop-Hub) automatisch starten, wenn aktiviert.
@@ -586,6 +590,13 @@ pub fn run() {
             billing::billing_restore,
             billing::billing_acknowledge,
             chessdb::chessdb_query,
+            explorer::explorer_query,
+            refdb::refdb_status,
+            refdb::refdb_import,
+            refdb::refdb_cancel_import,
+            refdb::refdb_clear,
+            refdb::refdb_query,
+            refdb::refdb_game,
             endgame::endgame_move,
             endgame::endgame_record,
             endgame::endgame_stats,

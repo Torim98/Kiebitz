@@ -36,6 +36,12 @@ vi.mock("../lib/settings", () => ({
   restoreDatabase: vi.fn(),
   testEngine: vi.fn(),
   useDatabase: vi.fn(),
+  onRefDbDone: vi.fn(() => Promise.resolve(() => {})),
+  onRefDbProgress: vi.fn(() => Promise.resolve(() => {})),
+  refdbCancelImport: vi.fn(),
+  refdbClear: vi.fn(),
+  refdbImport: vi.fn(),
+  refdbStatus: vi.fn(() => new Promise(() => {})),
   // Reine Helfer · die echten Implementierungen, damit die Trainingstage
   // im Test dasselbe tun wie in der App.
   trainingDayList: (mask: number) =>
@@ -89,6 +95,9 @@ const androidSettings = {
   batch_depth: 18,
   syzygy_path: null,
   chessdb_enabled: true,
+  explorer_enabled: true,
+  explorer_ratings: "",
+  explorer_speeds: "",
   auto_import: false,
   cc_user: "",
   li_user: "",
@@ -263,6 +272,8 @@ describe("Settings loading", () => {
       "set.engine",
       "set.database",
       "set.chessdb",
+      "set.explorer",
+      "set.refdb",
       "set.puzzleDb",
       "set.reset",
     ]);

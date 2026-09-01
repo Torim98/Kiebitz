@@ -10,6 +10,8 @@ export interface ExamplePaths {
   db: string;
   backup: string;
   puzzleDump: string;
+  /** Große Fremdsammlung als PGN oder ChessBase-Datenbank. */
+  refdb: string;
 }
 
 export function examplePaths(platform?: string): ExamplePaths {
@@ -20,6 +22,7 @@ export function examplePaths(platform?: string): ExamplePaths {
       db: "/storage/emulated/0/Kiebitz/kiebitz.db",
       backup: "/storage/emulated/0/Kiebitz/kiebitz-backup.db",
       puzzleDump: "/storage/emulated/0/Download/lichess_db_puzzle.csv.zst",
+      refdb: "/storage/emulated/0/Download/caissabase.pgn",
     };
   }
   if (platform === "linux" || platform === "macos") {
@@ -29,6 +32,7 @@ export function examplePaths(platform?: string): ExamplePaths {
       db: "~/Kiebitz/kiebitz.db",
       backup: "~/Kiebitz/kiebitz-backup.db",
       puzzleDump: "~/Downloads/lichess_db_puzzle.csv.zst",
+      refdb: "~/Downloads/caissabase.pgn",
     };
   }
   return {
@@ -37,5 +41,6 @@ export function examplePaths(platform?: string): ExamplePaths {
     db: "C:\\Kiebitz\\kiebitz.db",
     backup: "C:\\Kiebitz\\kiebitz-backup.db",
     puzzleDump: "C:\\Downloads\\lichess_db_puzzle.csv.zst",
+    refdb: "C:\\Downloads\\caissabase.pgn",
   };
 }

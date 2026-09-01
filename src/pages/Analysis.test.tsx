@@ -6,6 +6,10 @@ import { grantPlus, revokePlus } from "../test/plus";
 import Analysis from "./Analysis";
 
 const mocks = vi.hoisted(() => ({
+  explorerQuery: vi.fn(),
+  refdbQuery: vi.fn(),
+  refdbGame: vi.fn(),
+  refdbStatus: vi.fn(),
   listGames: vi.fn(),
   startAnalysis: vi.fn(),
   gameAnalysis: vi.fn(),
@@ -31,6 +35,10 @@ vi.mock("../lib/db", () => ({
 vi.mock("../lib/settings", () => ({
   getSettings: mocks.getSettings,
   chessdbQuery: vi.fn(),
+  explorerQuery: mocks.explorerQuery,
+  refdbQuery: mocks.refdbQuery,
+  refdbGame: mocks.refdbGame,
+  refdbStatus: mocks.refdbStatus,
 }));
 vi.mock("../lib/analysis", () => ({
   cancelAnalysis: vi.fn(),
@@ -136,7 +144,43 @@ beforeEach(() => {
   // Die Oberfläche startet ab Werk auf Englisch; diese Tests prüfen die
   // deutschen Texte und stellen die Sprache deshalb explizit ein.
   localStorage.setItem("kiebitz.locale", "de");
+  // Das Eröffnungsbuch merkt sich die zuletzt gewählte Quelle · ohne das
+  // Zurücksetzen begänne der nächste Test bei der Quelle des vorherigen.
+  localStorage.setItem("kiebitz.book.source", "masters");
   mocks.getSettings.mockResolvedValue({ locale: "de", chessdb_enabled: false, cc_user: "Torim98", li_user: "Torim98" });
+  // Das Eröffnungsbuch fragt beim Öffnen den Bestand der Referenzdatenbank ab
+  // und, sobald eine Quelle freigeschaltet ist, die Häufigkeiten der Stellung.
+  mocks.refdbStatus.mockResolvedValue({
+    games: 0,
+    positions: 0,
+    size_bytes: 0,
+    source: "",
+    imported_at: 0,
+    importing: false,
+    path: "",
+  });
+  mocks.explorerQuery.mockResolvedValue({
+    source: "masters",
+    status: "unknown",
+    white: 0,
+    draws: 0,
+    black: 0,
+    moves: [],
+    top_games: [],
+    opening: null,
+    cached: false,
+  });
+  mocks.refdbQuery.mockResolvedValue({
+    source: "own",
+    status: "unknown",
+    white: 0,
+    draws: 0,
+    black: 0,
+    moves: [],
+    top_games: [],
+    opening: null,
+    cached: true,
+  });
   mocks.listGames.mockResolvedValue([excludedGame]);
   mocks.gameAnalysis.mockResolvedValue([]);
   mocks.startAnalysis.mockResolvedValue(undefined);
@@ -498,6 +542,131 @@ describe("Analysis page", () => {
       await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
 
       expect(screen.queryByText(/^\d+:\d\d$/)).toBeNull();
+    });
+  });
+
+  /**
+   * Das Eröffnungsbuch beantwortet drei verschiedene Fragen an derselben
+   * Stelle: was Starke spielen, was die Masse spielt, was in der eigenen
+   * Sammlung steht. ChessDB bleibt daneben stehen · es sagt etwas über die
+   * Stellung, nicht über die Spieler.
+   */
+  describe("opening book", () => {
+    const mastersAnswer = {
+      source: "masters",
+      status: "ok",
+      white: 900,
+      draws: 600,
+      black: 500,
+      moves: [
+        { uci: "g1f3", san: "Nf3", white: 500, draws: 300, black: 200, average_rating: 2412 },
+        { uci: "b1c3", san: "Nc3", white: 200, draws: 100, black: 150, average_rating: 2388 },
+      ],
+      top_games: [
+        {
+          id: "abc12345",
+          white: "Kasparov, G.",
+          black: "Karpov, A.",
+          white_elo: 2820,
+          black_elo: 2745,
+          winner: "white",
+          year: 1997,
+          month: "1997-05",
+        },
+      ],
+      opening: "Italienisch",
+      cached: false,
+    };
+
+    it("shows master frequencies and plays a clicked move on the board", async () => {
+      grantPlus();
+      mocks.explorerQuery.mockResolvedValue(mastersAnswer);
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      // Die Zeile trägt Zug, Partienzahl und Elo-Schnitt · der Balken daneben
+      // ist die Bilanz und hat keinen Text.
+      const move = await screen.findByTitle("Nf3 aufs Brett legen", {}, { timeout: 3000 });
+      expect(move.textContent).toContain("1.000");
+      expect(move.textContent).toContain("2412");
+      expect(screen.getByText(/Kasparov/)).toBeTruthy();
+
+      // Ein Klick spielt den Zug · das freie Brett steht danach eine Stellung
+      // weiter, ohne dass jemand ein Feld anfassen musste.
+      fireEvent.click(move);
+      await waitFor(() =>
+        expect(screen.getByTestId("analysis-board").dataset.fen).toContain(
+          "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R"
+        )
+      );
+    });
+
+    /**
+     * Gesperrt wird nicht gefragt. Eine Netzanfrage für eine Funktion, die
+     * nicht freigeschaltet ist, wäre verschwendet · und die Vorschau soll die
+     * Form zeigen, nicht die Zahlen.
+     */
+    it("asks nothing at all while the explorer is locked", async () => {
+      mocks.explorerQuery.mockResolvedValue(mastersAnswer);
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      await screen.findByRole("button", { name: "Meister" });
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(mocks.explorerQuery).not.toHaveBeenCalled();
+      expect(screen.getByText("Mit Plus")).toBeTruthy();
+    });
+
+    it("reads the own reference database from its own source", async () => {
+      grantPlus();
+      mocks.refdbStatus.mockResolvedValue({
+        games: 4_700_000,
+        positions: 12_000_000,
+        size_bytes: 1_000,
+        source: "caissabase.pgn",
+        imported_at: 1_780_000_000,
+        importing: false,
+        path: "reference.sqlite",
+      });
+      mocks.refdbQuery.mockResolvedValue({
+        ...mastersAnswer,
+        source: "own",
+        top_games: [
+          {
+            id: "42",
+            white: "Fischer, R.",
+            black: "Spassky, B.",
+            white_elo: 2785,
+            black_elo: 2660,
+            winner: "black",
+            year: 1972,
+            month: null,
+          },
+        ],
+      });
+      mocks.refdbGame.mockResolvedValue({
+        id: 42,
+        white: "Fischer, R.",
+        black: "Spassky, B.",
+        white_elo: 2785,
+        black_elo: 2660,
+        result: "0-1",
+        played_at: "1972.07.11",
+        event: "World Championship",
+        eco: "E56",
+        moves: "c4 e6 Nf3 d5",
+      });
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      fireEvent.click(await screen.findByRole("button", { name: "Meine Datenbank" }));
+      const game = await screen.findByRole("button", { name: /Fischer/ }, { timeout: 3000 });
+      expect(mocks.refdbQuery).toHaveBeenCalled();
+
+      // Eine Musterpartie der eigenen Sammlung kommt aufs Brett · als freies
+      // Brett, nicht als eigene Partie.
+      fireEvent.click(game);
+      await waitFor(() => expect(screen.getByText(/Fischer, R\. \(2785\)/)).toBeTruthy());
+      await waitFor(() =>
+        expect(screen.getAllByRole("button", { name: "c4" }).length).toBeGreaterThan(0)
+      );
     });
   });
 

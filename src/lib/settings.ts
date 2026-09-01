@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitDataChange } from "./changes";
 // Nur der Typ · zur Laufzeit importiert i18n dieses Modul, nicht umgekehrt.
 import type { Locale } from "./i18n";
@@ -17,6 +18,12 @@ export interface Settings {
   batch_depth: number;
   syzygy_path: string | null;
   chessdb_enabled: boolean;
+  /** Eröffnungs-Explorer von Lichess (Meister- und Online-Häufigkeiten). */
+  explorer_enabled: boolean;
+  /** Rating-Bänder der Lichess-Datenbank ("1600,1800"), leer = alle. */
+  explorer_ratings: string;
+  /** Zeitkontrollen der Lichess-Datenbank ("blitz,rapid"), leer = alle. */
+  explorer_speeds: string;
   /** Neue Partien beim Start und im Hintergrund nachladen. */
   auto_import: boolean;
   cc_user: string;
@@ -126,6 +133,71 @@ export interface ChessDbResult {
   cached: boolean;
 }
 
+/**
+ * Ein Zug im Eröffnungsbuch, wie ihn alle Häufigkeits-Quellen liefern ·
+ * Lichess-Meister, Lichess-Online und die eigene Referenzdatenbank. Eine Form
+ * für drei Quellen, damit die Karte in der Analyse nur eine Zeile kennt.
+ */
+export interface BookMove {
+  uci: string;
+  san: string;
+  white: number;
+  draws: number;
+  black: number;
+  average_rating: number | null;
+}
+
+export interface BookGame {
+  /** Lichess-ID oder, bei der eigenen Datenbank, die Zeilennummer. */
+  id: string;
+  white: string;
+  black: string;
+  white_elo: number | null;
+  black_elo: number | null;
+  /** "white" · "black" · "" für Remis. */
+  winner: string;
+  year: number | null;
+  month: string | null;
+}
+
+export interface BookResult {
+  source: BookSource;
+  status: string; // "ok" | "unknown" | "invalid"
+  white: number;
+  draws: number;
+  black: number;
+  moves: BookMove[];
+  top_games: BookGame[];
+  opening: string | null;
+  cached: boolean;
+}
+
+/** Die Häufigkeits-Quellen · `engine` (ChessDB) steht daneben, nicht darin. */
+export type BookSource = "masters" | "lichess" | "own";
+
+export interface RefDbStatus {
+  games: number;
+  positions: number;
+  size_bytes: number;
+  source: string;
+  imported_at: number;
+  importing: boolean;
+  path: string;
+}
+
+export interface RefGame {
+  id: number;
+  white: string;
+  black: string;
+  white_elo: number;
+  black_elo: number;
+  result: string;
+  played_at: string;
+  event: string;
+  eco: string;
+  moves: string;
+}
+
 let settingsCache: Settings | null = null;
 let settingsRequest: Promise<Settings> | null = null;
 let settingsGeneration = 0;
@@ -213,6 +285,67 @@ export function restoreDatabase(source: string): Promise<DbInfo> {
 
 export function chessdbQuery(fen: string): Promise<ChessDbResult> {
   return invoke<ChessDbResult>("chessdb_query", { fen });
+}
+
+/** Lichess-Explorer · `ratings` und `speeds` gelten nur für "lichess". */
+export function explorerQuery(
+  fen: string,
+  source: "masters" | "lichess",
+  ratings?: string,
+  speeds?: string
+): Promise<BookResult> {
+  return invoke<BookResult>("explorer_query", { fen, source, ratings, speeds });
+}
+
+/** Eigene Referenzdatenbank · Buchauskunft zu einer Stellung. */
+export function refdbQuery(fen: string): Promise<BookResult> {
+  return invoke<BookResult>("refdb_query", { fen });
+}
+
+export function refdbStatus(): Promise<RefDbStatus> {
+  return invoke<RefDbStatus>("refdb_status");
+}
+
+/** Startet den Import; der Fortschritt kommt als Ereignis `refdb://progress`. */
+export function refdbImport(path: string): Promise<void> {
+  return invoke("refdb_import", { path });
+}
+
+export function refdbCancelImport(): Promise<void> {
+  return invoke("refdb_cancel_import");
+}
+
+export function refdbClear(): Promise<void> {
+  return invoke("refdb_clear");
+}
+
+/** Eine Referenzpartie zum Nachspielen. */
+export function refdbGame(id: number): Promise<RefGame> {
+  return invoke<RefGame>("refdb_game", { id });
+}
+
+/** Fortschritt des Referenz-Imports (spiegelt refdb::ImportProgress). */
+export interface RefDbProgress {
+  games: number;
+  bytes: number;
+  bytes_total: number;
+  /** "reading" · "finishing" */
+  phase: string;
+}
+
+export interface RefDbDone {
+  games: number;
+  total: number;
+  cancelled: boolean;
+  error: string | null;
+}
+
+export function onRefDbProgress(cb: (p: RefDbProgress) => void): Promise<UnlistenFn> {
+  return listen<RefDbProgress>("refdb://progress", (e) => cb(e.payload));
+}
+
+export function onRefDbDone(cb: (p: RefDbDone) => void): Promise<UnlistenFn> {
+  return listen<RefDbDone>("refdb://done", (e) => cb(e.payload));
 }
 
 /** Leert die Datenbank und setzt alle Einstellungen zurück. */

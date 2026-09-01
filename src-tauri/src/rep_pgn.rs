@@ -80,7 +80,7 @@ fn tokenize(movetext: &str) -> Vec<Token> {
 
 /// Filtert Zugnummern, Ergebnisse und Platzhalter aus einem Wort.
 /// Übrig bleibt der reine SAN-Zug (oder nichts).
-fn clean_san(word: &str) -> Option<String> {
+pub(crate) fn clean_san(word: &str) -> Option<String> {
     // "12." / "12..." / "12.e4" → alles vor dem letzten Punkt abschneiden.
     let rest = match word.rfind('.') {
         Some(idx) => &word[idx + 1..],

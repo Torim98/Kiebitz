@@ -32,6 +32,14 @@ pub struct Settings {
     pub syzygy_path: Option<String>,
     /// Online-Eröffnungsbuch chessdb.cn (Cloud-Evals), cache-gestützt.
     pub chessdb_enabled: bool,
+    /// Eröffnungs-Explorer von Lichess (Häufigkeiten aus Meister- und
+    /// Online-Partien), cache-gestützt · siehe explorer.rs.
+    pub explorer_enabled: bool,
+    /// Rating-Bänder der Lichess-Datenbank als Kommaliste ("1600,1800").
+    /// Leer = alle Bänder · das ist "die Masse", gefiltert ist es "meine Klasse".
+    pub explorer_ratings: String,
+    /// Zeitkontrollen der Lichess-Datenbank als Kommaliste. Leer = alle.
+    pub explorer_speeds: String,
     /// Neue Partien beim Start und im Hintergrund nachladen.
     pub auto_import: bool,
     pub cc_user: String,
@@ -228,6 +236,11 @@ impl Default for Settings {
             syzygy_path: None,
             // Beide Komfortfunktionen sind ab Werk an; abschaltbar bleiben sie.
             chessdb_enabled: true,
+            explorer_enabled: true,
+            // Ab Werk der ganze Bestand · wer seine eigene Klasse sehen will,
+            // grenzt in den Einstellungen ein.
+            explorer_ratings: String::new(),
+            explorer_speeds: String::new(),
             auto_import: true,
             cc_user: String::new(),
             li_user: String::new(),

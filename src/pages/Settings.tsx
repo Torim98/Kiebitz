@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  BookOpen,
   Check,
   ArchiveRestore,
   Bell,
@@ -20,6 +21,7 @@ import {
   Globe,
   FolderOpen,
   LayoutGrid,
+  Library,
   LifeBuoy,
   Loader2,
   ExternalLink,
@@ -31,6 +33,7 @@ import {
   Scale,
   ShieldCheck,
   Smartphone,
+  Square,
   Sparkles,
   Trash2,
   UserRound,
@@ -47,6 +50,12 @@ import {
   formatBytes,
   getSettings,
   moveDatabase,
+  onRefDbDone,
+  onRefDbProgress,
+  refdbCancelImport,
+  refdbClear,
+  refdbImport,
+  refdbStatus,
   refreshSettings,
   restoreDatabase,
   setSettings,
@@ -56,6 +65,8 @@ import {
   useDatabase,
   type DbInfo,
   type EngineTest,
+  type RefDbProgress,
+  type RefDbStatus,
   type Settings,
 } from "../lib/settings";
 import { examplePaths } from "../lib/paths";
@@ -92,7 +103,7 @@ import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
 import { playBoardSound, setBoardSoundEnabled, setBoardSoundVolume } from "../lib/sound";
 import PlusSection from "./settings/PlusSection";
-import { PlusBadgeButton } from "../components/PlusLock";
+import { PlusBadge, PlusBadgeButton } from "../components/PlusLock";
 import { usePlus, usePlusGate } from "../lib/plus/usePlus";
 import { openPlusDialog } from "../lib/plus/dialog";
 import AppearanceSection from "./settings/AppearanceSection";
@@ -122,6 +133,39 @@ import {
   type Section,
   type SectionId,
 } from "./settings/SettingsLayout";
+
+/**
+ * Rating-Bänder des Lichess-Explorers. Die API kennt genau diese Stufen;
+ * andere Werte weist sie ab, deshalb steht die Liste hier und nicht als freies
+ * Eingabefeld. Leere Auswahl heißt „alle" · das ist die Masse.
+ */
+const RATING_BANDS = ["1000", "1200", "1400", "1600", "1800", "2000", "2200", "2500"] as const;
+
+/**
+ * Zeitkontrollen des Lichess-Explorers · leere Auswahl heißt „alle".
+ *
+ * Lichess sagt "correspondence", Kiebitz sagt überall "Fernschach/Daily" ·
+ * die Beschriftung folgt der App, der Wert der API.
+ */
+const EXPLORER_SPEEDS: { id: string; key: Key }[] = [
+  { id: "bullet", key: "common.tc.bullet" },
+  { id: "blitz", key: "common.tc.blitz" },
+  { id: "rapid", key: "common.tc.rapid" },
+  { id: "classical", key: "common.tc.classical" },
+  { id: "correspondence", key: "common.tc.daily" },
+];
+
+/** Ist ein Wert Teil einer Kommaliste? */
+function listHas(list: string, value: string): boolean {
+  return list.split(",").map((v) => v.trim()).includes(value);
+}
+
+/** Wert in einer Kommaliste an- oder abwählen · Reihenfolge bleibt stabil. */
+function listToggle(list: string, value: string): string {
+  const parts = list.split(",").map((v) => v.trim()).filter(Boolean);
+  const next = parts.includes(value) ? parts.filter((v) => v !== value) : [...parts, value];
+  return next.join(",");
+}
 
 export default function SettingsPage({
   openSupport,
@@ -192,6 +236,7 @@ export default function SettingsPage({
   // Homescreen-Widgets · die Einrichtung ist zugleich einer der drei
   // strategischen Einstiege in den kostenlosen Test.
   const widgetGate = usePlusGate("widgets");
+  const refdbGate = usePlusGate("reference_database");
   const [widgetBusy, setWidgetBusy] = useState(false);
   const [widgetMsg, setWidgetMsg] = useState<string | null>(null);
   const refreshWidgets = async () => {
@@ -214,6 +259,12 @@ export default function SettingsPage({
   const [adPrivacyMsg, setAdPrivacyMsg] = useState<string | null>(null);
 
   const [pz, setPz] = useState<PuzzleStats | null>(null);
+  // Referenzdatenbank · Bestand, laufender Import, letzte Meldung.
+  const [refdb, setRefdb] = useState<RefDbStatus | null>(null);
+  const [refdbRunning, setRefdbRunning] = useState(false);
+  const [refdbProgress, setRefdbProgress] = useState<RefDbProgress | null>(null);
+  const [refdbMsg, setRefdbMsg] = useState<string | null>(null);
+  const [refdbPath, setRefdbPath] = useState("");
   const [pzRunning, setPzRunning] = useState(false);
   const [pzProgress, setPzProgress] = useState<PuzzleImportProgress | null>(null);
   const [pzMsg, setPzMsg] = useState<string | null>(null);
@@ -305,6 +356,50 @@ export default function SettingsPage({
       cleanups.forEach((u) => u());
     };
   }, [desktop, t]);
+
+  // Referenzdatenbank: Bestand lesen, sobald der Bereich aufgeklappt ist.
+  const refreshRefdb = useCallback(() => {
+    refdbStatus()
+      .then((status) => {
+        setRefdb(status);
+        setRefdbRunning(status.importing);
+      })
+      .catch(() => setRefdb(null));
+  }, []);
+
+  useEffect(() => {
+    if (!desktop || !revealed.refdb) return;
+    refreshRefdb();
+  }, [desktop, revealed.refdb, refreshRefdb]);
+
+  // Import-Ereignisse der Referenzdatenbank · der Lauf kann Stunden dauern und
+  // überlebt jeden Seitenwechsel, deshalb hängt die Anzeige an Ereignissen und
+  // nicht am Rückgabewert des Aufrufs.
+  useEffect(() => {
+    if (!desktop) return;
+    const cleanups: (() => void)[] = [];
+    let disposed = false;
+    onRefDbProgress((p) => {
+      setRefdbRunning(true);
+      setRefdbProgress(p);
+    }).then((u) => (disposed ? u() : cleanups.push(u)));
+    onRefDbDone((p) => {
+      setRefdbRunning(false);
+      setRefdbProgress(null);
+      setRefdbMsg(
+        p.error
+          ? t("set.refdbImportFailed", { e: p.error })
+          : p.cancelled
+            ? t("set.refdbImportCancelled", { n: deInt(p.games), total: deInt(p.total) })
+            : t("set.refdbImportDone", { n: deInt(p.games), total: deInt(p.total) })
+      );
+      refreshRefdb();
+    }).then((u) => (disposed ? u() : cleanups.push(u)));
+    return () => {
+      disposed = true;
+      cleanups.forEach((u) => u());
+    };
+  }, [desktop, t, refreshRefdb]);
 
   // Update-Fortschritt (kommt auch vom Hintergrund-Check beim Start).
   useEffect(() => {
@@ -1742,6 +1837,194 @@ export default function SettingsPage({
         ) : (
           desktopOnly
         ),
+    },
+    {
+      // Eröffnungs-Explorer · die Häufigkeitsquellen aus dem Netz. ChessDB
+      // darüber bleibt frei, das hier ist Plus: siehe lib/plus/types.ts.
+      id: "explorer",
+      group: "advanced",
+      icon: BookOpen,
+      title: t("set.explorer"),
+      summary: t("set.explorerSummary"),
+      content:
+        desktop && draft ? (
+          <>
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={draft.explorer_enabled}
+                onChange={(e) => patch({ explorer_enabled: e.target.checked })}
+                className="h-4 w-4 accent-accent"
+              />
+              <span className="text-[13px] text-ink">{t("set.explorerToggle")}</span>
+            </label>
+            <div className="mt-2">
+              <PlusBadgeButton feature="opening_explorer" />
+            </div>
+            <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.explorerNote")}</p>
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="text-[12px] font-medium uppercase tracking-[0.1em] text-ink3">
+                {t("set.explorerFilters")}
+              </div>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+                {t("set.explorerFiltersNote")}
+              </p>
+              <Field label={t("set.explorerRatings")}>
+                <div className="flex flex-wrap gap-1.5">
+                  {RATING_BANDS.map((band) => (
+                    <Chip
+                      key={band}
+                      active={listHas(draft.explorer_ratings, band)}
+                      onClick={() =>
+                        patch({ explorer_ratings: listToggle(draft.explorer_ratings, band) })
+                      }
+                    >
+                      {band}+
+                    </Chip>
+                  ))}
+                </div>
+              </Field>
+              <Field label={t("set.explorerSpeeds")}>
+                <div className="flex flex-wrap gap-1.5">
+                  {EXPLORER_SPEEDS.map((speed) => (
+                    <Chip
+                      key={speed.id}
+                      active={listHas(draft.explorer_speeds, speed.id)}
+                      onClick={() =>
+                        patch({ explorer_speeds: listToggle(draft.explorer_speeds, speed.id) })
+                      }
+                    >
+                      {t(speed.key)}
+                    </Chip>
+                  ))}
+                </div>
+              </Field>
+            </div>
+          </>
+        ) : (
+          desktopOnly
+        ),
+    },
+    {
+      // Eigene Referenzdatenbank · die große Fremdsammlung. Sie liegt in einer
+      // eigenen Datei neben der kiebitz.db, siehe src-tauri/src/refdb.rs.
+      id: "refdb",
+      group: "advanced",
+      icon: Library,
+      title: t("set.refdb"),
+      summary: t("set.refdbSummary"),
+      content: desktop ? (
+        <>
+          {refdb ? (
+            <div className="text-[13px] text-ink2">
+              {t("set.refdbCount", { n: deInt(refdb.games), p: deInt(refdb.positions) })}
+              <span className="ml-2 text-[12px] text-ink3">
+                ·{" "}
+                {refdb.imported_at
+                  ? t("set.refdbImportedAt", {
+                      src: refdb.source || "?",
+                      date: new Date(refdb.imported_at * 1000).toLocaleDateString(dateLocale()),
+                      size: formatBytes(refdb.size_bytes),
+                    })
+                  : t("set.refdbNever")}
+              </span>
+            </div>
+          ) : (
+            sectionLoading
+          )}
+          {refdbRunning ? (
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-[12.5px] text-ink2">
+                <Loader2 size={14} className="animate-spin text-accent" />
+                {refdbProgress?.phase === "finishing"
+                  ? t("set.refdbFinishing")
+                  : t("set.refdbReading", {
+                      n: deInt(refdbProgress?.games ?? 0),
+                      done: formatBytes(refdbProgress?.bytes ?? 0),
+                      total:
+                        refdbProgress && refdbProgress.bytes_total > 0
+                          ? formatBytes(refdbProgress.bytes_total)
+                          : "?",
+                    })}
+              </div>
+              <div>
+                <Button onClick={() => refdbCancelImport().catch(() => {})}>
+                  <Square size={13} /> {t("set.refdbCancel")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              <Field label={t("set.refdbFile")}>
+                <div className="flex gap-2">
+                  <input
+                    value={refdbPath}
+                    onChange={(e) => setRefdbPath(e.target.value)}
+                    placeholder={examplePath.refdb}
+                    className={inputCls}
+                  />
+                  <Button
+                    onClick={async () => {
+                      const chosen = await openDialog({
+                        multiple: false,
+                        directory: false,
+                        filters: [{ name: "PGN", extensions: ["pgn", "zst"] }],
+                      });
+                      if (typeof chosen === "string") setRefdbPath(chosen);
+                    }}
+                  >
+                    <FolderOpen size={14} /> {t("set.dbChooseFile")}
+                  </Button>
+                </div>
+              </Field>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  primary
+                  disabled={!refdbPath.trim()}
+                  onClick={() => {
+                    if (!refdbGate.unlocked) {
+                      openPlusDialog("reference_database");
+                      return;
+                    }
+                    setRefdbMsg(null);
+                    setRefdbRunning(true);
+                    refdbImport(refdbPath.trim()).catch((e) => {
+                      setRefdbRunning(false);
+                      setRefdbMsg(t("set.refdbImportFailed", { e: String(e) }));
+                    });
+                  }}
+                >
+                  <Download size={14} /> {t("common.import")}
+                  {!refdbGate.unlocked && !refdbGate.pending && <PlusBadge />}
+                </Button>
+                {(refdb?.games ?? 0) > 0 && (
+                  <Button
+                    onClick={() =>
+                      refdbClear()
+                        .then(() => {
+                          setRefdbMsg(t("set.refdbCleared"));
+                          refreshRefdb();
+                        })
+                        .catch((e) => setRefdbMsg(String(e)))
+                    }
+                  >
+                    <Trash2 size={14} /> {t("set.refdbClear")}
+                  </Button>
+                )}
+              </div>
+              <p className="text-[12px] leading-relaxed text-ink3">{t("set.refdbNote")}</p>
+              <p className="text-[12px] leading-relaxed text-ink3">{t("set.refdbSources")}</p>
+            </div>
+          )}
+          {refdbMsg && (
+            <div className="mt-3 rounded-lg border border-line bg-panel2 px-3 py-2 text-[12.5px] text-ink2">
+              {refdbMsg}
+            </div>
+          )}
+        </>
+      ) : (
+        desktopOnly
+      ),
     },
     {
       id: "puzzles",

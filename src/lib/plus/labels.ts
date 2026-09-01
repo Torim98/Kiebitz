@@ -17,6 +17,8 @@ export const FEATURE_NAME_KEY: Record<PlusOnlyFeature, Key> = {
   widgets: "plus.f.widgets",
   advanced_themes: "plus.f.themes",
   focus_board: "plus.f.focus",
+  opening_explorer: "plus.f.explorer",
+  reference_database: "plus.f.refdb",
   no_ads: "plus.f.noAds",
 };
 
@@ -29,6 +31,8 @@ export const FEATURE_DESC_KEY: Record<PlusOnlyFeature, Key> = {
   widgets: "plus.d.widgets",
   advanced_themes: "plus.d.themes",
   focus_board: "plus.d.focus",
+  opening_explorer: "plus.d.explorer",
+  reference_database: "plus.d.refdb",
   no_ads: "plus.d.noAds",
 };
 

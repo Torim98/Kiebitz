@@ -23,6 +23,8 @@ export const PLUS_ONLY_FEATURES = [
   "widgets",
   "advanced_themes",
   "focus_board",
+  "opening_explorer",
+  "reference_database",
   "no_ads",
 ] as const;
 

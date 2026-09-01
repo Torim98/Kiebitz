@@ -8,7 +8,7 @@ pub struct Db(pub Mutex<Connection>);
 
 /// Current SQLite schema version. It is stored only after the complete
 /// migration has committed successfully.
-const SCHEMA_VERSION: i64 = 18;
+const SCHEMA_VERSION: i64 = 19;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
@@ -521,6 +521,17 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
             json    TEXT NOT NULL,
             ts      INTEGER NOT NULL
         );
+
+        -- v19: Cache für den Lichess-Eröffnungs-Explorer. Der Schlüssel
+        -- enthält die Quelle samt Filtern, weil dieselbe Stellung in zwei
+        -- Rating-Bändern verschieden aussieht · siehe explorer.rs.
+        CREATE TABLE IF NOT EXISTS explorer_cache (
+            source_key TEXT NOT NULL,
+            fen_key    TEXT NOT NULL,
+            json       TEXT NOT NULL,
+            ts         INTEGER NOT NULL,
+            PRIMARY KEY (source_key, fen_key)
+        ) WITHOUT ROWID;
 
         -- v5: Endspiel-Trainer · ein Eintrag pro ausgespieltem Drill-Versuch
         CREATE TABLE IF NOT EXISTS endgame_attempts (

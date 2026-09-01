@@ -24,6 +24,7 @@ import {
   Save,
   Search,
   Share2,
+  Sparkles,
   Square,
   Zap,
   RotateCcw,
@@ -35,7 +36,17 @@ import { isStoreCapture } from "../lib/storeCapture";
 import { useTrainingSession } from "../lib/session";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { getGame, listGameSummaries, setGameNote, setGameTags, type GameRecord, type GameSummary } from "../lib/db";
-import { chessdbQuery, getSettings, type ChessDbResult } from "../lib/settings";
+import {
+  chessdbQuery,
+  explorerQuery,
+  getSettings,
+  refdbGame,
+  refdbQuery,
+  refdbStatus,
+  type BookResult,
+  type BookSource,
+  type ChessDbResult,
+} from "../lib/settings";
 import {
   cancelAnalysis,
   gameAnalysis,
@@ -61,10 +72,11 @@ import LiveEngine from "../components/LiveEngine";
 import TagEditor from "../components/TagEditor";
 import { Button, Card, ExtLink, Menu, MenuItem, ResultBadge } from "../components/ui";
 import FocusBoard, { FocusButton, FocusMenuItem } from "../components/FocusBoard";
-import { PlusBadge } from "../components/PlusLock";
+import { PlusBadge, PlusLock } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
-import { de } from "../lib/format";
+import { de, deInt } from "../lib/format";
+import { openExternal } from "../lib/ext";
 import { evalLabel, winProb } from "../lib/evaluation";
 import { replaySans } from "../lib/position";
 import { plyOffset, shareHistory } from "../lib/share/notation";
@@ -325,6 +337,54 @@ function commentFor(t: TFunc, sansBefore: string[], m: ViewMove, prevEval: numbe
   return best ? base + t("an.commentBetter", { san: best }) : base;
 }
 
+/**
+ * Quellen des Eröffnungsbuchs.
+ *
+ * Drei davon zählen Partien und beantworten „was wird hier gespielt?" ·
+ * Meisterpartien, der Online-Bestand und die eigene Referenzdatenbank. Die
+ * vierte ist ChessDB und beantwortet etwas anderes: „was hält eine Engine
+ * davon?". Beides gehört in dieselbe Karte, aber nicht in dieselbe Spalte.
+ */
+type BookTab = BookSource | "engine";
+
+const BOOK_SOURCE_KEY = "kiebitz.book.source";
+
+function readBookSource(): BookTab {
+  try {
+    const stored = localStorage.getItem(BOOK_SOURCE_KEY);
+    if (stored === "masters" || stored === "lichess" || stored === "own" || stored === "engine") {
+      return stored;
+    }
+  } catch {
+    /* Storage nicht verfügbar */
+  }
+  return "masters";
+}
+
+/**
+ * Vorschau für die gesperrte Karte.
+ *
+ * Gesperrt wird nichts abgefragt · eine Netzanfrage für eine Funktion, die
+ * nicht freigeschaltet ist, wäre verschwendet. Die Sperre legt ohnehin eine
+ * Unschärfe darüber, gezeigt werden muss also nur die Form.
+ */
+const BOOK_PREVIEW: BookResult = {
+  source: "masters",
+  status: "ok",
+  white: 1_240_113,
+  draws: 812_004,
+  black: 998_211,
+  moves: [
+    { uci: "e2e4", san: "e4", white: 620_000, draws: 400_000, black: 500_000, average_rating: 2412 },
+    { uci: "d2d4", san: "d4", white: 300_000, draws: 260_000, black: 240_000, average_rating: 2388 },
+    { uci: "g1f3", san: "Nf3", white: 140_000, draws: 90_000, black: 120_000, average_rating: 2401 },
+    { uci: "c2c4", san: "c4", white: 96_000, draws: 62_000, black: 78_000, average_rating: 2396 },
+  ],
+  top_games: [],
+  opening: null,
+  cached: true,
+};
+
 export default function Analysis({
   targetGameId,
   shared = null,
@@ -365,6 +425,19 @@ export default function Analysis({
   const [playerProfile, setPlayerProfile] = useState({ cc: "", li: "", display: "" });
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
+  // Eröffnungsbuch · welche Quelle zuletzt gewählt war, merkt sich das Gerät.
+  // Das ist eine Ansichtssache und gehört deshalb nicht in die Einstellungen.
+  const [bookSource, setBookSource] = useState<BookTab>(readBookSource);
+  // Vorbelegt wie die Voreinstellung selbst · sonst stünde für den Moment bis
+  // zum Laden der Einstellungen „abgeschaltet" in der Karte.
+  const [explorerOn, setExplorerOn] = useState(true);
+  const [explorerFilters, setExplorerFilters] = useState({ ratings: "", speeds: "" });
+  const [stats, setStats] = useState<BookResult | null>(null);
+  const [statsState, setStatsState] = useState<"idle" | "loading" | "error">("idle");
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [refGames, setRefGames] = useState(0);
+  const explorerGate = usePlusGate("opening_explorer");
+  const refdbGate = usePlusGate("reference_database");
   const [noteDraft, setNoteDraft] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
@@ -485,6 +558,11 @@ export default function Analysis({
     getSettings()
       .then((s) => {
         setChessdbOn(s.chessdb_enabled);
+        setExplorerOn(s.explorer_enabled !== false);
+        setExplorerFilters({
+          ratings: s.explorer_ratings ?? "",
+          speeds: s.explorer_speeds ?? "",
+        });
         setPlayerProfile({ cc: s.cc_user ?? "", li: s.li_user ?? "", display: s.display_name ?? "" });
       })
       .catch(() => {});
@@ -731,6 +809,73 @@ export default function Analysis({
     }, 350);
     return () => clearTimeout(timer);
   }, [desktop, fen]);
+
+  // Gewählte Quelle merken · nächste Sitzung beginnt, wo diese aufgehört hat.
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOOK_SOURCE_KEY, bookSource);
+    } catch {
+      /* Storage nicht verfügbar */
+    }
+  }, [bookSource]);
+
+  // Bestand der Referenzdatenbank · entscheidet, ob der Reiter „Meine
+  // Datenbank" etwas zu zeigen hat oder erst auf den Import verweist.
+  useEffect(() => {
+    if (!desktop) return;
+    refdbStatus()
+      .then((status) => setRefGames(status.games))
+      .catch(() => setRefGames(0));
+  }, [desktop]);
+
+  /**
+   * Häufigkeiten zur aktuellen Stellung · Meister, Online oder eigene
+   * Datenbank.
+   *
+   * Entprellt wie die Stellungssuche: Wer durch eine Partie blättert, erzeugt
+   * sonst pro Halbzug eine Anfrage. Gesperrt (kein Plus) wird gar nicht erst
+   * gefragt · die Karte zeigt dann die Vorschau.
+   */
+  useEffect(() => {
+    if (!desktop || bookSource === "engine") return;
+    const gate = bookSource === "own" ? refdbGate : explorerGate;
+    if (!gate.unlocked) return;
+    if (bookSource !== "own" && !explorerOn) return;
+    setStatsState("loading");
+    let stale = false;
+    const timer = setTimeout(() => {
+      const request =
+        bookSource === "own"
+          ? refdbQuery(fen)
+          : explorerQuery(fen, bookSource, explorerFilters.ratings, explorerFilters.speeds);
+      request
+        .then((result) => {
+          if (stale) return;
+          setStats(result);
+          setStatsError(null);
+          setStatsState("idle");
+        })
+        .catch((error) => {
+          if (stale) return;
+          setStats(null);
+          setStatsError(String(error));
+          setStatsState("error");
+        });
+    }, 400);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [
+    desktop,
+    fen,
+    bookSource,
+    explorerOn,
+    explorerFilters.ratings,
+    explorerFilters.speeds,
+    explorerGate.unlocked,
+    refdbGate.unlocked,
+  ]);
 
   // ChessDB-Eröffnungsbuch (entprellt, cache-gestützt im Backend).
   useEffect(() => {
@@ -1108,6 +1253,168 @@ export default function Analysis({
       </button>
     </div>
   ) : null;
+
+  /** Die Reiter der Buchkarte · nur Quellen, die es hier gibt. */
+  const bookTabs: { id: BookTab; label: string; locked: boolean }[] = [
+    { id: "masters", label: t("an.bookMasters"), locked: !explorerGate.unlocked },
+    { id: "lichess", label: t("an.bookLichess"), locked: !explorerGate.unlocked },
+    { id: "own", label: t("an.bookOwn"), locked: !refdbGate.unlocked },
+    ...(chessdbOn
+      ? [{ id: "engine" as BookTab, label: t("an.bookEngine"), locked: false }]
+      : []),
+  ];
+  const bookLocked =
+    bookSource === "own" ? !refdbGate.unlocked && !refdbGate.pending
+    : bookSource === "engine" ? false
+    : !explorerGate.unlocked && !explorerGate.pending;
+
+  /**
+   * Eine Zeile je Zug: wie oft er gespielt wurde, wie es ausging, von wem.
+   *
+   * Der Balken ist die eigentliche Auskunft · drei Abschnitte in den Farben,
+   * die die App überall für Sieg, Remis und Niederlage benutzt, aus Sicht von
+   * Weiß gelesen. Die Zahl daneben sagt, auf wie vielen Partien er steht;
+   * ohne sie sähe eine einzelne Partie aus wie eine Statistik.
+   */
+  const statsRows = (data: BookResult) => {
+    const total = data.white + data.draws + data.black;
+    const share = (value: number, of: number) => (of > 0 ? `${(value / of) * 100}%` : "0%");
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-ink3">
+          <span className="tabular-nums">
+            {t(total === 1 ? "an.bookGames.one" : "an.bookGames.many", { n: deInt(total) })}
+          </span>
+          {data.opening && <span className="min-w-0 truncate">{data.opening}</span>}
+        </div>
+        {data.moves.slice(0, 8).map((m) => {
+          const games = m.white + m.draws + m.black;
+          return (
+            <button
+              key={m.uci || m.san}
+              onClick={() => playBookMove(m.san)}
+              title={t("an.bookPlay", { san: m.san })}
+              className="flex items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-panel2"
+            >
+              <span className="w-11 shrink-0 text-[12.5px] font-medium">{m.san}</span>
+              <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-panel3">
+                <span style={{ width: share(m.white, games), background: "var(--color-win)" }} />
+                <span style={{ width: share(m.draws, games), background: "var(--color-draw)" }} />
+                <span style={{ width: share(m.black, games), background: "var(--color-loss)" }} />
+              </span>
+              <span className="w-16 shrink-0 text-right text-[11.5px] tabular-nums text-ink2">
+                {deInt(games)}
+              </span>
+              <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-ink3">
+                {m.average_rating ?? "—"}
+              </span>
+            </button>
+          );
+        })}
+        {/* Legende einmal, damit der Balken sich selbst erklärt. */}
+        <div className="flex items-center gap-2.5 pt-0.5 text-[10.5px] text-ink3">
+          {([
+            ["var(--color-win)", t("common.white")],
+            ["var(--color-draw)", t("common.draw")],
+            ["var(--color-loss)", t("common.black")],
+          ] as const).map(([color, label]) => (
+            <span key={label} className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
+        {data.top_games.length > 0 && (
+          <div className="mt-1 border-t border-line pt-1.5">
+            <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-ink3">
+              {t("an.bookTopGames")}
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {data.top_games.slice(0, 4).map((g) => {
+                const line = `${g.white}${g.white_elo ? ` ${g.white_elo}` : ""} – ${g.black}${
+                  g.black_elo ? ` ${g.black_elo}` : ""
+                }`;
+                const score = g.winner === "white" ? "1–0" : g.winner === "black" ? "0–1" : "½–½";
+                const meta = `${g.year ?? ""} ${score}`.trim();
+                // Die eigene Datenbank hat die Partie im Haus · sie kommt aufs
+                // Brett. Bei Lichess liegt sie dort und wird dort geöffnet.
+                return data.source === "own" ? (
+                  <button
+                    key={g.id}
+                    onClick={() => openRefGame(g.id)}
+                    className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left text-[11.5px] text-ink2 transition-colors hover:bg-panel2"
+                  >
+                    <span className="min-w-0 truncate">{line}</span>
+                    <span className="shrink-0 tabular-nums text-ink3">{meta}</span>
+                  </button>
+                ) : (
+                  <a
+                    key={g.id}
+                    href={`https://lichess.org/${g.id}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openExternal(`https://lichess.org/${g.id}`);
+                    }}
+                    className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-[11.5px] text-ink2 transition-colors hover:bg-panel2"
+                  >
+                    <span className="min-w-0 truncate">{line}</span>
+                    <span className="shrink-0 tabular-nums text-ink3">{meta}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {data.cached && data.source !== "own" && (
+          <div className="pt-1 text-[11px] text-ink3">{t("an.bookCached")}</div>
+        )}
+      </div>
+    );
+  };
+
+  /**
+   * Einen Zug aus dem Buch aufs Brett bringen.
+   *
+   * Das Buch nennt Züge in SAN; das Brett will Feld und Ziel. Der Umweg über
+   * chess.js ist der kürzeste Weg dahin und scheitert still, wenn der Zug in
+   * dieser Stellung nicht geht · dann war die Auskunft veraltet.
+   */
+  const playBookMove = (san: string) => {
+    try {
+      const chess = new Chess(fen);
+      const move = chess.move(san);
+      playBoardMove(move.from, move.to, move.promotion ?? "q");
+    } catch {
+      /* Zug passt nicht zur Stellung */
+    }
+  };
+
+  /**
+   * Eine Musterpartie der eigenen Referenzdatenbank aufs Brett legen.
+   *
+   * Sie kommt als freies Brett, nicht als eigene Partie: Fremdpartien haben in
+   * der eigenen Datenbank nichts verloren (siehe src-tauri/src/refdb.rs), und
+   * durchblättern lässt sich das freie Brett genauso.
+   */
+  const openRefGame = async (id: string) => {
+    try {
+      const game = await refdbGame(Number(id));
+      setSelectedId(null);
+      setOpened(null);
+      setVariation(null);
+      setScratchSans(game.moves.split(" ").filter(Boolean));
+      setScratchSelected(null);
+      setPly(0);
+      setLiveEval(null);
+      setLiveBestUci(null);
+      const elo = (value: number) => (value > 0 ? ` (${value})` : "");
+      setNotice(
+        `${game.white}${elo(game.white_elo)} – ${game.black}${elo(game.black_elo)} · ${game.played_at} · ${game.result}`
+      );
+    } catch (error) {
+      setNotice(String(error));
+    }
+  };
 
   /**
    * Eine Leiste statt einer Reihe verstreuter Knöpfe.
@@ -1625,33 +1932,79 @@ export default function Analysis({
             </Card>
           )}
 
-          {desktop && chessdbOn && (
+          {desktop && bookTabs.length > 0 && (
             <Card title={t("an.book")}>
-              {bookState === "loading" && !book ? (
+              {/* Vier Quellen, vier Fragen · siehe BookTab oben. Die Reiter
+                  stehen auch dann da, wenn eine Quelle gesperrt ist: Was es
+                  gibt, soll man sehen können, bevor man es kauft. */}
+              <div className="mb-2.5 flex flex-wrap gap-1.5">
+                {bookTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setBookSource(tab.id)}
+                    aria-pressed={bookSource === tab.id}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] transition-colors ${
+                      bookSource === tab.id
+                        ? "border-accent-dim bg-accent-soft text-accent"
+                        : "border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.locked && <Sparkles size={11} className="text-accent" aria-hidden="true" />}
+                  </button>
+                ))}
+              </div>
+              {bookSource === "engine" ? (
+                bookState === "loading" && !book ? (
+                  <div className="text-[12px] text-ink3">{t("an.bookLoading")}</div>
+                ) : bookState === "error" ? (
+                  <div className="text-[12px] text-ink3">{t("an.bookError")}</div>
+                ) : book && book.status === "ok" && book.moves.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    {book.moves.slice(0, 5).map((m) => (
+                      <button
+                        key={m.uci}
+                        onClick={() => playBookMove(m.san || m.uci)}
+                        className="flex items-center justify-between rounded-md px-1 py-0.5 text-left text-[12.5px] transition-colors hover:bg-panel2"
+                      >
+                        <span className="w-14 font-medium">{m.san || m.uci}</span>
+                        <span className="tabular-nums text-ink2">
+                          {m.score != null
+                            ? `${m.score >= 0 ? "+" : "−"}${de(Math.abs(m.score) / 100, 2)}`
+                            : "—"}
+                        </span>
+                        <span className="w-16 text-right text-[11.5px] text-ink3">
+                          {m.winrate != null ? `${m.winrate} %` : ""}
+                        </span>
+                      </button>
+                    ))}
+                    {book.cached && (
+                      <div className="mt-1 border-t border-line pt-1.5 text-[11px] text-ink3">
+                        {t("an.bookCached")}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[12px] text-ink3">{t("an.bookUnknown")}</div>
+                )
+              ) : bookLocked ? (
+                /* Gesperrt wird nichts abgefragt · die Vorschau zeigt die Form,
+                   die Sperre legt die Unschärfe darüber. */
+                <PlusLock feature={bookSource === "own" ? "reference_database" : "opening_explorer"}>
+                  {statsRows(BOOK_PREVIEW)}
+                </PlusLock>
+              ) : bookSource === "own" && refGames === 0 ? (
+                <div className="text-[12px] leading-relaxed text-ink3">{t("an.refdbEmpty")}</div>
+              ) : bookSource !== "own" && !explorerOn ? (
+                <div className="text-[12px] leading-relaxed text-ink3">{t("an.explorerOff")}</div>
+              ) : statsState === "loading" && !stats ? (
                 <div className="text-[12px] text-ink3">{t("an.bookLoading")}</div>
-              ) : bookState === "error" ? (
-                <div className="text-[12px] text-ink3">{t("an.bookError")}</div>
-              ) : book && book.status === "ok" && book.moves.length > 0 ? (
-                <div className="flex flex-col gap-1.5">
-                  {book.moves.slice(0, 5).map((m) => (
-                    <div key={m.uci} className="flex items-center justify-between text-[12.5px]">
-                      <span className="w-14 font-medium">{m.san || m.uci}</span>
-                      <span className="tabular-nums text-ink2">
-                        {m.score != null
-                          ? `${m.score >= 0 ? "+" : "−"}${de(Math.abs(m.score) / 100, 2)}`
-                          : "—"}
-                      </span>
-                      <span className="w-16 text-right text-[11.5px] text-ink3">
-                        {m.winrate != null ? `${m.winrate} %` : ""}
-                      </span>
-                    </div>
-                  ))}
-                  {book.cached && (
-                    <div className="mt-1 border-t border-line pt-1.5 text-[11px] text-ink3">
-                      {t("an.bookCached")}
-                    </div>
-                  )}
+              ) : statsState === "error" ? (
+                <div className="text-[12px] leading-relaxed text-ink3">
+                  {statsError ?? t("an.bookError")}
                 </div>
+              ) : stats && stats.status === "ok" && stats.moves.length > 0 ? (
+                statsRows(stats)
               ) : (
                 <div className="text-[12px] text-ink3">{t("an.bookUnknown")}</div>
               )}
