@@ -70,23 +70,33 @@ function ccResult(me: CcSide, opp: CcSide): "win" | "loss" | "draw" {
 /**
  * Import von chess.com. `months` begrenzt auf die letzten n Monatsarchive;
  * ohne Angabe wird die komplette Historie geholt.
+ *
+ * Ein `signal` bricht den Lauf ab. Die Monatsarchive kommen einzeln, deshalb
+ * wird hier nicht geworfen, sondern zurückgegeben, was bis dahin geholt wurde ·
+ * ein Abbruch nach dreißig von achtundvierzig Monaten soll diese dreißig nicht
+ * wegwerfen. Der Import ist duplikatsicher, der Rest kommt beim nächsten Lauf.
  */
 export async function importChessCom(
   user: string,
   months?: number,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  signal?: AbortSignal
 ): Promise<GameRecord[]> {
   // Kein Konto hinterlegt: nichts holen, statt fremde Partien zu laden.
   if (!user.trim()) return [];
-  const res = await fetch(`https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`);
+  const res = await fetch(
+    `https://api.chess.com/pub/player/${user.toLowerCase()}/games/archives`,
+    { signal }
+  );
   if (!res.ok) throw new Error(`chess.com: ${res.status}`);
   const all: string[] = (await res.json()).archives ?? [];
   const selected = months != null ? all.slice(-months) : all;
 
   const games: GameRecord[] = [];
   for (const [i, url] of selected.entries()) {
+    if (signal?.aborted) break;
     onProgress?.(i + 1, selected.length);
-    const monthRes = await fetch(url);
+    const monthRes = await fetch(url, { signal });
     if (!monthRes.ok) continue;
     const monthGames: CcGame[] = (await monthRes.json()).games ?? [];
 
@@ -151,15 +161,24 @@ interface LiGame {
   };
 }
 
-/** Import von Lichess als NDJSON; ohne `max` die komplette Historie. */
-export async function importLichess(user: string, max?: number): Promise<GameRecord[]> {
+/**
+ * Import von Lichess als NDJSON; ohne `max` die komplette Historie.
+ *
+ * Anders als bei chess.com ist das eine einzige Antwort · ein Abbruch mitten
+ * im Strom lässt nichts Brauchbares übrig, deshalb wirft er hier.
+ */
+export async function importLichess(
+  user: string,
+  max?: number,
+  signal?: AbortSignal
+): Promise<GameRecord[]> {
   if (!user.trim()) return [];
   const maxParam = max != null ? `max=${max}&` : "";
   // clocks=true liefert die Restzeiten je Halbzug · ohne den Parameter
   // schickt Lichess die Partie ohne Uhren, und das Analyse-Brett hätte keine.
   const res = await fetch(
     `https://lichess.org/api/games/user/${user}?${maxParam}opening=true&clocks=true`,
-    { headers: { Accept: "application/x-ndjson" } }
+    { headers: { Accept: "application/x-ndjson" }, signal }
   );
   if (!res.ok) throw new Error(`lichess: ${res.status}`);
   const text = await res.text();
@@ -207,11 +226,21 @@ export async function importLichess(user: string, max?: number): Promise<GameRec
 export interface ImportSummary {
   fetched: { cc: number; li: number };
   errors: string[];
+  /** Auf Wunsch abgebrochen · was bis dahin geholt wurde, ist trotzdem dabei. */
+  aborted: boolean;
+}
+
+/** Ein Abbruch ist kein Fehler · er soll nicht in der Fehlerliste landen. */
+function isAbort(reason: unknown): boolean {
+  return (reason as { name?: string } | null)?.name === "AbortError";
 }
 
 /**
  * Holt Partien von beiden Plattformen; Fehler einer Quelle blockieren die
  * andere nicht. `full` lädt die komplette Historie statt der letzten Monate.
+ *
+ * `signal` bricht beide Quellen ab. Der Abbruch steht in der Zusammenfassung,
+ * nicht in den Fehlern, und die bereits geholten Partien kommen mit zurück.
  */
 export async function fetchAll(
   ccUser: string,
@@ -220,27 +249,32 @@ export async function fetchAll(
     full?: boolean;
     months?: number;
     onProgress?: (current: number, total: number) => void;
+    signal?: AbortSignal;
   } = {}
 ): Promise<{ games: GameRecord[]; summary: ImportSummary }> {
   const months = opts.full ? undefined : (opts.months ?? 3);
   const liMax = opts.full ? undefined : 200;
   const [cc, li] = await Promise.allSettled([
-    importChessCom(ccUser, months, opts.onProgress),
-    importLichess(liUser, liMax),
+    importChessCom(ccUser, months, opts.onProgress, opts.signal),
+    importLichess(liUser, liMax, opts.signal),
   ]);
   const games: GameRecord[] = [];
-  const summary: ImportSummary = { fetched: { cc: 0, li: 0 }, errors: [] };
+  const summary: ImportSummary = {
+    fetched: { cc: 0, li: 0 },
+    errors: [],
+    aborted: opts.signal?.aborted ?? false,
+  };
 
   if (cc.status === "fulfilled") {
     games.push(...cc.value);
     summary.fetched.cc = cc.value.length;
-  } else {
+  } else if (!isAbort(cc.reason)) {
     summary.errors.push(`chess.com: ${cc.reason}`);
   }
   if (li.status === "fulfilled") {
     games.push(...li.value);
     summary.fetched.li = li.value.length;
-  } else {
+  } else if (!isAbort(li.reason)) {
     summary.errors.push(`Lichess: ${li.reason}`);
   }
   return { games, summary };

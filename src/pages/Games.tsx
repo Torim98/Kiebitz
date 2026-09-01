@@ -80,6 +80,8 @@ export default function Games({
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importTone, setImportTone] = useState<ImportTone>("info");
+  // Der laufende Import · über ihn wird er auch wieder abgebrochen.
+  const importAbort = useRef<AbortController | null>(null);
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [noteSaved, setNoteSaved] = useState(false);
   const [pgnPath, setPgnPath] = useState("");
@@ -352,7 +354,21 @@ export default function Games({
     setPageInput(null);
   };
 
+  /**
+   * Ein Lauf über die komplette Historie zieht sich über Dutzende Monatsarchive
+   * · wer ihn versehentlich angestossen hat, soll ihn auch wieder loswerden,
+   * ohne die App zu schliessen. Deshalb ist der Knopf, der währenddessen
+   * „Importiere …“ zeigt, zugleich der Abbruch.
+   */
+  const cancelImport = () => {
+    if (!importAbort.current) return;
+    importAbort.current.abort();
+    setImportMsg(t("games.importCancelling"));
+  };
+
   const runImport = async (full: boolean) => {
+    const abort = new AbortController();
+    importAbort.current = abort;
     setImporting(true);
     setImportTone("info");
     setImportMsg(full ? t("games.loadingFull") : t("games.loadingLatest"));
@@ -369,25 +385,33 @@ export default function Games({
       const { games: fetched, summary } = await fetchAll(ccUser, liUser, {
         full,
         months: settings?.import_months,
-        onProgress: (i, n) => setImportMsg(t("games.ccProgress", { i, n })),
+        // Nach dem Abbruch bleibt der Fortschritt der letzten Anfrage stehen ·
+        // die Meldung gehört dann dem Abbruch.
+        onProgress: (i, n) => !abort.signal.aborted && setImportMsg(t("games.ccProgress", { i, n })),
+        signal: abort.signal,
       });
       const res = await upsertGames(fetched as GameRecord[]);
       await reload();
       // Positionsindex im Hintergrund auffrischen (für die Stellungssuche).
       indexPositions().catch(() => {});
-      let msg = t("games.importResult", {
-        ins: res.inserted,
-        cc: summary.fetched.cc,
-        li: summary.fetched.li,
-        total: deInt(res.total),
-      });
+      // Abgebrochen wird trotzdem gespeichert, was schon da war · der Import
+      // ist duplikatsicher, der Rest kommt beim nächsten Lauf dazu.
+      let msg = summary.aborted
+        ? t("games.importAborted", { ins: res.inserted, total: deInt(res.total) })
+        : t("games.importResult", {
+            ins: res.inserted,
+            cc: summary.fetched.cc,
+            li: summary.fetched.li,
+            total: deInt(res.total),
+          });
       if (summary.errors.length) msg += t("games.importErrors", { e: summary.errors.join("; ") });
-      setImportTone(summary.errors.length ? "warning" : "success");
+      setImportTone(summary.errors.length || summary.aborted ? "warning" : "success");
       setImportMsg(msg);
     } catch (e) {
       setImportTone("error");
       setImportMsg(t("games.importFailed", { e: String(e) }));
     } finally {
+      importAbort.current = null;
       setImporting(false);
     }
   };
@@ -680,22 +704,48 @@ export default function Games({
     </>
   );
 
-  // Import und Export · auf dem Desktop unter der Kopfzeile, mobil unter der
-  // Leiste, aus der die Schaltfläche stammt.
-  const importPanel = backend.mode === "desktop" && importOpen ? (
-    <Card title={t("games.importPanelTitle")} className="mb-4">
+  /** Farbe der Importmeldung · sie steht auf der Seite und im Blatt. */
+  const importNoteCls =
+    importTone === "warning"
+      ? "border-gold-dim bg-gold-soft text-gold"
+      : importTone === "error"
+        ? "border-loss-dim bg-loss-soft text-loss"
+        : "border-accent-dim bg-accent-soft text-accent";
+
+  /**
+   * Import und Export · derselbe Inhalt in zwei Fassungen.
+   *
+   * Auf dem Desktop steht er als Karte unter der Kopfzeile; dort ist Platz,
+   * und die Liste darunter bleibt sichtbar. Mobil kam er bisher als Block
+   * zwischen Leiste und Liste, hat die Seite um seine ganze Höhe verschoben
+   * und die Partien nach unten gedrückt. Jetzt kommt er wie das Filterblatt
+   * in den Vordergrund: abgedunkelter, unscharfer Hintergrund, darüber die
+   * Karte · siehe components/MobileSheet.tsx.
+   */
+  const importBody = (
+    <>
       <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
           <div className="text-[12.5px] font-medium text-ink2">{t("games.onlineImportTitle")}</div>
           <div className="mt-0.5 text-[11.5px] text-ink3">{t("games.onlineImportHint")}</div>
         </div>
         <div className="grid grid-cols-1 gap-2 min-[460px]:grid-cols-2 sm:flex">
-          <Button className="w-full sm:w-auto" onClick={() => !importing && runImport(true)}>
+          <Button className="w-full sm:w-auto" disabled={importing} onClick={() => !importing && runImport(true)}>
             <History size={15} /> {t("games.importAll")}
           </Button>
-          <Button className="w-full sm:w-auto" primary onClick={() => !importing && runImport(false)}>
+          {/* Während des Laufs ist derselbe Knopf der Abbruch · das Kreuz sagt
+              es, der Titel nennt es beim Namen. Ein zweiter Knopf daneben
+              hätte nur in genau dieser Sekunde etwas zu tun. */}
+          <Button
+            className="w-full sm:w-auto"
+            primary
+            title={importing ? t("games.importCancel") : undefined}
+            label={importing ? t("games.importCancel") : undefined}
+            onClick={() => (importing ? cancelImport() : runImport(false))}
+          >
             {importing ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
             {importing ? t("games.importing") : t("games.importLatest")}
+            {importing && <X size={14} className="opacity-70" />}
           </Button>
         </div>
       </div>
@@ -741,7 +791,41 @@ export default function Games({
           </div>
         </section>
       </div>
-    </Card>
+    </>
+  );
+
+  const showImport = backend.mode === "desktop" && importOpen;
+  const importPanel = showImport && !mobile ? (
+    <Card title={t("games.importPanelTitle")} className="mb-4">{importBody}</Card>
+  ) : null;
+  const importSheet = showImport && mobile ? (
+    <MobileSheet
+      testId="games-import-sheet"
+      ariaLabel={t("games.importPanelTitle")}
+      onClose={() => setImportOpen(false)}
+      title={
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-ink">
+          <Download size={15} className="text-accent" />
+          {t("games.importPanelTitle")}
+        </div>
+      }
+      footer={
+        <div className="flex items-center justify-end px-1">
+          <Button primary onClick={() => setImportOpen(false)}>
+            {t("common.done")}
+          </Button>
+        </div>
+      }
+    >
+      {/* Der Fortschritt gehört ins Blatt · die Meldung auf der Seite liegt
+          hinter dem Schleier und wäre während des Laufs nicht zu lesen. */}
+      {importMsg && (
+        <div className={`mx-4 mt-3 rounded-lg border px-3 py-2 text-[12px] ${importNoteCls}`}>
+          {importMsg}
+        </div>
+      )}
+      <div className="px-4 py-3">{importBody}</div>
+    </MobileSheet>
   ) : null;
 
   return (
@@ -770,20 +854,14 @@ export default function Games({
       </header>
 
       {importMsg && (
-        <div className={`mb-4 rounded-lg border px-4 py-2.5 text-[12.5px] ${
-          importTone === "warning"
-            ? "border-gold-dim bg-gold-soft text-gold"
-            : importTone === "error"
-              ? "border-loss-dim bg-loss-soft text-loss"
-              : "border-accent-dim bg-accent-soft text-accent"
-        }`}>
+        <div className={`mb-4 rounded-lg border px-4 py-2.5 text-[12.5px] ${importNoteCls}`}>
           {importMsg}
         </div>
       )}
 
-      {/* Der Import/Export-Bereich öffnet mobil unter der Leiste, aus der
-          er aufgerufen wird · auf dem Desktop unter seiner Schaltfläche. */}
-      {!mobile && importPanel}
+      {/* Auf dem Desktop öffnet der Import/Export-Bereich unter seiner
+          Schaltfläche · mobil als Blatt, weiter unten. */}
+      {importPanel}
 
       {/* Mobil ist aus der Suchzeile und den beiden Chip-Reihen eine einzige
           Leiste geworden: suchen, filtern, importieren · die Filter selbst
@@ -822,7 +900,7 @@ export default function Games({
               type="button"
               onClick={() => setImportOpen((open) => !open)}
               aria-label={t("games.manageImports")}
-              aria-expanded={importOpen}
+              aria-haspopup="dialog"
               className={`flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition-colors ${
                 importOpen
                   ? "border-accent-dim bg-accent-soft text-accent"
@@ -855,8 +933,6 @@ export default function Games({
           {filterPills(activeFilters, mobile ? clearAllFilters : clearExactFilters)}
         </div>
       )}
-
-      {mobile && importPanel}
 
       <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_320px] min-[1500px]:grid-cols-[minmax(0,1fr)_560px]">
         <div className="flex min-w-0 flex-col gap-3">
@@ -1098,6 +1174,8 @@ export default function Games({
           </div>
         )}
       </div>
+
+      {importSheet}
 
       {/* Filterblatt · mobil ersetzt es die beiden Chip-Reihen über der Liste.
           Es schließt nicht bei jeder Auswahl: Quelle und Ergebnis werden oft

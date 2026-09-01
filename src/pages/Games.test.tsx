@@ -6,9 +6,13 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import Games from "./Games";
 import { emitDataChange } from "../lib/changes";
 
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, fetchAllMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  fetchAllMock: vi.fn(),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+vi.mock("../lib/importer", () => ({ fetchAll: fetchAllMock }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("../components/Board", () => ({ default: () => <div data-testid="board" /> }));
 
@@ -49,6 +53,7 @@ beforeEach(() => {
   gameDetail = null;
   deleted = false;
   invokeMock.mockReset();
+  fetchAllMock.mockReset();
   vi.mocked(openDialog).mockReset();
   invokeMock.mockImplementation((command: string) => {
     if (command === "app_info") {
@@ -79,6 +84,8 @@ beforeEach(() => {
     if (command === "list_games_for_export") return Promise.resolve(deleted ? [] : [listedGame]);
     if (command === "delete_game") { deleted = true; return Promise.resolve(true); }
     if (command === "read_pgn_file") return Promise.resolve(`[Event "Friend"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0`);
+    if (command === "upsert_games") return Promise.resolve({ inserted: 3, total: 4 });
+    if (command === "index_positions") return Promise.resolve(undefined);
     return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
   });
 });
@@ -245,9 +252,52 @@ describe("Games page", () => {
     await waitFor(() => expect(screen.queryByTestId("games-filter-sheet")).toBeNull());
     expect(screen.getByRole("button", { name: "Filter entfernen" })).toBeTruthy();
 
-    // Import/Export liegt mobil als Symbol in derselben Leiste.
+    // Import/Export liegt mobil als Symbol in derselben Leiste · und kommt
+    // wie die Filter als Blatt in den Vordergrund, statt die Liste nach unten
+    // zu schieben.
     fireEvent.click(screen.getByRole("button", { name: "Import / Export" }));
-    expect(await screen.findByText("PGN importieren")).toBeTruthy();
+    const importSheet = await screen.findByTestId("games-import-sheet");
+    expect(within(importSheet).getByText("PGN importieren")).toBeTruthy();
+    expect(within(importSheet).getByRole("button", { name: "Alles importieren" })).toBeTruthy();
+
+    fireEvent.click(within(importSheet).getByRole("button", { name: "Fertig" }));
+    await waitFor(() => expect(screen.queryByTestId("games-import-sheet")).toBeNull());
+  });
+
+  /**
+   * Ein Lauf über die komplette Historie zieht sich über Dutzende
+   * Monatsarchive. Wer ihn versehentlich angestossen hat, kommt über denselben
+   * Knopf wieder heraus · und behält, was bis dahin geholt wurde.
+   */
+  it("cancels a running import from the button that shows its progress", async () => {
+    let signal: AbortSignal | undefined;
+    fetchAllMock.mockImplementation(
+      (_cc: string, _li: string, opts: { signal?: AbortSignal }) =>
+        new Promise((resolve) => {
+          signal = opts.signal;
+          opts.signal?.addEventListener("abort", () =>
+            resolve({ games: [], summary: { fetched: { cc: 0, li: 0 }, errors: [], aborted: true } })
+          );
+        })
+    );
+    render(<LocaleProvider><Games openAnalysis={vi.fn()} /></LocaleProvider>);
+    await screen.findByRole("button", { name: "Testgegner" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Import \/ Export/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Alles importieren" }));
+
+    // Aus dem Hauptknopf wird der Abbruch · beschriftet bleibt er der Lauf.
+    const cancel = await screen.findByRole("button", { name: "Import abbrechen" });
+    expect(cancel.textContent).toContain("Importiere");
+    // Solange er läuft, lässt sich der Lauf nicht ein zweites Mal anstossen.
+    expect((screen.getByRole("button", { name: "Alles importieren" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(cancel);
+    expect(signal?.aborted).toBe(true);
+
+    // Abgebrochen wird trotzdem gespeichert, was schon da war.
+    expect(await screen.findByText(/Import abgebrochen · 3 neue Partien/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Import abbrechen" })).toBeNull();
   });
 
   it("keeps the detail out of the mobile page until a game is tapped", async () => {
@@ -292,7 +342,9 @@ describe("Games page", () => {
         });
       }
       if (command === "game_detail") return Promise.resolve(both.find((g) => g.id === args?.id));
-      return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
+      if (command === "upsert_games") return Promise.resolve({ inserted: 3, total: 4 });
+    if (command === "index_positions") return Promise.resolve(undefined);
+    return Promise.reject(new Error(`Unexpected invoke command: ${command}`));
     });
 
     render(

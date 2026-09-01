@@ -298,6 +298,32 @@ describe("Analysis page", () => {
 
       expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("black");
     });
+
+    /**
+     * Die Partiezeile ist für ein Telefon zu lang · als eine Zeile brach sie
+     * um, während Herkunftslink und Ergebnis an ihrer Unterkante klebten.
+     * Mobil steht die geladene Partie deshalb als eigene kleine Karte:
+     * Ergebnis und Paarung oben, alles Weitere darunter.
+     */
+    it("puts the loaded game into its own header card on the phone", async () => {
+      mocks.listGames.mockResolvedValue([onlineGame]);
+      render(
+        <ShellProvider mobile>
+          <LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>
+        </ShellProvider>
+      );
+      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+
+      const header = await screen.findByText(/Dr\. Tom Maurer vs\. Rival/);
+      const card = header.closest("header");
+      expect(card).toBeTruthy();
+      // Ergebnis, Herkunft und die Merkmale der Partie stehen in derselben
+      // Karte · nicht mehr an der Unterkante eines umgebrochenen Absatzes.
+      expect(card?.textContent).toContain("Sieg");
+      expect(card?.textContent).toContain("Italian Game");
+      expect(card?.textContent).toContain("2026-07-20");
+      expect(within(card as HTMLElement).getByRole("link", { name: /Original/ })).toBeTruthy();
+    });
   });
 
   it("lets desktop users branch from a played move with drag and drop", async () => {

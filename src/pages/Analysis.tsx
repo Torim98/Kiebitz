@@ -979,8 +979,20 @@ export default function Analysis({
   // Die Bedenkzeit-Vorgabe steht neben der Zeitklasse, sobald sie bekannt ist ·
   // "Blitz · 3+2" sagt mehr als "Blitz".
   const tcSuffix = live ? timeControlLabel(game.time_control ?? "") : null;
+  // Die Kopfzeile einer geladenen Partie in ihren Teilen · auf dem Desktop zu
+  // einer Zeile verkettet, mobil auf zwei Ebenen verteilt (siehe unten).
+  const gamePlayers = live
+    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName}`
+    : null;
+  const gameMeta = live
+    ? [
+        `${tcLabel(game.time_class, locale)}${tcSuffix ? ` ${tcSuffix}` : ""}`,
+        game.opening || game.eco || "—",
+        game.played_at,
+      ]
+    : [];
   const headerSub = live
-    ? `${game.color === "white" ? ownPlayerName : game.opponent} vs. ${game.color === "white" ? game.opponent : ownPlayerName} · ${tcLabel(game.time_class, locale)}${tcSuffix ? ` ${tcSuffix}` : ""} · ${game.opening || game.eco || "—"} · ${game.played_at}`
+    ? [gamePlayers, ...gameMeta].join(" · ")
     : scratch
       ? t("an.freeBoardHint")
       : storeCapture
@@ -1211,24 +1223,65 @@ export default function Analysis({
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
-      <header className="mb-4 flex items-end justify-between">
-        <div>
-          <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
-          <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
-        </div>
-        {live && (
-          <div className="flex shrink-0 items-center gap-3">
-            {originUrl && (
-              <ExtLink
-                href={originUrl}
-                label={t("an.original")}
-                title={t("an.originalTitle", { p: game.source })}
-              />
-            )}
+      {/* Kopf der Seite.
+          Auf dem Desktop steht der Seitentitel links, die Partie als eine
+          Zeile darunter, Herkunftslink und Ergebnis rechts an der Kante.
+
+          Mobil verschwindet der Seitentitel (die App-Bar zeigt ihn schon),
+          und die Partiezeile ist für die Breite eines Telefons zu lang: sie
+          brach auf drei Zeilen um, während Link und Ergebnis an deren
+          Unterkante klebten. Deshalb ist die geladene Partie dort eine eigene
+          kleine Karte · oben das Ergebnis und die Paarung, darunter Modus,
+          Eröffnung, Datum und der Weg zum Original. */}
+      {mobile && live ? (
+        <header className="mb-3 rounded-xl border border-line bg-panel px-3 py-2.5">
+          <div className="flex items-center gap-2">
             <ResultBadge result={game.result} />
+            <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">
+              {gamePlayers}
+            </span>
           </div>
-        )}
-      </header>
+          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11.5px] leading-snug text-ink3">
+            {gameMeta.map((part, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                {i > 0 && <span aria-hidden="true">·</span>}
+                {part}
+              </span>
+            ))}
+            {/* Trennzeichen und Link stehen im selben Kasten · sonst bliebe
+                das Zeichen beim Umbruch allein am Zeilenende zurück. */}
+            {originUrl && (
+              <span className="flex items-center gap-1.5">
+                {gameMeta.length > 0 && <span aria-hidden="true">·</span>}
+                <ExtLink
+                  href={originUrl}
+                  label={t("an.original")}
+                  title={t("an.originalTitle", { p: game.source })}
+                />
+              </span>
+            )}
+          </div>
+        </header>
+      ) : (
+        <header className="mb-4 flex items-end justify-between">
+          <div>
+            <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("an.title")}</h1>
+            <p className="mt-0.5 text-[13px] text-ink3">{headerSub}</p>
+          </div>
+          {live && (
+            <div className="flex shrink-0 items-center gap-3">
+              {originUrl && (
+                <ExtLink
+                  href={originUrl}
+                  label={t("an.original")}
+                  title={t("an.originalTitle", { p: game.source })}
+                />
+              )}
+              <ResultBadge result={game.result} />
+            </div>
+          )}
+        </header>
+      )}
 
       {desktop && (
         <div
