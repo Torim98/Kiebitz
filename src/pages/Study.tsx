@@ -893,35 +893,53 @@ export default function Study({
         {/* Rechts im Kopf steht, was über die Woche zu sagen ist: der Bericht,
             die Ratingveränderung, die Serie. Der Bericht bekommt ein eigenes
             Feld, weil er als einziges anklickbar ist · in der Leiste daneben
-            sähen die beiden Kennzahlen sonst auch nach Knöpfen aus. */}
-        <div className="flex flex-wrap items-center gap-2">
+            sähen die beiden Kennzahlen sonst auch nach Knöpfen aus.
+
+            Mobil ist das dieselbe eine Zeile und nicht mehr zwei: Der Bericht
+            ist dort nur noch sein Symbol, die Leiste nimmt den Rest der Breite,
+            und wenn es eng wird, gibt der Zusatz nach („über 4 Pools"), nicht
+            die Zahl davor. Zwei Zeilen kosteten oben genau den Platz, den auf
+            dem Handy „Jetzt dran" braucht. */}
+        <div className={`flex items-center gap-2 ${mobile ? "w-full" : "flex-wrap"}`}>
         {weekly && <WeeklyReportButton unread={reportUnread} onClick={openReport} />}
         {(state?.rating || (data && data.streak_days > 0)) && (
-          <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-panel">
+          <div
+            className={`flex items-stretch overflow-hidden rounded-lg border border-line bg-panel ${
+              mobile ? "min-w-0 flex-1" : ""
+            }`}
+          >
             {state?.rating && (
               <div
-                className="flex items-center gap-2 px-3 py-1.5 text-[13px]"
+                className={`flex min-w-0 items-center text-[13px] ${
+                  mobile ? "gap-1.5 px-2.5 py-1.5" : "gap-2 px-3 py-1.5"
+                }`}
                 title={`${t(
                   state.rating.confidence === "measured" ? "plan.ratingExact" : "plan.ratingApprox"
                 )} ${t("plan.ratingWindow", { d: deInt(state.window.days) })}`}
               >
-                <Gauge size={15} className="text-violet" />
-                <span className="font-medium tabular-nums">
+                <Gauge size={15} className="shrink-0 text-violet" />
+                <span className="shrink-0 font-medium tabular-nums">
                   {t("plan.ratingDelta", {
                     d: `${state.rating.delta > 0 ? "+" : ""}${deInt(state.rating.delta)}`,
                   })}
                 </span>
-                <span className="text-ink3">
+                <span className={`min-w-0 truncate text-ink3 ${mobile ? "text-[12px]" : ""}`}>
                   {Math.abs(state.rating.delta) <= ratingNoise(state.rating.games)
                     ? t("plan.ratingNoise")
                     : t("plan.ratingPools", { n: state.rating.pools })}
                 </span>
               </div>
             )}
-            {state?.rating && data && data.streak_days > 0 && <div className="w-px bg-line" />}
+            {state?.rating && data && data.streak_days > 0 && (
+              <div className="w-px shrink-0 bg-line" />
+            )}
             {data && data.streak_days > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
-                <Flame size={15} className="text-gold" />
+              <div
+                className={`flex shrink-0 items-center text-[13px] ${
+                  mobile ? "gap-1.5 px-2.5 py-1.5" : "gap-2 px-3 py-1.5"
+                }`}
+              >
+                <Flame size={15} className="shrink-0 text-gold" />
                 <span className="font-medium">{t("st.streak", { n: deInt(data.streak_days) })}</span>
               </div>
             )}

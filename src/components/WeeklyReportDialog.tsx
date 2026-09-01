@@ -23,7 +23,7 @@
  * Gerechnet wird nichts hier · siehe `lib/weekly.ts`.
  */
 import { useEffect, useRef, type ReactNode } from "react";
-import { ArrowRight, CalendarCheck, X } from "lucide-react";
+import { ArrowRight, CalendarCheck, Check, Minus, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useI18n, type Key } from "../lib/i18n";
 import { deInt } from "../lib/format";
 import { isoWeek } from "../lib/dates";
@@ -49,6 +49,50 @@ function BlockTitle({ children }: { children: ReactNode }) {
 }
 
 /**
+ * Ein Block als Karte · dieselbe Form, in der die Verordnungen des Coaches
+ * stehen (siehe components/PrescriptionCard.tsx).
+ *
+ * Vorher lagen die drei Blöcke als durchlaufender Text übereinander und waren
+ * nur an ihren Überschriften auseinanderzuhalten. Auf dem Handy, wo ohnehin
+ * jede Zeile umbricht, wurde daraus eine Wand: Überschrift, Zahlenzeile,
+ * Fußnote, Überschrift, Zahlenzeile · nichts trennte den Rückblick von der
+ * Trainingszeit. Als Karten hat jeder Block eine Kante, und die Trennung
+ * kostet keine Zeile Text.
+ */
+function Block({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <div data-weekly-block={name} className="rounded-xl border border-line bg-panel2 px-3.5 py-3">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Die Veränderung als Plakette · Pfeilrichtung aus dem Vorzeichen, Farbe
+ * daraus, ob sie in die gewünschte Richtung zeigt.
+ *
+ * Beides zusammen, weil beides verschieden ist: Bei „Patzer/100 Züge" ist
+ * weniger besser, der Pfeil zeigt dann nach unten und die Plakette ist trotzdem
+ * grün. Als bloße farbige Zahl am Zeilenende war das nicht zu sehen.
+ */
+function DeltaPill({ change, quiet = false }: { change: WeeklyChange; quiet?: boolean }) {
+  const tone = quiet
+    ? "border-line2 bg-panel3 text-ink3"
+    : change.better
+      ? "border-accent-dim bg-accent-soft text-accent"
+      : "border-loss-dim bg-loss-soft text-loss";
+  const Arrow = change.delta > 0 ? TrendingUp : change.delta < 0 ? TrendingDown : Minus;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-[3px] text-[11.5px] font-medium tabular-nums ${tone}`}
+    >
+      <Arrow size={11} aria-hidden="true" />
+      {formatDelta(change)}
+    </span>
+  );
+}
+
+/**
  * Eine Veränderung: Name, Vorher-Nachher, Vorzeichen.
  *
  * `quiet` ist derselbe Aufbau in Grau · eine Bewegung, die ihre Rauschgrenze
@@ -58,21 +102,62 @@ function BlockTitle({ children }: { children: ReactNode }) {
  */
 function ChangeRow({ change, quiet = false }: { change: WeeklyChange; quiet?: boolean }) {
   const { t } = useI18n();
-  const color = quiet ? "text-ink3" : change.better ? "text-accent" : "text-loss";
   return (
-    <li data-weekly-change={change.key} className="flex items-baseline justify-between gap-3">
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink2">
-        {t(`metric.${change.key}` as Key)}
-      </span>
-      <span className="shrink-0 text-[12.5px] tabular-nums text-ink3">
-        {formatMetric(change.from, change.unit)}
-        <ArrowRight size={11} className="mx-1 inline align-[-1px]" aria-hidden="true" />
-        <span className="font-medium text-ink">{formatMetric(change.to, change.unit)}</span>
-      </span>
-      <span className={`w-[62px] shrink-0 text-end text-[12px] font-medium tabular-nums ${color}`}>
-        {formatDelta(change)}
+    // Umbrechend statt abschneidend: „Züge in Zeitnot" neben zwei Zahlen und
+    // einer Plakette passt auf ein Telefon nicht in eine Zeile, und abgekürzt
+    // („Züge in Zeitn…") ist der Name der Kennzahl gerade das, was fehlt. Auf
+    // dem Desktop bleibt es eine Zeile · dort ist der Platz da.
+    <li
+      data-weekly-change={change.key}
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+    >
+      <span className="min-w-0 text-[12.5px] text-ink2">{t(`metric.${change.key}` as Key)}</span>
+      <span className="ms-auto flex items-center gap-2">
+        <span className="text-[12.5px] tabular-nums text-ink3">
+          {formatMetric(change.from, change.unit)}
+          <ArrowRight size={11} className="mx-1 inline align-[-1px]" aria-hidden="true" />
+          <span className="text-[13.5px] font-semibold text-ink">
+            {formatMetric(change.to, change.unit)}
+          </span>
+        </span>
+        <DeltaPill change={change} quiet={quiet} />
       </span>
     </li>
+  );
+}
+
+/**
+ * Die Woche als ein Balken · je Bereich ein Stück, Skala bis Ziel oder Ist.
+ *
+ * Dieselbe Figur wie im Study-Reiter (siehe components/WeekBudgetBar.tsx), und
+ * aus demselben Grund: Wie sich die Zeit verteilt hat, ist eine Fläche und
+ * keine Liste. Die Liste darunter bleibt trotzdem — sie trägt die Kennzahl,
+ * die zu jedem Bereich gehört.
+ */
+function AreaBar({ report }: { report: WeeklyReport }) {
+  const scale = Math.max(report.target, report.minutes, 1);
+  const filled = report.byArea.filter((entry) => entry.minutes > 0);
+  return (
+    <div className="relative mt-2.5 flex h-2 overflow-hidden rounded-full bg-panel3">
+      {filled.map((entry) => (
+        <div
+          key={entry.area}
+          style={{
+            width: `${(entry.minutes / scale) * 100}%`,
+            background: AREA_COLOR[entry.area],
+          }}
+        />
+      ))}
+      {/* Die Zielmarke steht nur da, wo sie etwas sagt: innerhalb des Balkens,
+          also in einer Woche, die über ihr Ziel hinausgegangen ist. */}
+      {report.target > 0 && report.minutes > report.target && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 w-px bg-ink/60"
+          style={{ insetInlineStart: `${(report.target / scale) * 100}%` }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -94,9 +179,11 @@ export function WeeklyReportButton({
   onClick: () => void;
 }) {
   const { t } = useI18n();
-  // Mobil steht der Knopf ohnehin in einer eigenen Zeile: Rating und Serie
-  // füllen dort die Breite allein. Eine Zeile, in der nur ein Quadrat sitzt,
-  // sieht nach einem Rest aus · deshalb trägt er dort seinen Namen.
+  // Überall nur das Symbol · mobil trug der Knopf einmal seinen Namen, weil er
+  // dort in einer eigenen Zeile stand und ein Quadrat allein wie ein Rest
+  // aussah. Inzwischen steht er in derselben Zeile wie Rating und Serie, und
+  // dort ist „Wochenbericht" das Wort, das den beiden Kennzahlen den Platz
+  // wegnimmt. Beschriftet bleibt er trotzdem · über `aria-label` und `title`.
   const mobile = useMobileShell();
   const label = unread ? t("wk.openNew") : t("wk.open");
   return (
@@ -106,14 +193,15 @@ export function WeeklyReportButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border text-[13px] transition-colors ${
+        mobile ? "px-2.5 py-2" : "px-3 py-1.5"
+      } ${
         unread
           ? "border-accent-dim bg-accent-soft text-accent hover:border-accent"
           : "border-line bg-panel text-ink3 hover:border-line2 hover:text-ink"
       }`}
     >
       <CalendarCheck size={15} aria-hidden="true" />
-      {mobile && <span className="font-medium">{t("wk.title")}</span>}
       {/* Ein Punkt statt einer Zahl · es gibt genau einen Bericht pro Woche,
           und „1" daneben wäre eine Zählung ohne Gegenstand. */}
       {unread && <span aria-hidden="true" className="size-1.5 rounded-full bg-accent" />}
@@ -176,7 +264,7 @@ export default function WeeklyReportDialog({
       : t("wk.ratingNoise", { n: deInt(report.rating.games) }));
 
   const changed = (
-    <div data-weekly-block="changes">
+    <Block name="changes">
       <BlockTitle>{t("wk.blockChanged")}</BlockTitle>
       {report.changes.length > 0 ? (
         <ul className="flex flex-col gap-2">
@@ -199,14 +287,19 @@ export default function WeeklyReportDialog({
           {ratingLine}
         </p>
       )}
-    </div>
+    </Block>
   );
 
+  /** Der längste Bereich gibt den Maßstab der Balken · nicht das Wochenziel. */
+  const longest = Math.max(1, ...trained.map((entry) => entry.minutes));
+
   const effect = (
-    <div data-weekly-block="effect">
+    <Block name="effect">
       <BlockTitle>{t("wk.blockEffect")}</BlockTitle>
-      <p className="mb-2.5 text-[13px] text-ink2">
-        <span className="font-semibold tabular-nums text-ink">{deInt(report.minutes)}</span>{" "}
+      <p className="text-[13px] text-ink2">
+        <span className="text-[17px] font-semibold tabular-nums text-ink">
+          {deInt(report.minutes)}
+        </span>{" "}
         {report.target > 0
           ? t("wk.minutesOfTarget", { m: deInt(report.target) })
           : t("wk.minutesPlain")}
@@ -218,44 +311,57 @@ export default function WeeklyReportDialog({
         )}
       </p>
       {trained.length > 0 ? (
-        <ul className="flex flex-col gap-2">
-          {trained.map((entry) => (
-            <li
-              key={entry.area}
-              data-weekly-area={entry.area}
-              // Umbrechend statt abschneidend · auf dem Handy passt „im
-              // Repertoire geblieben +6,7 %" nicht mehr neben die Minuten,
-              // und abgeschnitten sagt der Satz weniger als gar keiner.
-              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
-            >
-              <span
-                className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ background: AREA_COLOR[entry.area] }}
-              />
-              <span className="w-[66px] shrink-0 truncate text-[12px] text-ink2">
-                {t(AREA_KEY[entry.area])}
-              </span>
-              <span className="shrink-0 text-[12px] tabular-nums text-ink">
-                {t("plan.minutes", { m: deInt(entry.minutes) })}
-              </span>
-              {entry.change && (
-                <span className="ms-auto text-[11.5px] tabular-nums text-ink3">
-                  {t(`metric.${entry.change.key}` as Key)}{" "}
-                  <span className={entry.change.moved ? (entry.change.better ? "text-accent" : "text-loss") : ""}>
-                    {formatDelta(entry.change)}
+        <>
+          <AreaBar report={report} />
+          <ul className="mt-3 flex flex-col gap-2.5">
+            {trained.map((entry) => (
+              <li key={entry.area} data-weekly-area={entry.area} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ background: AREA_COLOR[entry.area] }}
+                  />
+                  {/* Feste Breite, damit die Balken auf einer Linie beginnen ·
+                      an unterschiedlich langen Namen ausgerichtet wären sie
+                      fünf verschieden lange Striche ohne gemeinsamen Anfang. */}
+                  <span className="w-[66px] shrink-0 truncate text-[12px] text-ink2">
+                    {t(AREA_KEY[entry.area])}
                   </span>
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+                  <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-panel3">
+                    <span
+                      className="block h-full rounded-full"
+                      style={{
+                        width: `${(entry.minutes / longest) * 100}%`,
+                        background: AREA_COLOR[entry.area],
+                      }}
+                    />
+                  </span>
+                  <span className="shrink-0 text-[12px] tabular-nums text-ink">
+                    {t("plan.minutes", { m: deInt(entry.minutes) })}
+                  </span>
+                </div>
+                {/* Die Kennzahl des Bereichs steht unter seiner Zeile und nicht
+                    daneben: „Im Repertoire geblieben +6,7 %" ist auf einem
+                    Telefon breiter als alles, was links davon stünde. */}
+                {entry.change && (
+                  <div className="flex items-center justify-between gap-2 ps-3.5">
+                    <span className="min-w-0 text-[11.5px] text-ink3">
+                      {t(`metric.${entry.change.key}` as Key)}
+                    </span>
+                    <DeltaPill change={entry.change} quiet={!entry.change.moved} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <p className="text-[12.5px] leading-relaxed text-ink3">{t("wk.effectNone")}</p>
       )}
       <p className="mt-2.5 border-t border-line pt-2.5 text-[11.5px] leading-relaxed text-ink3">
         {t("wk.effectNote")}
       </p>
-    </div>
+    </Block>
   );
 
   const next = report.next;
@@ -271,17 +377,24 @@ export default function WeeklyReportDialog({
   }
 
   const nextBlock = (
-    <div data-weekly-block="next" className="flex flex-col">
+    <Block name="next">
       <BlockTitle>{t("wk.blockNext")}</BlockTitle>
       {next ? (
-        <>
-          <div className="text-[13px] font-semibold leading-snug text-ink">
+        <div className="flex flex-col">
+          <div
+            className={`font-semibold leading-snug text-ink ${mobile ? "text-[14px]" : "text-[13.5px]"}`}
+          >
             {t(next.finding.titleKey, nextParams)}
           </div>
+          {/* Die Dosis in derselben Form wie auf der Verordnungskarte des
+              Coaches · es ist dieselbe Angabe, und sie soll auch so aussehen. */}
           {next.doseKey && (
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-accent">
-              {t(next.doseKey, doseParams)}
-            </p>
+            <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-accent-dim bg-accent-soft px-2.5 py-2">
+              <Check size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+              <span className="text-[12.5px] leading-relaxed text-accent">
+                {t(next.doseKey, doseParams)}
+              </span>
+            </div>
           )}
           {next.action && (
             <button
@@ -294,16 +407,27 @@ export default function WeeklyReportDialog({
               {t(`fnd.action.${next.action.kind}` as Key)}
             </button>
           )}
-        </>
+        </div>
       ) : (
         <p className="text-[12.5px] leading-relaxed text-ink3">{t("wk.nextNone")}</p>
       )}
-    </div>
+    </Block>
   );
+
+  // Die deutlichste Bewegung gibt den Ton · dieselbe, aus der `reportHeadline`
+  // seinen Satz baut.
+  const leading = report.changes[0];
+  const heroTone = leading
+    ? leading.better
+      ? "var(--color-accent)"
+      : "var(--color-loss)"
+    : "var(--color-line2)";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-[2px] ${
+        mobile ? "p-3" : "p-4"
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="weekly-report-title"
@@ -313,9 +437,11 @@ export default function WeeklyReportDialog({
     >
       <div
         data-weekly-report=""
-        className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50"
+        className={`flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50 ${
+          mobile ? "max-h-[94vh]" : "max-h-[92vh]"
+        }`}
       >
-        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+        <div className={`flex items-start gap-3 border-b border-line py-3.5 ${mobile ? "px-3.5" : "px-5"}`}>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
             <CalendarCheck size={18} />
           </span>
@@ -343,26 +469,37 @@ export default function WeeklyReportDialog({
             Knopf im Kopf gefunden hat, soll sehen, was dahinter steckt, ohne
             es geschenkt zu bekommen. Der Schließen-Knopf sitzt außerhalb der
             Sperre und funktioniert weiter. */}
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        <div className={`min-h-0 flex-1 overflow-auto py-4 ${mobile ? "px-3.5" : "px-5"}`}>
           <PlusLock feature="adaptive_plan" label={t("wk.plusLabel")}>
-            <p
-              className={`font-medium leading-snug text-ink ${
-                mobile ? "text-[14px]" : "text-[15px]"
-              }`}
+            {/* Der Aufmacher trägt die Farbe der Woche an der Kante · grün,
+                wenn die deutlichste Bewegung in die gewünschte Richtung ging,
+                rot, wenn nicht, grau in einer Woche ohne Aussage. Der Satz
+                daneben sagt dasselbe in Worten; die Kante sagt es, bevor man
+                ihn gelesen hat. */}
+            <div
+              data-weekly-hero=""
+              style={{ borderInlineStartColor: heroTone, borderInlineStartWidth: 3 }}
+              className="rounded-xl border border-line bg-panel2 px-3.5 py-3"
             >
-              {reportHeadline(report, t)}
-            </p>
-            <p className="mt-1 text-[12px] text-ink3">
-              {t("wk.summary", {
-                g: deInt(report.games),
-                d: deInt(report.activeDays),
-                m: deInt(report.minutes),
-              })}
-            </p>
+              <p
+                className={`font-semibold leading-snug text-ink ${
+                  mobile ? "text-[15px]" : "text-[15.5px]"
+                }`}
+              >
+                {reportHeadline(report, t)}
+              </p>
+              <p className="mt-1.5 text-[12px] tabular-nums text-ink3">
+                {t("wk.summary", {
+                  g: deInt(report.games),
+                  d: deInt(report.activeDays),
+                  m: deInt(report.minutes),
+                })}
+              </p>
+            </div>
             {/* Untereinander und nicht nebeneinander · die drei Blöcke sind
                 eine Kette, und in der Breite eines Dialogs wären drei Spalten
                 so schmal, dass „Patzer/100 Züge" abgeschnitten dasteht. */}
-            <div className="mt-4 flex flex-col gap-4">
+            <div className="mt-3 flex flex-col gap-3">
               {changed}
               {effect}
               {nextBlock}

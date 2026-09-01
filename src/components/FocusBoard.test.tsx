@@ -115,6 +115,65 @@ describe("focus board", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  /**
+   * Die Reihe unter dem Brett wechselt im Puzzle-Trainer bei jedem Zug ihre
+   * Höhe · gelöst und danebengehauen tragen einen umrandeten Streifen mit
+   * Knöpfen, die Aufgabe davor nur eine Zeile Text. Solange darunter noch Platz
+   * ist, darf das Brett davon nichts merken.
+   */
+  it("keeps the board in place when the row below it grows", () => {
+    open(true);
+    const layer = screen.getByTestId("focus-board");
+    const content = layer.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const column = content.firstElementChild as HTMLDivElement;
+    const [rows, board, controls] = [...column.children] as HTMLDivElement[];
+
+    // jsdom rechnet kein Layout · die Höhen kommen deshalb von Hand, und zwar
+    // in denselben Größenordnungen wie auf einem Telefon.
+    const stub = (element: HTMLElement, height: number) => {
+      element.getBoundingClientRect = () =>
+        ({ height, width: 360, top: 0, bottom: height, left: 0, right: 360, x: 0, y: 0 }) as DOMRect;
+    };
+    stub(layer, 800);
+    stub(content, 740);
+    stub(rows, 40);
+    stub(board, 360);
+    stub(controls, 100);
+    fireEvent(window, new Event("resize"));
+
+    // Vorlauf = halbe freie Fläche über dem Brett: (740 − 360) / 2 − 40.
+    expect(column.style.paddingTop).toBe("150px");
+    expect(layer.style.getPropertyValue("--board-chrome")).toBe("200px");
+
+    stub(controls, 160);
+    fireEvent(window, new Event("resize"));
+    expect(column.style.paddingTop).toBe("150px");
+    // Die Leiste zählt weiter als Chrom · nur eben nicht mehr als Verschiebung.
+    expect(layer.style.getPropertyValue("--board-chrome")).toBe("260px");
+  });
+
+  /** Passt die Bedienung unter dem mittigen Brett nicht mehr, weicht es hoch. */
+  it("gives up the lead before it lets the controls run off the screen", () => {
+    open(true);
+    const layer = screen.getByTestId("focus-board");
+    const content = layer.querySelector(".overflow-y-auto") as HTMLDivElement;
+    const column = content.firstElementChild as HTMLDivElement;
+    const [rows, board, controls] = [...column.children] as HTMLDivElement[];
+    const stub = (element: HTMLElement, height: number) => {
+      element.getBoundingClientRect = () =>
+        ({ height, width: 360, top: 0, bottom: height, left: 0, right: 360, x: 0, y: 0 }) as DOMRect;
+    };
+    stub(layer, 800);
+    stub(content, 740);
+    stub(rows, 40);
+    stub(board, 360);
+    stub(controls, 300);
+    fireEvent(window, new Event("resize"));
+
+    // 740 − 40 − 360 − 300 = 40 · mehr Vorlauf gäbe es nur auf Kosten der Leiste.
+    expect(column.style.paddingTop).toBe("40px");
+  });
+
   it("offers a labelled handle for opening the focus", () => {
     const onClick = vi.fn();
     render(<FocusButton onClick={onClick} />);

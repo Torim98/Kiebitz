@@ -149,6 +149,15 @@ function verticalPadding(element: HTMLElement): number {
   return (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
 }
 
+/** Kopfzeile und Innenabstand · alles, was die Hülle über dem Inhalt braucht. */
+function shellAround(shell: HTMLElement, body: HTMLElement): number {
+  return (
+    shell.getBoundingClientRect().height -
+    body.getBoundingClientRect().height +
+    verticalPadding(body)
+  );
+}
+
 /**
  * Wie viel Höhe im Fokus *nicht* dem Brett gehört.
  *
@@ -164,8 +173,26 @@ function verticalPadding(element: HTMLElement): number {
  * die Höhe, die dem Brett fehlt. Keiner dieser Summanden hängt an der
  * Brettgröße · deshalb ist die Messung eine Rechnung und keine Schleife.
  *
- * Der zurückgegebene Wert geht als `--board-chrome` an den Fokus; die Rechnung
- * für `--board-edge` steht unverändert im Stylesheet.
+ * Gemessen werden dafür die Reihen und nicht die Spalte: Die Spalte füllt die
+ * Fläche aus (`grow`), ihre Höhe ist also der Schirm und nicht der Inhalt.
+ *
+ * Derselbe Griff beantwortet die zweite Frage: wo in der Fläche das Brett
+ * steht. Bleibt Platz übrig — auf einem hohen Telefon ist das Brett so breit
+ * wie der Schirm und damit niedriger als er —, dann gehört er *vor* das Brett,
+ * und zwar so viel, dass das Brett in der Mitte der Fläche sitzt. Was darunter
+ * steht, zählt für diese Rechnung nicht mit: Genau daran hing das Zappeln.
+ * Zentriert man die ganze Spalte, verteilt sich jede gewachsene Leiste je zur
+ * Hälfte nach oben und unten · im Puzzle-Trainer sprang das Brett dadurch bei
+ * jedem Zug, weil die Zeile darunter richtig wie falsch gegen einen Streifen
+ * mit Knöpfen getauscht wird. Der Vorlauf hängt nur an Brett und Statuszeile
+ * und bleibt deshalb stehen.
+ *
+ * Die Grenze ist der Platz, der wirklich da ist: Passt die Bedienung unter dem
+ * mittig stehenden Brett nicht mehr auf den Schirm, schrumpft der Vorlauf
+ * genau um so viel, wie ihr fehlt · abgeschnitten wird nichts.
+ *
+ * Die Werte gehen als `--board-chrome` und als Vorlauf an den Fokus; die
+ * Rechnung für `--board-edge` steht unverändert im Stylesheet.
  */
 function useChrome(mobile: boolean) {
   const layer = useRef<HTMLDivElement | null>(null);
@@ -174,7 +201,10 @@ function useChrome(mobile: boolean) {
   const body = useRef<HTMLDivElement | null>(null);
   const column = useRef<HTMLDivElement | null>(null);
   const board = useRef<HTMLDivElement | null>(null);
+  const rows = useRef<HTMLDivElement | null>(null);
+  const controls = useRef<HTMLDivElement | null>(null);
   const [chrome, setChrome] = useState<number | null>(null);
+  const [lead, setLead] = useState(0);
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -189,17 +219,26 @@ function useChrome(mobile: boolean) {
       // Stylesheet stehen, statt ihn auf null zu setzen.
       if (boardHeight <= 0) return;
       const around = shell === layerEl ? 0 : verticalPadding(layerEl);
-      const next = Math.ceil(
-        around +
-          (shell.getBoundingClientRect().height - bodyEl.getBoundingClientRect().height) +
-          verticalPadding(bodyEl) +
-          (columnEl.getBoundingClientRect().height - boardHeight)
-      );
+      const gap = parseFloat(getComputedStyle(columnEl).rowGap) || 0;
+      const aboveHeight = rows.current?.getBoundingClientRect().height ?? 0;
+      const belowHeight = controls.current?.getBoundingClientRect().height ?? 0;
+      const gaps = gap * Math.max(0, columnEl.children.length - 1);
+      const next = Math.ceil(around + shellAround(shell, bodyEl) + aboveHeight + belowHeight + gaps);
       setChrome((previous) => (previous != null && Math.abs(previous - next) < 1 ? previous : next));
+
+      // Der Vorlauf rechnet in der Fläche, die der Spalte bleibt · das ist die
+      // Höhe des Bereichs ohne seinen Innenabstand.
+      const area = bodyEl.getBoundingClientRect().height - verticalPadding(bodyEl);
+      const over = aboveHeight + (aboveHeight > 0 ? gap : 0);
+      const under = belowHeight + (belowHeight > 0 ? gap : 0);
+      const middle = (area - boardHeight) / 2 - over;
+      const free = area - over - boardHeight - under;
+      const room = Math.max(0, Math.round(Math.min(middle, free)));
+      setLead((previous) => (Math.abs(previous - room) < 1 ? previous : room));
     };
 
     measure();
-    const observed = [body.current, column.current, board.current].filter(
+    const observed = [body.current, rows.current, controls.current, board.current].filter(
       (element): element is HTMLDivElement => element != null
     );
     const observer =
@@ -212,7 +251,7 @@ function useChrome(mobile: boolean) {
     };
   }, [mobile]);
 
-  return { chrome, layer, card, body, column, board };
+  return { chrome, lead, layer, card, body, column, board, rows, controls };
 }
 
 /**
@@ -239,7 +278,7 @@ function FocusLayer({
 }) {
   const t = useT();
   const mobile = useMobileShell();
-  const { chrome, layer, card, body, column, board } = useChrome(mobile);
+  const { chrome, lead, layer, card, body, column, board, rows, controls } = useChrome(mobile);
   const [container] = useState<HTMLElement | null>(() =>
     typeof document === "undefined" ? null : document.body
   );
@@ -277,24 +316,35 @@ function FocusLayer({
   // Der Innenabstand steht hier und nicht an der Karte: Das Brett tritt über
   // `.board-bleed` genau um ihn wieder heraus und erreicht so die Kante,
   // während Beschriftungen und Leisten ihren Rand behalten.
-  // `m-auto` statt `justify-center`: Ein zentrierter Flex-Container schneidet
-  // den Anfang seines Inhalts ab, sobald der überläuft · genau dann fehlte die
-  // achte Reihe. So bleibt die Mitte die Mitte, und was nicht passt, ist
-  // erreichbar.
+  //
+  // Der Vorlauf oben stellt das Brett in die Mitte der Fläche · siehe
+  // `useChrome`. Er ersetzt das frühere `m-auto` an der Spalte: Zentriert man
+  // die Spalte als Ganzes, wandert das Brett bei jeder Leiste mit, die unter
+  // ihm um eine Zeile wächst.
   const content = (
-    <div ref={body} className="flex min-h-0 flex-1 overflow-y-auto px-3 py-2">
+    <div ref={body} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
       <div
         ref={column}
-        className="m-auto flex w-full flex-col gap-2"
-        style={{ maxWidth: frameWidth }}
+        className="mx-auto flex w-full grow flex-col gap-2"
+        style={{ maxWidth: frameWidth, paddingTop: lead || undefined }}
       >
-        {above}
-        {/* Eigene Hülle, damit `useChrome` weiß, welcher Teil der Spalte das
-            Brett ist · alles andere ist die Höhe, die ihm fehlt. */}
+        {/* Die Reihen tragen eigene Hüllen, damit `useChrome` weiß, welcher
+            Teil der Spalte das Brett ist · alles andere ist die Höhe, die ihm
+            fehlt. `gap-2` in den Hüllen, damit mehrteilige Reihen denselben
+            Abstand behalten wie als direkte Kinder der Spalte. */}
+        {above && (
+          <div ref={rows} className="flex flex-col gap-2">
+            {above}
+          </div>
+        )}
         <div ref={board} className="min-w-0">
           {children}
         </div>
-        {below}
+        {below && (
+          <div ref={controls} className="flex flex-col gap-2">
+            {below}
+          </div>
+        )}
       </div>
     </div>
   );

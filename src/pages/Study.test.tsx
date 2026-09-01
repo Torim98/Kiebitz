@@ -481,6 +481,23 @@ describe("Study page", () => {
       expect(document.querySelector("[data-weekly-report]")).toBeNull();
     });
 
+    /**
+     * Auf dem Handy stand der Bericht als beschrifteter Knopf in einer eigenen
+     * Zeile über Rating und Serie · zwei Zeilen für drei Angaben, von denen
+     * eine ein Symbol ist. Jetzt ist es eine Zeile wie auf dem Desktop: Der
+     * Bericht ist nur noch sein Symbol und steht mit den beiden Kennzahlen im
+     * selben Feld. Beschriftet bleibt er über sein `aria-label`.
+     */
+    it("keeps the symbol next to rating and streak in one row on the phone", async () => {
+      mockBackend(backend());
+      renderStudy(vi.fn(), vi.fn(), true);
+
+      const open = await screen.findByRole("button", { name: /Neuer Wochenbericht/ });
+      expect(open.textContent).toBe("");
+      const row = open.parentElement!;
+      expect(row.textContent).toContain("Tage Serie");
+    });
+
     it("has no report for a week that was neither played nor trained", async () => {
       mockBackend({ deep: demoDeepInsights(), metrics: () => null });
       renderStudy();
