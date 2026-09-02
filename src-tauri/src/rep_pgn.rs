@@ -270,7 +270,7 @@ fn push_move(out: &mut String, san: &str, note: &str, ply: usize) {
         out.push(' ');
     }
     let number = ply / 2 + 1;
-    if ply % 2 == 0 {
+    if ply.is_multiple_of(2) {
         out.push_str(&format!("{number}. "));
     } else if out.ends_with('(') || out.ends_with(") ") {
         out.push_str(&format!("{number}... "));

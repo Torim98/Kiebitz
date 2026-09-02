@@ -154,10 +154,14 @@ rust {
 }
 
 dependencies {
-    implementation("androidx.webkit:webkit:1.14.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.activity:activity-ktx:1.12.4")
+    implementation("androidx.webkit:webkit:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.activity:activity-ktx:1.13.0")
     implementation("com.google.android.material:material:1.14.0")
+    // Bleibt auf 2.10: Die 2.11er-Linie verlangt compileSdk 37 und AGP 9.1,
+    // und beides hängt an den Toolchain-Pins (config/toolchain-pins.json)
+    // samt Release-Pipeline. Ein Lebenszyklus-Beobachter ist kein Grund,
+    // die Werkzeugkette einer Veröffentlichung zu verschieben.
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("com.google.android.play:review:2.0.2")
     // In-App-Updates: Play-Apps dürfen sich nur über Play aktualisieren, also
@@ -175,16 +179,16 @@ dependencies {
     implementation("com.android.billingclient:billing:9.1.0")
     // Homescreen-Widgets. Glance ist der aktuelle Weg zu App-Widgets und
     // bringt responsive Größen, dynamische Farben und Deep-Link-Aktionen mit.
-    implementation("androidx.glance:glance-appwidget:1.1.1")
-    implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.glance:glance-material3:1.2.0")
     // Aktuelle, unterstützte SDK-Linien; UMP wird vor der ersten Anzeigenanfrage
     // ausgeführt und stellt den nachträglichen Datenschutzdialog bereit.
     implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.4")
-    androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }
 
 kotlin {

@@ -10,7 +10,9 @@ repository = "https://github.com/kiebitz-dev/Kiebitz"
 license-file = "../LICENSE"
 publish = false
 edition = "2021"
-rust-version = "1.77.2"
+# Angabe hält, was der Abhängigkeitsbaum wirklich verlangt · die höchste
+# MSRV im Baum kommt derzeit von `aes` und `notify-rust` (1.89).
+rust-version = "1.89"
 
 [lib]
 name = "app_lib"
@@ -39,12 +41,18 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 # Lokale Erinnerungen an fälliges Training (Desktop und Android).
 tauri-plugin-notification = "2"
-rusqlite = { version = "0.33", features = ["bundled", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 # Schachregeln, SAN und FEN. Bewusst owlchess (MIT) und nicht shakmaty: das ist
 # GPL-3.0+ und hätte Kiebitz statisch gelinkt zu einem abgeleiteten Werk
 # gemacht. Stockfish ist davon unberührt — eigener Prozess über UCI.
 owlchess = "0.4.1"
 csv = "1.4.0"
+# Bewusst auf der 2er-Linie. Version 3 hat die TLS-Einrichtung umgebaut: Statt
+# einer fertigen `rustls::ClientConfig` nimmt sie ihre eigene TlsConfig
+# entgegen, und ein eigener Zertifikatsprüfer — genau das, worauf das
+# Pinning des Sync-Pairings steht (siehe sync/server.rs) — hat dort keine
+# Entsprechung. Ein Umstieg hieße, das Pinning neu zu erfinden; dafür ist eine
+# gepflegte 2.12 ohne offene Sicherheitsmeldung der bessere Stand.
 ureq = "2"
 zstd = "0.13.3"
 # Sync-Client: Zertifikats-Pinning im QR-Pairing.
@@ -74,38 +82,26 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # nicht in eine Datei. Die drei Stores sind je Zielsystem aktiv; die
 # Secret-Service-Anbindung läuft bewusst über zbus statt libdbus, damit ein
 # Linux-Build keine C-Bibliothek voraussetzt.
-keyring = { version = "3.6", features = [
-    "apple-native",
-    "windows-native",
-    "async-secret-service",
-    "crypto-rust",
-    "async-io",
+keyring = { version = "4.2", features = [
+    "apple-native-keyring-store",
+    "windows-native-keyring-store",
+    "zbus-secret-service-keyring-store",
 ] }
 qrcode = { version = "0.14", default-features = false }
 # Sync-Server (Desktop als Hub) — HTTPS mit dauerhaftem selbstsigniertem Zertifikat.
 tiny_http = { version = "0.12", features = ["ssl-rustls"] }
-rcgen = "0.13.2"
+rcgen = "0.14"
 rustls-pemfile = "2"
 
 # Windows-Toasts direkt ansteuern: das Notification-Plugin verschluckt Fehler,
 # und die Erinnerung soll melden, wenn Windows sie ablehnt.
 [target.'cfg(windows)'.dependencies]
-tauri-winrt-notification = "0.7"
+tauri-winrt-notification = "0.8"
 # Registry direkt statt ueber `reg.exe`. Ein unsigniertes Programm, das
 # versteckte `reg add`-Prozesse startet, sieht fuer die Verhaltenserkennung von
 # Defender aus wie ein Schaedling, der sich einnistet · siehe reminder.rs.
-windows-registry = "0.5"
+windows-registry = "0.6"
 
 # QR-Scanner (nur Mobile): das Handy liest den Pairing-QR des Desktops per Kamera.
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
-
-# Die veröffentlichten Plugin-Crates verweisen unter Gradle 9 auf eine beim
-# Packen ausgelassene consumer-rules.pro. Bis zum nächsten Plugin-Release den
-# offiziellen Tauri-Fix pinnen: https://github.com/tauri-apps/plugins-workspace/commit/db9c5998feff9384f9cbbefcbe0d45937c00a1fc
-[patch.crates-io]
-tauri-plugin-barcode-scanner = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
-tauri-plugin-deep-link = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
-tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
-tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }
-tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "db9c5998feff9384f9cbbefcbe0d45937c00a1fc" }

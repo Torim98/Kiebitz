@@ -57,10 +57,10 @@ fn tls_material(app: &tauri::AppHandle) -> Result<TlsMaterial, String> {
     if let Some(ip) = local_ip() {
         names.push(ip);
     }
-    let rcgen::CertifiedKey { cert, key_pair } = rcgen::generate_simple_self_signed(names)
+    let rcgen::CertifiedKey { cert, signing_key } = rcgen::generate_simple_self_signed(names)
         .map_err(|e| format!("TLS-Zertifikat nicht erzeugbar: {e}"))?;
     let certificate_pem = cert.pem().into_bytes();
-    let private_key_pem = key_pair.serialize_pem().into_bytes();
+    let private_key_pem = signing_key.serialize_pem().into_bytes();
     let fingerprint = hex_fingerprint(cert.der().as_ref());
     std::fs::write(&certificate_path, &certificate_pem)
         .map_err(|e| format!("TLS-Zertifikat nicht speicherbar: {e}"))?;

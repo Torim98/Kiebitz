@@ -828,7 +828,7 @@ impl Ingest {
             });
         }
         self.pending.push((id, moves, game));
-        if self.kept % self.flush_every == 0 {
+        if self.kept.is_multiple_of(self.flush_every) {
             self.flush()?;
         }
         Ok(())

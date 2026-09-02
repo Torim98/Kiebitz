@@ -907,14 +907,14 @@ mod tests {
     fn https_roundtrip_over_localhost_with_pinned_certificate() {
         // Echter TLS-tiny_http-Server + gepinnter ureq-Client · dieselben
         // Transportbausteine wie in start_server/sync_now, ohne Tauri-AppHandle.
-        let rcgen::CertifiedKey { cert, key_pair } =
+        let rcgen::CertifiedKey { cert, signing_key } =
             rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
         let fingerprint = hex_fingerprint(cert.der().as_ref());
         let server = tiny_http::Server::https(
             "127.0.0.1:0",
             tiny_http::SslConfig {
                 certificate: cert.pem().into_bytes(),
-                private_key: key_pair.serialize_pem().into_bytes(),
+                private_key: signing_key.serialize_pem().into_bytes(),
             },
         )
         .unwrap();

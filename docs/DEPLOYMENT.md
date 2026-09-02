@@ -257,6 +257,54 @@ The published Android artifacts currently target arm64 only. Adding further
 ABIs requires matching Rust and Stockfish builds plus a multi-ABI packaging and
 verification pass.
 
+### Play Console: the two edge-to-edge advisories
+
+The Play Console shows two recommended actions for Kiebitz. Both were checked
+against the build; neither is a defect in this app, and the second one cannot
+be resolved at all. Keep this section so the next look at that page is short.
+
+**"Edge-to-edge may not display for all users."** Already handled.
+`MainActivity.onCreate` calls `enableEdgeToEdge()` before `super`, the WebView
+carries `viewport-fit=cover` (`index.html`), and the surfaces that meet a
+system bar pad themselves from `env(safe-area-inset-*)`: the app bar and the
+bottom navigation top and bottom, the navigation rail and the content column
+left and right (`src/index.css`, `src/App.tsx`,
+`src/components/MobileShell.tsx`). `SystemBarsPlugin` only decides whether the
+bar *symbols* are drawn dark or light, following the chosen theme rather than
+the device's night mode.
+
+**"Your app uses deprecated APIs or parameters for edge-to-edge."** Not our
+code, and not fixable from here. The advisory lists five call sites in the
+obfuscated release build — `d.o.b`, `d.p.b`, `d.r.b`, `d.t.b` and `a2.b.u`.
+Resolved through the R8 mapping file
+(`src-tauri/gen/android/app/build/outputs/mapping/universalRelease/mapping.txt`)
+they are:
+
+| Site   | Class                                        |
+| ------ | -------------------------------------------- |
+| `d.o`  | `androidx.activity.EdgeToEdgeApi23`           |
+| `d.p`  | `androidx.activity.EdgeToEdgeApi26`           |
+| `d.r`  | `androidx.activity.EdgeToEdgeApi29`           |
+| `d.t`  | `androidx.activity.EdgeToEdgeApi35`           |
+| `a2.b` | an R8 API-model outline for `WindowManager.LayoutParams` |
+
+That is `androidx.activity`'s own backward-compatibility code — the very
+`enableEdgeToEdge()` the first advisory recommends. It sets
+`statusBarColor` / `navigationBarColor` and the short-edges cutout mode on the
+API levels where those still do something (Kiebitz's `minSdk` is 24), and skips
+them on Android 15 and later. Play's scan is static: it sees the bytecode in the
+bundle and cannot tell that the branch never runs on the versions where it is
+deprecated. Removing it would mean dropping `androidx.activity` or raising
+`minSdk` to 35 — both far worse than an advisory. Recheck after an
+`androidx.activity` update; nothing else to do.
+
+To redo this analysis after a release, resolve the reported names in the
+mapping file of the build that was uploaded:
+
+```sh
+grep -E "^.* -> d\.(o|p|r|t):$" src-tauri/gen/android/app/build/outputs/mapping/universalRelease/mapping.txt
+```
+
 ## Third-party license notices
 
 MIT, BSD and ISC require their license text and copyright notice to accompany
