@@ -91,6 +91,10 @@ import {
 import { tcLabel } from "../lib/gameUi";
 import { accuraciesFromMoveEvals } from "../lib/accuracy";
 
+/** Leere Zugliste als Konstante · ein neues Array je Render würde die
+    davon abhängigen useMemo-Ketten bei jedem Durchlauf neu rechnen. */
+const NO_MOVES: string[] = [];
+
 /** Einheitliche Zug-Sicht für Demo- und DB-Partien. */
 interface ViewMove {
   san: string;
@@ -618,6 +622,14 @@ export default function Analysis({
   }, [desktop, selectedId]);
 
   const scratch = desktop && selectedId == null;
+  /**
+   * Zwischen der Auswahl einer Partie und ihrem Datensatz liegt ein
+   * Moment ohne Inhalt. Er gehört weder dem freien Brett noch der Demo:
+   * Die Demo ist die Schaufensterpartie des Webs, und auf dem Desktop
+   * hat sie nichts zu suchen · sie stünde für den Bruchteil einer
+   * Sekunde als fremde Partie unter dem Kopf der eigenen.
+   */
+  const loadingGame = desktop && selectedId != null && game == null;
 
   // Wer eine Partie auswählt, verlässt die geteilte Stellung · sonst bliebe
   // ihre Ausgangsstellung unter der Partie liegen.
@@ -639,8 +651,10 @@ export default function Analysis({
       ? game.moves.split(" ").filter(Boolean)
       : scratch
         ? scratchSans
-        : featuredGame.moves.map((m) => m.san),
-    [live, game, scratch, scratchSans]
+        : loadingGame
+          ? NO_MOVES
+          : featuredGame.moves.map((m) => m.san),
+    [live, game, scratch, scratchSans, loadingGame]
   );
   const viewMoves: ViewMove[] = useMemo(() => {
     if (!desktop) {
@@ -656,7 +670,7 @@ export default function Analysis({
     return rowsToViewMoves(sans, live ? rows ?? [] : []);
   }, [desktop, live, sans, rows]);
 
-  const analyzedRows = live ? (rows?.length ?? 0) > 0 : true;
+  const analyzedRows = live ? (rows?.length ?? 0) > 0 : !loadingGame;
 
   // Notizen und Tags der gewählten Partie in die Eingaben übernehmen.
   useEffect(() => {
@@ -1062,10 +1076,10 @@ export default function Analysis({
   const captureBlack = locale === "de" ? "Springerfreund (1448)" : "KnightFriend (1448)";
   const whitePlayer = live
     ? { name: game.color === "white" ? ownPlayerName : game.opponent, elo: game.color === "white" ? game.my_elo : game.opp_elo }
-    : scratch ? { name: t("common.white"), elo: 0 } : demoPlayer(storeCapture ? captureWhite : featuredGame.white);
+    : scratch || loadingGame ? { name: t("common.white"), elo: 0 } : demoPlayer(storeCapture ? captureWhite : featuredGame.white);
   const blackPlayer = live
     ? { name: game.color === "black" ? ownPlayerName : game.opponent, elo: game.color === "black" ? game.my_elo : game.opp_elo }
-    : scratch ? { name: t("common.black"), elo: 0 } : demoPlayer(storeCapture ? captureBlack : featuredGame.black);
+    : scratch || loadingGame ? { name: t("common.black"), elo: 0 } : demoPlayer(storeCapture ? captureBlack : featuredGame.black);
   const topPlayer = orientation === "white" ? blackPlayer : whitePlayer;
   const bottomPlayer = orientation === "white" ? whitePlayer : blackPlayer;
   // Geschlagene Figuren zur gezeigten Stellung · jede Seite bekommt, was sie
@@ -1180,7 +1194,9 @@ export default function Analysis({
     : [];
   const headerSub = live
     ? [gamePlayers, ...gameMeta].join(" · ")
-    : scratch
+    : loadingGame
+      ? ""
+      : scratch
       ? t("an.freeBoardHint")
       : storeCapture
         ? `${captureWhite} vs. ${captureBlack} · Rapid · 1–0`
@@ -1904,7 +1920,7 @@ export default function Analysis({
         <div className="flex min-w-0 flex-col gap-4 min-[1100px]:contents">
           <LiveEngine
             fen={fen}
-            demoLines={scratch ? [] : featuredGame.pvLines}
+            demoLines={scratch || loadingGame ? [] : featuredGame.pvLines}
             onEval={(cp, mate) => setLiveEval({ cp, mate })}
             onBestMove={setLiveBestUci}
             onMove={(uci) => playBoardMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] ?? "q")}

@@ -141,6 +141,28 @@ const onlineGame = {
   analysis_excluded: false,
 };
 
+/** Stellung nach 1.e4 e5 2.Nf3 Nc6 · dem Zugtext aller Vorlagen hier. */
+const AFTER_FIXTURE_MOVES = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R";
+
+/**
+ * Warten, bis die gewählte Partie wirklich auf dem Brett liegt.
+ *
+ * Die Auswahl im Ausklappmenü steht zwei Renders früher fest als die Partie:
+ * erst die Kennung, dann der geladene Datensatz, dann der Sprung ans Ende der
+ * Partie. Wer nur auf das Ausklappmenü wartet, prüft die Oberfläche in einem
+ * der Zwischenzustände · dort gibt es weder Züge noch Notizen noch eine
+ * Schlussstellung. Die Schlussstellung ist deshalb das verlässliche Zeichen:
+ * Sie steht erst, wenn alle drei Schritte durch sind.
+ */
+async function gameOnBoard(value: string) {
+  await waitFor(() =>
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe(value)
+  );
+  await waitFor(() =>
+    expect(screen.getAllByTestId("analysis-board")[0].dataset.fen).toContain(AFTER_FIXTURE_MOVES)
+  );
+}
+
 beforeEach(() => {
   // Die Oberfläche startet ab Werk auf Englisch; diese Tests prüfen die
   // deutschen Texte und stellen die Sprache deshalb explizit ein.
@@ -212,7 +234,7 @@ describe("Analysis page", () => {
   it("allows an explicitly opened excluded game to run Stockfish analysis", async () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
 
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
     expect(screen.queryByRole("button", { name: /Nächste 10/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Diese Partie analysieren" }));
     expect(mocks.startAnalysis).toHaveBeenCalledWith({ gameIds: [7] });
@@ -225,10 +247,10 @@ describe("Analysis page", () => {
     it("steps to the next game without opening the picker", async () => {
       mocks.listGames.mockResolvedValue(twoGames);
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
 
       fireEvent.click(screen.getByRole("button", { name: "Nächste Partie" }));
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+      await gameOnBoard("11");
 
       // Am Ende der Liste hört das Blättern auf, statt umzulaufen.
       expect((screen.getByRole("button", { name: "Nächste Partie" }) as HTMLButtonElement).disabled).toBe(true);
@@ -238,7 +260,7 @@ describe("Analysis page", () => {
 
     it("turns the board around and back", async () => {
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
       // Die Partie wurde als Weiß gespielt · so beginnt auch das Brett.
       expect(screen.getByTestId("analysis-board").dataset.orientation).toBe("white");
 
@@ -257,7 +279,7 @@ describe("Analysis page", () => {
      */
     it("leaves the arrow keys to the notes field while it has the focus", async () => {
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
       const atEnd = screen.getByTestId("analysis-board").dataset.fen;
 
       fireEvent.keyDown(screen.getByPlaceholderText(/Gedanken zur Partie/), { key: "ArrowLeft" });
@@ -279,7 +301,7 @@ describe("Analysis page", () => {
       // nicht um das Gate davor. Das prüft components/FocusBoard.test.tsx.
       grantPlus();
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
       expect(screen.getAllByTestId("analysis-board")).toHaveLength(1);
 
       fireEvent.click(screen.getByRole("button", { name: "Fokus-Brett öffnen" }));
@@ -307,7 +329,7 @@ describe("Analysis page", () => {
     it("keeps the batch runs in a menu next to the primary action", async () => {
       mocks.listGames.mockResolvedValue(twoGames);
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
 
       // Zugeklappt ist die Leiste eine Zeile mit einem Hauptknopf.
       expect(screen.queryByRole("menuitem", { name: /Nächste 10/ })).toBeNull();
@@ -375,7 +397,7 @@ describe("Analysis page", () => {
   it("lets desktop users branch from a played move with drag and drop", async () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
 
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
     expect(screen.getByTestId("analysis-board").dataset.draggable).toBe("true");
     expect(screen.getByTestId("analysis-board").dataset.mouseDrag).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "e4" }));
@@ -390,7 +412,7 @@ describe("Analysis page", () => {
   it("shares the position together with the moves that led to it", async () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
 
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
     // Zwei Halbzüge zurück: geteilt wird, was auf dem Brett steht.
     fireEvent.click(screen.getByRole("button", { name: "e5" }));
     fireEvent.click(screen.getByTitle("Stellung teilen"));
@@ -454,7 +476,7 @@ describe("Analysis page", () => {
   it("plays a clicked engine move on the analysis board", async () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
 
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
     fireEvent.click(screen.getByRole("button", { name: "play engine move" }));
 
     expect(await screen.findByText(/Variante ab Zug 3/)).toBeTruthy();
@@ -476,7 +498,7 @@ describe("Analysis page", () => {
       opponent_accuracy_endgame: 75.8,
     }]);
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
 
     const overall = screen.getByRole("group", { name: "Gesamt · Partie" });
     expect(within(overall).getByText("88,4 %")).toBeTruthy();
@@ -493,7 +515,7 @@ describe("Analysis page", () => {
 
   it("saves notes and tags of the selected game from the analysis panel", async () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-    await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+    await gameOnBoard("7");
 
     fireEvent.change(screen.getByPlaceholderText("Tag eingeben …"), { target: { value: "Eröffnung" } });
     fireEvent.click(screen.getByRole("button", { name: /Hinzufügen/ }));
@@ -518,7 +540,7 @@ describe("Analysis page", () => {
     it("shows both clocks and the time control once a game brings them", async () => {
       mocks.listGames.mockResolvedValue([timedGame]);
       render(<LocaleProvider><Analysis targetGameId={21} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("21"));
+      await gameOnBoard("21");
 
       // Am Ende der Partie: Weiß 588,00 s, Schwarz 581,00 s.
       expect(await screen.findByText("9:48")).toBeTruthy();
@@ -530,7 +552,7 @@ describe("Analysis page", () => {
     it("follows the move list backwards", async () => {
       mocks.listGames.mockResolvedValue([timedGame]);
       render(<LocaleProvider><Analysis targetGameId={21} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("21"));
+      await gameOnBoard("21");
       await screen.findByText("9:48");
 
       // Zurück auf Halbzug 2: Weiß 595,00 s, Schwarz 593,00 s.
@@ -541,7 +563,7 @@ describe("Analysis page", () => {
 
     it("shows nothing at all when a game has no clock data", async () => {
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
 
       expect(screen.queryByText(/^\d+:\d\d$/)).toBeNull();
     });
@@ -742,7 +764,7 @@ describe("Analysis page", () => {
     it("uses the stored game URL", async () => {
       mocks.listGames.mockResolvedValue([onlineGame]);
       render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+      await gameOnBoard("11");
 
       await waitFor(() => expect(originLink()).toBeTruthy());
       expect(originLink()?.getAttribute("href")).toBe("https://www.chess.com/game/live/123456789");
@@ -751,7 +773,7 @@ describe("Analysis page", () => {
     it("falls back to the account archive when the game has no URL", async () => {
       mocks.listGames.mockResolvedValue([{ ...onlineGame, source: "lichess", url: "" }]);
       render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+      await gameOnBoard("11");
 
       await waitFor(() =>
         expect(originLink()?.getAttribute("href")).toBe("https://lichess.org/@/Torim98/all")
@@ -763,14 +785,14 @@ describe("Analysis page", () => {
       mocks.getSettings.mockResolvedValue({ locale: "de", chessdb_enabled: false, cc_user: "", li_user: "" });
       mocks.listGames.mockResolvedValue([{ ...onlineGame, url: "" }]);
       render(<LocaleProvider><Analysis targetGameId={11} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("11"));
+      await gameOnBoard("11");
 
       expect(originLink()).toBeNull();
     });
 
     it("omits the link for manually recorded games", async () => {
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
-      await waitFor(() => expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("7"));
+      await gameOnBoard("7");
 
       expect(originLink()).toBeNull();
     });

@@ -271,7 +271,7 @@ export default function Openings({
               <LabelList
                 dataKey="win"
                 position="right"
-                formatter={(value: number) => `${value} %`}
+                formatter={(value) => `${value} %`}
                 style={{ fill: "var(--color-ink2)", fontSize: 11 }}
               />
             </Bar>

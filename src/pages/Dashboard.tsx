@@ -1,14 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import {
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  type TooltipProps,
-} from "recharts";
+import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronRight, Cpu, Puzzle } from "lucide-react";
 import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
@@ -21,46 +11,16 @@ import { buildDashboard, type HistoryPoint, type RatingHistorySeries } from "../
 import type { GamesFilter, UiGame } from "../lib/gameUi";
 import { Card, ExtLink, GameCard, ResultBadge, SourceBadge, Spark, Button } from "../components/ui";
 import { useMobileShell } from "../components/MobileShell";
-import { chart } from "../components/chartTheme";
+import { chart, RATING_CHART_HEIGHT } from "../components/chartTheme";
 import { dateLocale, de, deInt } from "../lib/format";
 import type { PageId } from "../App";
-import { isStoreCapture } from "../lib/storeCapture";
 
 /**
- * Tooltip des Ratingverlaufs. Die Linie hat einen Stützpunkt je Tag, also
- * steht im Kopf auch der Tag und darunter der an diesem Tag gültige Stand ·
- * ein Monatsname über einer Tageszahl wäre eine Auskunft über den falschen
- * Zeitraum.
+ * Recharts kommt nach, nicht mit: Das Diagramm ist die einzige Stelle des
+ * Starts, die es braucht, und der Rest der Seite steht ohne es sofort.
  */
-function DayTooltip({
-  active,
-  payload,
-  series,
-  colors,
-}: TooltipProps<number, string> & {
-  series: RatingHistorySeries[];
-  colors: Record<string, string>;
-}) {
-  const point = payload?.[0]?.payload as HistoryPoint | undefined;
-  if (!active || !point) return null;
-  const rows = series.filter((s) => point[s.key] != null);
-  if (rows.length === 0) return null;
-  return (
-    <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 shadow-xl">
-      <div className="mb-1 text-[11.5px] text-ink3">{point.dayLabel || point.monthLabel}</div>
-      {rows.map((s) => (
-        <div key={s.key} className="flex items-center gap-2 text-[12.5px] text-ink">
-          <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ background: colors[s.id] ?? chart.draw }}
-          />
-          <span className="text-ink2">{s.label}:</span>
-          <span className="font-medium">{deInt(point[s.key] as number)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const RatingHistoryChart = lazy(() => import("../components/RatingHistoryChart"));
+import { isStoreCapture } from "../lib/storeCapture";
 
 /**
  * Legende des Ratingverlaufs · bewusst außerhalb des Charts.
@@ -288,34 +248,16 @@ export default function Dashboard({
           title={live ? t("dash.ratingHistoryLive") : t("dash.ratingHistoryDemo")}
           className="min-[1100px]:col-span-2"
         >
-          <ResponsiveContainer width="100%" height={230}>
-            <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
-              <CartesianGrid stroke={chart.grid} vertical={false} />
-              {/* Beschriftet ist nur der Monatserste; alle anderen Tage tragen
-                  einen leeren Namen und bleiben dadurch stumm. */}
-              <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} interval={0} />
-              <YAxis domain={live ? ["auto", "auto"] : [1340, 1560]} tick={chart.tick} tickLine={false} axisLine={false} />
-              <Tooltip
-                content={<DayTooltip series={historySeries} colors={historyColors} />}
-                cursor={{ stroke: chart.axis }}
-              />
-              {historySeries.map((series) => (
-                // Bewusst „linear": der Verlauf soll springen wie die
-                // Sparklines der Karten, statt eine Kurve zu behaupten, die
-                // zwischen zwei Partien niemand gespielt hat.
-                <Line
-                  key={series.id}
-                  type="linear"
-                  dataKey={series.key}
-                  name={series.label}
-                  stroke={historyColors[series.id] ?? chart.draw}
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <Suspense
+            fallback={<div style={{ height: RATING_CHART_HEIGHT }} aria-hidden />}
+          >
+            <RatingHistoryChart
+              history={history}
+              series={historySeries}
+              colors={historyColors}
+              live={live}
+            />
+          </Suspense>
           <HistoryLegend series={historySeries} colors={historyColors} />
         </Card>
 

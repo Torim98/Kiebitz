@@ -7,7 +7,8 @@
  * Klasse. Die Diagramme folgen dem Thema deshalb ohne Zutun und ohne ein
  * Neuzeichnen von Hand.
  */
-import type { TooltipProps } from "recharts";
+import type { TooltipContentProps } from "recharts";
+import { deInt } from "../lib/format";
 
 export const chart = {
   grid: "var(--color-line)",
@@ -27,6 +28,15 @@ export const chart = {
 };
 
 /**
+ * Höhe der Ratingverlaufs-Zeichenfläche.
+ *
+ * Sie steht hier und nicht in RatingHistoryChart.tsx, weil der Start sie schon
+ * für seinen Platzhalter braucht · ein statischer Import der Diagrammdatei
+ * zöge Recharts wieder ins Startbündel und machte das Nachladen sinnlos.
+ */
+export const RATING_CHART_HEIGHT = 230;
+
+/**
  * Hover-Fläche der Balkendiagramme. Recharts hebt die Spalte sonst mit einem
  * hellen Grau hervor, das im dunklen Layout wie ein Fehler aussieht.
  */
@@ -40,7 +50,18 @@ export const barCursor = {
  * Tooltip der Diagramme · liegt auf Panel-Farben und folgt dem Thema damit
  * ohne Zutun.
  */
-export function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
+/**
+ * Die Eigenschaften, die Recharts einem eigenen Tooltip übergibt.
+ *
+ * `Partial`, weil Recharts sie erst beim Zeigen füllt: Als Element geschrieben
+ * (`content={<ChartTooltip />}`) trägt der Aufruf keine einzige davon, und die
+ * Bibliothek klont ihn zur Laufzeit mit den Werten der Stelle unter dem
+ * Zeiger. Seit Version 3 sind sie im Typ verpflichtend · ohne `Partial` müsste
+ * jede Diagrammseite Fantasiewerte hinschreiben.
+ */
+export type ChartTooltipProps = Partial<TooltipContentProps<number, string>>;
+
+export function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-line2 bg-panel3 px-3 py-2 shadow-xl">
@@ -49,7 +70,7 @@ export function ChartTooltip({ active, payload, label }: TooltipProps<number, st
         <div key={String(p.dataKey)} className="flex items-center gap-2 text-[12.5px] text-ink">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: p.color }} />
           <span className="text-ink2">{p.name}:</span>
-          <span className="font-medium">{typeof p.value === "number" ? p.value.toLocaleString("de-DE") : p.value}</span>
+          <span className="font-medium">{typeof p.value === "number" ? deInt(p.value) : p.value}</span>
         </div>
       ))}
     </div>

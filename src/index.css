@@ -453,6 +453,8 @@ html[data-store-capture="true"] .board-end-flash {
    safe-area 0, deshalb der Mindestwert. */
 .mobile-bottom-nav {
   padding-bottom: max(env(safe-area-inset-bottom), 32px);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Im Querformat steht dieselbe Navigation als Rail an der linken Kante · dort
@@ -461,6 +463,25 @@ html[data-store-capture="true"] .board-end-flash {
   padding-left: env(safe-area-inset-left);
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ── Randloses Zeichnen, seitlich ────────────────────────────────────────────
+   Oben und unten liegen Status- und Navigationsleiste, seitlich die
+   Kamera-Aussparung: Im Querformat liegt sie an einer der langen Kanten und
+   schneidet sonst in den Titel oder in den Rand des Inhalts. Die Flaechen
+   selbst reichen weiterhin bis an die Kante · nur was gelesen oder getippt
+   wird, rueckt heraus. Im Hochformat sind beide Werte 0, die Regel kostet
+   dort also nichts. */
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Die App-Bar bringt bereits einen eigenen Rand mit · max() haelt ihn und
+   weicht nur aus, wenn die Aussparung mehr verlangt. */
+.mobile-app-bar {
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
 }
 
 /* Mobil traegt die App-Bar den Seitentitel · die Seite wiederholt ihn nicht.

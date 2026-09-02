@@ -68,7 +68,7 @@ export function MobileAppBar({
   const t = useT();
   return (
     <header
-      className="flex shrink-0 items-center gap-0.5 border-b border-line bg-panel px-2 pb-2"
+      className="mobile-app-bar flex shrink-0 items-center gap-0.5 border-b border-line bg-panel pb-2"
       style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
     >
       {showBack && (

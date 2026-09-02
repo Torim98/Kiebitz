@@ -32,7 +32,6 @@ import { onDataChange } from "./lib/changes";
 import { getSettings, type Settings } from "./lib/settings";
 import { syncInfo } from "./lib/sync";
 import { configureAutoSync, useSyncStatus } from "./lib/syncManager";
-import { startReminders, stopReminders } from "./lib/notify";
 import { setBoardSoundEnabled, setBoardSoundVolume } from "./lib/sound";
 import { installCrashReporter, logEvent } from "./lib/diag";
 import { onDeviceShake } from "./lib/shake";
@@ -59,7 +58,6 @@ import AdBanner from "./components/AdBanner";
 import PlanBadge from "./components/PlanBadge";
 import PlusDialog from "./components/PlusDialog";
 import { installDeepLinks } from "./lib/plus/deepLink";
-import { startWidgetSnapshots } from "./lib/widgets";
 import { usePlus } from "./lib/plus/usePlus";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
@@ -339,11 +337,23 @@ export default function App() {
 
   // Trainings-Erinnerungen: der Prüf-Timer liest die Einstellungen bei jedem
   // Durchlauf selbst, Änderungen greifen also ohne Neustart.
+  //
+  // Beide Hintergrundläufe kommen nachgeladen. Sie melden sich frühestens
+  // Minuten nach dem Start, ziehen aber Lernplan, Wochenbericht und
+  // Benachrichtigungen hinter sich her · zusammen rund ein Fünftel des
+  // Startbündels für Code, den das erste Bild nicht braucht.
   useEffect(() => {
     if (backend.mode !== "desktop") return;
     let disposed = false;
     let stopImport = () => {};
-    startReminders();
+    let stopReminders = () => {};
+    import("./lib/notify")
+      .then((module) => {
+        if (disposed) return;
+        module.startReminders();
+        stopReminders = module.stopReminders;
+      })
+      .catch(() => {});
     import("./lib/autoImport")
       .then(({ startAutoImport, stopAutoImport }) => {
         if (disposed) return;
@@ -374,10 +384,22 @@ export default function App() {
     });
   }, [backend.mode, goTo, push]);
 
-  // Datenstand der Android-Widgets · nur dort gibt es welche.
+  // Datenstand der Android-Widgets · nur dort gibt es welche, und auch dort
+  // erst, nachdem die App steht.
   useEffect(() => {
     if (backend.mode !== "desktop" || backend.info?.platform !== "android") return;
-    return startWidgetSnapshots();
+    let disposed = false;
+    let stop = () => {};
+    import("./lib/widgets")
+      .then(({ startWidgetSnapshots }) => {
+        if (disposed) return;
+        stop = startWidgetSnapshots();
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      stop();
+    };
   }, [backend.mode, backend.info?.platform]);
 
   // Lebenszeichen der Nutzungsstatistik · höchstens eines pro Tag, und nur
@@ -798,7 +820,7 @@ export default function App() {
               sich das Detailblatt (MobileSheet) über den Inhalt, während
               App-Bar und Navigation scharf und bedienbar bleiben. */}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
+            <main ref={mainRef} className="safe-x min-w-0 flex-1 overflow-y-auto">
               {mainContent}
             </main>
             <div

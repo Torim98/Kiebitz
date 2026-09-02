@@ -25,10 +25,17 @@ const limits = {
   // mit — beim Eröffnungs-Explorer und der .db3-Referenzdatenbank waren das
   // zusammen rund 2,6 KiB. Die Grenze bekommt dafür etwas Luft; entscheidend
   // für die Ladezeit ist ohnehin `initialGzip`, und Fließtext komprimiert gut.
-  initialJs: 448 * 1024,
-  initialGzip: 150 * 1024,
-  startupRouteJs: 900 * 1024,
-  startupRouteGzip: 275 * 1024,
+  //
+  // React 19 ist rund 40 KiB größer als React 18 · das ist der Preis des
+  // Umstiegs und liegt vollständig im Startbündel. Aufgewogen wird er von der
+  // Startseite: Recharts (rund 330 KiB) hängt seit dem nachgeladenen
+  // Ratingverlauf nicht mehr daran, ebenso wenig Erinnerungen und
+  // Widget-Momentaufnahmen. Die Startroute ist deshalb deutlich enger gefasst
+  // als vorher · dort liegt der Weg zum ersten brauchbaren Bild.
+  initialJs: 480 * 1024,
+  initialGzip: 160 * 1024,
+  startupRouteJs: 560 * 1024,
+  startupRouteGzip: 185 * 1024,
   singleJs: 450 * 1024,
   // Sieben Farbwelten kosten rund 6 KiB CSS (src/themes.css) · das ist der
   // Preis dafür, dass der Themenwechsel ein Attributwechsel bleibt und kein

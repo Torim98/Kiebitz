@@ -10,22 +10,29 @@ export default defineConfig({
     manifest: true,
     rollupOptions: {
       output: {
-        // Nur Abhängigkeiten trennen, die sowohl groß als auch fachlich klar
-        // abgegrenzt sind. Ein allgemeiner `vendor`-Chunk würde Abhängigkeiten
-        // lazy geladener Seiten wieder in den App-Start ziehen.
-        manualChunks(id) {
-          const path = id.replaceAll("\\", "/");
-          if (!path.includes("/node_modules/")) return;
-          if (path.includes("/react-chessboard/")) return "chessboard";
-          if (path.includes("/chess.js/")) return "chess-core";
-          if (
-            path.includes("/react/") ||
-            path.includes("/react-dom/") ||
-            path.includes("/scheduler/")
-          ) {
-            return "react";
-          }
-          if (path.includes("/@tauri-apps/")) return "tauri";
+        // Rolldown schneidet die Seiten selbst zu; ausgelagert wird nur, was
+        // über Veröffentlichungen hinweg gleich bleibt. React ändert sich
+        // seltener als Kiebitz, und ein eigener Chunk bleibt dem Browser
+        // deshalb über ein Update hinweg im Zwischenspeicher.
+        //
+        // Bewusst keine Gruppen für react-chessboard oder chess.js: Beide
+        // hängen ausschließlich an nachgeladenen Seiten. Eine eigene Gruppe
+        // machte aus ihnen einen Chunk, den das Startbündel statisch einbindet
+        // · genau das, was die Aufteilung verhindern soll.
+        advancedChunks: {
+          groups: [
+            {
+              name: "react",
+              test: (id: string) => {
+                const path = id.replaceAll("\\", "/");
+                return (
+                  path.includes("/node_modules/react/") ||
+                  path.includes("/node_modules/react-dom/") ||
+                  path.includes("/node_modules/scheduler/")
+                );
+              },
+            },
+          ],
         },
       },
     },
