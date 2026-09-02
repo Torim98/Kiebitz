@@ -5,6 +5,7 @@ import type { MetricValue, MetricWindow } from "./insights";
 import type { LoadDay } from "./study";
 import type { Prescription } from "./plan";
 import {
+  areaRuns,
   buildWeeklyReport,
   compareMetric,
   formatDelta,
@@ -275,6 +276,87 @@ describe("the report", () => {
     })!;
     expect(report.minutes).toBe(70);
     expect(report.previousMinutes).toBe(210);
+  });
+});
+
+describe("runs", () => {
+  const week = reportWeek(new Date("2026-08-12T18:00:00Z"));
+  const back = (n: number) => week.start - n * 7 * DAY;
+
+  it("counts the weeks in a row and points at the one before them", () => {
+    const measured = [
+      // Vier Wochen zurück: nichts · das begrenzt die Serie.
+      ...days(back(4), { endgames: 0 }),
+      ...days(back(3), { endgames: 6 }),
+      ...days(back(2), { endgames: 5 }),
+      ...days(back(1), { endgames: 8 }),
+      ...days(week.start, { endgames: 7 }),
+    ];
+    const runs = areaRuns(measured, week);
+    const endgames = runs.find((run) => run.area === "endgames")!;
+    expect(endgames.weeks).toBe(4);
+    // Die Vergleichsbasis ist die volle Woche vor dem Beginn der Serie.
+    expect(endgames.before.start).toBe(back(4));
+    expect(endgames.before.end).toBe(back(3));
+  });
+
+  it("treats a week below the training threshold as a gap", () => {
+    const measured = [
+      // Eine Minute am Tag sind sieben in der Woche · keine Trainingswoche.
+      ...days(back(2), { endgames: 6 }),
+      ...days(back(1), { endgames: 1 }),
+      ...days(week.start, { endgames: 6 }),
+    ];
+    // Eine einzelne Woche ist noch keine Serie.
+    expect(areaRuns(measured, week)).toEqual([]);
+  });
+
+  it("needs two weeks before it says anything", () => {
+    expect(areaRuns(days(week.start, { tactics: 20 }), week)).toEqual([]);
+    expect(
+      areaRuns([...days(back(1), { tactics: 20 }), ...days(week.start, { tactics: 20 })], week).map(
+        (run) => run.weeks
+      )
+    ).toEqual([2]);
+  });
+
+  it("measures the run against the week before it, not against last week", () => {
+    const earlier = previousWeek(week);
+    const long = window(back(3), [
+      metric({ key: "acc_endgame", value: 71, n: 120, unit: "pct" }),
+    ]);
+    const report = buildWeeklyReport({
+      week,
+      metrics: window(week.start, [
+        metric({ key: "acc_endgame", value: 78, n: 120, unit: "pct" }),
+      ]),
+      previous: window(earlier.start, [
+        metric({ key: "acc_endgame", value: 77, n: 120, unit: "pct" }),
+      ]),
+      days: [...days(earlier.start, { endgames: 6 }), ...days(week.start, { endgames: 6 })],
+      runs: [{ run: { area: "endgames", weeks: 3, before: { start: back(3), end: back(2) } }, before: long }],
+    })!;
+
+    const endgames = report.byArea.find((entry) => entry.area === "endgames")!;
+    expect(endgames.run?.weeks).toBe(3);
+    expect(endgames.run?.change.from).toBe(71);
+    expect(endgames.run?.change.to).toBe(78);
+    // Der Wochenvergleich bleibt daneben stehen und misst weiter sieben Tage.
+    expect(endgames.change?.from).toBe(77);
+  });
+
+  it("leaves the run empty where none was handed in", () => {
+    const report = buildWeeklyReport({
+      week,
+      metrics: window(week.start, [
+        metric({ key: "acc_endgame", value: 78, n: 120, unit: "pct" }),
+      ]),
+      previous: window(previousWeek(week).start, [
+        metric({ key: "acc_endgame", value: 71, n: 120, unit: "pct" }),
+      ]),
+      days: days(week.start, { endgames: 6 }),
+    })!;
+    expect(report.byArea.every((entry) => entry.run === null)).toBe(true);
   });
 });
 

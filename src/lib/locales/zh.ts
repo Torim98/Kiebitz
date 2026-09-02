@@ -811,7 +811,8 @@ export const zh: Record<Key, string> = {
   "wk.minutesPlain": "分钟训练",
   "wk.minutesBefore": "上周 {m} 分钟",
   "wk.effectNone": "本周没有测得训练时间。",
-  "wk.effectNote": "时间和数字来自同一周 · 这是相关性，不是因果。",
+  "wk.effectNote": "时间和数字都是实测的 · 这是相关性，不是因果。",
+  "wk.areaRun": "连续 {n} 周",
   "wk.nextNone": "没有新的重点 · 照旧继续。",
 
   "set.title": "设置",

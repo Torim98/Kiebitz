@@ -270,13 +270,19 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
       target: 240,
       activeDays: 5,
       byArea: [
-        { area: "play", minutes: 84, previous: 71, target: 65, change: null },
+        { area: "play", minutes: 84, previous: 71, target: 65, change: null, run: null },
         {
           area: "tactics",
           minutes: 62,
           previous: 31,
           target: 74,
           change: demoChange("blunders_per100", 4.1, 2.8, "per100", true, 612, 0.8),
+          // Drei Wochen Taktik am Stück · die Zeile, die den längeren Bogen
+          // zeigt (siehe `WeeklyRun` in lib/weekly.ts).
+          run: {
+            weeks: 3,
+            change: demoChange("blunders_per100", 5.4, 2.8, "per100", true, 612, 0.9),
+          },
         },
         {
           area: "openings",
@@ -284,9 +290,10 @@ export function DEMO_PLAN_STATE(_locale: Locale): StudyState {
           previous: 18,
           target: 50,
           change: demoChange("in_book_pct", 61.5, 68.2, "pct", false, 13, 9.4),
+          run: null,
         },
-        { area: "endgames", minutes: 12, previous: 0, target: 24, change: null },
-        { area: "analysis", minutes: 12, previous: 22, target: 27, change: null },
+        { area: "endgames", minutes: 12, previous: 0, target: 24, change: null, run: null },
+        { area: "analysis", minutes: 12, previous: 22, target: 27, change: null, run: null },
       ],
       changes: [
         demoChange("blunders_per100", 4.1, 2.8, "per100", true, 612, 0.8),

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Was der Ressourcen-Schrumpfer im Release-Build stehen lassen muss.
+
+  `isShrinkResources` wirft jede Ressource weg, auf die kein Code und kein
+  XML zeigt. `ic_notification` wird aber nirgends statisch benannt: Das
+  Benachrichtigungs-Plugin schlägt sie zur Laufzeit über
+  `resources.getIdentifier("ic_notification", "drawable", …)` nach, und dieser
+  Aufruf ist für den Schrumpfer unsichtbar. Er hat sie deshalb aus jedem
+  Release-Build entfernt — nachgewiesen an der Ressourcentabelle von
+  v0.17.0, in der `drawable/ic_notification` schlicht fehlt, während sie im
+  Debug-Build steht. Genau daher kam das graue „i" des Systems in der
+  Statusleiste: Findet das Plugin die ID nicht, fällt es auf
+  `android.R.drawable.ic_dialog_info` zurück.
+
+  Die Widget-Symbole brauchen keinen Eintrag · sie stehen als
+  `R.drawable.ic_widget_…` im Kotlin-Code und sind damit erreichbar.
+-->
+<resources
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notification" />

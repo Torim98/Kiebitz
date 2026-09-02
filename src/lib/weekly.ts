@@ -217,6 +217,78 @@ export interface WeeklyArea {
    * in diesen zwei Wochen nicht vergleichen lässt.
    */
   change: WeeklyChange | null;
+  /**
+   * Dieselbe Kennzahl über die ganze Serie · gesetzt, sobald der Bereich
+   * mindestens zwei Wochen in Folge trainiert wurde (siehe `areaRuns`).
+   */
+  run: WeeklyRun | null;
+}
+
+/**
+ * Eine Serie: so viele Wochen in Folge wurde ein Bereich trainiert, und so
+ * steht seine Kennzahl seither da.
+ *
+ * Das ist der Wirkungsnachweis des Abos, so schlank er sich machen lässt: eine
+ * Zeile im Bericht, die einen längeren Bogen zeigt als die Woche daneben.
+ * „Endspiele, 3. Woche in Folge · Endspiel-Genauigkeit 71 → 78" sagt mehr als
+ * derselbe Vergleich über sieben Tage, und er kostet keinen neuen Bildschirm,
+ * keine gespeicherte Verordnung und keine Definition von „erledigt".
+ *
+ * Was er nicht sagt, sagt er absichtlich nicht: dass das eine das andere
+ * bewirkt hat. Der Bericht hält es hier wie überall (siehe die Kopfnotiz und
+ * `AREA_METRIC`) · Trainingszeit und Kennzahl stehen nebeneinander, weil
+ * beide gemessen sind. Die Rauschgrenze entscheidet weiter darüber, ob die
+ * Bewegung überhaupt eine Aussage ist.
+ */
+export interface WeeklyRun {
+  /** Wochen in Folge mit nennenswerter Zeit in diesem Bereich · mindestens 2. */
+  weeks: number;
+  /** Die Kennzahl von der Woche vor der Serie bis zur berichteten Woche. */
+  change: WeeklyChange;
+}
+
+/** Ab so vielen Wochen in Folge ist eine Serie eine Serie und keine Woche. */
+const MIN_RUN_WEEKS = 2;
+
+/** So weit zurück wird nach einer Serie gesucht · ein Vierteljahr reicht. */
+const MAX_RUN_WEEKS = 13;
+
+/** Eine Serie samt der Woche davor · die Vergleichsbasis ihrer Kennzahl. */
+export interface AreaRun {
+  area: Area;
+  weeks: number;
+  /** Die volle Woche vor dem Beginn der Serie. */
+  before: ReportWeek;
+}
+
+/**
+ * Welche Bereiche gerade eine Serie haben · aus den gemessenen Tagen.
+ *
+ * Bewusst aus `training_program` und nicht aus einer gespeicherten Verordnung:
+ * Verordnungen werden bei jedem Rendern neu aus den Befunden abgeleitet und
+ * haben weder Beginn noch Abschluss. Die gemessene Trainingszeit hat beides,
+ * liegt für 180 Tage vor und ist ohnehin schon geladen. Sie beantwortet
+ * dieselbe Frage — *woran wird seit Wochen gearbeitet* — ohne dass irgendwo
+ * ein zweiter Zustand gepflegt werden müsste.
+ *
+ * Gezählt wird rückwärts ab der berichteten Woche, und dieselbe Schwelle wie
+ * überall sonst entscheidet, ob eine Woche zählt (`AREA_MIN_MINUTES`): Ein
+ * Klick ist keine Trainingswoche.
+ */
+export function areaRuns(days: LoadDay[], week: ReportWeek): AreaRun[] {
+  const out: AreaRun[] = [];
+  for (const area of AREAS) {
+    let weeks = 0;
+    let cursor = week;
+    while (weeks < MAX_RUN_WEEKS && minutesIn(days, cursor).byArea[area] >= AREA_MIN_MINUTES) {
+      weeks += 1;
+      cursor = previousWeek(cursor);
+    }
+    // `cursor` steht jetzt auf der ersten Woche, die nicht mehr zur Serie
+    // gehört · genau die ist die Vergleichsbasis.
+    if (weeks >= MIN_RUN_WEEKS) out.push({ area, weeks, before: cursor });
+  }
+  return out;
 }
 
 function minutesIn(days: LoadDay[], week: ReportWeek): { total: number; byArea: Record<Area, number> } {
@@ -244,6 +316,15 @@ export interface WeeklyInput {
   allocation?: AreaNeed[];
   /** Verordnungen des Coaches · die erste beschließt den Bericht. */
   prescriptions?: Prescription[];
+  /**
+   * Die Serien aus `areaRuns` samt den Kennzahlen der Woche *vor* jeder Serie.
+   *
+   * Sie kommen von außen, weil der Aufrufer die Fenster ohnehin in einem Zug
+   * holt: `study_metrics` nimmt beliebig viele auf einmal, und die Datenbank
+   * einmal je Fenster durchzugehen wäre dieselbe Runde mehrfach. Fehlen sie,
+   * bleibt es beim Wochenvergleich.
+   */
+  runs?: { run: AreaRun; before: MetricWindow }[];
 }
 
 export interface WeeklyReport {
@@ -273,6 +354,21 @@ export interface WeeklyReport {
 }
 
 /**
+ * Die Serie eines Bereichs als Kennzahl · `null`, wenn es keine gibt oder die
+ * Kennzahl sich über die beiden Fenster nicht vergleichen lässt.
+ */
+function runFor(
+  runs: WeeklyInput["runs"],
+  metrics: MetricWindow,
+  area: Area
+): WeeklyRun | null {
+  const entry = runs?.find((candidate) => candidate.run.area === area);
+  if (!entry) return null;
+  const change = compareMetric(entry.before, metrics, AREA_METRIC[area]);
+  return change ? { weeks: entry.run.weeks, change } : null;
+}
+
+/**
  * Der Bericht einer Woche · `null`, wenn in ihr nichts passiert ist.
  *
  * Eine leere Woche bekommt bewusst keinen Bericht. „Du hast nichts getan" ist
@@ -299,6 +395,7 @@ export function buildWeeklyReport(input: WeeklyInput): WeeklyReport | null {
       current.byArea[area] >= AREA_MIN_MINUTES
         ? compareMetric(previous, metrics, AREA_METRIC[area])
         : null,
+    run: runFor(input.runs, metrics, area),
   }));
 
   const compared = REPORT_METRICS.map((key) => compareMetric(previous, metrics, key)).filter(

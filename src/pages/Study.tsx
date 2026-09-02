@@ -54,12 +54,14 @@ import {
 import { measureRating, ratingNoise, type RatingEffect } from "../lib/effect";
 import { buildWeekBudget, lastWeekDeficit, weekStartOf, type WeekBudget } from "../lib/week";
 import {
+  areaRuns,
   buildWeeklyReport,
   markWeeklyReportSeen,
   previousWeek,
   reportWeek,
   weeklyReportSeen,
   weeklyReportSeenStored,
+  type AreaRun,
   type WeeklyReport,
 } from "../lib/weekly";
 import { Button, Card } from "../components/ui";
@@ -179,10 +181,10 @@ export default function Study({
     // seit 2021" beantwortet keine Frage, die auf dieser Seite gestellt wird.
     const findingWindow = deep?.window ?? { days: 0, from_ts: 0, games: 0, analyzed: 0 };
 
-    // Drei Fenster in einem Aufruf: das Befundfenster für den Ratingstand oben
-    // und die zwei abgeschlossenen Wochen des Berichts. Der Backend-Befehl geht
-    // die Datenbank je Aufruf einmal komplett durch · getrennt gefragt wäre es
-    // dreimal dieselbe Runde.
+    // Alle Fenster in einem Aufruf: das Befundfenster für den Ratingstand oben,
+    // die zwei abgeschlossenen Wochen des Berichts und je eine Woche vor einer
+    // laufenden Serie. Der Backend-Befehl geht die Datenbank je Aufruf einmal
+    // komplett durch · getrennt gefragt wäre es dieselbe Runde mehrfach.
     const week = reportWeek(new Date());
     const before = previousWeek(week);
     const specs: { from_ts: number; to_ts: number }[] = [];
@@ -192,6 +194,13 @@ export default function Study({
         : -1;
     const weekSpec = specs.push({ from_ts: week.start, to_ts: week.end }) - 1;
     const beforeSpec = specs.push({ from_ts: before.start, to_ts: before.end }) - 1;
+    // Die Serien stehen in den gemessenen Tagen, die längst geladen sind ·
+    // gebraucht wird nur noch die Woche vor jeder Serie als Vergleichsbasis
+    // (siehe `areaRuns` in lib/weekly.ts).
+    const runs = program ? areaRuns(program.days, week) : [];
+    const runSpecs = runs.map(
+      (run) => specs.push({ from_ts: run.before.start, to_ts: run.before.end }) - 1
+    );
     const measured = await studyMetrics(specs).catch(() => [] as MetricWindow[]);
 
     // Der Wochenbericht braucht beide Fenster und die gemessenen Tage · fehlt
@@ -206,6 +215,11 @@ export default function Study({
             days: program.days,
             allocation: plan?.allocation ?? [],
             prescriptions: plan?.prescriptions ?? [],
+            runs: runs
+              .map((run, index) => ({ run, before: measured[runSpecs[index]] }))
+              .filter(
+                (entry): entry is { run: AreaRun; before: MetricWindow } => entry.before != null
+              ),
           })
         : null;
 

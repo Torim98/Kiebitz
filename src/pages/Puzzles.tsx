@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chess } from "chess.js";
 import {
   Check,
@@ -562,10 +562,52 @@ function TrainerView({
     </div>
   );
 
+  /**
+   * Welcher der drei Zustände der Zeile unter dem Brett gerade gilt.
+   * Alle drei stehen im DOM (siehe `actionRow`); dieser hier ist sichtbar.
+   */
+  const actionState = status === "solved" ? "solved" : wrong ? "wrong" : "open";
+
+  /**
+   * Ein Zustand der Zeile · sichtbar oder als Platzhalter.
+   *
+   * Die drei liegen übereinander im selben Rasterfeld, und nur einer ist zu
+   * sehen. Der Grund ist die Höhe: Die Zeile muss in jedem Zustand gleich hoch
+   * sein, sonst wandert das Brett darüber. Gemessen im Browser war sie es
+   * nicht — 52 px im Spiel, 57,5 px nach einer richtigen und 59,5 px nach
+   * einer falschen Lösung; auf einem 360 px breiten Schirm 62,5 px, weil der
+   * Text dort neben den Knöpfen umbricht.
+   *
+   * Ein `min-h` fängt das nicht auf, denn die Höhe hängt nicht nur am Zustand,
+   * sondern auch an der Breite und an der Sprache. Eine feste Höhe würde den
+   * umgebrochenen Text abschneiden. Übereinandergelegt ergibt sich die Höhe
+   * von selbst: Das Rasterfeld ist so hoch wie sein höchster Inhalt, und der
+   * ändert sich beim Wechsel des Zustands nicht mehr.
+   *
+   * `invisible` ist `visibility: hidden` · der Platz bleibt stehen, und die
+   * Knöpfe der verdeckten Zustände sind weder anklickbar noch vorlesbar.
+   */
+  const actionRow = (key: typeof actionState, content: ReactNode) => (
+    <div
+      key={key}
+      data-action-row={key}
+      data-active={key === actionState ? "" : undefined}
+      className={`col-start-1 row-start-1 w-full ${key === actionState ? "" : "invisible"}`}
+    >
+      {content}
+    </div>
+  );
+
   const puzzleActions = (
     <>
-      <div className="mt-3 flex min-h-[52px] items-center">
-        {status === "solved" ? (
+      {/* Ein Rasterfeld statt einer Reihe · siehe `actionRow`. Die Meldung
+          unter dem Brett war das Letzte, was das Fokus-Brett noch springen
+          ließ: Der Vorlauf, der es mittig stellt, ist durch den Platz
+          begrenzt, der unter dem Brett wirklich bleibt (siehe `useChrome` in
+          components/FocusBoard.tsx). Wuchs die Zeile, schrumpfte der Vorlauf. */}
+      <div className="mt-3 grid min-h-[52px] items-center">
+        {actionRow(
+          "solved",
           <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
             <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
               <CheckCircle2 size={17} />
@@ -579,7 +621,9 @@ function TrainerView({
               </Button>
             </div>
           </div>
-        ) : wrong ? (
+        )}
+        {actionRow(
+          "wrong",
           <div className="flex w-full items-center justify-between rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
             <span className="text-[13.5px] text-loss">
               {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
@@ -593,7 +637,9 @@ function TrainerView({
               </Button>
             </div>
           </div>
-        ) : (
+        )}
+        {actionRow(
+          "open",
           <div className="flex w-full items-center justify-between">
             <span className="text-[13px] text-ink3">
               {status === "loading"

@@ -834,7 +834,8 @@ export const de = {
   "wk.minutesPlain": "Min. trainiert",
   "wk.minutesBefore": "Vorwoche {m} Min.",
   "wk.effectNone": "In dieser Woche wurde keine Trainingszeit gemessen.",
-  "wk.effectNote": "Zeit und Zahlen stammen aus derselben Woche · das ist ein Zusammenhang und keine Ursache.",
+  "wk.effectNote": "Zeit und Zahlen sind beide gemessen · das ist ein Zusammenhang und keine Ursache.",
+  "wk.areaRun": "{n} Wochen in Folge",
   "wk.nextNone": "Kein neuer Schwerpunkt · mach weiter wie bisher.",
 
   // ── Einstellungen ──────────────────────────────────────────────────────────

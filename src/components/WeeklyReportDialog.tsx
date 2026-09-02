@@ -342,14 +342,40 @@ export default function WeeklyReportDialog({
                 </div>
                 {/* Die Kennzahl des Bereichs steht unter seiner Zeile und nicht
                     daneben: „Im Repertoire geblieben +6,7 %" ist auf einem
-                    Telefon breiter als alles, was links davon stünde. */}
-                {entry.change && (
-                  <div className="flex items-center justify-between gap-2 ps-3.5">
+                    Telefon breiter als alles, was links davon stünde.
+
+                    Läuft der Bereich seit mehreren Wochen, steht dort die
+                    Serie statt der Woche · derselbe Platz, der längere Bogen
+                    und die beiden Zahlen dazu: „3. Woche in Folge ·
+                    Endspiel-Genauigkeit 71 → 78". Das ist der ganze
+                    Wirkungsnachweis; siehe `WeeklyRun` in lib/weekly.ts. */}
+                {entry.run ? (
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 ps-3.5">
                     <span className="min-w-0 text-[11.5px] text-ink3">
-                      {t(`metric.${entry.change.key}` as Key)}
+                      {t("wk.areaRun", { n: deInt(entry.run.weeks) })}
+                      {" · "}
+                      {t(`metric.${entry.run.change.key}` as Key)}
                     </span>
-                    <DeltaPill change={entry.change} quiet={!entry.change.moved} />
+                    <span className="ms-auto flex items-center gap-2">
+                      <span className="text-[11.5px] tabular-nums text-ink3">
+                        {formatMetric(entry.run.change.from, entry.run.change.unit)}
+                        <ArrowRight size={10} className="mx-1 inline align-[-1px]" aria-hidden="true" />
+                        <span className="text-[12.5px] font-semibold text-ink">
+                          {formatMetric(entry.run.change.to, entry.run.change.unit)}
+                        </span>
+                      </span>
+                      <DeltaPill change={entry.run.change} quiet={!entry.run.change.moved} />
+                    </span>
                   </div>
+                ) : (
+                  entry.change && (
+                    <div className="flex items-center justify-between gap-2 ps-3.5">
+                      <span className="min-w-0 text-[11.5px] text-ink3">
+                        {t(`metric.${entry.change.key}` as Key)}
+                      </span>
+                      <DeltaPill change={entry.change} quiet={!entry.change.moved} />
+                    </div>
+                  )
                 )}
               </li>
             ))}

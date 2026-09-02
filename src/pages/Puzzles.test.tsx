@@ -40,6 +40,8 @@ vi.mock("../components/Board", () => ({
   }) => (
     <div data-testid="puzzle-board" data-fen={fen} data-draggable={String(!!draggable)}>
       <button onClick={() => onPieceDrop?.("e2", "e4")}>play e4</button>
+      {/* Ein Zug, der nicht in der Lösung steht · für den Fehlerfall. */}
+      <button onClick={() => onPieceDrop?.("a2", "a3")}>play a3</button>
     </div>
   ),
 }));
@@ -175,6 +177,38 @@ describe("Puzzle training", () => {
     expect(screen.queryByPlaceholderText(/lichess_db_puzzle/)).toBeNull();
     // Der Download-Weg bleibt · er ist auf dem Handy ohnehin der richtige.
     expect(screen.getByRole("button", { name: /Herunterladen/ })).toBeTruthy();
+  });
+
+  /**
+   * Die Zeile unter dem Brett behält ihre Höhe, wenn die Meldung erscheint.
+   *
+   * Ohne diese Zusage wandert im Fokus-Brett das Brett darüber: Sein Vorlauf
+   * ist durch den Platz begrenzt, der unter ihm bleibt, und der schrumpft,
+   * sobald die Zeile wächst. Geprüft wird sie an der Bauart, weil JSDOM keine
+   * Höhen kennt — alle drei Zustände müssen gleichzeitig im DOM stehen, und
+   * genau einer davon sichtbar sein.
+   */
+  it("keeps every state of the message row in the layout", async () => {
+    render(<LocaleProvider><Puzzles /></LocaleProvider>);
+    await screen.findByTestId("puzzle-board");
+
+    const rows = () => Array.from(document.querySelectorAll("[data-action-row]"));
+    const visible = () =>
+      rows()
+        .filter((row) => !row.className.includes("invisible"))
+        .map((row) => row.getAttribute("data-action-row"));
+
+    expect(rows().map((row) => row.getAttribute("data-action-row"))).toEqual([
+      "solved",
+      "wrong",
+      "open",
+    ]);
+    expect(visible()).toEqual(["open"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "play a3" }));
+    await waitFor(() => expect(visible()).toEqual(["wrong"]));
+    // Die anderen beiden bleiben stehen und halten die Höhe.
+    expect(rows()).toHaveLength(3);
   });
 
   it("keeps the theme covered until it is tapped", async () => {

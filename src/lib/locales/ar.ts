@@ -811,7 +811,8 @@ export const ar: Record<Key, string> = {
   "wk.minutesPlain": "دقيقة تدريب",
   "wk.minutesBefore": "الأسبوع الماضي {m} دقيقة",
   "wk.effectNone": "لم يُقَس أي وقت تدريب في هذا الأسبوع.",
-  "wk.effectNote": "الوقت والأرقام من الأسبوع نفسه · هذا ارتباط وليس سببًا.",
+  "wk.effectNote": "الوقت والأرقام كلاهما مقيس · هذا ارتباط وليس سببًا.",
+  "wk.areaRun": "{n} أسابيع متتالية",
   "wk.nextNone": "لا محور جديد · تابع كما أنت.",
 
   "set.title": "الإعدادات",

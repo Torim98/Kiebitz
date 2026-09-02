@@ -817,7 +817,8 @@ export const en: Record<Key, string> = {
   "wk.minutesPlain": "min trained",
   "wk.minutesBefore": "week before {m} min",
   "wk.effectNone": "No training time was measured in this week.",
-  "wk.effectNote": "Time and numbers come from the same week · that is a correlation, not a cause.",
+  "wk.effectNote": "Time and numbers are both measured · that is a correlation, not a cause.",
+  "wk.areaRun": "{n} weeks in a row",
   "wk.nextNone": "No new focus · carry on as you were.",
 
   "set.title": "Settings",
