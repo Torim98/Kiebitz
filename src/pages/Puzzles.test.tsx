@@ -190,7 +190,10 @@ describe("Puzzle training", () => {
    */
   it("keeps every state of the message row in the layout", async () => {
     render(<LocaleProvider><Puzzles /></LocaleProvider>);
-    await screen.findByTestId("puzzle-board");
+    // Erst wenn das Brett Züge annimmt, steht die Aufgabe wirklich · vorher
+    // liefe der Fehlzug unten ins Leere und die Meldezeile bliebe offen.
+    const board = await screen.findByTestId("puzzle-board");
+    await waitFor(() => expect(board.dataset.draggable).toBe("true"));
 
     const rows = () => Array.from(document.querySelectorAll("[data-action-row]"));
     const visible = () =>

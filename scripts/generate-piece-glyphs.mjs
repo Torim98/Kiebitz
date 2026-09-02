@@ -3,12 +3,10 @@
  * Zieht die Figurenzeichnungen aus dem Brett heraus, damit Schlagliste und
  * Share-Karte dieselben Figuren zeigen wie das Brett daneben.
  *
- * Warum nicht einfach importieren: `react-chessboard` hält seine Figuren in
- * einem internen `defaultPieces`-Objekt und exportiert es nicht. Statt die
- * Pfade abzuschreiben — und damit ein zweites, langsam auseinanderlaufendes
- * Figurenset zu pflegen — rendert dieses Skript ein echtes Brett in jsdom und
- * liest ab, was dabei im DOM steht. Was das Brett zeichnet, steht danach
- * wörtlich in `src/components/pieceGlyphs.ts`.
+ * Warum nicht abschreiben: Ein zweites Figurenset von Hand liefe langsam
+ * auseinander. `react-chessboard` gibt seine Zeichnungen seit Version 5 als
+ * `defaultPieces` heraus · das Skript rendert sie einmal zu Markup und legt
+ * wörtlich ab, was dabei herauskommt.
  *
  *   node scripts/generate-piece-glyphs.mjs [--check]
  *
@@ -18,7 +16,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { JSDOM } from "jsdom";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { defaultPieces } from "react-chessboard";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = resolve(ROOT, "src", "components", "pieceGlyphs.ts");
@@ -27,54 +27,20 @@ const CHECK = process.argv.includes("--check");
 // Alle zwölf Figuren. Die Schlagliste kommt ohne Könige aus, die Share-Karte
 // zeichnet dagegen ein vollständiges Brett und braucht sie.
 const PIECES = ["wP", "wB", "wN", "wR", "wQ", "wK", "bP", "bB", "bN", "bR", "bQ", "bK"];
-// Eine Stellung, in der jede dieser Figuren genau einmal vorkommt.
-const POSITION = "1qrbnk2/1p6/8/8/8/8/1P6/1QRBNK2 w - - 0 1";
-
-// jsdom muss stehen, bevor React geladen wird: react-dnd entscheidet beim
-// Import anhand von `window`, welches Backend es benutzt.
-const dom = new JSDOM("<!doctype html><div id='root'></div>", {
-  pretendToBeVisual: true,
-  url: "http://localhost/",
-});
-const expose = (key, value) =>
-  // `navigator` und Geschwister sind in neueren Node-Versionen Getter ohne
-  // Setter · deshalb definieren statt zuweisen.
-  Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-expose("window", dom.window);
-// react-dnd greift beim Import auf `Image`, `document` und weitere Browser-
-// Globals zu. Statt sie einzeln aufzuzählen, kommt alles mit, was jsdom
-// anbietet und Node nicht schon selbst hat.
-for (const key of Object.getOwnPropertyNames(dom.window)) {
-  if (key === "window" || key in globalThis) continue;
-  expose(key, dom.window[key]);
-}
-expose("document", dom.window.document);
-expose("navigator", dom.window.navigator);
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-const { act, createElement } = await import("react");
-const { createRoot } = await import("react-dom/client");
-const { Chessboard } = await import("react-chessboard");
-
-const container = dom.window.document.getElementById("root");
-const root = createRoot(container);
-const render = () =>
-  createElement(Chessboard, { position: POSITION, boardWidth: 360, arePiecesDraggable: false });
-
-act(() => root.render(render()));
-// Das Brett baut sich in Effekten auf (DnD-Backend, Figurenset) · zwei Ticks
-// reichen, bis die Figuren im DOM stehen.
-await new Promise((done) => setTimeout(done, 0));
-await new Promise((done) => setTimeout(done, 0));
 
 const glyphs = {};
 for (const piece of PIECES) {
-  const svg = container.querySelector(`[data-piece="${piece}"] svg`);
-  if (!svg) throw new Error(`Figur ${piece} nicht im gerenderten Brett gefunden.`);
+  const render = defaultPieces[piece];
+  if (typeof render !== "function") {
+    throw new Error(`Figur ${piece} fehlt in defaultPieces von react-chessboard.`);
+  }
+  const markup = renderToStaticMarkup(createElement(render));
   // Nur der Inhalt des äußeren `svg` — also exakt das, was das Brett in
   // seinen Rahmen hängt. Der Rahmen selbst bleibt der Komponente überlassen,
   // damit sie die Größe bestimmt statt der fest eingebauten 45 px.
-  glyphs[piece] = svg.innerHTML.replace(/\s+/g, " ").trim();
+  const inner = markup.match(/^<svg\b[^>]*>([\s\S]*)<\/svg>$/);
+  if (!inner) throw new Error(`Figur ${piece} kam nicht als einzelnes <svg> zurück.`);
+  glyphs[piece] = inner[1].replace(/\s+/g, " ").trim();
 }
 
 const body = PIECES.map((piece) => `  ${piece}: ${JSON.stringify(glyphs[piece])},`).join("\n");

@@ -1,4 +1,5 @@
 import { Chessboard } from "react-chessboard";
+import type { ChessboardOptions, PieceRenderObject } from "react-chessboard";
 import {
   memo,
   startTransition,
@@ -7,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -24,20 +24,20 @@ import { playBoardSound } from "../lib/sound";
  * Farbwert, und der Themenwechsel braucht kein Neurendern des Bretts.
  */
 const boardTheme = {
-  customDarkSquareStyle: { backgroundColor: "var(--color-board-dark)" },
-  customLightSquareStyle: { backgroundColor: "var(--color-board-light)" },
-  customBoardStyle: {
+  darkSquareStyle: { backgroundColor: "var(--color-board-dark)" },
+  lightSquareStyle: { backgroundColor: "var(--color-board-light)" },
+  boardStyle: {
     borderRadius: "10px",
     overflow: "hidden",
     boxShadow: "0 0 0 1px var(--color-line)",
   },
-};
+} satisfies ChessboardOptions;
 
 /** Nebenvariante · dasselbe Brett, entsättigt. */
 const mutedBoardTheme = {
-  customDarkSquareStyle: { backgroundColor: "var(--color-board-dark-muted)" },
-  customLightSquareStyle: { backgroundColor: "var(--color-board-light-muted)" },
-};
+  darkSquareStyle: { backgroundColor: "var(--color-board-dark-muted)" },
+  lightSquareStyle: { backgroundColor: "var(--color-board-light-muted)" },
+} satisfies ChessboardOptions;
 
 /**
  * Die Figuren eines gewählten Sets für `react-chessboard`.
@@ -52,23 +52,23 @@ const mutedBoardTheme = {
  * liefert dieselbe Kennung noch den klassischen Satz. Über die Tabelle gebaut,
  * merkt das Brett den Wechsel von allein.
  */
-/** Der Typ steht nicht im Paketexport · deshalb aus den Props abgelesen. */
-type CustomPieces = NonNullable<ComponentProps<typeof Chessboard>["customPieces"]>;
+const customPieceCache = new WeakMap<Record<string, string>, PieceRenderObject>();
 
-const customPieceCache = new WeakMap<Record<string, string>, CustomPieces>();
-
-function customPiecesFor(glyphs: Record<string, string>): CustomPieces | undefined {
+function customPiecesFor(glyphs: Record<string, string>): PieceRenderObject | undefined {
   // Der klassische Satz · auch das, was ein noch nicht geladenes Set liefert.
   if (glyphs === PIECE_GLYPH) return undefined;
   const cached = customPieceCache.get(glyphs);
   if (cached) return cached;
-  const pieces: CustomPieces = {};
+  const pieces: PieceRenderObject = {};
   for (const [code, glyph] of Object.entries(glyphs)) {
-    pieces[code as keyof CustomPieces] = ({ squareWidth }) => (
+    // Die Größe bestimmt das Feld, nicht die Zeichnung · so hält es das Brett
+    // auch mit seinen eigenen Figuren.
+    pieces[code] = (props) => (
       <svg
         viewBox={PIECE_VIEWBOX}
-        width={squareWidth}
-        height={squareWidth}
+        width="100%"
+        height="100%"
+        style={props?.svgStyle}
         // Im Repo erzeugte Zeichnungen · keine Fremdeingabe.
         dangerouslySetInnerHTML={{ __html: glyph }}
       />
@@ -176,7 +176,6 @@ function sameStyleRecord(
 type BoardSurfaceProps = {
   boardId: string;
   fen: string;
-  width: number;
   draggable: boolean;
   mouseDrag: boolean;
   orientation: "white" | "black";
@@ -190,7 +189,7 @@ type BoardSurfaceProps = {
   hasSquareClickHandler: boolean;
   onPieceDrop: (from: string, to: string) => boolean;
   onSquareClick: (square: string) => void;
-  onPieceDragBegin: (piece: string, source: string) => void;
+  onPieceDragBegin: (source: string) => void;
   onPieceDragEnd: () => void;
 };
 
@@ -204,7 +203,6 @@ const BoardSurface = memo(
   function BoardSurface({
     boardId,
     fen,
-    width,
     draggable,
     mouseDrag,
     orientation,
@@ -232,32 +230,69 @@ const BoardSurface = memo(
       [fen, dragSource, lastMove, squareStyles]
     );
 
-    return (
-      <Chessboard
-        id={boardId}
-        position={fen}
-        boardWidth={width}
-        arePiecesDraggable={draggable && !mouseDrag}
-        onPieceDrop={!mouseDrag && hasDropHandler ? onPieceDrop : undefined}
-        onPieceDragBegin={draggable && !mouseDrag ? onPieceDragBegin : undefined}
-        onPieceDragEnd={draggable && !mouseDrag ? onPieceDragEnd : undefined}
-        onSquareClick={hasSquareClickHandler ? onSquareClick : undefined}
-        customSquareStyles={combinedStyles}
-        boardOrientation={orientation}
+    // Seit Version 5 nimmt das Brett alles in einem Objekt entgegen. Es hängt
+    // an denselben Werten wie die Memo-Grenze darunter · ein neues Objekt je
+    // Elternrender würde sie sonst wirkungslos machen.
+    const options = useMemo<ChessboardOptions>(
+      () => ({
+        id: boardId,
+        position: fen,
+        boardOrientation: orientation,
+        allowDragging: draggable && !mouseDrag,
+        onPieceDrop: !mouseDrag && hasDropHandler
+          ? ({ sourceSquare, targetSquare }) =>
+              targetSquare != null && onPieceDrop(sourceSquare, targetSquare)
+          : undefined,
+        onPieceDrag: draggable && !mouseDrag
+          ? ({ square }) => {
+              if (square) onPieceDragBegin(square);
+            }
+          : undefined,
+        // Version 5 meldet das Ende eines Zuges nicht mehr eigens · abgebrochen
+        // wird gemeldet, und ein gelungener Zug ist am Stellungswechsel zu
+        // erkennen, der die Auswahl ohnehin aufhebt (siehe Effekt auf `fen`).
+        onPieceDragCancel: draggable && !mouseDrag ? onPieceDragEnd : undefined,
+        onSquareClick: hasSquareClickHandler
+          ? ({ square }) => onSquareClick(square)
+          : undefined,
+        squareStyles: combinedStyles,
+        // Pfeile zeichnet Kiebitz selbst (siehe BoardArrows); das eingebaute
+        // Zeichnen per rechter Maustaste wäre eine zweite, andere Bedienung
+        // für dieselbe Sache.
+        allowDrawingArrows: false,
         // The shared pointer path reports a move as an external position
         // change. react-chessboard would otherwise lock that board for the
         // animation duration after every user move.
-        animationDuration={mouseDrag || android ? 0 : 150}
-        customPieces={customPiecesFor(pieceGlyphs)}
-        {...boardTheme}
-        {...(muted ? mutedBoardTheme : {})}
-      />
+        showAnimations: !(mouseDrag || android),
+        animationDurationInMs: mouseDrag || android ? 0 : 150,
+        pieces: customPiecesFor(pieceGlyphs),
+        ...boardTheme,
+        ...(muted ? mutedBoardTheme : {}),
+      }),
+      [
+        boardId,
+        fen,
+        orientation,
+        draggable,
+        mouseDrag,
+        hasDropHandler,
+        hasSquareClickHandler,
+        onPieceDrop,
+        onPieceDragBegin,
+        onPieceDragEnd,
+        onSquareClick,
+        combinedStyles,
+        android,
+        pieceGlyphs,
+        muted,
+      ]
     );
+
+    return <Chessboard options={options} />;
   },
   (previous, next) =>
     previous.boardId === next.boardId
     && previous.fen === next.fen
-    && previous.width === next.width
     && previous.draggable === next.draggable
     && previous.mouseDrag === next.mouseDrag
     && previous.orientation === next.orientation
@@ -447,7 +482,7 @@ export default function Board({
     (square: string) => squareClickRef.current?.(square),
     []
   );
-  const handlePieceDragBegin = useCallback((_piece: string, source: string) => {
+  const handlePieceDragBegin = useCallback((source: string) => {
     startTransition(() => setDragSource(source));
   }, []);
   const handlePieceDragEnd = useCallback(() => {
@@ -742,7 +777,6 @@ export default function Board({
           pieceGlyphs={pieceGlyphs}
           lastMove={lastMove}
           squareStyles={squareStyles ?? EMPTY_STYLES}
-          width={w}
         />
         <BoardArrows boardId={boardId} arrows={arrows} orientation={orientation} />
         {badges.map((badge, index) => (

@@ -6,17 +6,24 @@ const boardMock = vi.hoisted(() => ({
   props: null as Record<string, unknown> | null,
   renders: 0,
 }));
+/**
+ * Seit Version 5 nimmt das Brett alles in einem `options`-Objekt entgegen ·
+ * die Prüfungen hier lesen deshalb dieses Objekt, nicht die Props.
+ */
 vi.mock("react-chessboard", () => ({
-  Chessboard: (props: Record<string, unknown>) => {
-    boardMock.props = props;
+  Chessboard: ({ options }: { options: Record<string, unknown> }) => {
+    boardMock.props = options;
     boardMock.renders += 1;
+    const onSquareClick = options.onSquareClick as
+      | ((args: { piece: null; square: string }) => void)
+      | undefined;
     return (
       <div data-testid="chessboard">
         <div data-square="e2"><div data-piece="wP" /></div>
         <div data-square="e3" />
         <div
           data-square="e4"
-          onClick={() => (props.onSquareClick as ((square: string) => void) | undefined)?.("e4")}
+          onClick={() => onSquareClick?.({ piece: null, square: "e4" })}
         />
       </div>
     );
@@ -47,15 +54,19 @@ describe("Board badges", () => {
     render(<Board boardId="test" fen={FEN} width={400} draggable />);
 
     act(() => {
-      (boardMock.props?.onPieceDragBegin as (piece: string, square: string) => void)("wP", "e2");
+      (boardMock.props?.onPieceDrag as (args: {
+        isSparePiece: boolean;
+        piece: { pieceType: string };
+        square: string | null;
+      }) => void)({ isSparePiece: false, piece: { pieceType: "wP" }, square: "e2" });
     });
-    const styles = boardMock.props?.customSquareStyles as Record<string, CSSStyleDeclaration>;
+    const styles = boardMock.props?.squareStyles as Record<string, CSSStyleDeclaration>;
     expect(Object.keys(styles).sort()).toEqual(["e2", "e3", "e4"]);
 
     act(() => {
-      (boardMock.props?.onPieceDragEnd as () => void)();
+      (boardMock.props?.onPieceDragCancel as () => void)();
     });
-    expect(boardMock.props?.customSquareStyles).toEqual({});
+    expect(boardMock.props?.squareStyles).toEqual({});
   });
 
   it("uses the shared pointer fallback without rebuilding react-dnd", () => {
@@ -73,8 +84,8 @@ describe("Board badges", () => {
       />
     );
 
-    expect(boardMock.props?.arePiecesDraggable).toBe(false);
-    expect(boardMock.props?.animationDuration).toBe(0);
+    expect(boardMock.props?.allowDragging).toBe(false);
+    expect(boardMock.props?.animationDurationInMs).toBe(0);
     const piece = document.querySelector<HTMLElement>('[data-piece="wP"]')!;
     const target = document.querySelector<HTMLElement>('[data-square="e4"]')!;
     const originalElementFromPoint = document.elementFromPoint;
@@ -86,7 +97,7 @@ describe("Board badges", () => {
     fireEvent.mouseDown(piece, { button: 0, clientX: 10, clientY: 10 });
     fireEvent.mouseMove(window, { buttons: 1, clientX: 20, clientY: 20 });
 
-    const styles = boardMock.props?.customSquareStyles as Record<string, CSSStyleDeclaration>;
+    const styles = boardMock.props?.squareStyles as Record<string, CSSStyleDeclaration>;
     expect(Object.keys(styles).sort()).toEqual(["e2", "e3", "e4"]);
 
     fireEvent.mouseUp(window, { button: 0, clientX: 20, clientY: 20 });
@@ -143,8 +154,18 @@ describe("Board badges", () => {
     expect(screen.getByTestId("board-arrows").querySelector("line")?.getAttribute("stroke"))
       .toBe("#d9a028");
 
-    const drop = boardMock.props?.onPieceDrop as (from: string, to: string) => boolean;
-    expect(drop("e2", "e4")).toBe(true);
+    const drop = boardMock.props?.onPieceDrop as (args: {
+      piece: { isSparePiece: boolean; position: string; pieceType: string };
+      sourceSquare: string;
+      targetSquare: string | null;
+    }) => boolean;
+    expect(
+      drop({
+        piece: { isSparePiece: false, position: "e2", pieceType: "wP" },
+        sourceSquare: "e2",
+        targetSquare: "e4",
+      })
+    ).toBe(true);
     expect(firstDrop).not.toHaveBeenCalled();
     expect(latestDrop).toHaveBeenCalledWith("e2", "e4");
   });
@@ -160,13 +181,13 @@ describe("Board badges", () => {
       />
     );
 
-    let styles = boardMock.props?.customSquareStyles as Record<string, { background: string }>;
+    let styles = boardMock.props?.squareStyles as Record<string, { background: string }>;
     expect(String(styles.e2.background)).toBe("var(--color-mark-soft)");
     // Was die Seite selbst setzt, schlägt die Markierung.
     expect(String(styles.e4.background)).toBe("own");
 
     view.rerender(<Board boardId="test" fen={FEN_AFTER_E4} width={400} />);
-    styles = boardMock.props?.customSquareStyles as Record<string, { background: string }>;
+    styles = boardMock.props?.squareStyles as Record<string, { background: string }>;
     expect(styles).toEqual({});
   });
 
@@ -241,7 +262,7 @@ describe("Board badges", () => {
     );
     render(<Board boardId="android" fen={FEN} width={400} draggable mouseDrag />);
 
-    expect(boardMock.props?.animationDuration).toBe(0);
+    expect(boardMock.props?.animationDurationInMs).toBe(0);
     const wrapper = screen.getByTestId("chessboard").closest(".kiebitz-board")!;
     expect(fireEvent.dragStart(wrapper)).toBe(false);
   });

@@ -16,7 +16,12 @@ describe("piece glyphs", () => {
   it("draws all twelve pieces in every set", async () => {
     for (const [id, glyphs] of Object.entries(await allGlyphs())) {
       expect(Object.keys(glyphs).sort(), id).toEqual([...CODES].sort());
-      for (const code of CODES) expect(glyphs[code], `${id} ${code}`).toMatch(/^<g>.*<\/g>$/s);
+      // Zeichenbares SVG, kein Rest einer misslungenen Ableitung. Eine feste
+      // Hülle gibt es nicht: Die Fremdsätze kommen als Gruppe, der klassische
+      // Satz seit react-chessboard 5 als einzelner Pfad.
+      for (const code of CODES) {
+        expect(glyphs[code], `${id} ${code}`).toMatch(/^<(g|path|circle|use)[\s\S]*>$/);
+      }
     }
   });
 
