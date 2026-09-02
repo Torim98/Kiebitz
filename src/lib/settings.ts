@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitDataChange } from "./changes";
+import { lichessToken } from "./lichess";
 // Nur der Typ · zur Laufzeit importiert i18n dieses Modul, nicht umgekehrt.
 import type { Locale } from "./i18n";
 // Ebenso: theme.ts liest die Einstellungen, nicht umgekehrt.
@@ -287,14 +288,21 @@ export function chessdbQuery(fen: string): Promise<ChessDbResult> {
   return invoke<ChessDbResult>("chessdb_query", { fen });
 }
 
-/** Lichess-Explorer · `ratings` und `speeds` gelten nur für "lichess". */
+/**
+ * Lichess-Explorer · `ratings` und `speeds` gelten nur für "lichess".
+ *
+ * Der Token kommt aus dem Schlüsselspeicher und reist mit jeder Abfrage mit ·
+ * ohne ihn antwortet Lichess seit Anfang 2026 mit 401, siehe lib/lichess.ts.
+ */
 export function explorerQuery(
   fen: string,
   source: "masters" | "lichess",
   ratings?: string,
   speeds?: string
 ): Promise<BookResult> {
-  return invoke<BookResult>("explorer_query", { fen, source, ratings, speeds });
+  return lichessToken().then((token) =>
+    invoke<BookResult>("explorer_query", { fen, source, ratings, speeds, token })
+  );
 }
 
 /** Eigene Referenzdatenbank · Buchauskunft zu einer Stellung. */
@@ -336,6 +344,12 @@ export interface RefDbProgress {
 export interface RefDbDone {
   games: number;
   total: number;
+  /**
+   * Partien der Quelle, die nicht übernommen wurden. Bei `.db3` sind das die,
+   * deren Zugfolge sich nicht zweifelsfrei nachspielen ließ oder die aus einer
+   * Sonderstellung begannen · siehe src-tauri/src/db3.rs.
+   */
+  skipped: number;
   cancelled: boolean;
   error: string | null;
 }

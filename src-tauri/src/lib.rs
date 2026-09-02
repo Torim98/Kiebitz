@@ -6,6 +6,7 @@ mod cbh;
 mod chess;
 mod chessdb;
 mod db;
+mod db3;
 mod diag;
 mod endgame;
 mod engine;
@@ -254,6 +255,37 @@ fn write_pgn_file(path: String, contents: String) -> Result<usize, String> {
 fn db_stats(db: tauri::State<db::Db>) -> Result<db::DbStats, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::stats(&conn)
+}
+
+/// Ein Merker der Oberfläche, der einen Neuaufbau der WebView überleben muss.
+///
+/// Kleinigkeiten wie „diese Meldung habe ich gelesen" lagen bisher im
+/// `localStorage`. Der ist auf dem Desktop aber kein dauerhafter Speicher,
+/// sondern das Profil der WebView: ein Update, ein zurückgesetztes
+/// Edge-WebView2-Profil oder eine geleerte Chromium-Datenablage nehmen ihn mit.
+/// Sichtbar wurde das am Wochenbericht, der nach jeder Installation wieder
+/// ungelesen leuchtete.
+///
+/// Deshalb liegen solche Merker in der `meta`-Tabelle der kiebitz.db. Sie ist
+/// gerätelokal und reist bewusst nicht im Sync mit: Ob der Bericht auf dem
+/// Handy schon gelesen wurde, sagt über den Desktop nichts aus.
+#[tauri::command]
+fn ui_flag_get(db: tauri::State<db::Db>, key: String) -> Result<Option<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    Ok(db::meta_get(&conn, &ui_flag_key(&key)))
+}
+
+#[tauri::command]
+fn ui_flag_set(db: tauri::State<db::Db>, key: String, value: String) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::meta_set(&conn, &ui_flag_key(&key), &value)
+}
+
+/// Eigener Namensraum in `meta` · dort stehen sonst Wanderungsmarken des
+/// Schemas, und ein Merker der Oberfläche darf keinen davon überschreiben
+/// können.
+fn ui_flag_key(key: &str) -> String {
+    format!("ui.{key}")
 }
 
 /// Dauer-Analyse über die persistente Engine: `info`-Zeilen kommen als
@@ -539,6 +571,8 @@ pub fn run() {
             read_pgn_file,
             write_pgn_file,
             db_stats,
+            ui_flag_get,
+            ui_flag_set,
             analysis::start_analysis,
             analysis::cancel_analysis,
             analysis::index_positions,

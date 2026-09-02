@@ -12,7 +12,12 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
-export type SecretKey = "session" | "entitlement";
+/**
+ * `lichess_token` ist der persönliche API-Token für den Eröffnungs-Explorer ·
+ * siehe lib/lichess.ts. Er ist kein Kontowert, gehört aber in dieselbe Ablage:
+ * ein Zugangsdatum bleibt eines, auch wenn es zu einem fremden Dienst gehört.
+ */
+export type SecretKey = "session" | "entitlement" | "lichess_token";
 
 const memory = new Map<SecretKey, string>();
 let backendAvailable = true;

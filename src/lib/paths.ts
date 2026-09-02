@@ -10,7 +10,7 @@ export interface ExamplePaths {
   db: string;
   backup: string;
   puzzleDump: string;
-  /** Große Fremdsammlung als PGN oder ChessBase-Datenbank. */
+  /** Große Fremdsammlung als PGN oder als .db3 (En Croissant). */
   refdb: string;
 }
 

@@ -349,6 +349,21 @@ type BookTab = BookSource | "engine";
 
 const BOOK_SOURCE_KEY = "kiebitz.book.source";
 
+/**
+ * Fehler des Eröffnungsbuchs in Worte fassen.
+ *
+ * Das Backend liefert für zwei Fälle eine Kennung statt eines Satzes, weil
+ * beide eine Handlung nach sich ziehen und deshalb in der Sprache des Nutzers
+ * stehen müssen: der fehlende oder abgelaufene Lichess-Token und die Bitte,
+ * langsamer zu fragen. Alles andere ist Diagnose („Verbindung abgelehnt") und
+ * wird durchgereicht — dort hilft der Wortlaut mehr als eine Umschreibung.
+ */
+function bookErrorText(error: string, t: TFunc): string {
+  if (error.includes("explorer:auth")) return t("an.explorerAuth");
+  if (error.includes("explorer:rate")) return t("an.explorerRate");
+  return error;
+}
+
 function readBookSource(): BookTab {
   try {
     const stored = localStorage.getItem(BOOK_SOURCE_KEY);
@@ -858,7 +873,7 @@ export default function Analysis({
         .catch((error) => {
           if (stale) return;
           setStats(null);
-          setStatsError(String(error));
+          setStatsError(bookErrorText(String(error), t));
           setStatsState("error");
         });
     }, 400);

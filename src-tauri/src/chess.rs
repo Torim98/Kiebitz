@@ -62,21 +62,25 @@ fn normalized_fen(pos: &Position) -> String {
 /// En passant · ohne Zugzähler, damit identische Stellungen aus verschiedenen
 /// Partien denselben Schlüssel bekommen.
 pub fn fen_key(pos: &Position) -> String {
-    let fen = normalized_fen(pos);
-    let mut fields = fen.split(' ');
-    let mut key = String::with_capacity(fen.len());
-    for i in 0..4 {
-        match fields.next() {
-            Some(field) => {
-                if i > 0 {
-                    key.push(' ');
-                }
-                key.push_str(field);
-            }
-            None => break,
-        }
-    }
+    let mut key = String::new();
+    fen_key_into(pos, &mut key);
     key
+}
+
+/// Derselbe Schlüssel in einen vorhandenen Puffer.
+///
+/// Der Referenz-Import rechnet ihn zweistellige Millionen Mal aus und wirft ihn
+/// meist sofort wieder weg, weil die Stellung schon im Block steht · dann kostet
+/// jede eigene Zeichenkette nur eine Speicheranforderung und ihre Freigabe.
+pub fn fen_key_into(pos: &Position, key: &mut String) {
+    key.clear();
+    let fen = normalized_fen(pos);
+    for (i, field) in fen.split(' ').take(4).enumerate() {
+        if i > 0 {
+            key.push(' ');
+        }
+        key.push_str(field);
+    }
 }
 
 pub fn full_fen(pos: &Position) -> String {

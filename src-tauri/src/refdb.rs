@@ -47,7 +47,35 @@ const BOOK_PLIES: usize = 24;
 /// Partien je Schreibblock. Innerhalb eines Blocks fasst eine Hashmap gleiche
 /// Stellungen zusammen · in der Eröffnung sind das die meisten. Größere Blöcke
 /// sparen Schreibarbeit, kosten aber Arbeitsspeicher.
-const FLUSH_GAMES: u64 = 4_000;
+///
+/// Vier Millionen Partien ergeben ein Buch mit zweistelligen Millionen Zeilen,
+/// und `ref_book` ist ein B-Baum über einen Textschlüssel: Jede Zeile landet an
+/// einer zufälligen Stelle darin. Je mehr Partien ein Block umfasst, desto mehr
+/// davon fallen schon im Arbeitsspeicher zusammen und desto weniger Seiten muss
+/// die Platte für dieselbe Menge Buch anfassen. Zwanzigtausend Partien sind
+/// dabei rund hundert Megabyte Hashmap — auf dem Desktop unauffällig, auf dem
+/// Telefon nicht, deshalb der kleinere Wert dort.
+const fn flush_games() -> u64 {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        4_000
+    } else {
+        20_000
+    }
+}
+
+/// Seitenpuffer von SQLite während des Imports, in Kibibyte (negativ = KiB).
+///
+/// Der Vorgabewert von zwei Megabyte reicht für einen B-Baum von mehreren
+/// Gigabyte nicht annähernd; jede Buchzeile kostet dann eine eigene Lese- und
+/// Schreibrunde auf die Platte. Ein halbes Gigabyte Puffer hält den oberen Teil
+/// des Baums dauerhaft im Speicher, und genau dort spielt sich die Suche ab.
+const fn import_cache_kib() -> i32 {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        -64_000
+    } else {
+        -512_000
+    }
+}
 
 /// So oft meldet der Import seinen Fortschritt an die Oberfläche.
 const PROGRESS_GAMES: u64 = 2_000;
@@ -91,6 +119,9 @@ struct ImportDone {
     games: u64,
     /// Bestand nach dem Lauf.
     total: i64,
+    /// Partien, die die Quelle enthielt, die aber nicht übernommen wurden ·
+    /// bei `.db3` die, deren Zugfolge sich nicht zweifelsfrei nachspielen ließ.
+    skipped: u64,
     cancelled: bool,
     error: Option<String>,
 }
@@ -189,6 +220,26 @@ fn meta_set(conn: &Connection, key: &str, value: &str) {
         "INSERT OR REPLACE INTO ref_meta (key, value) VALUES (?1, ?2)",
         params![key, value],
     );
+}
+
+/// Bestand zählen und die Zahlen merken.
+///
+/// `SELECT COUNT(*)` ist in SQLite ein vollständiger Durchlauf, und `ref_book`
+/// ist bei einer Millionensammlung mehrere Gigabyte groß — auf der Festplatte
+/// sind das zweistellige Sekunden. Der Einstellungsbereich fragt den Bestand
+/// aber bei jedem Öffnen ab, und solange das im Hauptthread lief, stand
+/// währenddessen die ganze App. Gezählt wird deshalb genau dann, wenn sich der
+/// Bestand ändert: nach einem Import und nach dem Löschen.
+fn count_and_remember(conn: &Connection) -> i64 {
+    let games: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
+        .unwrap_or(0);
+    let positions: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ref_book", [], |r| r.get(0))
+        .unwrap_or(0);
+    meta_set(conn, "games", &games.to_string());
+    meta_set(conn, "positions", &positions.to_string());
+    games
 }
 
 fn now_secs() -> i64 {
@@ -324,13 +375,16 @@ pub fn read_pgn<R: Read>(
     let mut movetext = String::new();
     let mut in_moves = false;
     let mut read_total: u64 = 0;
+    // Außerhalb der Schleife: Eine Achtgigabyte-Sammlung hat zweihundert
+    // Millionen Zeilen, und ein `Vec::new()` je Zeile ist ebenso viele
+    // Speicheranforderungen für immer denselben Puffer.
+    let mut raw = Vec::new();
 
     loop {
         line.clear();
         // Fremde PGN-Dateien sind selten sauberes UTF-8 (ChessBase-Exporte
         // kommen oft als Latin-1). Ungültige Bytes dürfen den Import nicht
         // abbrechen · sie werden ersetzt.
-        let mut raw = Vec::new();
         let read = read_line_lossy(&mut reader, &mut raw, &mut line)?;
         if read == 0 {
             break;
@@ -415,7 +469,202 @@ fn is_zstd(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64), String> {
+/// Eine En-Croissant-Sammlung · siehe db3.rs.
+fn is_db3(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("db3"))
+        .unwrap_or(false)
+}
+
+/// Der gemeinsame Teil beider Quellen: aus Partien werden Buchzeilen.
+///
+/// PGN und `.db3` unterscheiden sich nur darin, wie eine Partie zustande kommt.
+/// Was danach mit ihr passiert — Bilanz je Stellung führen, Musterpartie
+/// merken, blockweise schreiben — ist dasselbe und steht deshalb hier und nicht
+/// zweimal.
+struct Ingest {
+    conn: Connection,
+    /// Schlüssel ist `fen_key`, ein Trennzeichen und der Zug. Vorher standen
+    /// hier zwei getrennte Strings als Tupel; einer spart bei jeder der
+    /// zweistelligen Millionen Buchzeilen eine Speicheranforderung und dem
+    /// Hashwert einen zweiten Durchlauf.
+    book: HashMap<String, BookAgg>,
+    pending: Vec<(i64, RawGame)>,
+    next_id: i64,
+    kept: u64,
+    flush_every: u64,
+    /// Wiederverwendeter Puffer für den Schlüssel oben.
+    key: String,
+    /// Buchzeilen vor dem Schreiben sortieren · nur der Messlauf schaltet das
+    /// ab, um den Gewinn zu beziffern.
+    sorted: bool,
+}
+
+/// Trennt Stellung und Zug im Schlüssel · in keinem von beiden kommt es vor.
+const KEY_SEP: char = '\u{1}';
+
+impl Ingest {
+    fn new(conn: Connection) -> Self {
+        let next_id = conn
+            .query_row("SELECT COALESCE(MAX(id), 0) FROM ref_games", [], |r| {
+                r.get(0)
+            })
+            .unwrap_or(0);
+        Self {
+            conn,
+            book: HashMap::new(),
+            pending: Vec::new(),
+            next_id,
+            kept: 0,
+            flush_every: flush_games(),
+            key: String::new(),
+            sorted: true,
+        }
+    }
+
+    /// Nimmt eine Partie auf und schreibt den Block weg, wenn er voll ist.
+    fn absorb(&mut self, game: RawGame) -> Result<(), String> {
+        if game.sans.is_empty() {
+            return Ok(());
+        }
+        self.kept += 1;
+        self.next_id += 1;
+        let id = self.next_id;
+        let avg = game.avg_elo();
+        // Eine Partie ohne Ergebnis zahlt nicht ins Buch ein · sie hätte in
+        // keiner der drei Spalten etwas zu suchen. Gespeichert wird sie
+        // trotzdem, als Musterpartie taugt sie.
+        let bucket = match game.result.as_str() {
+            "1-0" => Some(0u8),
+            "0-1" => Some(2),
+            "1/2-1/2" | "½-½" => Some(1),
+            _ => None,
+        };
+        if let Some(bucket) = bucket {
+            let mut pos = chess::Position::initial();
+            for san in game.sans.iter().take(BOOK_PLIES) {
+                let mv = match chess::parse_san(&pos, san) {
+                    Ok(mv) => mv,
+                    // Ein unlesbarer Zug beendet nur diese Partie · eine
+                    // Millionensammlung enthält immer ein paar kaputte.
+                    Err(_) => break,
+                };
+                self.key.clear();
+                chess::fen_key_into(&pos, &mut self.key);
+                self.key.push(KEY_SEP);
+                self.key.push_str(san);
+                if !self.book.contains_key(self.key.as_str()) {
+                    self.book.insert(self.key.clone(), BookAgg::default());
+                }
+                let entry = self
+                    .book
+                    .get_mut(self.key.as_str())
+                    .expect("gerade eingefügt");
+                match bucket {
+                    0 => entry.white += 1,
+                    1 => entry.draws += 1,
+                    _ => entry.black += 1,
+                }
+                if avg > 0 {
+                    entry.elo_sum += avg as i64;
+                    entry.elo_n += 1;
+                }
+                if avg >= entry.best_elo {
+                    entry.best_elo = avg;
+                    entry.game_id = id;
+                }
+                pos = match pos.make_move(mv) {
+                    Ok(next) => next,
+                    Err(_) => break,
+                };
+            }
+        }
+        self.pending.push((id, game));
+        if self.kept % self.flush_every == 0 {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Schreibt Partien und Buchzeilen eines Blocks in einer Transaktion.
+    fn flush(&mut self) -> Result<(), String> {
+        if self.pending.is_empty() && self.book.is_empty() {
+            return Ok(());
+        }
+        // Sortiert statt in Hashmap-Reihenfolge. `ref_book` ist ein B-Baum über
+        // den Schlüssel; in zufälliger Reihenfolge fasst ein Block von
+        // hunderttausend Zeilen fast ebenso viele verschiedene Seiten an, in
+        // sortierter Reihenfolge wandert er einmal von links nach rechts durch
+        // den Baum und findet die nächste Seite meist schon im Puffer.
+        let mut rows: Vec<(String, BookAgg)> = self.book.drain().collect();
+        if self.sorted {
+            rows.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        }
+
+        let tx = self.conn.transaction().map_err(|e| e.to_string())?;
+        {
+            let mut insert = tx
+                .prepare_cached(
+                    "INSERT OR REPLACE INTO ref_games
+                     (id, white, black, white_elo, black_elo, result, played_at, event, eco, moves)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                )
+                .map_err(|e| e.to_string())?;
+            for (id, game) in self.pending.drain(..) {
+                insert
+                    .execute(params![
+                        id,
+                        game.white,
+                        game.black,
+                        game.white_elo,
+                        game.black_elo,
+                        game.result,
+                        game.date,
+                        game.event,
+                        game.eco,
+                        game.sans.join(" "),
+                    ])
+                    .map_err(|e| e.to_string())?;
+            }
+            let mut upsert = tx
+                .prepare_cached(
+                    "INSERT INTO ref_book (fen_key, san, white, draws, black, elo_sum, elo_n, best_elo, game_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                     ON CONFLICT(fen_key, san) DO UPDATE SET
+                       white    = white + excluded.white,
+                       draws    = draws + excluded.draws,
+                       black    = black + excluded.black,
+                       elo_sum  = elo_sum + excluded.elo_sum,
+                       elo_n    = elo_n + excluded.elo_n,
+                       game_id  = CASE WHEN excluded.best_elo >= best_elo THEN excluded.game_id ELSE game_id END,
+                       best_elo = MAX(best_elo, excluded.best_elo)",
+                )
+                .map_err(|e| e.to_string())?;
+            for (key, agg) in rows {
+                let Some((fen_key, san)) = key.split_once(KEY_SEP) else {
+                    continue;
+                };
+                upsert
+                    .execute(params![
+                        fen_key,
+                        san,
+                        agg.white,
+                        agg.draws,
+                        agg.black,
+                        agg.elo_sum,
+                        agg.elo_n,
+                        agg.best_elo,
+                        agg.game_id,
+                    ])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+}
+
+fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64), String> {
     let source = PathBuf::from(&path);
     if !source.exists() {
         return Err(format!("Datei nicht gefunden: {path}"));
@@ -424,38 +673,81 @@ fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64), String
         return Err(crate::cbh::UNSUPPORTED_HINT.to_string());
     }
     let bytes_total = std::fs::metadata(&source).map(|m| m.len()).unwrap_or(0);
-    let file = std::fs::File::open(&source).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
 
     let target = ref_path(app)?;
-    let mut conn = open(&target)?;
+    let conn = open(&target)?;
     // Import ist ein Massenschreibvorgang; die Haltbarkeit einzelner Blöcke
     // ist hier weniger wert als die Dauer. Ein Absturz mittendrin kostet den
     // laufenden Block, nicht die Datenbank.
     let _ = conn.pragma_update(None, "synchronous", "OFF");
-    let _ = conn.pragma_update(None, "cache_size", -64_000);
+    let _ = conn.pragma_update(None, "cache_size", import_cache_kib());
+    // Der Sortierlauf jedes Blocks (siehe `Ingest::flush`) soll nicht über eine
+    // temporäre Datei gehen.
+    let _ = conn.pragma_update(None, "temp_store", "MEMORY");
 
     let state = app.state::<RefDbState>();
-    let mut next_id: i64 = conn
-        .query_row("SELECT COALESCE(MAX(id), 0) FROM ref_games", [], |r| {
-            r.get(0)
-        })
-        .unwrap_or(0);
+    let mut ingest = Ingest::new(conn);
+    let mut progress = |games: u64, bytes: u64, phase: &str| {
+        let _ = app.emit(
+            "refdb://progress",
+            ImportProgress {
+                games,
+                bytes,
+                bytes_total,
+                phase: phase.into(),
+            },
+        );
+    };
 
-    let mut book: HashMap<(String, String), BookAgg> = HashMap::new();
-    let mut pending: Vec<(i64, RawGame)> = Vec::new();
-    let mut games_read: u64 = 0;
-    let mut games_kept: u64 = 0;
-    let mut last_progress: u64 = 0;
-    // Beide Rückrufe von `read_pgn` brauchen den Lesestand · der eine schreibt
-    // ihn, der andere meldet ihn.
-    let bytes_read = std::cell::Cell::new(0u64);
-    let mut cancelled = false;
+    let (cancelled, skipped) = if is_db3(&source) {
+        import_db3(&source, &mut ingest, state, &mut progress)?
+    } else {
+        (import_pgn(&source, &mut ingest, state, &mut progress)?, 0)
+    };
 
-    let reader: Box<dyn Read> = if is_zstd(&source) {
+    progress(ingest.kept, bytes_total, "finishing");
+    ingest.flush()?;
+
+    let total = count_and_remember(&ingest.conn);
+    let name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&path)
+        .to_string();
+    meta_set(&ingest.conn, "source", &name);
+    meta_set(&ingest.conn, "imported_at", &now_secs().to_string());
+    let _ = ingest.conn.pragma_update(None, "synchronous", "NORMAL");
+    let _ = ingest.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", []);
+    if cancelled {
+        // Abgebrochen heißt „behalten, was schon da ist" · genau wie beim
+        // Partien-Import. Ein zweiter Lauf über dieselbe Datei fügt allerdings
+        // erneut hinzu, deshalb sagt es die Oberfläche deutlich.
+        log::info!("Referenz-Import abgebrochen nach {} Partien", ingest.kept);
+    }
+    Ok((ingest.kept, total, skipped))
+}
+
+/// Liest eine PGN-Datei (auch zstd-gepackt) ein · `true`, wenn abgebrochen wurde.
+fn import_pgn(
+    source: &Path,
+    ingest: &mut Ingest,
+    state: tauri::State<RefDbState>,
+    progress: &mut impl FnMut(u64, u64, &str),
+) -> Result<bool, String> {
+    let file = std::fs::File::open(source).map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+    let reader: Box<dyn Read> = if is_zstd(source) {
         Box::new(zstd::Decoder::new(file).map_err(|e| format!("zstd: {e}"))?)
     } else {
         Box::new(file)
     };
+
+    let mut games_read: u64 = 0;
+    let mut last_progress: u64 = 0;
+    let mut cancelled = false;
+    let mut failure: Option<String> = None;
+    // Beide Rückrufe von `read_pgn` brauchen den Lesestand · der eine schreibt
+    // ihn, der andere meldet ihn.
+    let bytes_read = std::cell::Cell::new(0u64);
 
     read_pgn(
         reader,
@@ -466,178 +758,189 @@ fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64), String
                 cancelled = true;
                 return false;
             }
-            if game.sans.is_empty() {
-                return true;
-            }
-            games_kept += 1;
-            next_id += 1;
-            let id = next_id;
-            let avg = game.avg_elo();
-            // Eine Partie ohne Ergebnis zahlt nicht ins Buch ein · sie hätte
-            // in keiner der drei Spalten etwas zu suchen. Gespeichert wird sie
-            // trotzdem, als Musterpartie taugt sie.
-            let bucket = match game.result.as_str() {
-                "1-0" => Some(0),
-                "0-1" => Some(2),
-                "1/2-1/2" | "½-½" => Some(1),
-                _ => None,
-            };
-            if let Some(bucket) = bucket {
-                let mut pos = chess::Position::initial();
-                for san in game.sans.iter().take(BOOK_PLIES) {
-                    let key = chess::fen_key(&pos);
-                    let mv = match chess::parse_san(&pos, san) {
-                        Ok(mv) => mv,
-                        // Ein unlesbarer Zug beendet nur diese Partie · eine
-                        // Millionensammlung enthält immer ein paar kaputte.
-                        Err(_) => break,
-                    };
-                    let entry = book.entry((key, san.clone())).or_default();
-                    match bucket {
-                        0 => entry.white += 1,
-                        1 => entry.draws += 1,
-                        _ => entry.black += 1,
-                    }
-                    if avg > 0 {
-                        entry.elo_sum += avg as i64;
-                        entry.elo_n += 1;
-                    }
-                    if avg >= entry.best_elo {
-                        entry.best_elo = avg;
-                        entry.game_id = id;
-                    }
-                    pos = match pos.make_move(mv) {
-                        Ok(next) => next,
-                        Err(_) => break,
-                    };
-                }
-            }
-            pending.push((id, game));
-
-            if games_kept % FLUSH_GAMES == 0 {
-                if let Err(e) = flush(&mut conn, &mut pending, &mut book) {
-                    log::error!("Referenz-Import: {e}");
-                    return false;
-                }
+            if let Err(e) = ingest.absorb(game) {
+                log::error!("Referenz-Import: {e}");
+                failure = Some(e);
+                return false;
             }
             if games_read - last_progress >= PROGRESS_GAMES {
                 last_progress = games_read;
-                let _ = app.emit(
-                    "refdb://progress",
-                    ImportProgress {
-                        games: games_kept,
-                        bytes: bytes_read.get(),
-                        bytes_total,
-                        phase: "reading".into(),
-                    },
-                );
+                progress(ingest.kept, bytes_read.get(), "reading");
             }
             true
         },
     )?;
-
-    let _ = app.emit(
-        "refdb://progress",
-        ImportProgress {
-            games: games_kept,
-            bytes: bytes_read.get(),
-            bytes_total,
-            phase: "finishing".into(),
-        },
-    );
-    flush(&mut conn, &mut pending, &mut book)?;
-
-    let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
-        .unwrap_or(0);
-    let name = source
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(&path)
-        .to_string();
-    meta_set(&conn, "source", &name);
-    meta_set(&conn, "imported_at", &now_secs().to_string());
-    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
-    let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", []);
-    if cancelled {
-        // Abgebrochen heißt „behalten, was schon da ist" · genau wie beim
-        // Partien-Import. Ein zweiter Lauf über dieselbe Datei fügt allerdings
-        // erneut hinzu, deshalb sagt es die Oberfläche deutlich.
-        log::info!("Referenz-Import abgebrochen nach {games_kept} Partien");
+    match failure {
+        Some(e) => Err(e),
+        None => Ok(cancelled),
     }
-    Ok((games_kept, total))
 }
 
-/// Schreibt Partien und Buchzeilen eines Blocks in einer Transaktion.
-fn flush(
-    conn: &mut Connection,
-    pending: &mut Vec<(i64, RawGame)>,
-    book: &mut HashMap<(String, String), BookAgg>,
-) -> Result<(), String> {
-    if pending.is_empty() && book.is_empty() {
-        return Ok(());
+/// Eine Spalte als Text, egal was tatsächlich darin steht.
+///
+/// Die Spaltentypen einer `.db3` sind Absichtserklärungen: `Result` ist als
+/// INTEGER deklariert und enthält "1-0", `Round` ist INTEGER und enthält
+/// gelegentlich "1.2". SQLite stört das nicht, ein Lesen mit festem Typ schon —
+/// deshalb wird hier gelesen, was da ist.
+fn text_column(row: &rusqlite::Row, index: usize) -> String {
+    match row.get_ref(index) {
+        Ok(rusqlite::types::ValueRef::Text(bytes)) => String::from_utf8_lossy(bytes).into_owned(),
+        Ok(rusqlite::types::ValueRef::Integer(value)) => value.to_string(),
+        Ok(rusqlite::types::ValueRef::Real(value)) => value.to_string(),
+        _ => String::new(),
     }
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+}
+
+/// Ergebnis in der Schreibweise, die `Ingest::absorb` erwartet.
+///
+/// Die Spalte heißt `Result` und ist als INTEGER deklariert, enthält aber Text
+/// ("1-0"); SQLite nimmt das hin. Alles, was keine der drei Formen ist — "*"
+/// zum Beispiel —, gilt als unbekannt und zahlt nicht ins Buch ein.
+fn db3_result(raw: &str) -> String {
+    match raw.trim() {
+        "1-0" | "1" => "1-0".into(),
+        "0-1" | "0" => "0-1".into(),
+        "1/2-1/2" | "½-½" | "1/2" => "1/2-1/2".into(),
+        _ => String::new(),
+    }
+}
+
+/// Liest eine En-Croissant-Sammlung ein · `true`, wenn abgebrochen wurde.
+///
+/// Die Namen liegen in eigenen Tabellen und werden über `LEFT JOIN` geholt;
+/// eine Sammlung mit einer halben Million Spielern in eine Hashmap zu laden
+/// wäre der andere Weg, kostet aber Speicher, den die Buch-Hashmap besser
+/// gebrauchen kann.
+///
+/// Der Fortschritt zählt hier Partien statt Bytes und rechnet sie auf die
+/// Dateigröße hoch — die Oberfläche zeigt einen Balken, und ein Balken braucht
+/// eine Skala, die zur gemeldeten Größe passt.
+fn import_db3(
+    source: &Path,
+    ingest: &mut Ingest,
+    state: tauri::State<RefDbState>,
+    progress: &mut impl FnMut(u64, u64, &str),
+) -> Result<(bool, u64), String> {
+    let bytes_total = std::fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+    let src = Connection::open_with_flags(
+        source,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| format!("Datei nicht lesbar: {e}"))?;
+
+    let total: i64 = src
+        .query_row("SELECT COUNT(*) FROM Games", [], |r| r.get(0))
+        .map_err(|_| {
+            "Diese .db3-Datei enthält keine Partientabelle · erwartet wird eine \
+             En-Croissant-Datenbank."
+                .to_string()
+        })?;
+
+    let mut stmt = src
+        .prepare(
+            "SELECT g.FEN, g.Moves, g.PawnHome, g.Result, g.Date, g.ECO,
+                    g.WhiteElo, g.BlackElo, w.Name, b.Name, e.Name
+             FROM Games g
+             LEFT JOIN Players w ON w.ID = g.WhiteID
+             LEFT JOIN Players b ON b.ID = g.BlackID
+             LEFT JOIN Events  e ON e.ID = g.EventID",
+        )
+        .map_err(|e| format!("Partien nicht lesbar: {e}"))?;
+    let mut rows = stmt
+        .query([])
+        .map_err(|e| format!("Partien nicht lesbar: {e}"))?;
+
+    let mut read: u64 = 0;
+    let mut last_progress: u64 = 0;
+    // Partien, deren Zugfolge sich nicht zweifelsfrei nachspielen lässt · siehe
+    // die Prüfsumme in db3.rs. Sie werden übergangen, nicht geraten.
+    let mut rejected: u64 = 0;
+
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| format!("Partien nicht lesbar: {e}"))?
     {
-        let mut insert = tx
-            .prepare_cached(
-                "INSERT OR REPLACE INTO ref_games
-                 (id, white, black, white_elo, black_elo, result, played_at, event, eco, moves)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            )
-            .map_err(|e| e.to_string())?;
-        for (id, game) in pending.drain(..) {
-            insert
-                .execute(params![
-                    id,
-                    game.white,
-                    game.black,
-                    game.white_elo,
-                    game.black_elo,
-                    game.result,
-                    game.date,
-                    game.event,
-                    game.eco,
-                    game.sans.join(" "),
-                ])
-                .map_err(|e| e.to_string())?;
+        read += 1;
+        if state.cancel.load(Ordering::SeqCst) {
+            return Ok((true, rejected));
         }
-        let mut upsert = tx
-            .prepare_cached(
-                "INSERT INTO ref_book (fen_key, san, white, draws, black, elo_sum, elo_n, best_elo, game_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 ON CONFLICT(fen_key, san) DO UPDATE SET
-                   white    = white + excluded.white,
-                   draws    = draws + excluded.draws,
-                   black    = black + excluded.black,
-                   elo_sum  = elo_sum + excluded.elo_sum,
-                   elo_n    = elo_n + excluded.elo_n,
-                   game_id  = CASE WHEN excluded.best_elo >= best_elo THEN excluded.game_id ELSE game_id END,
-                   best_elo = MAX(best_elo, excluded.best_elo)",
-            )
-            .map_err(|e| e.to_string())?;
-        for ((fen_key, san), agg) in book.drain() {
-            upsert
-                .execute(params![
-                    fen_key,
-                    san,
-                    agg.white,
-                    agg.draws,
-                    agg.black,
-                    agg.elo_sum,
-                    agg.elo_n,
-                    agg.best_elo,
-                    agg.game_id,
-                ])
-                .map_err(|e| e.to_string())?;
+
+        let fen = text_column(row, 0);
+        let bytes: Vec<u8> = row
+            .get::<_, Option<Vec<u8>>>(1)
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let home: Option<i64> = row.get(2).unwrap_or(None);
+        let result = text_column(row, 3);
+        let date = text_column(row, 4);
+        let eco = text_column(row, 5);
+        let white_elo: i32 = row.get(6).unwrap_or(0);
+        let black_elo: i32 = row.get(7).unwrap_or(0);
+        let white = text_column(row, 8);
+        let black = text_column(row, 9);
+        let event = text_column(row, 10);
+
+        // Eine Partie aus einer Sonderstellung (Chess960, Stellungsübungen)
+        // gehört nicht in ein Eröffnungsbuch, das von der Grundstellung aus
+        // gerechnet wird.
+        let Some(start) = crate::db3::start_position(&fen) else {
+            rejected += 1;
+            continue;
+        };
+        if start != crate::chess::Position::initial() {
+            rejected += 1;
+            continue;
+        }
+        let Some(game) = crate::db3::decode_mainline(&start, &bytes) else {
+            rejected += 1;
+            continue;
+        };
+        // Die Prüfsumme der Datei · stimmt sie nicht, wäre die Partie erfunden.
+        if let Some(home) = home {
+            if game.pawn_home != home as u16 {
+                rejected += 1;
+                continue;
+            }
+        }
+
+        ingest.absorb(RawGame {
+            white,
+            black,
+            white_elo,
+            black_elo,
+            result: db3_result(&result),
+            date,
+            event,
+            eco,
+            sans: game.sans,
+        })?;
+
+        if read - last_progress >= PROGRESS_GAMES {
+            last_progress = read;
+            let done = if total > 0 {
+                (bytes_total as f64 * (read as f64 / total as f64)) as u64
+            } else {
+                0
+            };
+            progress(ingest.kept, done, "reading");
         }
     }
-    tx.commit().map_err(|e| e.to_string())
+
+    if rejected > 0 {
+        log::warn!("Referenz-Import: {rejected} von {read} Partien übergangen");
+    }
+    Ok((false, rejected))
 }
 
 // ── Kommandos ────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+/// Bestand der Referenzdatenbank für die Einstellungen und den Analyse-Reiter.
+///
+/// Die Zahlen kommen aus `ref_meta` und nicht aus `COUNT(*)` · siehe
+/// `count_and_remember`. Eine Datei aus einer älteren Fassung hat sie noch
+/// nicht; dann wird einmal gezählt und das Ergebnis gemerkt. Das dauert einmal,
+/// nicht bei jedem Öffnen — und dank `(async)` steht dabei nicht das Fenster.
+#[tauri::command(async)]
 pub fn refdb_status(app: tauri::AppHandle) -> Result<RefDbStatus, String> {
     let path = ref_path(&app)?;
     let importing = app.state::<RefDbState>().importing.load(Ordering::SeqCst);
@@ -654,13 +957,13 @@ pub fn refdb_status(app: tauri::AppHandle) -> Result<RefDbStatus, String> {
         });
     }
     let conn = open(&path)?;
+    let counted = meta_get(&conn, "games").parse::<i64>().ok();
+    if counted.is_none() && !importing {
+        count_and_remember(&conn);
+    }
     Ok(RefDbStatus {
-        games: conn
-            .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
-            .unwrap_or(0),
-        positions: conn
-            .query_row("SELECT COUNT(*) FROM ref_book", [], |r| r.get(0))
-            .unwrap_or(0),
+        games: meta_get(&conn, "games").parse().unwrap_or(0),
+        positions: meta_get(&conn, "positions").parse().unwrap_or(0),
         size_bytes,
         source: meta_get(&conn, "source"),
         imported_at: meta_get(&conn, "imported_at").parse().unwrap_or(0),
@@ -682,15 +985,16 @@ pub fn refdb_import(app: tauri::AppHandle, path: String) -> Result<(), String> {
         let state = app2.state::<RefDbState>();
         let cancelled = state.cancel.swap(false, Ordering::SeqCst);
         state.importing.store(false, Ordering::SeqCst);
-        let (games, total, error) = match result {
-            Ok((games, total)) => (games, total, None),
-            Err(e) => (0, 0, Some(e)),
+        let (games, total, skipped, error) = match result {
+            Ok((games, total, skipped)) => (games, total, skipped, None),
+            Err(e) => (0, 0, 0, Some(e)),
         };
         let _ = app2.emit(
             "refdb://done",
             ImportDone {
                 games,
                 total,
+                skipped,
                 cancelled,
                 error,
             },
@@ -726,7 +1030,7 @@ pub fn refdb_clear(app: tauri::AppHandle) -> Result<(), String> {
 
 /// Auskunft des Buchs zu einer Stellung · dieselbe Form wie beim
 /// Lichess-Explorer, damit die Karte in der Analyse nur eine Zeile kennt.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn refdb_query(app: tauri::AppHandle, fen: String) -> Result<ExplorerResult, String> {
     let path = ref_path(&app)?;
     let key = chess::normalize_fen(&fen)?;
@@ -827,7 +1131,7 @@ pub fn refdb_query(app: tauri::AppHandle, fen: String) -> Result<ExplorerResult,
 }
 
 /// Eine Referenzpartie zum Nachspielen · das Analysebrett lädt sie damit.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn refdb_game(app: tauri::AppHandle, id: i64) -> Result<RefGame, String> {
     let path = ref_path(&app)?;
     if !path.exists() {
@@ -917,5 +1221,201 @@ mod tests {
     fn main_line_ignores_nested_variations() {
         let sans = main_line("1. e4 (1. d4 d5 (1... Nf6 2. c4)) 1... c5 2. Nf3 *");
         assert_eq!(sans, vec!["e4", "c5", "Nf3"]);
+    }
+
+    /// Das Ergebnisfeld einer `.db3` ist Text, obwohl die Spalte INTEGER heißt.
+    #[test]
+    fn reads_the_db3_result_column() {
+        assert_eq!(db3_result("1-0"), "1-0");
+        assert_eq!(db3_result("1/2-1/2"), "1/2-1/2");
+        assert_eq!(db3_result("0-1"), "0-1");
+        // Unentschieden im Sinne von „unbekannt" · zahlt nicht ins Buch ein.
+        assert_eq!(db3_result("*"), "");
+        assert_eq!(db3_result(""), "");
+    }
+
+    #[test]
+    fn recognizes_the_supported_extensions() {
+        assert!(is_db3(&PathBuf::from("MillionBase.db3")));
+        assert!(is_db3(&PathBuf::from("Lumbra.DB3")));
+        assert!(!is_db3(&PathBuf::from("caissabase.pgn")));
+        assert!(is_zstd(&PathBuf::from("dump.pgn.zst")));
+    }
+
+    /// Der Weg von der gelesenen Partie ins Buch · zwei Partien mit demselben
+    /// ersten Zug ergeben eine Buchzeile mit zwei Partien darin.
+    #[test]
+    fn builds_the_book_from_absorbed_games() {
+        let target =
+            std::env::temp_dir().join(format!("kiebitz-book-{}.sqlite", std::process::id()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
+        let mut ingest = Ingest::new(open(&target).unwrap());
+
+        let mut white_win = RawGame::empty();
+        white_win.result = "1-0".into();
+        white_win.white_elo = 2600;
+        white_win.black_elo = 2400;
+        white_win.sans = vec!["e4".into(), "c5".into(), "Nf3".into()];
+        let mut draw = RawGame::empty();
+        draw.result = "1/2-1/2".into();
+        draw.sans = vec!["e4".into(), "e5".into()];
+        // Ohne Ergebnis · sie wird gespeichert, zahlt aber nicht ins Buch ein.
+        let mut unknown = RawGame::empty();
+        unknown.sans = vec!["e4".into(), "c5".into()];
+
+        ingest.absorb(white_win).unwrap();
+        ingest.absorb(draw).unwrap();
+        ingest.absorb(unknown).unwrap();
+        ingest.flush().unwrap();
+
+        let start = chess::start_key();
+        let (white, draws, elo_n, best): (i64, i64, i64, i64) = ingest
+            .conn
+            .query_row(
+                "SELECT white, draws, elo_n, best_elo FROM ref_book WHERE fen_key = ?1 AND san = 'e4'",
+                params![start],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (white, draws),
+            (1, 1),
+            "die dritte Partie hat kein Ergebnis"
+        );
+        // Nur die eine Partie kennt Ratings · der Schnitt zählt einmal.
+        assert_eq!((elo_n, best), (1, 2500));
+
+        let games: i64 = ingest
+            .conn
+            .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(games, 3, "gespeichert werden alle drei");
+
+        drop(ingest);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
+    }
+
+    /// Wie schnell der Import ist · misst den Weg von der fertig gelesenen
+    /// Partie bis in die Referenzdatei, also Buchführung und Schreiben.
+    ///
+    /// Läuft nicht mit; er braucht eine Sammlung, die nicht im Repository liegt:
+    ///
+    /// ```notrust
+    /// KIEBITZ_DB3="…/MillionBase.db3" KIEBITZ_BENCH_GAMES=200000     ///   cargo test --release --lib refdb::tests::bench_ingest -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "Messlauf; braucht eine .db3-Sammlung in KIEBITZ_DB3"]
+    fn bench_ingest() {
+        let path = std::env::var("KIEBITZ_DB3").expect("KIEBITZ_DB3 nicht gesetzt");
+        let count: usize = std::env::var("KIEBITZ_BENCH_GAMES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100_000);
+
+        let target = std::env::temp_dir().join(format!("kiebitz-bench-{}.sqlite", now_secs()));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
+        let env_num = |name: &str, fallback: i64| -> i64 {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(fallback)
+        };
+        let cache = env_num("KIEBITZ_BENCH_CACHE", import_cache_kib() as i64) as i32;
+        let flush = env_num("KIEBITZ_BENCH_FLUSH", flush_games() as i64) as u64;
+        let sorted = env_num("KIEBITZ_BENCH_SORT", 1) != 0;
+
+        let conn = open(&target).unwrap();
+        let _ = conn.pragma_update(None, "synchronous", "OFF");
+        let _ = conn.pragma_update(None, "cache_size", cache);
+        let _ = conn.pragma_update(None, "temp_store", "MEMORY");
+        let mut ingest = Ingest::new(conn);
+        ingest.flush_every = flush.max(1);
+        ingest.sorted = sorted;
+        println!("Puffer {cache} KiB · Block {flush} Partien · sortiert {sorted}");
+
+        // Blockweise statt alles auf einmal: Anderthalb Millionen dekodierte
+        // Partien wären zwei Gigabyte Zeichenketten, bevor die erste davon
+        // geschrieben wäre.
+        let src = Connection::open(&path).unwrap();
+        let mut stmt = src
+            .prepare("SELECT FEN, Moves, Result, WhiteElo, BlackElo FROM Games LIMIT ?1 OFFSET ?2")
+            .unwrap();
+
+        let chunk = 25_000usize;
+        let mut decode_secs = 0.0;
+        let mut ingest_secs = 0.0;
+        let mut offset = 0usize;
+        while offset < count {
+            let take = chunk.min(count - offset);
+            let rows: Vec<(String, Vec<u8>, String, i32, i32)> = stmt
+                .query_map(params![take as i64, offset as i64], |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                        r.get(1)?,
+                        text_column(r, 2),
+                        r.get(3).unwrap_or(0),
+                        r.get(4).unwrap_or(0),
+                    ))
+                })
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+            if rows.is_empty() {
+                break;
+            }
+            offset += rows.len();
+
+            let started = std::time::Instant::now();
+            let games: Vec<RawGame> = rows
+                .iter()
+                .filter_map(|(fen, bytes, result, we, be)| {
+                    let start = crate::db3::start_position(fen)?;
+                    let decoded = crate::db3::decode_mainline(&start, bytes)?;
+                    let mut game = RawGame::empty();
+                    game.result = db3_result(result);
+                    game.white_elo = *we;
+                    game.black_elo = *be;
+                    game.sans = decoded.sans;
+                    Some(game)
+                })
+                .collect();
+            decode_secs += started.elapsed().as_secs_f64();
+
+            let started = std::time::Instant::now();
+            for game in games {
+                ingest.absorb(game).unwrap();
+            }
+            ingest_secs += started.elapsed().as_secs_f64();
+        }
+
+        let started = std::time::Instant::now();
+        ingest.flush().unwrap();
+        ingest_secs += started.elapsed().as_secs_f64();
+
+        let positions: i64 = ingest
+            .conn
+            .query_row("SELECT COUNT(*) FROM ref_book", [], |r| r.get(0))
+            .unwrap();
+        let size = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+        println!(
+            "{} Partien · dekodieren {decode_secs:.1} s ({:.0}/s) · einlesen {ingest_secs:.1} s ({:.0}/s)",
+            ingest.kept,
+            ingest.kept as f64 / decode_secs,
+            ingest.kept as f64 / ingest_secs,
+        );
+        println!(
+            "Buch: {positions} Zeilen · Datei {:.0} MB",
+            size as f64 / 1e6
+        );
+        drop(ingest);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
     }
 }

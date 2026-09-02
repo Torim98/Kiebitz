@@ -71,7 +71,11 @@ fn parse_response(json: &str) -> ChessDbResult {
 }
 
 /// Fragt chessdb.cn nach den bekannten Zügen einer Stellung (cache-gestützt).
-#[tauri::command]
+///
+/// `(async)` aus demselben Grund wie beim Explorer: Ohne das Attribut liefe
+/// die Netzanfrage im Hauptthread und hielte bis zu zehn Sekunden lang das
+/// ganze Fenster an.
+#[tauri::command(async)]
 pub fn chessdb_query(
     app: tauri::AppHandle,
     db: tauri::State<db::Db>,

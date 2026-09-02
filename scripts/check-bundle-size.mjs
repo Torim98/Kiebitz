@@ -19,7 +19,13 @@ const dashboard = Object.entries(manifest).find(([key]) =>
 if (!dashboard) throw new Error("Vite manifest contains no Dashboard module");
 
 const limits = {
-  initialJs: 440 * 1024,
+  // Das deutsche Wörterbuch ist die Quelle aller Übersetzungen und deshalb als
+  // einziges fest im Startbündel (siehe lib/i18n.tsx); die übrigen sechs kommen
+  // als eigener Chunk nach. Jede neue Zeile Oberflächentext wächst damit hier
+  // mit — beim Eröffnungs-Explorer und der .db3-Referenzdatenbank waren das
+  // zusammen rund 2,6 KiB. Die Grenze bekommt dafür etwas Luft; entscheidend
+  // für die Ladezeit ist ohnehin `initialGzip`, und Fließtext komprimiert gut.
+  initialJs: 448 * 1024,
   initialGzip: 150 * 1024,
   startupRouteJs: 900 * 1024,
   startupRouteGzip: 275 * 1024,

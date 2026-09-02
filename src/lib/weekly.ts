@@ -23,8 +23,10 @@
  *    Statistik. Der Bericht schließt deshalb mit der obersten Verordnung des
  *    Coaches für die begonnene Woche.
  *
- * Reine Funktionen ohne Backend-Zugriff · die Fenster kommen aus
- * `study_metrics`, die Tageslasten aus `training_program`.
+ * Gerechnet wird hier ohne Backend-Zugriff · die Fenster kommen aus
+ * `study_metrics`, die Tageslasten aus `training_program`. Nur der
+ * Gelesen-Merker ganz unten greift auf die Datenbank durch; er muss ein Update
+ * überleben, und der WebView-Speicher tut das nicht.
  */
 import type { Key, TFunc } from "./i18n";
 import { de, deInt } from "./format";
@@ -33,6 +35,7 @@ import { measureRating, ratingNoise, type RatingEffect } from "./effect";
 import type { AreaNeed, Prescription } from "./plan";
 import { AREAS, dayMinutes, type Area, type LoadDay } from "./study";
 import { weekStartOf } from "./week";
+import { uiFlagGet, uiFlagSet } from "./db";
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
@@ -371,26 +374,71 @@ export function reportHeadline(report: WeeklyReport, t: TFunc): string {
 // ── Gelesen-Merker ──────────────────────────────────────────────────────────
 
 const SEEN_KEY = "kiebitz.weeklyReport.seen";
+/** Derselbe Merker in der Datenbank · siehe `uiFlagGet` in lib/db.ts. */
+const SEEN_FLAG = "weeklyReport.seen";
 
 /**
  * Der Bericht ist eine Meldung, kein Reiter: Er steht einmal oben im
  * Study-Reiter und verschwindet, wenn er gelesen ist. Gemerkt wird dafür der
  * Wochenanfang · der nächste Bericht trägt einen anderen und kommt damit von
  * selbst wieder.
+ *
+ * Gemerkt wird er zweimal. Der `localStorage` antwortet ohne Warten und trägt
+ * damit das erste Bild der Seite; die Datenbank trägt ihn über eine
+ * Neuinstallation. Genau daran scheiterte es vorher: Der WebView-Speicher des
+ * Desktops ist ein Profilverzeichnis neben der App, kein Datenbestand — nach
+ * jedem Update stand der Bericht der laufenden Woche wieder als ungelesen da.
  */
-export function weeklyReportSeen(week: ReportWeek): boolean {
+function readLocal(): string | null {
   try {
-    return localStorage.getItem(SEEN_KEY) === String(week.start);
+    return localStorage.getItem(SEEN_KEY);
   } catch {
     // Ohne WebView-Speicher lieber einmal zu oft zeigen als nie.
-    return false;
+    return null;
   }
 }
 
-export function markWeeklyReportSeen(week: ReportWeek): void {
+function writeLocal(value: string): void {
   try {
-    localStorage.setItem(SEEN_KEY, String(week.start));
+    localStorage.setItem(SEEN_KEY, value);
   } catch {
-    // Kein Speicher, kein Merker · die Karte kommt beim nächsten Öffnen wieder.
+    // Kein Speicher, kein Vorgriff · der dauerhafte Merker unten bleibt davon
+    // unberührt.
   }
+}
+
+/** Der schnelle Merker · beantwortet das erste Rendern ohne Warten. */
+export function weeklyReportSeen(week: ReportWeek): boolean {
+  return readLocal() === String(week.start);
+}
+
+/**
+ * Der dauerhafte Merker aus der Datenbank.
+ *
+ * Nebenbei gleicht er beide Speicher an: Was nur die Datenbank kennt, wandert
+ * in den `localStorage` (nach einem Update der Normalfall), und was nur der
+ * `localStorage` kennt, wandert in die Datenbank (der Übergang beim ersten
+ * Start mit dieser Fassung).
+ */
+export async function weeklyReportSeenStored(week: ReportWeek): Promise<boolean> {
+  const local = readLocal();
+  let stored: string | null = null;
+  try {
+    stored = await uiFlagGet(SEEN_FLAG);
+  } catch {
+    // Ohne Backend (Browser-Vorschau) bleibt es beim schnellen Merker.
+    return local === String(week.start);
+  }
+  if (stored == null) {
+    if (local) void uiFlagSet(SEEN_FLAG, local).catch(() => {});
+    return local === String(week.start);
+  }
+  if (stored !== local) writeLocal(stored);
+  return stored === String(week.start);
+}
+
+export function markWeeklyReportSeen(week: ReportWeek): void {
+  const value = String(week.start);
+  writeLocal(value);
+  void uiFlagSet(SEEN_FLAG, value).catch(() => {});
 }

@@ -428,6 +428,19 @@ export default function WeeklyReportDialog({
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-[2px] ${
         mobile ? "p-3" : "p-4"
       }`}
+      // Auf dem Handy liegt der Schleier über der ganzen Fläche — auch unter
+      // Statusleiste und Navigationsleiste, weil die App randlos zeichnet. Ohne
+      // diesen Zuschlag begann der Bericht hinter der Uhr und endete hinter den
+      // Systemtasten. Der Rand des Dialogs trägt sie deshalb zusätzlich zu
+      // seinem eigenen Abstand; der Schleier bleibt randlos.
+      style={
+        mobile
+          ? {
+              paddingTop: "calc(0.75rem + env(safe-area-inset-top))",
+              paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))",
+            }
+          : undefined
+      }
       role="dialog"
       aria-modal="true"
       aria-labelledby="weekly-report-title"
@@ -437,8 +450,11 @@ export default function WeeklyReportDialog({
     >
       <div
         data-weekly-report=""
+        // Mobil an der Höhe des gepolsterten Schleiers und nicht an `vh`: `vh`
+        // zählt die Systemleisten mit, die der Zuschlag oben gerade frei
+        // gehalten hat, und der Bericht liefe wieder darunter.
         className={`flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50 ${
-          mobile ? "max-h-[94vh]" : "max-h-[92vh]"
+          mobile ? "max-h-full" : "max-h-[92vh]"
         }`}
       >
         <div className={`flex items-start gap-3 border-b border-line py-3.5 ${mobile ? "px-3.5" : "px-5"}`}>

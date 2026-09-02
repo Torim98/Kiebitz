@@ -59,6 +59,7 @@ import {
   previousWeek,
   reportWeek,
   weeklyReportSeen,
+  weeklyReportSeenStored,
   type WeeklyReport,
 } from "../lib/weekly";
 import { Button, Card } from "../components/ui";
@@ -757,6 +758,21 @@ export default function Study({
   // Rendern · `reportSeen` trägt das Öffnen im selben Besuch nach.
   const seen = useMemo(() => (weekly ? weeklyReportSeen(weekly.week) : true), [weekly]);
   const reportUnread = Boolean(weekly) && !seen && reportSeen !== weekly?.week.start;
+
+  // Der schnelle Merker oben kennt nur diese Installation. Der dauerhafte in
+  // der Datenbank kommt eine Runde später und schaltet das Symbol nachträglich
+  // ab · sichtbar wird das nach einem Update, das den WebView-Speicher
+  // mitgenommen hat.
+  useEffect(() => {
+    if (!weekly || seen) return;
+    let current = true;
+    void weeklyReportSeenStored(weekly.week).then((stored) => {
+      if (current && stored) setReportSeen(weekly.week.start);
+    });
+    return () => {
+      current = false;
+    };
+  }, [weekly, seen]);
 
   const openReport = useCallback(() => {
     if (!weekly) return;

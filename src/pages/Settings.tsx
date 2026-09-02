@@ -98,6 +98,7 @@ import {
 } from "../lib/sync";
 import { legalDocument, legalDocuments, type LegalDoc } from "../lib/legal";
 import { openExternal } from "../lib/ext";
+import { lichessToken, setLichessToken } from "../lib/lichess";
 import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
 import { applyReminderSchedule, sendTestReminder } from "../lib/notify";
 import { indexPositions } from "../lib/analysis";
@@ -265,6 +266,12 @@ export default function SettingsPage({
   const [refdbProgress, setRefdbProgress] = useState<RefDbProgress | null>(null);
   const [refdbMsg, setRefdbMsg] = useState<string | null>(null);
   const [refdbPath, setRefdbPath] = useState("");
+  /**
+   * Der Lichess-Token · er liegt im Schlüsselspeicher und nicht im
+   * Einstellungs-Entwurf, deshalb sein eigener Zustand daneben.
+   */
+  const [lichessTok, setLichessTok] = useState("");
+  const [lichessTokSaved, setLichessTokSaved] = useState(false);
   const [pzRunning, setPzRunning] = useState(false);
   const [pzProgress, setPzProgress] = useState<PuzzleImportProgress | null>(null);
   const [pzMsg, setPzMsg] = useState<string | null>(null);
@@ -372,6 +379,19 @@ export default function SettingsPage({
     refreshRefdb();
   }, [desktop, revealed.refdb, refreshRefdb]);
 
+  // Der Token wird erst gelesen, wenn der Bereich sichtbar ist · ein Zugriff
+  // auf den Schlüsselspeicher gehört nicht in den Seitenaufbau.
+  useEffect(() => {
+    if (!desktop || !revealed.explorer) return;
+    let disposed = false;
+    void lichessToken().then((token) => {
+      if (!disposed) setLichessTok(token ?? "");
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [desktop, revealed.explorer]);
+
   // Import-Ereignisse der Referenzdatenbank · der Lauf kann Stunden dauern und
   // überlebt jeden Seitenwechsel, deshalb hängt die Anzeige an Ereignissen und
   // nicht am Rückgabewert des Aufrufs.
@@ -386,12 +406,16 @@ export default function SettingsPage({
     onRefDbDone((p) => {
       setRefdbRunning(false);
       setRefdbProgress(null);
+      // Übergangene Partien werden genannt und nicht verschwiegen · sonst
+      // stünde am Ende eine Zahl, die zur Quelle nicht passt, und niemand
+      // wüsste warum.
+      const skipped = p.skipped > 0 ? ` ${t("set.refdbSkipped", { n: deInt(p.skipped) })}` : "";
       setRefdbMsg(
         p.error
           ? t("set.refdbImportFailed", { e: p.error })
           : p.cancelled
-            ? t("set.refdbImportCancelled", { n: deInt(p.games), total: deInt(p.total) })
-            : t("set.refdbImportDone", { n: deInt(p.games), total: deInt(p.total) })
+            ? t("set.refdbImportCancelled", { n: deInt(p.games), total: deInt(p.total) }) + skipped
+            : t("set.refdbImportDone", { n: deInt(p.games), total: deInt(p.total) }) + skipped
       );
       refreshRefdb();
     }).then((u) => (disposed ? u() : cleanups.push(u)));
@@ -1858,10 +1882,46 @@ export default function SettingsPage({
               />
               <span className="text-[13px] text-ink">{t("set.explorerToggle")}</span>
             </label>
-            <div className="mt-2">
-              <PlusBadgeButton feature="opening_explorer" />
-            </div>
             <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("set.explorerNote")}</p>
+            {/* Der Token · seit Lichess den Explorer hinter eine Anmeldung
+                gelegt hat, ist er die Voraussetzung und keine Feineinstellung.
+                Er steht deshalb vor den Filtern und nicht hinter ihnen. */}
+            <div className="mt-4 border-t border-line pt-3">
+              <Field label={t("set.explorerToken")}>
+                <input
+                  type="password"
+                  value={lichessTok}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="lip_…"
+                  onChange={(e) => {
+                    setLichessTok(e.target.value);
+                    setLichessTokSaved(false);
+                  }}
+                  onBlur={() => {
+                    void setLichessToken(lichessTok).then(() => setLichessTokSaved(true));
+                  }}
+                  className={inputCls}
+                />
+              </Field>
+              <p className="mt-2 text-[12px] leading-relaxed text-ink3">
+                {t("set.explorerTokenNote")}{" "}
+                <button
+                  type="button"
+                  onClick={() =>
+                    openExternal(
+                      "https://lichess.org/account/oauth/token/create?description=Kiebitz"
+                    )
+                  }
+                  className="text-accent underline underline-offset-2"
+                >
+                  {t("set.explorerTokenLink")}
+                </button>
+              </p>
+              {lichessTokSaved && (
+                <p className="mt-1.5 text-[12px] text-accent">{t("set.explorerTokenSaved")}</p>
+              )}
+            </div>
             <div className="mt-4 border-t border-line pt-3">
               <div className="text-[12px] font-medium uppercase tracking-[0.1em] text-ink3">
                 {t("set.explorerFilters")}
@@ -1968,7 +2028,9 @@ export default function SettingsPage({
                       const chosen = await openDialog({
                         multiple: false,
                         directory: false,
-                        filters: [{ name: "PGN", extensions: ["pgn", "zst"] }],
+                        filters: [
+                          { name: "PGN / En Croissant", extensions: ["pgn", "zst", "db3"] },
+                        ],
                       });
                       if (typeof chosen === "string") setRefdbPath(chosen);
                     }}

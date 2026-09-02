@@ -171,3 +171,19 @@ export function dbStats(): Promise<{ total: number }> {
   }
   return statsRequest;
 }
+
+/**
+ * Ein Merker der Oberfläche, der einen Neuaufbau der WebView überlebt.
+ *
+ * Der `localStorage` ist auf dem Desktop kein dauerhafter Speicher, sondern das
+ * Profil der eingebetteten WebView: Eine Neuinstallation nimmt ihn mit. Was
+ * über eine Sitzung hinaus gelten soll, gehört deshalb in die `meta`-Tabelle
+ * der Datenbank · gerätelokal und bewusst nicht im Sync.
+ */
+export function uiFlagGet(key: string): Promise<string | null> {
+  return invoke<string | null>("ui_flag_get", { key });
+}
+
+export function uiFlagSet(key: string, value: string): Promise<void> {
+  return invoke<void>("ui_flag_set", { key, value });
+}

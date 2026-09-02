@@ -26,7 +26,12 @@ const SERVICE: &str = "de.torim.kiebitz";
 /// Erlaubte Schlüssel. Die Liste ist bewusst geschlossen: Der Aufruf kommt aus
 /// der WebView, und ein freier Name machte daraus einen allgemeinen
 /// Geheimnisspeicher für beliebigen Frontend-Code.
-const KEYS: [&str; 2] = ["session", "entitlement"];
+///
+/// `lichess_token` ist der persönliche API-Token für den Eröffnungs-Explorer.
+/// Lichess verlangt für dessen Abfragen seit Anfang 2026 eine Anmeldung; der
+/// Token gehört damit in dieselbe Ablage wie die übrigen Zugangsdaten und nicht
+/// in die settings.json.
+const KEYS: [&str; 3] = ["session", "entitlement", "lichess_token"];
 
 fn check_key(key: &str) -> Result<(), String> {
     if KEYS.contains(&key) {

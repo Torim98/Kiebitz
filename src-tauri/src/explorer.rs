@@ -1,7 +1,6 @@
 //! Eröffnungs-Explorer von Lichess: Häufigkeiten statt Engine-Urteil.
 //!
-//! Zwei Datenbanken über dieselbe API (`explorer.lichess.ovh`, CC0, ohne
-//! Schlüssel):
+//! Zwei Datenbanken über dieselbe API (`explorer.lichess.org`, CC0):
 //!
 //! * `masters` · rund 2,5 Millionen Turnierpartien ab 2200 Elo · „was spielen
 //!   Starke hier?"
@@ -17,6 +16,15 @@
 //! Antworten werden lokal gecacht (Tabelle `explorer_cache`), damit das
 //! Durchblättern einer Partie nicht bei jedem Halbzug ins Netz greift ·
 //! Eröffnungsstellungen wiederholen sich ohnehin über alle Partien hinweg.
+//!
+//! **Seit Anfang 2026 nicht mehr ohne Anmeldung.** Lichess hat den Explorer
+//! nach anhaltenden Überlastungsangriffen hinter eine Anmeldung gelegt: Jede
+//! Abfrage ohne `Authorization`-Kopfzeile beantwortet der vorgelagerte nginx
+//! mit 401, noch bevor die Anwendung sie sieht. Kiebitz schickt deshalb einen
+//! persönlichen API-Token mit, den der Nutzer in den Einstellungen hinterlegt
+//! (Schlüsselspeicher, siehe plus.rs). Ohne Token bleibt nur eine klare
+//! Auskunft — und die eigene Referenzdatenbank, die dieselbe Frage offline
+//! beantwortet.
 
 use crate::{chess, db, settings};
 use rusqlite::params;
@@ -25,7 +33,22 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-const API: &str = "https://explorer.lichess.ovh";
+/// Der dokumentierte Endpunkt. `explorer.lichess.ovh` beantwortet dieselben
+/// Pfade noch, die offizielle Spezifikation nennt aber seit dem Umzug
+/// ausschließlich diesen Namen.
+const API: &str = "https://explorer.lichess.org";
+
+/// Lichess bittet Anwendungen, sich erkennbar zu machen · anonyme Aufrufe
+/// landen im selben Topf wie jeder Skriptverkehr.
+const USER_AGENT: &str = "Kiebitz (https://kiebitz.dev)";
+
+/// Rückgaben, die die Oberfläche übersetzen soll, statt sie durchzureichen.
+///
+/// Der Rest der Fehlertexte ist Diagnose („Verbindung abgelehnt"), die genau so
+/// nützlich ist, wie sie kommt. Diese beiden sind dagegen Zustände mit einer
+/// Handlung dahinter, und die gehört in die Sprache des Nutzers.
+const ERR_AUTH: &str = "explorer:auth";
+const ERR_RATE: &str = "explorer:rate";
 
 /// Meisterpartien wachsen im Monatsrhythmus · ein Vierteljahr Cache ist für
 /// eine Statistik aus 2,5 Millionen Partien mehr als genug.
@@ -221,7 +244,17 @@ fn throttle() {
 /// Kommaliste ("1600,1800,2000"). Sie gehören in den Cache-Schlüssel: dieselbe
 /// Stellung sieht in zwei Rating-Bändern verschieden aus, und genau das ist der
 /// Sinn der Filter.
-#[tauri::command]
+///
+/// `token` ist der persönliche Lichess-API-Token; ihn holt die Oberfläche aus
+/// dem Schlüsselspeicher und reicht ihn durch, statt dass dieses Modul auf zwei
+/// Betriebssystemen an zwei verschiedenen Ablagen vorbeigreifen müsste.
+///
+/// `(async)` und nicht schlicht `#[tauri::command]`: Eine synchrone Funktion
+/// ohne dieses Attribut läuft im Hauptthread, und der zeichnet das Fenster.
+/// Zwischen Höflichkeitsriegel (bis 1,1 s) und Netz-Zeitgrenze (12 s) stand die
+/// gesamte App still, bis die Abfrage fehlgeschlagen war. Mit dem Attribut
+/// nimmt Tauri denselben Rumpf auf einen Arbeitsthread.
+#[tauri::command(async)]
 pub fn explorer_query(
     app: tauri::AppHandle,
     db: tauri::State<db::Db>,
@@ -229,6 +262,7 @@ pub fn explorer_query(
     source: String,
     ratings: Option<String>,
     speeds: Option<String>,
+    token: Option<String>,
 ) -> Result<ExplorerResult, String> {
     let masters = source == "masters";
     if !masters && source != "lichess" {
@@ -279,11 +313,22 @@ pub fn explorer_query(
         }
     }
 
+    // Ohne Token braucht es die Anfrage nicht: Lichess beantwortet sie mit 401,
+    // und der Riegel oben hätte vorher noch eine Sekunde geschlafen.
+    let token = token
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+    let Some(token) = token else {
+        return Err(ERR_AUTH.into());
+    };
+
     throttle();
     let mut request = ureq::get(&format!(
         "{API}/{}",
         if masters { "masters" } else { "lichess" }
     ))
+    .set("Authorization", &format!("Bearer {token}"))
+    .set("User-Agent", USER_AGENT)
     .query("fen", &fen)
     .query("moves", &MOVE_LIMIT.to_string())
     .query("topGames", &TOP_GAMES.to_string())
@@ -305,9 +350,11 @@ pub fn explorer_query(
             .map_err(|e| format!("Explorer-Antwort unlesbar: {e}"))?,
         // 429 ist kein Ausfall, sondern die Bitte, langsamer zu machen · sie
         // gehört als eigener Zustand in die Oberfläche.
-        Err(ureq::Error::Status(429, _)) => {
-            return Err("Zu viele Anfragen an den Explorer · kurz warten.".into())
-        }
+        Err(ureq::Error::Status(429, _)) => return Err(ERR_RATE.into()),
+        // 401/403 heißt: der Token fehlt, ist abgelaufen oder widerrufen. Ein
+        // technischer Text mit der vollen URL hilft dagegen niemandem — die
+        // Oberfläche sagt stattdessen, was zu tun ist.
+        Err(ureq::Error::Status(401 | 403, _)) => return Err(ERR_AUTH.into()),
         Err(e) => return Err(format!("Explorer nicht erreichbar: {e}")),
     };
 
