@@ -9,7 +9,7 @@
  *
  *   node scripts/check-locales.mjs
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -30,8 +30,23 @@ function entries(file) {
 
 const placeholders = (text) => (text.match(/\{[a-zA-Z]+\}/g) ?? []).sort().join(",");
 
+/**
+ * Welche Sprachen es gibt, sagt das Register — nicht der Verzeichnisinhalt.
+ * Neben den Wörterbüchern liegen dort auch Dateien, die keine sind
+ * (`registry.ts`, `themes.ts`); die Liste im Register kennt den Unterschied.
+ */
+function localeFiles() {
+  const source = readFileSync(join(dir, "registry.ts"), "utf8");
+  const list = source.match(/export const LOCALES = \[([^\]]*)\]/);
+  if (!list) throw new Error("LOCALES nicht in src/lib/locales/registry.ts gefunden");
+  return [...list[1].matchAll(/"([^"]+)"/g)]
+    .map(([, locale]) => locale)
+    .filter((locale) => locale !== "de")
+    .map((locale) => `${locale}.ts`);
+}
+
 const de = entries("de.ts");
-const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && f !== "de.ts" && f !== "themes.ts");
+const files = localeFiles();
 
 let problems = 0;
 for (const file of files) {

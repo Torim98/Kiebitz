@@ -92,7 +92,8 @@ impl PinnedCertVerifier {
             return Err("Kein gültiger TLS-Fingerprint konfiguriert. Bitte den Desktop erneut per QR-Code koppeln.".into());
         }
         let mut bytes = [0u8; 32];
-        for (slot, pair) in bytes.iter_mut().zip(fingerprint.as_bytes().chunks_exact(2)) {
+        let (pairs, _) = fingerprint.as_bytes().as_chunks::<2>();
+        for (slot, pair) in bytes.iter_mut().zip(pairs) {
             let hex = std::str::from_utf8(pair).map_err(|e| e.to_string())?;
             *slot = u8::from_str_radix(hex, 16).map_err(|e| e.to_string())?;
         }
