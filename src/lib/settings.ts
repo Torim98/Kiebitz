@@ -184,6 +184,18 @@ export interface RefDbStatus {
   imported_at: number;
   importing: boolean;
   path: string;
+  /** Die einzeln eingelesenen Sammlungen, neueste zuerst. */
+  sources: RefSource[];
+}
+
+/** Eine eingelesene Sammlung · spiegelt refdb::RefSource. */
+export interface RefSource {
+  id: number;
+  /** Dateiname beim Import · unterscheidet zwei Sammlungen voneinander. */
+  name: string;
+  path: string;
+  games: number;
+  imported_at: number;
 }
 
 export interface RefGame {
@@ -323,6 +335,25 @@ export function refdbCancelImport(): Promise<void> {
   return invoke("refdb_cancel_import");
 }
 
+/**
+ * Steht diese Datei schon in der Referenzdatenbank?
+ *
+ * Gefragt wird vor dem Import und nicht danach: Ein zweiter Lauf über dieselbe
+ * Sammlung dauert Stunden und bringt nichts, weil jede Partie als Doppelung
+ * wieder herausfiele.
+ */
+export function refdbPrecheck(path: string): Promise<RefSource | null> {
+  return invoke<RefSource | null>("refdb_precheck", { path });
+}
+
+/**
+ * Löst eine einzelne Sammlung wieder heraus · läuft im Hintergrund und meldet
+ * sich über dieselben Ereignisse wie der Import.
+ */
+export function refdbDeleteSource(id: number): Promise<void> {
+  return invoke("refdb_delete_source", { id });
+}
+
 export function refdbClear(): Promise<void> {
   return invoke("refdb_clear");
 }
@@ -337,7 +368,9 @@ export interface RefDbProgress {
   games: number;
   bytes: number;
   bytes_total: number;
-  /** "reading" · "finishing" */
+  /** Partien insgesamt, wo die Arbeit in Partien zählt statt in Bytes. */
+  games_total: number;
+  /** "scanning" · "reading" · "finishing" · "removing" */
   phase: string;
 }
 
@@ -350,6 +383,10 @@ export interface RefDbDone {
    * Sonderstellung begannen · siehe src-tauri/src/db3.rs.
    */
   skipped: number;
+  /** Partien, die schon in der Referenzdatenbank standen · übersprungen. */
+  duplicates: number;
+  /** "import" · "delete" — dieselbe Meldung, zwei Anlässe. */
+  action: string;
   cancelled: boolean;
   error: string | null;
 }

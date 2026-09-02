@@ -54,7 +54,9 @@ import {
   onRefDbProgress,
   refdbCancelImport,
   refdbClear,
+  refdbDeleteSource,
   refdbImport,
+  refdbPrecheck,
   refdbStatus,
   refreshSettings,
   restoreDatabase,
@@ -67,6 +69,7 @@ import {
   type EngineTest,
   type RefDbProgress,
   type RefDbStatus,
+  type RefSource,
   type Settings,
 } from "../lib/settings";
 import { examplePaths } from "../lib/paths";
@@ -267,10 +270,31 @@ export default function SettingsPage({
   const [refdbMsg, setRefdbMsg] = useState<string | null>(null);
   const [refdbPath, setRefdbPath] = useState("");
   /**
+   * Die Sammlung, die dieselbe Datei schon einmal hereingeholt hat.
+   *
+   * Sie steht hier, weil der Import dann nicht sofort losläuft: Ein zweiter
+   * Lauf über dieselbe Datei dauert Stunden und fügt am Ende nichts hinzu ·
+   * gefragt wird deshalb vorher, nicht hinterher.
+   */
+  const [refdbDupe, setRefdbDupe] = useState<RefSource | null>(null);
+  /** Sammlung, deren Entfernen bestätigt werden will. */
+  const [refdbDropping, setRefdbDropping] = useState<RefSource | null>(null);
+  /**
    * Der Lichess-Token · er liegt im Schlüsselspeicher und nicht im
    * Einstellungs-Entwurf, deshalb sein eigener Zustand daneben.
    */
   const [lichessTok, setLichessTok] = useState("");
+  /**
+   * Der Token, wie er im Schlüsselspeicher steht.
+   *
+   * Er liegt neben dem Entwurf oben aus demselben Grund, aus dem es `saved`
+   * neben `draft` gibt: Nur der Vergleich der beiden weiß, ob etwas offen ist.
+   * Vorher wurde der Token still beim Verlassen des Feldes geschrieben — er war
+   * gespeichert, bevor die Leiste „ungespeicherte Änderungen" ihn überhaupt
+   * bemerken konnte, und wer stattdessen direkt auf „Speichern" klickte,
+   * speicherte alles außer ihm.
+   */
+  const [lichessTokStored, setLichessTokStored] = useState("");
   const [lichessTokSaved, setLichessTokSaved] = useState(false);
   const [pzRunning, setPzRunning] = useState(false);
   const [pzProgress, setPzProgress] = useState<PuzzleImportProgress | null>(null);
@@ -385,7 +409,9 @@ export default function SettingsPage({
     if (!desktop || !revealed.explorer) return;
     let disposed = false;
     void lichessToken().then((token) => {
-      if (!disposed) setLichessTok(token ?? "");
+      if (disposed) return;
+      setLichessTok(token ?? "");
+      setLichessTokStored(token ?? "");
     });
     return () => {
       disposed = true;
@@ -410,12 +436,27 @@ export default function SettingsPage({
       // stünde am Ende eine Zahl, die zur Quelle nicht passt, und niemand
       // wüsste warum.
       const skipped = p.skipped > 0 ? ` ${t("set.refdbSkipped", { n: deInt(p.skipped) })}` : "";
+      // Doppelungen sind keine Panne, sondern die Auskunft, warum aus einer
+      // Million Partien in der Quelle hier nur zweihunderttausend wurden.
+      const dupes =
+        p.duplicates > 0 ? ` ${t("set.refdbDuplicates", { n: deInt(p.duplicates) })}` : "";
+      const removal = p.action === "delete";
       setRefdbMsg(
         p.error
-          ? t("set.refdbImportFailed", { e: p.error })
-          : p.cancelled
-            ? t("set.refdbImportCancelled", { n: deInt(p.games), total: deInt(p.total) }) + skipped
-            : t("set.refdbImportDone", { n: deInt(p.games), total: deInt(p.total) }) + skipped
+          ? removal
+            ? t("set.refdbDropFailed", { e: p.error })
+            : t("set.refdbImportFailed", { e: p.error })
+          : removal
+            ? p.cancelled
+              ? t("set.refdbDropCancelled", { n: deInt(p.games), total: deInt(p.total) })
+              : t("set.refdbDropDone", { n: deInt(p.games), total: deInt(p.total) })
+            : p.cancelled
+              ? t("set.refdbImportCancelled", { n: deInt(p.games), total: deInt(p.total) }) +
+                skipped +
+                dupes
+              : t("set.refdbImportDone", { n: deInt(p.games), total: deInt(p.total) }) +
+                skipped +
+                dupes
       );
       refreshRefdb();
     }).then((u) => (disposed ? u() : cleanups.push(u)));
@@ -444,10 +485,18 @@ export default function SettingsPage({
     };
   }, [desktop]);
 
-  const dirty = useMemo(
+  const settingsDirty = useMemo(
     () => draft != null && saved != null && JSON.stringify(draft) !== JSON.stringify(saved),
     [draft, saved]
   );
+  /**
+   * Der Token liegt im Schlüsselspeicher, gehört aber zur selben Frage.
+   *
+   * Verglichen wird getrimmt, weil auch gespeichert wird, was getrimmt ist ·
+   * ein aus der Zwischenablage mitgekommenes Leerzeichen ist keine Änderung.
+   */
+  const tokenDirty = lichessTok.trim() !== lichessTokStored.trim();
+  const dirty = settingsDirty || tokenDirty;
 
   const patch = (p: Partial<Settings>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
@@ -455,6 +504,13 @@ export default function SettingsPage({
     if (!draft) return;
     setError(null);
     try {
+      if (tokenDirty) {
+        const token = lichessTok.trim();
+        await setLichessToken(token);
+        setLichessTok(token);
+        setLichessTokStored(token);
+        setLichessTokSaved(true);
+      }
       const applied = await setSettings(draft);
       setSaved(applied);
       setDraft(applied);
@@ -727,7 +783,7 @@ export default function SettingsPage({
     setSyncMsg(null);
     setSyncErr(null);
     try {
-      if (dirty && draft) {
+      if (settingsDirty && draft) {
         const applied = await setSettings(draft);
         setSaved(applied);
         setDraft(applied);
@@ -1898,9 +1954,6 @@ export default function SettingsPage({
                     setLichessTok(e.target.value);
                     setLichessTokSaved(false);
                   }}
-                  onBlur={() => {
-                    void setLichessToken(lichessTok).then(() => setLichessTokSaved(true));
-                  }}
                   className={inputCls}
                 />
               </Field>
@@ -1918,8 +1971,12 @@ export default function SettingsPage({
                   {t("set.explorerTokenLink")}
                 </button>
               </p>
-              {lichessTokSaved && (
-                <p className="mt-1.5 text-[12px] text-accent">{t("set.explorerTokenSaved")}</p>
+              {tokenDirty ? (
+                <p className="mt-1.5 text-[12px] text-gold">{t("set.explorerTokenUnsaved")}</p>
+              ) : (
+                lichessTokSaved && (
+                  <p className="mt-1.5 text-[12px] text-accent">{t("set.explorerTokenSaved")}</p>
+                )
               )}
             </div>
             <div className="mt-4 border-t border-line pt-3">
@@ -1992,24 +2049,91 @@ export default function SettingsPage({
           ) : (
             sectionLoading
           )}
+          {/* Die eingelesenen Sammlungen einzeln · erst als Liste ist die
+              Referenzdatenbank etwas, aus dem sich eine Fehlentscheidung wieder
+              herausnehmen lässt, ohne alles noch einmal einzulesen. */}
+          {!refdbRunning && refdb && refdb.sources.length > 0 && (
+            <div className="mt-3 divide-y divide-line rounded-lg border border-line">
+              {refdb.sources.map((src) => (
+                <div key={src.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] text-ink" title={src.path || src.name}>
+                      {src.name || t("set.refdbUnnamed")}
+                    </div>
+                    <div className="text-[11.5px] text-ink3">
+                      {t("set.refdbSourceMeta", {
+                        n: deInt(src.games),
+                        date: src.imported_at
+                          ? new Date(src.imported_at * 1000).toLocaleDateString(dateLocale())
+                          : "—",
+                      })}
+                    </div>
+                  </div>
+                  <Button compact onClick={() => setRefdbDropping(src)}>
+                    <Trash2 size={13} /> {t("set.refdbDrop")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {refdbDropping && (
+            <div className="mt-3 rounded-lg border border-gold-dim bg-gold-soft px-3 py-2.5 text-[12.5px] text-gold">
+              <p className="leading-relaxed">
+                {t("set.refdbDropConfirm", {
+                  src: refdbDropping.name || t("set.refdbUnnamed"),
+                  n: deInt(refdbDropping.games),
+                })}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  primary
+                  onClick={() => {
+                    const id = refdbDropping.id;
+                    setRefdbDropping(null);
+                    setRefdbMsg(null);
+                    setRefdbRunning(true);
+                    refdbDeleteSource(id).catch((e) => {
+                      setRefdbRunning(false);
+                      setRefdbMsg(t("set.refdbDropFailed", { e: String(e) }));
+                    });
+                  }}
+                >
+                  <Trash2 size={14} /> {t("set.refdbDrop")}
+                </Button>
+                <Button onClick={() => setRefdbDropping(null)}>{t("common.cancel")}</Button>
+              </div>
+            </div>
+          )}
           {refdbRunning ? (
             <div className="mt-3 flex flex-col gap-2">
               <div className="flex items-center gap-2 text-[12.5px] text-ink2">
                 <Loader2 size={14} className="animate-spin text-accent" />
-                {refdbProgress?.phase === "finishing"
-                  ? t("set.refdbFinishing")
-                  : t("set.refdbReading", {
-                      n: deInt(refdbProgress?.games ?? 0),
-                      done: formatBytes(refdbProgress?.bytes ?? 0),
-                      total:
-                        refdbProgress && refdbProgress.bytes_total > 0
-                          ? formatBytes(refdbProgress.bytes_total)
-                          : "?",
-                    })}
+                {refdbProgress?.phase === "removing"
+                  ? t("set.refdbRemoving", {
+                      n: deInt(refdbProgress.games),
+                      total: deInt(refdbProgress.games_total),
+                    })
+                  : refdbProgress?.phase === "scanning"
+                    ? t("set.refdbScanning", { n: deInt(refdbProgress.games) })
+                    : refdbProgress?.phase === "finishing"
+                      ? t("set.refdbFinishing")
+                      : t("set.refdbReading", {
+                          n: deInt(refdbProgress?.games ?? 0),
+                          done: formatBytes(refdbProgress?.bytes ?? 0),
+                          total:
+                            refdbProgress && refdbProgress.bytes_total > 0
+                              ? formatBytes(refdbProgress.bytes_total)
+                              : "?",
+                        })}
               </div>
               <div>
+                {/* Derselbe Schalter hält beides an · er soll nur nicht
+                    „Import abbrechen" sagen, während etwas entfernt wird. */}
                 <Button onClick={() => refdbCancelImport().catch(() => {})}>
-                  <Square size={13} /> {t("set.refdbCancel")}
+                  <Square size={13} />{" "}
+                  {refdbProgress?.phase === "removing"
+                    ? t("common.cancel")
+                    : t("set.refdbCancel")}
                 </Button>
               </div>
             </div>
@@ -2019,7 +2143,10 @@ export default function SettingsPage({
                 <div className="flex gap-2">
                   <input
                     value={refdbPath}
-                    onChange={(e) => setRefdbPath(e.target.value)}
+                    onChange={(e) => {
+                      setRefdbPath(e.target.value);
+                      setRefdbDupe(null);
+                    }}
                     placeholder={examplePath.refdb}
                     className={inputCls}
                   />
@@ -2032,13 +2159,27 @@ export default function SettingsPage({
                           { name: "PGN / En Croissant", extensions: ["pgn", "zst", "db3"] },
                         ],
                       });
-                      if (typeof chosen === "string") setRefdbPath(chosen);
+                      if (typeof chosen === "string") {
+                        setRefdbPath(chosen);
+                        setRefdbDupe(null);
+                      }
                     }}
                   >
                     <FolderOpen size={14} /> {t("set.dbChooseFile")}
                   </Button>
                 </div>
               </Field>
+              {refdbDupe && (
+                <div className="rounded-lg border border-gold-dim bg-gold-soft px-3 py-2 text-[12.5px] leading-relaxed text-gold">
+                  {t("set.refdbAlreadyImported", {
+                    src: refdbDupe.name,
+                    n: deInt(refdbDupe.games),
+                    date: refdbDupe.imported_at
+                      ? new Date(refdbDupe.imported_at * 1000).toLocaleDateString(dateLocale())
+                      : "—",
+                  })}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   primary
@@ -2048,15 +2189,29 @@ export default function SettingsPage({
                       openPlusDialog("reference_database");
                       return;
                     }
+                    const path = refdbPath.trim();
                     setRefdbMsg(null);
-                    setRefdbRunning(true);
-                    refdbImport(refdbPath.trim()).catch((e) => {
-                      setRefdbRunning(false);
-                      setRefdbMsg(t("set.refdbImportFailed", { e: String(e) }));
-                    });
+                    const start = () => {
+                      setRefdbDupe(null);
+                      setRefdbRunning(true);
+                      refdbImport(path).catch((e) => {
+                        setRefdbRunning(false);
+                        setRefdbMsg(t("set.refdbImportFailed", { e: String(e) }));
+                      });
+                    };
+                    // Beim ersten Klick wird gefragt, beim zweiten gehorcht ·
+                    // die Warnung steht dann schon da.
+                    if (refdbDupe) {
+                      start();
+                      return;
+                    }
+                    refdbPrecheck(path)
+                      .then((known) => (known ? setRefdbDupe(known) : start()))
+                      .catch(() => start());
                   }}
                 >
-                  <Download size={14} /> {t("common.import")}
+                  <Download size={14} />{" "}
+                  {refdbDupe ? t("set.refdbImportAnyway") : t("common.import")}
                   {!refdbGate.unlocked && !refdbGate.pending && <PlusBadge />}
                 </Button>
                 {(refdb?.games ?? 0) > 0 && (

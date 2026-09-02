@@ -28,7 +28,7 @@
 use crate::{chess, explorer::ExplorerGame, explorer::ExplorerMove, explorer::ExplorerResult};
 use rusqlite::{params, Connection};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -80,6 +80,22 @@ const fn import_cache_kib() -> i32 {
 /// So oft meldet der Import seinen Fortschritt an die Oberfläche.
 const PROGRESS_GAMES: u64 = 2_000;
 
+/// Bis zu wie vielen Partien der Bestand für die Doppelungsprüfung in den
+/// Arbeitsspeicher passt.
+///
+/// Ein Fingerabdruck sind acht Byte, die Hashmenge braucht mit Verwaltung rund
+/// elf · dreißig Millionen Partien sind damit etwa dreihundert Megabyte, neben
+/// dem halben Gigabyte Seitenpuffer des Imports gerade noch vertretbar. Darüber
+/// wird die Prüfung übersprungen: eine übersehene Doppelung kostet eine Zeile
+/// zu viel im Buch, ein erschöpfter Arbeitsspeicher den ganzen Import.
+const fn dedup_limit() -> u64 {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        2_000_000
+    } else {
+        30_000_000
+    }
+}
+
 /// Musterpartien je Stellung in der Antwort.
 const TOP_GAMES: usize = 6;
 
@@ -103,6 +119,26 @@ pub struct RefDbStatus {
     pub imported_at: i64,
     pub importing: bool,
     pub path: String,
+    /// Die einzeln eingelesenen Sammlungen · siehe `ref_sources`.
+    pub sources: Vec<RefSource>,
+}
+
+/// Eine eingelesene Sammlung · eine Zeile der Liste in den Einstellungen.
+///
+/// `first_id`/`last_id` sind kein Anzeigewert, sondern der Grund, warum sich
+/// eine einzelne Sammlung wieder herauslösen lässt: Partien bekommen ihre
+/// Kennung fortlaufend, ein Import belegt deshalb einen zusammenhängenden
+/// Block. Damit ist „welche Partien stammen von hier?" ein Bereich im
+/// Primärschlüssel und keine Suche über zwölf Millionen Zeilen.
+#[derive(Serialize, Clone)]
+pub struct RefSource {
+    pub id: i64,
+    /// Dateiname beim Import · unterscheidet die Sammlungen in der Liste.
+    pub name: String,
+    /// Vollständiger Pfad beim Import · sagt, welche von zwei gleichnamigen.
+    pub path: String,
+    pub games: i64,
+    pub imported_at: i64,
 }
 
 #[derive(Serialize, Clone)]
@@ -110,7 +146,9 @@ struct ImportProgress {
     games: u64,
     bytes: u64,
     bytes_total: u64,
-    /// "reading" · "finishing"
+    /// Partien insgesamt, wenn die Arbeit in Partien zählt (Prüfen, Entfernen).
+    games_total: u64,
+    /// "scanning" · "reading" · "finishing" · "removing"
     phase: String,
 }
 
@@ -122,6 +160,10 @@ struct ImportDone {
     /// Partien, die die Quelle enthielt, die aber nicht übernommen wurden ·
     /// bei `.db3` die, deren Zugfolge sich nicht zweifelsfrei nachspielen ließ.
     skipped: u64,
+    /// Partien, die schon in der Referenzdatenbank standen · übersprungen.
+    duplicates: u64,
+    /// "import" · "delete" — dieselbe Meldung, zwei Anlässe.
+    action: String,
     cancelled: bool,
     error: Option<String>,
 }
@@ -164,6 +206,7 @@ fn open(path: &Path) -> Result<Connection, String> {
     let _ = conn.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024);
     let _ = conn.pragma_update(None, "busy_timeout", "10000");
     init_schema(&conn)?;
+    adopt_legacy(&conn);
     Ok(conn)
 }
 
@@ -201,9 +244,66 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS ref_meta (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        -- Je eingelesener Datei eine Zeile. Sie ist das, was der Nutzer in den
+        -- Einstellungen sieht und einzeln wieder loswerden kann.
+        CREATE TABLE IF NOT EXISTS ref_sources (
+            id          INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL DEFAULT '',
+            path        TEXT NOT NULL DEFAULT '',
+            games       INTEGER NOT NULL DEFAULT 0,
+            first_id    INTEGER NOT NULL DEFAULT 0,
+            last_id     INTEGER NOT NULL DEFAULT 0,
+            imported_at INTEGER NOT NULL DEFAULT 0
         );",
     )
-    .map_err(|e| format!("Referenz-Schema fehlgeschlagen: {e}"))
+    .map_err(|e| format!("Referenz-Schema fehlgeschlagen: {e}"))?;
+
+    // `ref_games` gab es vor den Sammlungen. Eine Spalte anzuhängen kostet in
+    // SQLite nur einen Schemaeintrag und keine einzige Zeile — bei zwölf
+    // Millionen Partien ist das der Unterschied zwischen sofort und Minuten.
+    let has_source = conn
+        .prepare("SELECT source_id FROM ref_games LIMIT 0")
+        .is_ok();
+    if !has_source {
+        conn.execute_batch(
+            "ALTER TABLE ref_games ADD COLUMN source_id INTEGER NOT NULL DEFAULT 0;",
+        )
+        .map_err(|e| format!("Referenz-Schema fehlgeschlagen: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Was vor den Sammlungen eingelesen wurde, bekommt nachträglich eine.
+///
+/// Die alten Partien tragen `source_id = 0` · das ist der Vorgabewert der
+/// gerade angehängten Spalte, kein `UPDATE` über Millionen Zeilen. Ihr Bereich
+/// ist deshalb genau `1 … MAX(id)`, und weil Kennungen lückenlos vergeben
+/// werden, ist `MAX(id)` zugleich ihre Anzahl. Alles hier ist ein Blick in den
+/// Primärschlüssel; nichts davon liest eine Zeile.
+fn adopt_legacy(conn: &Connection) {
+    let sources: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ref_sources", [], |r| r.get(0))
+        .unwrap_or(0);
+    if sources > 0 {
+        return;
+    }
+    let last_id: i64 = conn
+        .query_row("SELECT COALESCE(MAX(id), 0) FROM ref_games", [], |r| {
+            r.get(0)
+        })
+        .unwrap_or(0);
+    if last_id == 0 {
+        return;
+    }
+    let name = meta_get(conn, "source");
+    let imported_at = meta_get(conn, "imported_at").parse::<i64>().unwrap_or(0);
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO ref_sources (id, name, path, games, first_id, last_id, imported_at)
+         VALUES (0, ?1, '', ?2, 1, ?2, ?3)",
+        params![name, last_id, imported_at],
+    );
 }
 
 fn meta_get(conn: &Connection, key: &str) -> String {
@@ -249,6 +349,142 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+/// Die Sammlungen, neueste zuerst.
+fn source_list(conn: &Connection) -> Vec<RefSource> {
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT id, name, path, games, imported_at FROM ref_sources
+         ORDER BY imported_at DESC, id DESC",
+    ) else {
+        return Vec::new();
+    };
+    let rows = stmt.query_map([], |r| {
+        Ok(RefSource {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            path: r.get(2)?,
+            games: r.get(3)?,
+            imported_at: r.get(4)?,
+        })
+    });
+    match rows {
+        Ok(rows) => rows.filter_map(Result::ok).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+// ── Doppelte Partien ─────────────────────────────────────────────────────────
+
+/// Fingerabdruck einer Partie · zwei Partien mit demselben sind dieselbe.
+///
+/// Genommen wird, was eine Partie ausmacht und in jeder Quelle gleich
+/// geschrieben steht: die beiden Namen, das Datum, das Ergebnis und die
+/// vollständige Zugfolge. Der Zugtext allein genügte nicht — dieselbe kurze
+/// Remispartie kommt in einer Millionensammlung dutzendfach vor, gespielt von
+/// verschiedenen Leuten.
+///
+/// FNV-1a, weil es hier nur auf zwei Dinge ankommt: Streuung über 64 Bit und
+/// Tempo. Bei zwölf Millionen Partien liegt die Wahrscheinlichkeit einer
+/// zufälligen Kollision bei rund eins zu zweihundertfünfzigtausend — und eine
+/// Kollision kostet eine übersprungene Partie, nicht die Datenbank.
+fn game_hash(white: &str, black: &str, date: &str, result: &str, moves: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |bytes: &[u8]| {
+        for b in bytes {
+            hash ^= *b as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for part in [white, black, date, result, moves] {
+        eat(part.as_bytes());
+        eat(&[0]);
+    }
+    hash
+}
+
+/// Fingerabdrücke des Bestands, einmal vor dem Import.
+///
+/// Der Alternativweg wäre eine Spalte mit Index gewesen. Der scheitert am
+/// Bestand: eine Spalte nachträglich zu füllen schreibt die ganze Tabelle neu,
+/// und ohne gefüllte Spalte erkennt der Index Doppelungen gegen alles, was vor
+/// der Umstellung eingelesen wurde, gerade nicht. Ein einmaliger Lesedurchlauf
+/// je Import kostet dagegen nichts, was der Import nicht ohnehin kostet, und
+/// erfasst den gesamten Bestand.
+fn load_hashes(
+    conn: &Connection,
+    known: u64,
+    progress: &mut impl FnMut(u64, u64, &str),
+) -> Result<HashSet<u64>, String> {
+    if known > dedup_limit() {
+        log::warn!(
+            "Referenz-Import: {known} Partien im Bestand · Doppelungsprüfung nur innerhalb der Datei"
+        );
+        return Ok(HashSet::new());
+    }
+    let mut seen: HashSet<u64> = HashSet::with_capacity(known.min(dedup_limit()) as usize + 1024);
+    let mut stmt = conn
+        .prepare("SELECT white, black, played_at, result, moves FROM ref_games")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    let mut read: u64 = 0;
+    let mut last: u64 = 0;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let white: String = row.get(0).unwrap_or_default();
+        let black: String = row.get(1).unwrap_or_default();
+        let date: String = row.get(2).unwrap_or_default();
+        let result: String = row.get(3).unwrap_or_default();
+        let moves: String = row.get(4).unwrap_or_default();
+        seen.insert(game_hash(&white, &black, &date, &result, &moves));
+        read += 1;
+        if read - last >= PROGRESS_GAMES * 10 {
+            last = read;
+            progress(read, known.max(read), "scanning");
+        }
+    }
+    Ok(seen)
+}
+
+// ── Buchzeilen einer Partie ──────────────────────────────────────────────────
+
+/// Läuft die Buchzüge einer Partie ab · einmal geschrieben, zweimal gebraucht.
+///
+/// Der Import addiert damit, das Entfernen einer Sammlung subtrahiert damit.
+/// Beide müssen exakt dieselben Zeilen treffen, sonst bliebe nach einem
+/// Entfernen eine Bilanz stehen, die es nie gab · deshalb steht der Weg durch
+/// die Partie hier und nicht zweimal.
+fn for_each_book_row(sans: &[String], key: &mut String, mut each: impl FnMut(&str)) {
+    let mut pos = chess::Position::initial();
+    for san in sans.iter().take(BOOK_PLIES) {
+        let mv = match chess::parse_san(&pos, san) {
+            Ok(mv) => mv,
+            // Ein unlesbarer Zug beendet nur diese Partie · eine
+            // Millionensammlung enthält immer ein paar kaputte.
+            Err(_) => break,
+        };
+        key.clear();
+        chess::fen_key_into(&pos, key);
+        key.push(KEY_SEP);
+        key.push_str(san);
+        each(key);
+        pos = match pos.make_move(mv) {
+            Ok(next) => next,
+            Err(_) => break,
+        };
+    }
+}
+
+/// Ergebnis → Spalte im Buch. `None` heißt „zahlt nicht ein".
+///
+/// Eine Partie ohne Ergebnis hätte in keiner der drei Spalten etwas zu suchen.
+/// Gespeichert wird sie trotzdem, als Musterpartie taugt sie.
+fn result_bucket(result: &str) -> Option<u8> {
+    match result {
+        "1-0" => Some(0),
+        "0-1" => Some(2),
+        "1/2-1/2" | "½-½" => Some(1),
+        _ => None,
+    }
+}
+
 // ── PGN lesen ────────────────────────────────────────────────────────────────
 
 /// Eine gelesene Partie, so wie sie aus der Quelldatei kommt.
@@ -282,12 +518,22 @@ impl RawGame {
 
     /// Elo-Schnitt der Partie · 0, wenn keine Zahl bekannt ist.
     fn avg_elo(&self) -> i32 {
-        match (self.white_elo, self.black_elo) {
-            (0, 0) => 0,
-            (w, 0) => w,
-            (0, b) => b,
-            (w, b) => (w + b) / 2,
-        }
+        avg_elo(self.white_elo, self.black_elo)
+    }
+}
+
+/// Elo-Schnitt aus zwei Zahlen · 0 heißt „unbekannt" und zählt nicht mit.
+///
+/// Steht hier und nicht nur in `RawGame`, weil das Entfernen einer Sammlung
+/// denselben Wert noch einmal ausrechnen muss — aus der gespeicherten Partie
+/// statt aus der gelesenen. Zwei Formeln, die dasselbe meinen, sind genau die
+/// Sorte Unterschied, die im Buch eine Bilanz stehen ließe, die es nie gab.
+fn avg_elo(white: i32, black: i32) -> i32 {
+    match (white, black) {
+        (0, 0) => 0,
+        (w, 0) => w,
+        (0, b) => b,
+        (w, b) => (w + b) / 2,
     }
 }
 
@@ -490,7 +736,8 @@ struct Ingest {
     /// zweistelligen Millionen Buchzeilen eine Speicheranforderung und dem
     /// Hashwert einen zweiten Durchlauf.
     book: HashMap<String, BookAgg>,
-    pending: Vec<(i64, RawGame)>,
+    /// Kennung, fertiger Zugtext und die Partie selbst.
+    pending: Vec<(i64, String, RawGame)>,
     next_id: i64,
     kept: u64,
     flush_every: u64,
@@ -499,13 +746,24 @@ struct Ingest {
     /// Buchzeilen vor dem Schreiben sortieren · nur der Messlauf schaltet das
     /// ab, um den Gewinn zu beziffern.
     sorted: bool,
+    /// Die Sammlung, der die gelesenen Partien gehören.
+    source_id: i64,
+    /// Kennung der ersten Partie dieses Laufs · zusammen mit `next_id` der
+    /// Bereich, an dem sich die Sammlung später wieder herauslösen lässt.
+    first_id: i64,
+    /// Fingerabdrücke des Bestands · siehe `game_hash`. Neue Partien wandern
+    /// beim Aufnehmen hinein, damit auch Doppelungen innerhalb einer Datei
+    /// auffallen.
+    seen: HashSet<u64>,
+    /// Partien, die schon da waren.
+    duplicates: u64,
 }
 
 /// Trennt Stellung und Zug im Schlüssel · in keinem von beiden kommt es vor.
 const KEY_SEP: char = '\u{1}';
 
 impl Ingest {
-    fn new(conn: Connection) -> Self {
+    fn new(conn: Connection, source_id: i64, seen: HashSet<u64>) -> Self {
         let next_id = conn
             .query_row("SELECT COALESCE(MAX(id), 0) FROM ref_games", [], |r| {
                 r.get(0)
@@ -520,47 +778,40 @@ impl Ingest {
             flush_every: flush_games(),
             key: String::new(),
             sorted: true,
+            source_id,
+            first_id: next_id + 1,
+            seen,
+            duplicates: 0,
         }
     }
 
     /// Nimmt eine Partie auf und schreibt den Block weg, wenn er voll ist.
+    ///
+    /// Wer dieselbe Datei zweimal einliest — oder zwei Sammlungen, die sich
+    /// überschneiden —, soll dieselbe Partie nicht zweimal im Buch zählen.
+    /// Erkannt wird sie am Fingerabdruck; erkannt heißt hier übergangen, nicht
+    /// ersetzt: Die Fassung, die schon da ist, hat ihre Sammlung.
     fn absorb(&mut self, game: RawGame) -> Result<(), String> {
         if game.sans.is_empty() {
+            return Ok(());
+        }
+        let moves = game.sans.join(" ");
+        let hash = game_hash(&game.white, &game.black, &game.date, &game.result, &moves);
+        if !self.seen.insert(hash) {
+            self.duplicates += 1;
             return Ok(());
         }
         self.kept += 1;
         self.next_id += 1;
         let id = self.next_id;
         let avg = game.avg_elo();
-        // Eine Partie ohne Ergebnis zahlt nicht ins Buch ein · sie hätte in
-        // keiner der drei Spalten etwas zu suchen. Gespeichert wird sie
-        // trotzdem, als Musterpartie taugt sie.
-        let bucket = match game.result.as_str() {
-            "1-0" => Some(0u8),
-            "0-1" => Some(2),
-            "1/2-1/2" | "½-½" => Some(1),
-            _ => None,
-        };
-        if let Some(bucket) = bucket {
-            let mut pos = chess::Position::initial();
-            for san in game.sans.iter().take(BOOK_PLIES) {
-                let mv = match chess::parse_san(&pos, san) {
-                    Ok(mv) => mv,
-                    // Ein unlesbarer Zug beendet nur diese Partie · eine
-                    // Millionensammlung enthält immer ein paar kaputte.
-                    Err(_) => break,
-                };
-                self.key.clear();
-                chess::fen_key_into(&pos, &mut self.key);
-                self.key.push(KEY_SEP);
-                self.key.push_str(san);
-                if !self.book.contains_key(self.key.as_str()) {
-                    self.book.insert(self.key.clone(), BookAgg::default());
+        if let Some(bucket) = result_bucket(&game.result) {
+            let Self { key, book, .. } = self;
+            for_each_book_row(&game.sans, key, |row| {
+                if !book.contains_key(row) {
+                    book.insert(row.to_string(), BookAgg::default());
                 }
-                let entry = self
-                    .book
-                    .get_mut(self.key.as_str())
-                    .expect("gerade eingefügt");
+                let entry = book.get_mut(row).expect("gerade eingefügt");
                 match bucket {
                     0 => entry.white += 1,
                     1 => entry.draws += 1,
@@ -574,13 +825,9 @@ impl Ingest {
                     entry.best_elo = avg;
                     entry.game_id = id;
                 }
-                pos = match pos.make_move(mv) {
-                    Ok(next) => next,
-                    Err(_) => break,
-                };
-            }
+            });
         }
-        self.pending.push((id, game));
+        self.pending.push((id, moves, game));
         if self.kept % self.flush_every == 0 {
             self.flush()?;
         }
@@ -601,17 +848,20 @@ impl Ingest {
         if self.sorted {
             rows.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         }
+        // Vor der Transaktion abgelesen · sie leiht sich `self` aus.
+        let (kept, first_id, last_id) = (self.kept as i64, self.first_id, self.next_id);
 
         let tx = self.conn.transaction().map_err(|e| e.to_string())?;
         {
             let mut insert = tx
                 .prepare_cached(
                     "INSERT OR REPLACE INTO ref_games
-                     (id, white, black, white_elo, black_elo, result, played_at, event, eco, moves)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                     (id, white, black, white_elo, black_elo, result, played_at, event, eco, moves, source_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 )
                 .map_err(|e| e.to_string())?;
-            for (id, game) in self.pending.drain(..) {
+            let source_id = self.source_id;
+            for (id, moves, game) in self.pending.drain(..) {
                 insert
                     .execute(params![
                         id,
@@ -623,7 +873,8 @@ impl Ingest {
                         game.date,
                         game.event,
                         game.eco,
-                        game.sans.join(" "),
+                        moves,
+                        source_id,
                     ])
                     .map_err(|e| e.to_string())?;
             }
@@ -659,12 +910,22 @@ impl Ingest {
                     ])
                     .map_err(|e| e.to_string())?;
             }
+            // Die Sammlungszeile wandert mit jedem Block mit. Sie beschreibt
+            // damit immer genau das, was auch wirklich in der Datei steht —
+            // auch dann, wenn der Lauf gleich danach abbricht oder der Rechner
+            // ausgeht. Stünde sie erst am Ende richtig, wäre alles, was ein
+            // abgestürzter Import hinterlässt, unauffindbar und unlöschbar.
+            tx.execute(
+                "UPDATE ref_sources SET games = ?2, first_id = ?3, last_id = ?4 WHERE id = ?1",
+                params![source_id, kept, first_id, last_id],
+            )
+            .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())
     }
 }
 
-fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64), String> {
+fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64, u64), String> {
     let source = PathBuf::from(&path);
     if !source.exists() {
         return Err(format!("Datei nicht gefunden: {path}"));
@@ -685,8 +946,6 @@ fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64), S
     // temporäre Datei gehen.
     let _ = conn.pragma_update(None, "temp_store", "MEMORY");
 
-    let state = app.state::<RefDbState>();
-    let mut ingest = Ingest::new(conn);
     let mut progress = |games: u64, bytes: u64, phase: &str| {
         let _ = app.emit(
             "refdb://progress",
@@ -694,10 +953,38 @@ fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64), S
                 games,
                 bytes,
                 bytes_total,
+                games_total: 0,
                 phase: phase.into(),
             },
         );
     };
+    let mut scan_progress = |games: u64, games_total: u64, phase: &str| {
+        let _ = app.emit(
+            "refdb://progress",
+            ImportProgress {
+                games,
+                bytes: 0,
+                bytes_total,
+                games_total,
+                phase: phase.into(),
+            },
+        );
+    };
+
+    // Erst den Bestand kennen, dann lesen · siehe `load_hashes`.
+    let known = meta_get(&conn, "games").parse::<u64>().unwrap_or(0);
+    scan_progress(0, known, "scanning");
+    let seen = load_hashes(&conn, known, &mut scan_progress)?;
+
+    let name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&path)
+        .to_string();
+    let source_id = new_source(&conn, &name, &path)?;
+
+    let state = app.state::<RefDbState>();
+    let mut ingest = Ingest::new(conn, source_id, seen);
 
     let (cancelled, skipped) = if is_db3(&source) {
         import_db3(&source, &mut ingest, state, &mut progress)?
@@ -709,22 +996,48 @@ fn run_import(app: &tauri::AppHandle, path: String) -> Result<(u64, i64, u64), S
     ingest.flush()?;
 
     let total = count_and_remember(&ingest.conn);
-    let name = source
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(&path)
-        .to_string();
-    meta_set(&ingest.conn, "source", &name);
-    meta_set(&ingest.conn, "imported_at", &now_secs().to_string());
+    // Eine Sammlung, aus der nichts hereinkam — alles Doppelungen, oder gleich
+    // beim ersten Zug abgebrochen —, hinterlässt keine Zeile. Sie hätte nichts,
+    // was sich später entfernen ließe.
+    if ingest.kept == 0 {
+        let _ = ingest
+            .conn
+            .execute("DELETE FROM ref_sources WHERE id = ?1", params![source_id]);
+    } else {
+        meta_set(&ingest.conn, "source", &name);
+        meta_set(&ingest.conn, "imported_at", &now_secs().to_string());
+    }
     let _ = ingest.conn.pragma_update(None, "synchronous", "NORMAL");
     let _ = ingest.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", []);
     if cancelled {
         // Abgebrochen heißt „behalten, was schon da ist" · genau wie beim
-        // Partien-Import. Ein zweiter Lauf über dieselbe Datei fügt allerdings
-        // erneut hinzu, deshalb sagt es die Oberfläche deutlich.
+        // Partien-Import. Was gelesen wurde, steht als eigene Sammlung da und
+        // lässt sich einzeln wieder entfernen.
         log::info!("Referenz-Import abgebrochen nach {} Partien", ingest.kept);
     }
-    Ok((ingest.kept, total, skipped))
+    Ok((ingest.kept, total, skipped, ingest.duplicates))
+}
+
+/// Legt die Zeile für eine neue Sammlung an und gibt ihre Kennung zurück.
+///
+/// Kennung 0 gehört dem, was vor den Sammlungen eingelesen wurde (siehe
+/// `adopt_legacy`) · neue fangen deshalb bei 1 an.
+fn new_source(conn: &Connection, name: &str, path: &str) -> Result<i64, String> {
+    let next: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(id), 0) + 1 FROM ref_sources",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(1)
+        .max(1);
+    conn.execute(
+        "INSERT INTO ref_sources (id, name, path, games, first_id, last_id, imported_at)
+         VALUES (?1, ?2, ?3, 0, 0, 0, ?4)",
+        params![next, name, path, now_secs()],
+    )
+    .map_err(|e| format!("Sammlung konnte nicht angelegt werden: {e}"))?;
+    Ok(next)
 }
 
 /// Liest eine PGN-Datei (auch zstd-gepackt) ein · `true`, wenn abgebrochen wurde.
@@ -954,6 +1267,7 @@ pub fn refdb_status(app: tauri::AppHandle) -> Result<RefDbStatus, String> {
             imported_at: 0,
             importing,
             path: path.display().to_string(),
+            sources: Vec::new(),
         });
     }
     let conn = open(&path)?;
@@ -969,7 +1283,47 @@ pub fn refdb_status(app: tauri::AppHandle) -> Result<RefDbStatus, String> {
         imported_at: meta_get(&conn, "imported_at").parse().unwrap_or(0),
         importing,
         path: path.display().to_string(),
+        sources: source_list(&conn),
     })
+}
+
+/// Steht diese Datei schon in der Referenzdatenbank?
+///
+/// Die Frage vor dem Import, nicht danach: Ein zweiter Lauf über dieselbe
+/// Sammlung nähme Stunden und brächte am Ende nichts, weil jede einzelne Partie
+/// als Doppelung wieder herausfiele. Verglichen wird der Dateiname und nicht der
+/// Pfad · dieselbe Datei wandert zwischen Ordnern, ohne eine andere zu werden.
+#[tauri::command(async)]
+pub fn refdb_precheck(app: tauri::AppHandle, path: String) -> Result<Option<RefSource>, String> {
+    let target = ref_path(&app)?;
+    if !target.exists() {
+        return Ok(None);
+    }
+    let name = PathBuf::from(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string();
+    if name.is_empty() {
+        return Ok(None);
+    }
+    let conn = open(&target)?;
+    Ok(conn
+        .query_row(
+            "SELECT id, name, path, games, imported_at FROM ref_sources
+             WHERE name = ?1 COLLATE NOCASE",
+            params![name],
+            |r| {
+                Ok(RefSource {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    path: r.get(2)?,
+                    games: r.get(3)?,
+                    imported_at: r.get(4)?,
+                })
+            },
+        )
+        .ok())
 }
 
 #[tauri::command]
@@ -985,9 +1339,9 @@ pub fn refdb_import(app: tauri::AppHandle, path: String) -> Result<(), String> {
         let state = app2.state::<RefDbState>();
         let cancelled = state.cancel.swap(false, Ordering::SeqCst);
         state.importing.store(false, Ordering::SeqCst);
-        let (games, total, skipped, error) = match result {
-            Ok((games, total, skipped)) => (games, total, skipped, None),
-            Err(e) => (0, 0, 0, Some(e)),
+        let (games, total, skipped, duplicates, error) = match result {
+            Ok((games, total, skipped, duplicates)) => (games, total, skipped, duplicates, None),
+            Err(e) => (0, 0, 0, 0, Some(e)),
         };
         let _ = app2.emit(
             "refdb://done",
@@ -995,6 +1349,250 @@ pub fn refdb_import(app: tauri::AppHandle, path: String) -> Result<(), String> {
                 games,
                 total,
                 skipped,
+                duplicates,
+                action: "import".into(),
+                cancelled,
+                error,
+            },
+        );
+    });
+    Ok(())
+}
+
+/// Eine einzelne Sammlung wieder herauslösen.
+///
+/// Das Buch ist eine Bilanz, kein Archiv: In seinen Zeilen steht nur noch, wie
+/// oft ein Zug gewonnen hat, nicht mehr von wem. Eine Sammlung daraus zu
+/// entfernen heißt deshalb, ihre Partien noch einmal abzuspielen und dabei
+/// abzuziehen, was der Import addiert hat — dieselben Zeilen (siehe
+/// `for_each_book_row`), dieselbe Reihenfolge, umgekehrtes Vorzeichen. Zeilen,
+/// die dabei auf null fallen, verschwinden.
+///
+/// Gearbeitet wird blockweise und in Kennungsreihenfolge, und jeder Block
+/// löscht seine Partien in derselben Transaktion, in der er das Buch
+/// verkleinert. Ein Abbruch mittendrin hinterlässt damit keine halbe Bilanz,
+/// sondern eine kleinere Sammlung, die sich beim nächsten Mal zu Ende entfernen
+/// lässt.
+fn run_delete(app: &tauri::AppHandle, id: i64) -> Result<(u64, i64), String> {
+    let target = ref_path(app)?;
+    if !target.exists() {
+        return Err("Keine Referenzdatenbank vorhanden.".into());
+    }
+    let mut conn = open(&target)?;
+    let _ = conn.pragma_update(None, "cache_size", import_cache_kib());
+    let _ = conn.pragma_update(None, "temp_store", "MEMORY");
+
+    let cancel = &app.state::<RefDbState>().cancel;
+    let (removed, cancelled) = shrink_source(&mut conn, id, cancel, &mut |done, total| {
+        let _ = app.emit(
+            "refdb://progress",
+            ImportProgress {
+                games: done,
+                bytes: 0,
+                bytes_total: 0,
+                games_total: total,
+                phase: "removing".into(),
+            },
+        );
+    })?;
+
+    if !cancelled {
+        let _ = conn.execute("DELETE FROM ref_sources WHERE id = ?1", params![id]);
+    }
+    let total_left = count_and_remember(&conn);
+    let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", []);
+    Ok((removed, total_left))
+}
+
+/// Der Rechenteil des Entfernens · ohne Fenster, deshalb prüfbar.
+///
+/// Gibt zurück, wie viele Partien herausgelöst wurden und ob dabei abgebrochen
+/// wurde. Die Sammlungszeile selbst bleibt stehen: Ob sie verschwindet oder als
+/// Rest weiterlebt, entscheidet der Aufrufer.
+fn shrink_source(
+    conn: &mut Connection,
+    id: i64,
+    cancel: &AtomicBool,
+    progress: &mut impl FnMut(u64, u64),
+) -> Result<(u64, bool), String> {
+    let (first_id, last_id, mut left) = conn
+        .query_row(
+            "SELECT first_id, last_id, games FROM ref_sources WHERE id = ?1",
+            params![id],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .map_err(|_| "Diese Sammlung gibt es nicht (mehr).".to_string())?;
+    // Der Bereich, in dem die Musterpartien dieser Sammlung liegen. Er ändert
+    // sich während des Laufs nicht · anders als der Lesezeiger unten.
+    let (range_from, range_to) = (first_id, last_id);
+    let total = left.max(0) as u64;
+
+    let block = flush_games() as i64;
+    let mut cursor = first_id;
+    let mut removed: u64 = 0;
+
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Ok((removed, true));
+        }
+        if cursor > range_to {
+            break;
+        }
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT id, white_elo, black_elo, result, moves FROM ref_games
+                 WHERE id >= ?1 AND id <= ?2 AND source_id = ?3
+                 ORDER BY id LIMIT ?4",
+            )
+            .map_err(|e| e.to_string())?;
+        let games: Vec<(i64, i32, i32, String, String)> = stmt
+            .query_map(params![cursor, range_to, id, block], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1).unwrap_or(0),
+                    r.get(2).unwrap_or(0),
+                    r.get(3).unwrap_or_default(),
+                    r.get(4).unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        drop(stmt);
+        if games.is_empty() {
+            break;
+        }
+        let block_to = games.last().map(|g| g.0).unwrap_or(cursor);
+
+        // Was der Import addiert hat, noch einmal aufsummieren · abgezogen wird
+        // es unten in einem Rutsch.
+        let mut deltas: HashMap<String, BookAgg> = HashMap::new();
+        let mut key = String::new();
+        for (_, white_elo, black_elo, result, moves) in &games {
+            let Some(bucket) = result_bucket(result) else {
+                continue;
+            };
+            let avg = avg_elo(*white_elo, *black_elo);
+            let sans: Vec<String> = moves
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
+            for_each_book_row(&sans, &mut key, |row| {
+                let entry = deltas.entry(row.to_string()).or_default();
+                match bucket {
+                    0 => entry.white += 1,
+                    1 => entry.draws += 1,
+                    _ => entry.black += 1,
+                }
+                if avg > 0 {
+                    entry.elo_sum += avg as i64;
+                    entry.elo_n += 1;
+                }
+            });
+        }
+        // Sortiert wie beim Import · derselbe Weg von links nach rechts durch
+        // den B-Baum, dieselbe Ersparnis.
+        let mut rows: Vec<(String, BookAgg)> = deltas.into_iter().collect();
+        rows.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+        let taken = games.len() as i64;
+        left = (left - taken).max(0);
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        {
+            let mut shrink = tx
+                .prepare_cached(
+                    "UPDATE ref_book SET
+                       white    = white   - ?3,
+                       draws    = draws   - ?4,
+                       black    = black   - ?5,
+                       elo_sum  = elo_sum - ?6,
+                       elo_n    = elo_n   - ?7,
+                       best_elo = CASE WHEN game_id BETWEEN ?8 AND ?9 THEN 0 ELSE best_elo END,
+                       game_id  = CASE WHEN game_id BETWEEN ?8 AND ?9 THEN 0 ELSE game_id END
+                     WHERE fen_key = ?1 AND san = ?2",
+                )
+                .map_err(|e| e.to_string())?;
+            let mut prune = tx
+                .prepare_cached(
+                    "DELETE FROM ref_book
+                     WHERE fen_key = ?1 AND san = ?2 AND white + draws + black <= 0",
+                )
+                .map_err(|e| e.to_string())?;
+            for (key, agg) in rows {
+                let Some((fen_key, san)) = key.split_once(KEY_SEP) else {
+                    continue;
+                };
+                shrink
+                    .execute(params![
+                        fen_key,
+                        san,
+                        agg.white,
+                        agg.draws,
+                        agg.black,
+                        agg.elo_sum,
+                        agg.elo_n,
+                        range_from,
+                        range_to,
+                    ])
+                    .map_err(|e| e.to_string())?;
+                prune
+                    .execute(params![fen_key, san])
+                    .map_err(|e| e.to_string())?;
+            }
+            tx.execute(
+                "DELETE FROM ref_games WHERE id >= ?1 AND id <= ?2 AND source_id = ?3",
+                params![cursor, block_to, id],
+            )
+            .map_err(|e| e.to_string())?;
+            // Der Lesezeiger gehört in die Datenbank und nicht nur in diese
+            // Schleife: Er ist es, der einen Abbruch fortsetzbar macht.
+            tx.execute(
+                "UPDATE ref_sources SET first_id = ?2, games = ?3 WHERE id = ?1",
+                params![id, block_to + 1, left],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+
+        cursor = block_to + 1;
+        removed += taken as u64;
+        progress(removed, total);
+    }
+    Ok((removed, false))
+}
+
+#[tauri::command]
+pub fn refdb_delete_source(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let state = app.state::<RefDbState>();
+    if state.importing.swap(true, Ordering::SeqCst) {
+        return Err("Ein Referenz-Import läuft bereits.".into());
+    }
+    state.cancel.store(false, Ordering::SeqCst);
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let result = run_delete(&app2, id);
+        let state = app2.state::<RefDbState>();
+        let cancelled = state.cancel.swap(false, Ordering::SeqCst);
+        state.importing.store(false, Ordering::SeqCst);
+        let (games, total, error) = match result {
+            Ok((games, total)) => (games, total, None),
+            Err(e) => (0, 0, Some(e)),
+        };
+        let _ = app2.emit(
+            "refdb://done",
+            ImportDone {
+                games,
+                total,
+                skipped: 0,
+                duplicates: 0,
+                action: "delete".into(),
                 cancelled,
                 error,
             },
@@ -1251,7 +1849,7 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
         }
-        let mut ingest = Ingest::new(open(&target).unwrap());
+        let mut ingest = Ingest::new(open(&target).unwrap(), 1, HashSet::new());
 
         let mut white_win = RawGame::empty();
         white_win.result = "1-0".into();
@@ -1299,6 +1897,334 @@ mod tests {
         }
     }
 
+    /// Eine Testdatenbank mit einer eingelesenen Sammlung.
+    fn ingest_source(target: &Path, source_id: i64, name: &str, games: Vec<RawGame>) -> Connection {
+        let conn = open(target).unwrap();
+        let seen = load_hashes(&conn, 0, &mut |_, _, _| {}).unwrap();
+        conn.execute(
+            "INSERT INTO ref_sources (id, name, path, games, first_id, last_id, imported_at)
+             VALUES (?1, ?2, '', 0, 0, 0, 0)",
+            params![source_id, name],
+        )
+        .unwrap();
+        let mut ingest = Ingest::new(conn, source_id, seen);
+        for game in games {
+            ingest.absorb(game).unwrap();
+        }
+        // `flush` schreibt die Sammlungszeile mit · genau wie im Import.
+        ingest.flush().unwrap();
+        count_and_remember(&ingest.conn);
+        ingest.conn
+    }
+
+    fn game(result: &str, white: &str, sans: &[&str]) -> RawGame {
+        let mut g = RawGame::empty();
+        g.result = result.into();
+        g.white = white.into();
+        g.sans = sans.iter().map(|s| (*s).to_string()).collect();
+        g
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let target = std::env::temp_dir().join(format!(
+            "kiebitz-{tag}-{}-{}.sqlite",
+            std::process::id(),
+            now_secs()
+        ));
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
+        target
+    }
+
+    fn cleanup(target: &Path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", target.display()));
+        }
+    }
+
+    /// Dieselbe Partie zweimal · beim zweiten Mal fällt sie heraus.
+    #[test]
+    fn skips_games_that_are_already_there() {
+        let target = scratch("dup");
+        let conn = ingest_source(
+            &target,
+            1,
+            "erste.pgn",
+            vec![
+                game("1-0", "Kasparov", &["e4", "c5"]),
+                game("1-0", "Kasparov", &["e4", "c5"]),
+                game("1-0", "Karpov", &["e4", "c5"]),
+            ],
+        );
+        let stored: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stored, 2, "die Wiederholung zählt nicht");
+        drop(conn);
+
+        // Zweiter Lauf über dieselben Partien, als andere Sammlung: Der
+        // Fingerabdruck kommt jetzt aus dem Bestand und nicht aus dem Lauf.
+        let conn = ingest_source(
+            &target,
+            2,
+            "zweite.pgn",
+            vec![game("1-0", "Kasparov", &["e4", "c5"])],
+        );
+        let stored: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stored, 2, "auch gegen den Bestand wird geprüft");
+        let white: i64 = conn
+            .query_row(
+                "SELECT white FROM ref_book WHERE fen_key = ?1 AND san = 'e4'",
+                params![chess::start_key()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(white, 2, "das Buch zählt keine Doppelung mit");
+        drop(conn);
+        cleanup(&target);
+    }
+
+    /// Eine Sammlung entfernen lässt die andere unversehrt und räumt die
+    /// Buchzeilen weg, die nur ihr gehörten.
+    #[test]
+    fn removes_one_collection_and_keeps_the_other() {
+        let target = scratch("drop");
+        let conn = ingest_source(
+            &target,
+            1,
+            "alt.pgn",
+            vec![
+                game("1-0", "A", &["e4", "c5", "Nf3"]),
+                game("0-1", "B", &["d4", "d5"]),
+            ],
+        );
+        drop(conn);
+        let mut conn = ingest_source(
+            &target,
+            2,
+            "neu.pgn",
+            vec![game("1/2-1/2", "C", &["e4", "e5"])],
+        );
+
+        let start = chess::start_key();
+        let before: (i64, i64, i64) = conn
+            .query_row(
+                "SELECT white, draws, black FROM ref_book WHERE fen_key = ?1 AND san = 'e4'",
+                params![start],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(before, (1, 1, 0), "beide Sammlungen stehen in der Zeile");
+
+        let cancel = AtomicBool::new(false);
+        let (removed, cancelled) = shrink_source(&mut conn, 1, &cancel, &mut |_, _| {}).unwrap();
+        assert_eq!((removed, cancelled), (2, false));
+
+        let after: (i64, i64, i64) = conn
+            .query_row(
+                "SELECT white, draws, black FROM ref_book WHERE fen_key = ?1 AND san = 'e4'",
+                params![start],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(after, (0, 1, 0), "nur noch die verbliebene Partie");
+
+        // Was allein an der entfernten Sammlung hing, ist ganz weg.
+        let d4: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ref_book WHERE fen_key = ?1 AND san = 'd4'",
+                params![start],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(d4, 0, "leere Zeilen bleiben nicht stehen");
+
+        let games: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ref_games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(games, 1, "die Partien der anderen Sammlung bleiben");
+
+        // Die Sammlungszeile beschreibt, was in der Datei steht · sie wird
+        // blockweise mitgeschrieben und nicht erst am Ende.
+        let left: i64 = conn
+            .query_row("SELECT games FROM ref_sources WHERE id = 2", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(left, 1);
+
+        // Die Musterpartie der Zeile darf nicht auf eine gelöschte zeigen.
+        let dangling: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ref_book b
+                 WHERE b.game_id > 0
+                   AND NOT EXISTS (SELECT 1 FROM ref_games g WHERE g.id = b.game_id)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dangling, 0);
+        drop(conn);
+        cleanup(&target);
+    }
+
+    /// Sechs echte Eröffnungslinien · Präfixe daraus überschneiden sich stark
+    /// und erzeugen genau die geteilten Buchzeilen, um die es hier geht.
+    const LINES: [&str; 6] = [
+        "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7",
+        "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6",
+        "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O",
+        "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O",
+        "c4 e5 Nc3 Nf6 Nf3 Nc6 g3 d5 cxd5 Nxd5",
+        "Nf3 d5 g3 Nf6 Bg2 e6 O-O Be7 d3 O-O",
+    ];
+
+    /// `n` Partien, deterministisch aus den Linien oben.
+    fn sample_games(tag: &str, n: usize) -> Vec<RawGame> {
+        (0..n)
+            .map(|i| {
+                let line = LINES[i % LINES.len()];
+                let plies = 4 + (i * 3) % 7;
+                let mut g = RawGame::empty();
+                g.white = format!("{tag}-W{i}");
+                g.black = format!("{tag}-B{i}");
+                g.date = format!("2026.01.{:02}", 1 + i % 28);
+                g.result = match i % 4 {
+                    0 => "1-0",
+                    1 => "0-1",
+                    2 => "1/2-1/2",
+                    // Jede vierte ohne Ergebnis · sie wird gespeichert, zahlt
+                    // aber nicht ins Buch ein. Auch das muss beim Entfernen
+                    // gleich behandelt werden.
+                    _ => "*",
+                }
+                .into();
+                g.white_elo = if i % 3 == 0 {
+                    0
+                } else {
+                    2000 + (i as i32 % 700)
+                };
+                g.black_elo = if i % 5 == 0 {
+                    0
+                } else {
+                    1900 + (i as i32 % 800)
+                };
+                g.sans = line.split(' ').take(plies).map(String::from).collect();
+                g
+            })
+            .collect()
+    }
+
+    /// Die Bilanz des ganzen Buchs · ohne Musterpartie, die das Entfernen
+    /// bewusst zurücksetzt.
+    fn book_snapshot(conn: &Connection) -> Vec<(String, String, i64, i64, i64, i64, i64)> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT fen_key, san, white, draws, black, elo_sum, elo_n
+                 FROM ref_book ORDER BY fen_key, san",
+            )
+            .unwrap();
+        stmt.query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+    }
+
+    /// Der Prüfstein des ganzen Verfahrens.
+    ///
+    /// Das Buch ist eine Bilanz, kein Archiv · eine Sammlung daraus zu
+    /// entfernen heißt, ihre Partien noch einmal abzuspielen und abzuziehen,
+    /// was der Import addiert hat. Ob Addieren und Subtrahieren wirklich
+    /// dieselben Zeilen treffen, sieht man nur am Ergebnis: Was nach dem
+    /// Entfernen dasteht, muss Zeile für Zeile dem gleichen, was ohne die
+    /// entfernte Sammlung von Anfang an dagestanden hätte.
+    #[test]
+    fn removing_a_collection_restores_the_book_it_would_have_been() {
+        // Zwei Sammlungen, dann die zweite wieder heraus.
+        let both = scratch("both");
+        drop_conn(ingest_source(
+            &both,
+            1,
+            "keep.pgn",
+            sample_games("keep", 140),
+        ));
+        let mut conn = ingest_source(&both, 2, "drop.pgn", sample_games("drop", 90));
+        let cancel = AtomicBool::new(false);
+        let (removed, cancelled) = shrink_source(&mut conn, 2, &cancel, &mut |_, _| {}).unwrap();
+        assert_eq!((removed, cancelled), (90, false));
+        let after = book_snapshot(&conn);
+        drop_conn(conn);
+
+        // Dieselbe erste Sammlung allein.
+        let alone = scratch("alone");
+        let conn = ingest_source(&alone, 1, "keep.pgn", sample_games("keep", 140));
+        let expected = book_snapshot(&conn);
+        drop_conn(conn);
+
+        assert!(!expected.is_empty(), "der Vergleich braucht ein Buch");
+        assert_eq!(after, expected);
+        cleanup(&both);
+        cleanup(&alone);
+    }
+
+    /// `Connection::close` gibt es nur als Selbstverbrauch · das liest sich in
+    /// den Tests oben als eine Zeile besser.
+    fn drop_conn(conn: Connection) {
+        drop(conn);
+    }
+
+    /// Was vor den Sammlungen eingelesen wurde, bekommt beim Öffnen eine.
+    #[test]
+    fn adopts_what_was_there_before_collections() {
+        let target = scratch("legacy");
+        {
+            let conn = Connection::open(&target).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE ref_games (
+                    id        INTEGER PRIMARY KEY,
+                    white     TEXT NOT NULL DEFAULT '',
+                    black     TEXT NOT NULL DEFAULT '',
+                    white_elo INTEGER NOT NULL DEFAULT 0,
+                    black_elo INTEGER NOT NULL DEFAULT 0,
+                    result    TEXT NOT NULL DEFAULT '',
+                    played_at TEXT NOT NULL DEFAULT '',
+                    event     TEXT NOT NULL DEFAULT '',
+                    eco       TEXT NOT NULL DEFAULT '',
+                    moves     TEXT NOT NULL DEFAULT ''
+                 );
+                 CREATE TABLE ref_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO ref_meta (key, value) VALUES ('source', 'AJ-COR.db3');
+                 INSERT INTO ref_games (id, result, moves) VALUES (1, '1-0', 'e4 c5');
+                 INSERT INTO ref_games (id, result, moves) VALUES (2, '0-1', 'd4 d5');",
+            )
+            .unwrap();
+        }
+        let conn = open(&target).unwrap();
+        let sources = source_list(&conn);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, 0, "der Altbestand behält seine Kennung");
+        assert_eq!(sources[0].name, "AJ-COR.db3");
+        assert_eq!(
+            sources[0].games, 2,
+            "lückenlose Kennungen zählen sich selbst"
+        );
+        drop(conn);
+        cleanup(&target);
+    }
+
     /// Wie schnell der Import ist · misst den Weg von der fertig gelesenen
     /// Partie bis in die Referenzdatei, also Buchführung und Schreiben.
     ///
@@ -1334,7 +2260,7 @@ mod tests {
         let _ = conn.pragma_update(None, "synchronous", "OFF");
         let _ = conn.pragma_update(None, "cache_size", cache);
         let _ = conn.pragma_update(None, "temp_store", "MEMORY");
-        let mut ingest = Ingest::new(conn);
+        let mut ingest = Ingest::new(conn, 1, HashSet::new());
         ingest.flush_every = flush.max(1);
         ingest.sorted = sorted;
         println!("Puffer {cache} KiB · Block {flush} Partien · sortiert {sorted}");

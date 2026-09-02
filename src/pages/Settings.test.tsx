@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendState } from "../lib/backend";
 import { dbInfo, type Settings } from "../lib/settings";
@@ -7,11 +7,19 @@ import { syncInfo } from "../lib/sync";
 import { legalDocuments } from "../lib/legal";
 import { checkUpdate, installUpdate } from "../lib/updater";
 import { ShellProvider } from "../components/MobileShell";
+import { grantPlus, revokePlus } from "../test/plus";
 import SettingsPage from "./Settings";
 
 const mocks = vi.hoisted(() => ({
   backend: { mode: "pending" } as BackendState,
   getSettings: vi.fn(),
+  setSettings: vi.fn(),
+  refdbStatus: vi.fn(),
+  refdbPrecheck: vi.fn(),
+  refdbImport: vi.fn(),
+  refdbDeleteSource: vi.fn(),
+  lichessToken: vi.fn(),
+  setLichessToken: vi.fn(),
 }));
 
 vi.mock("../lib/backend", () => ({ useBackendInfo: () => mocks.backend }));
@@ -27,7 +35,7 @@ vi.mock("../lib/i18n", async (importOriginal) => ({
 vi.mock("../lib/settings", () => ({
   getSettings: mocks.getSettings,
   refreshSettings: vi.fn(),
-  setSettings: vi.fn(),
+  setSettings: mocks.setSettings,
   dbInfo: vi.fn(() => new Promise(() => {})),
   backupDatabase: vi.fn(),
   factoryReset: vi.fn(),
@@ -40,8 +48,10 @@ vi.mock("../lib/settings", () => ({
   onRefDbProgress: vi.fn(() => Promise.resolve(() => {})),
   refdbCancelImport: vi.fn(),
   refdbClear: vi.fn(),
-  refdbImport: vi.fn(),
-  refdbStatus: vi.fn(() => new Promise(() => {})),
+  refdbDeleteSource: mocks.refdbDeleteSource,
+  refdbImport: mocks.refdbImport,
+  refdbPrecheck: mocks.refdbPrecheck,
+  refdbStatus: mocks.refdbStatus,
   // Reine Helfer · die echten Implementierungen, damit die Trainingstage
   // im Test dasselbe tun wie in der App.
   trainingDayList: (mask: number) =>
@@ -73,6 +83,10 @@ vi.mock("../lib/legal", () => ({
   legalDocuments: vi.fn(() => new Promise(() => {})),
 }));
 vi.mock("../lib/ext", () => ({ openExternal: vi.fn() }));
+vi.mock("../lib/lichess", () => ({
+  lichessToken: mocks.lichessToken,
+  setLichessToken: mocks.setLichessToken,
+}));
 vi.mock("../lib/syncManager", () => ({
   configureAutoSync: vi.fn(),
   useSyncStatus: () => ({ active: false, phase: "idle", lastSync: 0, lastError: null }),
@@ -140,10 +154,159 @@ const androidSettings = {
 
 const sectionLoads = [dbInfo, puzzleStats, syncInfo, legalDocuments].map((fn) => vi.mocked(fn));
 
+const emptyRefdb = {
+  games: 0,
+  positions: 0,
+  size_bytes: 0,
+  source: "",
+  imported_at: 0,
+  importing: false,
+  path: "reference.sqlite",
+  sources: [],
+};
+
 beforeEach(() => {
   mocks.backend = { mode: "pending" };
   mocks.getSettings.mockReset();
+  mocks.setSettings.mockReset();
+  mocks.setSettings.mockImplementation((s: Settings) => Promise.resolve(s));
+  mocks.refdbStatus.mockReset();
+  mocks.refdbStatus.mockResolvedValue(emptyRefdb);
+  mocks.refdbPrecheck.mockReset();
+  mocks.refdbPrecheck.mockResolvedValue(null);
+  mocks.refdbImport.mockReset();
+  mocks.refdbImport.mockResolvedValue(undefined);
+  mocks.refdbDeleteSource.mockReset();
+  mocks.refdbDeleteSource.mockResolvedValue(undefined);
+  mocks.lichessToken.mockReset();
+  mocks.lichessToken.mockResolvedValue(null);
+  mocks.setLichessToken.mockReset();
+  mocks.setLichessToken.mockResolvedValue(undefined);
   sectionLoads.forEach((fn) => fn.mockClear());
+  revokePlus();
+});
+
+/** Die Seite auf dem Desktop, wo jeder Bereich offen steht. */
+async function renderDesktop(settings: Partial<Settings> = {}) {
+  mocks.getSettings.mockResolvedValue({ ...androidSettings, ...settings });
+  mocks.backend = {
+    mode: "desktop",
+    info: { version: "0.6.0", backend: "tauri", platform: "windows" },
+  };
+  await act(async () => {
+    render(<SettingsPage />);
+  });
+}
+
+/**
+ * Der Lichess-Token liegt im Schlüsselspeicher und nicht in den Einstellungen.
+ *
+ * Das war der Grund, aus dem er sich am Speichern vorbeimogelte: Er wurde still
+ * beim Verlassen des Feldes geschrieben, die Leiste „ungespeicherte Änderungen"
+ * bekam ihn nie zu sehen, und wer stattdessen direkt oben auf Speichern klickte,
+ * speicherte alles außer ihm.
+ */
+describe("Lichess token", () => {
+  it("counts as an unsaved change and is written by the save button", async () => {
+    await renderDesktop();
+
+    expect(screen.queryByText("set.dirtyHint")).toBeNull();
+    const field = screen.getByPlaceholderText("lip_…");
+    fireEvent.change(field, { target: { value: "  lip_abc  " } });
+
+    expect(screen.getByText("set.dirtyHint")).toBeTruthy();
+    expect(screen.getByText("set.explorerTokenUnsaved")).toBeTruthy();
+    // Das Feld allein speichert nichts mehr · auch nicht beim Verlassen.
+    fireEvent.blur(field);
+    expect(mocks.setLichessToken).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText("common.save")[0]);
+    });
+
+    expect(mocks.setLichessToken).toHaveBeenCalledWith("lip_abc");
+    expect(screen.queryByText("set.dirtyHint")).toBeNull();
+    expect(screen.getByText("set.explorerTokenSaved")).toBeTruthy();
+  });
+
+  it("does not call a change what was only surrounded by spaces", async () => {
+    mocks.lichessToken.mockResolvedValue("lip_abc");
+    await renderDesktop();
+
+    fireEvent.change(screen.getByPlaceholderText("lip_…"), {
+      target: { value: " lip_abc " },
+    });
+    expect(screen.queryByText("set.dirtyHint")).toBeNull();
+  });
+});
+
+/**
+ * Die Referenzdatenbank als Liste von Sammlungen.
+ *
+ * Vorher gab es nur „alles löschen": Wer eine Sammlung einlas, die er nicht
+ * wollte, musste die andere daneben mitopfern und stundenlang neu einlesen.
+ */
+describe("reference database", () => {
+  const sources = [
+    { id: 2, name: "MillionBase.db3", path: "D:/chess/MillionBase.db3", games: 3_400_000, imported_at: 1_788_000_000 },
+    { id: 0, name: "AJ-COR.db3", path: "", games: 11_905_762, imported_at: 1_780_000_000 },
+  ];
+
+  it("lists every imported file and removes one on its own", async () => {
+    mocks.refdbStatus.mockResolvedValue({
+      ...emptyRefdb,
+      games: 15_305_762,
+      positions: 53_034_369,
+      sources,
+    });
+    await renderDesktop();
+
+    expect(screen.getByText("MillionBase.db3")).toBeTruthy();
+    expect(screen.getByText("AJ-COR.db3")).toBeTruthy();
+
+    // Gefragt wird vorher · das Entfernen läuft danach im Hintergrund.
+    const remove = screen.getAllByText("set.refdbDrop");
+    await act(async () => {
+      fireEvent.click(remove[0]);
+    });
+    expect(mocks.refdbDeleteSource).not.toHaveBeenCalled();
+    expect(screen.getByText("set.refdbDropConfirm")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByText("set.refdbDrop").slice(-1)[0]);
+    });
+    expect(mocks.refdbDeleteSource).toHaveBeenCalledWith(2);
+  });
+
+  it("warns before reading the same file a second time", async () => {
+    grantPlus();
+    mocks.refdbStatus.mockResolvedValue({ ...emptyRefdb, games: 11_905_762, sources });
+    mocks.refdbPrecheck.mockResolvedValue(sources[1]);
+    await renderDesktop();
+
+    // „Importieren" steht auch an der Puzzle-Datenbank · gefragt ist der
+    // Knopf in diesem Bereich.
+    const section = within(
+      document.querySelector<HTMLElement>('[data-settings-section="refdb"]')!
+    );
+    fireEvent.change(section.getByPlaceholderText(/caissabase\.pgn/), {
+      target: { value: "D:/chess/AJ-COR.db3" },
+    });
+    await act(async () => {
+      fireEvent.click(section.getByText("common.import"));
+    });
+
+    // Erst die Warnung, kein Import.
+    expect(mocks.refdbPrecheck).toHaveBeenCalledWith("D:/chess/AJ-COR.db3");
+    expect(mocks.refdbImport).not.toHaveBeenCalled();
+    expect(screen.getByText("set.refdbAlreadyImported")).toBeTruthy();
+
+    // Der zweite Klick ist die Antwort darauf.
+    await act(async () => {
+      fireEvent.click(section.getByText("set.refdbImportAnyway"));
+    });
+    expect(mocks.refdbImport).toHaveBeenCalledWith("D:/chess/AJ-COR.db3");
+  });
 });
 
 describe("Settings loading", () => {

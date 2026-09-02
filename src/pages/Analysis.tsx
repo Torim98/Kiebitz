@@ -75,7 +75,7 @@ import FocusBoard, { FocusButton, FocusMenuItem } from "../components/FocusBoard
 import { PlusBadge, PlusLock } from "../components/PlusLock";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
-import { de, deInt } from "../lib/format";
+import { de, deInt, deShort } from "../lib/format";
 import { openExternal } from "../lib/ext";
 import { evalLabel, winProb } from "../lib/evaluation";
 import { replaySans } from "../lib/position";
@@ -364,6 +364,16 @@ function bookErrorText(error: string, t: TFunc): string {
   return error;
 }
 
+/**
+ * Welcher Reiter beim ersten Mal offen steht.
+ *
+ * ChessDB und nicht Meisterpartien · als einzige der vier Quellen braucht sie
+ * weder Plus noch einen Lichess-Token und antwortet deshalb jedem sofort. Wer
+ * die Analyse zum ersten Mal öffnet, bekam sonst dort, wo eine Auskunft stehen
+ * sollte, die Aufforderung, erst einen Token anzulegen. Die Reiter stehen
+ * daneben und sagen, was es sonst noch gibt; ein Klick genügt, und ab dann
+ * merkt sich das Gerät die Wahl.
+ */
 function readBookSource(): BookTab {
   try {
     const stored = localStorage.getItem(BOOK_SOURCE_KEY);
@@ -373,7 +383,7 @@ function readBookSource(): BookTab {
   } catch {
     /* Storage nicht verfügbar */
   }
-  return "masters";
+  return "engine";
 }
 
 /**
@@ -436,10 +446,21 @@ export default function Analysis({
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [posSearch, setPosSearch] = useState<PositionSearch | null>(null);
-  const [chessdbOn, setChessdbOn] = useState(false);
+  /**
+   * ChessDB · `null`, solange die Einstellungen nicht gelesen sind.
+   *
+   * Zwei Dinge hängen daran und wollen den Zwischenstand verschieden gedeutet
+   * haben: Der Reiter steht schon da (er ist ab Werk an, und auf ihm landet
+   * `readBookSource` beim ersten Öffnen), gefragt wird aber noch nicht. Ein
+   * `false` als Startwert nähme den Reiter für einen Moment weg, ein `true`
+   * schickte eine Anfrage ins Netz für jemanden, der ChessDB abgeschaltet hat.
+   */
+  const [chessdbOn, setChessdbOn] = useState<boolean | null>(null);
   const [playerProfile, setPlayerProfile] = useState({ cc: "", li: "", display: "" });
   const [book, setBook] = useState<ChessDbResult | null>(null);
-  const [bookState, setBookState] = useState<"idle" | "loading" | "error">("idle");
+  // „Wird geladen" und nicht „keine Auskunft": Bis die Einstellungen gelesen
+  // sind, steht noch keine Anfrage · das ist ein Warten und kein Ergebnis.
+  const [bookState, setBookState] = useState<"idle" | "loading" | "error">("loading");
   // Eröffnungsbuch · welche Quelle zuletzt gewählt war, merkt sich das Gerät.
   // Das ist eine Ansichtssache und gehört deshalb nicht in die Einstellungen.
   const [bookSource, setBookSource] = useState<BookTab>(readBookSource);
@@ -834,6 +855,12 @@ export default function Analysis({
     }
   }, [bookSource]);
 
+  // Ohne ChessDB gibt es den Engine-Reiter nicht · dann steht die Karte auf
+  // der Quelle, die sie ohne ihn hätte.
+  useEffect(() => {
+    if (chessdbOn === false && bookSource === "engine") setBookSource("masters");
+  }, [chessdbOn, bookSource]);
+
   // Bestand der Referenzdatenbank · entscheidet, ob der Reiter „Meine
   // Datenbank" etwas zu zeigen hat oder erst auf den Import verweist.
   useEffect(() => {
@@ -894,7 +921,7 @@ export default function Analysis({
 
   // ChessDB-Eröffnungsbuch (entprellt, cache-gestützt im Backend).
   useEffect(() => {
-    if (!desktop || !chessdbOn) return;
+    if (!desktop || chessdbOn !== true) return;
     setBookState("loading");
     let stale = false;
     const timer = setTimeout(() => {
@@ -1274,7 +1301,7 @@ export default function Analysis({
     { id: "masters", label: t("an.bookMasters"), locked: !explorerGate.unlocked },
     { id: "lichess", label: t("an.bookLichess"), locked: !explorerGate.unlocked },
     { id: "own", label: t("an.bookOwn"), locked: !refdbGate.unlocked },
-    ...(chessdbOn
+    ...(chessdbOn !== false
       ? [{ id: "engine" as BookTab, label: t("an.bookEngine"), locked: false }]
       : []),
   ];
@@ -1297,8 +1324,8 @@ export default function Analysis({
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-ink3">
-          <span className="tabular-nums">
-            {t(total === 1 ? "an.bookGames.one" : "an.bookGames.many", { n: deInt(total) })}
+          <span className="shrink-0 tabular-nums" title={deInt(total)}>
+            {t(total === 1 ? "an.bookGames.one" : "an.bookGames.many", { n: deShort(total) })}
           </span>
           {data.opening && <span className="min-w-0 truncate">{data.opening}</span>}
         </div>
@@ -1317,10 +1344,16 @@ export default function Analysis({
                 <span style={{ width: share(m.draws, games), background: "var(--color-draw)" }} />
                 <span style={{ width: share(m.black, games), background: "var(--color-loss)" }} />
               </span>
-              <span className="w-16 shrink-0 text-right text-[11.5px] tabular-nums text-ink2">
-                {deInt(games)}
+              {/* Der Online-Bestand zählt in Milliarden · ausgeschrieben wäre
+                  das eine Zahl, die über die Spalte daneben läuft. Gerundet
+                  passt sie; genau steht sie im Tooltip. */}
+              <span
+                title={deInt(games)}
+                className="w-[68px] shrink-0 truncate text-right text-[11.5px] tabular-nums text-ink2"
+              >
+                {deShort(games)}
               </span>
-              <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-ink3">
+              <span className="w-9 shrink-0 truncate text-right text-[11px] tabular-nums text-ink3">
                 {m.average_rating ?? "—"}
               </span>
             </button>

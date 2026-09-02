@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   setGameNote: vi.fn(),
   setGameTags: vi.fn(),
   getSettings: vi.fn(),
+  chessdbQuery: vi.fn(),
   engineMove: "f1c4",
 }));
 
@@ -34,7 +35,7 @@ vi.mock("../lib/db", () => ({
 }));
 vi.mock("../lib/settings", () => ({
   getSettings: mocks.getSettings,
-  chessdbQuery: vi.fn(),
+  chessdbQuery: mocks.chessdbQuery,
   explorerQuery: mocks.explorerQuery,
   refdbQuery: mocks.refdbQuery,
   refdbGame: mocks.refdbGame,
@@ -159,6 +160,7 @@ beforeEach(() => {
     importing: false,
     path: "",
   });
+  mocks.chessdbQuery.mockResolvedValue({ status: "unknown", moves: [], cached: false });
   mocks.explorerQuery.mockResolvedValue({
     source: "masters",
     status: "unknown",
@@ -577,6 +579,70 @@ describe("Analysis page", () => {
       opening: "Italienisch",
       cached: false,
     };
+
+    /**
+     * Der erste Blick in die Analyse darf keine Fehlermeldung sein.
+     *
+     * Meisterpartien und Online-Bestand hängen beide an einem Lichess-Token,
+     * den zu Anfang niemand hat · stand die Karte dort, las man als Erstes die
+     * Aufforderung, erst einmal einen anzulegen. ChessDB braucht keinen und
+     * antwortet sofort, deshalb steht sie vorn, bis jemand etwas anderes wählt.
+     */
+    it("opens on the engine tab until a source has been chosen", async () => {
+      grantPlus();
+      localStorage.removeItem("kiebitz.book.source");
+      mocks.getSettings.mockResolvedValue({ locale: "de", chessdb_enabled: true });
+      mocks.explorerQuery.mockResolvedValue(mastersAnswer);
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      const engine = await screen.findByRole("button", { name: "Engine" }, { timeout: 3000 });
+      expect(engine.getAttribute("aria-pressed")).toBe("true");
+      // Kein Reiter fragt ungefragt · und der Explorer wird gar nicht erst
+      // angesprochen, solange niemand auf ihn geklickt hat.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(mocks.explorerQuery).not.toHaveBeenCalled();
+
+      // Ein Klick genügt, und ab dann merkt sich das Gerät die Wahl.
+      fireEvent.click(screen.getByRole("button", { name: "Meister" }));
+      await waitFor(() => expect(mocks.explorerQuery).toHaveBeenCalled());
+      expect(localStorage.getItem("kiebitz.book.source")).toBe("masters");
+    });
+
+    /** Ohne ChessDB gibt es den Reiter nicht · dann greift die alte Quelle. */
+    it("falls back to the masters tab when ChessDB is switched off", async () => {
+      grantPlus();
+      localStorage.removeItem("kiebitz.book.source");
+      mocks.explorerQuery.mockResolvedValue(mastersAnswer);
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      const masters = await screen.findByRole("button", { name: "Meister" }, { timeout: 3000 });
+      await waitFor(() => expect(masters.getAttribute("aria-pressed")).toBe("true"));
+      expect(screen.queryByRole("button", { name: "Engine" })).toBeNull();
+    });
+
+    /**
+     * Milliarden passen nicht in eine Spalte, neben der noch der Elo-Schnitt
+     * steht · sie werden gerundet und stehen genau nur noch im Tooltip.
+     */
+    it("shortens counts that would run over the column", async () => {
+      grantPlus();
+      mocks.explorerQuery.mockResolvedValue({
+        ...mastersAnswer,
+        white: 4_000_000_000,
+        draws: 2_000_000_000,
+        black: 1_826_583_724,
+        moves: [
+          { uci: "e2e4", san: "e4", white: 2_400_000_000, draws: 1_100_000_000, black: 1_081_682_673, average_rating: 1605 },
+        ],
+      });
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      const move = await screen.findByTitle("e4 aufs Brett legen", {}, { timeout: 3000 });
+      const count = within(move).getByTitle("4.581.682.673");
+      expect(count.textContent?.replace(/ /g, " ")).toBe("4,6 Mrd.");
+      // Der Elo-Schnitt steht danach unangetastet daneben.
+      expect(move.textContent).toContain("1605");
+    });
 
     it("shows master frequencies and plays a clicked move on the board", async () => {
       grantPlus();
