@@ -70,7 +70,7 @@ export function syncPair(): Promise<PairInfo> {
  * Zerlegt eine gescannte `kiebitz://sync?host=…&code=…`-URI in Host + Code.
  * Gibt `null` zurück, wenn es kein Kiebitz-Pairing-Link ist.
  */
-export function parsePairUri(raw: string): { host: string; code: string; fingerprint: string } | null {
+function parsePairUri(raw: string): { host: string; code: string; fingerprint: string } | null {
   const s = raw.trim();
   if (!s.toLowerCase().startsWith("kiebitz://sync")) return null;
   const q = s.indexOf("?");

@@ -47,9 +47,6 @@ export function forgetPages(): void {
   stateByKey.clear();
 }
 
-/** Nur für Tests · setzt beide Gedächtnisse zurück. */
-export const resetPageMemoryForTests = forgetPages;
-
 /** Der Ausschnitt eines Scroll-Containers, den wir wirklich brauchen. */
 export type ScrollBox = Pick<
   HTMLElement,

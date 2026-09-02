@@ -98,12 +98,6 @@ export function subscribePlus(listener: (next: PlusState) => void): () => void {
     listeners.delete(listener);
   };
 }
-
-/** Aktive Sitzung · nur innerhalb dieses Moduls und für Tests interessant. */
-export function currentSessionToken(): string | null {
-  return sessionToken;
-}
-
 function cancelReturnPolling(): void {
   returnTimers.forEach((timer) => clearTimeout(timer));
   returnTimers = [];

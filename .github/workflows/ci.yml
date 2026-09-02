@@ -41,6 +41,12 @@ jobs:
       - name: Figurenzeichnungen prüfen
         run: npm run pieces:check
 
+      # Die eingefrorenen Testvektoren des Share-Formats. Sie sind die einzige
+      # Prüfung, die App und Worker *wirkend* vergleicht · das Spiegeln der
+      # Datei (share:check) meldet nur, dass beide Kopien gleich aussehen.
+      - name: Testvektoren des Share-Formats prüfen
+        run: npm run vectors:check
+
       # npm run build führt TypeScript und Vite genau einmal aus.
       - name: Typecheck und Produktionsbundle bauen
         run: npm run build

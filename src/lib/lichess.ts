@@ -46,9 +46,3 @@ export async function setLichessToken(value: string): Promise<void> {
     cached = null;
   }
 }
-
-/** Nur für Tests · zwingt das nächste Lesen zurück in den Speicher. */
-export function resetLichessTokenCache(): void {
-  cached = undefined;
-  request = null;
-}

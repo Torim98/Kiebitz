@@ -32,7 +32,11 @@ export class EntitlementTokenError extends Error {
 }
 
 /** Base64url ohne Padding → Bytes. */
-export function base64UrlToBytes(value: string): Uint8Array {
+// `Uint8Array<ArrayBuffer>` statt nur `Uint8Array`: Seit TypeScript 5.7 ist
+// der Typ über seinen Puffer generisch, und die Vorgabe `ArrayBufferLike`
+// schließt `SharedArrayBuffer` ein · den nimmt WebCrypto nicht entgegen.
+// Hier wird immer ein gewöhnlicher Puffer angelegt; das steht jetzt auch da.
+export function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(padded);

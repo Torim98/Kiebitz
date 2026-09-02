@@ -33,7 +33,7 @@ const GAP = 2.5;
  * Wer über das Ziel hinaus trainiert hat, füllt den Ring und bekommt die
  * Zielmarke als Strich daneben · gestaucht wäre der Ring eine Bestrafung.
  */
-export function WeekRing({ budget }: { budget: WeekBudget }) {
+function WeekRing({ budget }: { budget: WeekBudget }) {
   const { t } = useI18n();
   const scale = Math.max(budget.target, budget.minutes, 1);
   const filled = budget.byArea.filter((entry) => entry.minutes > 0);

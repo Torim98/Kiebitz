@@ -42,7 +42,7 @@ const bareSan = (san: string) => san.replace(/[+#]/g, "");
  * überlegt, hat sie gerade noch zusammenbekommen. Genau diesen Unterschied
  * verarbeitet FSRS, und ohne ihn liefen alle Karten im selben Takt.
  */
-export function gradeForAnswer(elapsedMs: number): 1 | 2 | 3 | 4 {
+function gradeForAnswer(elapsedMs: number): 1 | 2 | 3 | 4 {
   if (elapsedMs <= EASY_MS) return 4;
   if (elapsedMs <= HARD_MS) return 3;
   return 2;
@@ -52,7 +52,7 @@ export function gradeForAnswer(elapsedMs: number): 1 | 2 | 3 | 4 {
  * Umwandlungsfigur aus den erwarteten Antworten · sonst wäre jede Linie, die
  * nicht in eine Dame umwandelt, unbeantwortbar.
  */
-export function promotionFor(answers: { san: string }[]): "q" | "r" | "b" | "n" {
+function promotionFor(answers: { san: string }[]): "q" | "r" | "b" | "n" {
   for (const answer of answers) {
     const match = /=([QRBN])/.exec(answer.san);
     if (match) return match[1].toLowerCase() as "q" | "r" | "b" | "n";

@@ -732,7 +732,7 @@ export function buildFindings(deep: DeepInsights, live: LiveInsights): Finding[]
  * mal Häufigkeit. Je Farbe höchstens eine · sonst besteht die Liste am Ende
  * nur noch aus Eröffnungen.
  */
-export function weakestFamilies(
+function weakestFamilies(
   families: OpeningFamily[],
   baseline: number,
   minGames = 8,

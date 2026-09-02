@@ -1,4 +1,5 @@
 import { configure } from "@testing-library/dom";
+import { loadLocale } from "../lib/locales/registry";
 
 /**
  * Test-Setup: füllt Browser-APIs auf, die jsdom nicht mitbringt.
@@ -15,6 +16,16 @@ import { configure } from "@testing-library/dom";
 // React-Effekte und Lazy-Imports gelegentlich länger als die voreingestellte
 // Sekunde, obwohl sie korrekt abschließen.
 configure({ asyncUtilTimeout: 5_000 });
+
+// Deutsch ist ein nachgeladenes Sprachpaket (siehe lib/locales/registry.ts).
+// Die Tests prüfen deutsche Oberflächentexte und tun das synchron gleich nach
+// `render`; einmal vorab geholt, findet der Provider das Wörterbuch schon vor
+// und beginnt in der richtigen Sprache statt für einen Bildaufbau in Englisch.
+//
+// Bewusst aus der Registry und nicht aus `lib/i18n`: Über den Provider hinge
+// hier die Tauri-Brücke mit drin, und ein Testfile, das sie ersetzt, käme zu
+// spät.
+await loadLocale("de");
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = (query: string): MediaQueryList =>

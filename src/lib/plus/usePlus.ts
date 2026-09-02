@@ -5,7 +5,7 @@
  * beantwortet die einzige Frage, die die Seiten stellen: Ist diese Funktion
  * freigeschaltet, und wenn nicht, wie erkläre ich das.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   featureUnlocked,
   initPlus,
@@ -102,9 +102,4 @@ export function usePlusGate(feature: PlusFeature): FeatureGate {
     pending: plus.loading,
     plus,
   };
-}
-
-/** Aktualisierung von Hand · für den Knopf in den Einstellungen. */
-export function usePlusRefresh(): () => Promise<void> {
-  return useCallback(() => refreshEntitlement({ force: true }), []);
 }
