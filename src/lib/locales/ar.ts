@@ -885,7 +885,7 @@ export const ar: Record<Key, string> = {
   "set.engineTest": "اختبار",
   "set.engineOk": "سليم: {name}",
   "set.engineFail": "خطأ: {name}",
-  "set.threads": "الخيوط (0 = تلقائي)",
+  "set.threads": "محرّكات التحليل (0 = تلقائي)",
   "set.hash": "ذاكرة التجزئة (م.بايت)",
   "set.multipv": "عدد الخطوط (MultiPV)",
   "set.liveDepth": "عمق التحليل المباشر",

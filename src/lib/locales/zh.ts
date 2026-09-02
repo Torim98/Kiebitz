@@ -885,7 +885,7 @@ export const zh: Record<Key, string> = {
   "set.engineTest": "测试",
   "set.engineOk": "正常：{name}",
   "set.engineFail": "错误：{name}",
-  "set.threads": "线程数（0 = 自动）",
+  "set.threads": "分析引擎数（0 = 自动）",
   "set.hash": "置换表（MB）",
   "set.multipv": "变着数（MultiPV）",
   "set.liveDepth": "实时分析深度",

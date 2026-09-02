@@ -885,7 +885,7 @@ export const hi: Record<Key, string> = {
   "set.engineTest": "जाँचें",
   "set.engineOk": "ठीक: {name}",
   "set.engineFail": "त्रुटि: {name}",
-  "set.threads": "थ्रेड (0 = स्वतः)",
+  "set.threads": "विश्लेषण इंजन (0 = स्वतः)",
   "set.hash": "हैश (MB)",
   "set.multipv": "लाइनें (MultiPV)",
   "set.liveDepth": "सजीव विश्लेषण की गहराई",

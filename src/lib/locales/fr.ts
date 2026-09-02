@@ -885,7 +885,7 @@ export const fr: Record<Key, string> = {
   "set.engineTest": "Tester",
   "set.engineOk": "OK : {name}",
   "set.engineFail": "Erreur : {name}",
-  "set.threads": "Fils d'exécution (0 = automatique)",
+  "set.threads": "Moteurs d'analyse (0 = automatique)",
   "set.hash": "Table de hachage (Mo)",
   "set.multipv": "Variantes (MultiPV)",
   "set.liveDepth": "Profondeur de l'analyse en direct",

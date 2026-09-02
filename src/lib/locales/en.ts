@@ -892,7 +892,7 @@ export const en: Record<Key, string> = {
   "set.engineTest": "Test",
   "set.engineOk": "OK: {name}",
   "set.engineFail": "Error: {name}",
-  "set.threads": "Threads (0 = automatic)",
+  "set.threads": "Analysis engines (0 = automatic)",
   "set.hash": "Hash (MB)",
   "set.multipv": "Lines (MultiPV)",
   "set.liveDepth": "Live analysis depth",

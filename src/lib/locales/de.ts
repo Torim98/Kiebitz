@@ -910,7 +910,7 @@ export const de = {
   "set.engineTest": "Testen",
   "set.engineOk": "OK: {name}",
   "set.engineFail": "Fehler: {name}",
-  "set.threads": "Threads (0 = automatisch)",
+  "set.threads": "Analyse-Engines (0 = automatisch)",
   "set.hash": "Hash (MB)",
   "set.multipv": "Varianten (MultiPV)",
   "set.liveDepth": "Tiefe Live-Analyse",

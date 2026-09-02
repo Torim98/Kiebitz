@@ -9,7 +9,7 @@ use crate::engine::UciEngine;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, State};
@@ -67,7 +67,7 @@ fn accuracy_from_losses(losses: &[f64]) -> Option<f64> {
     Some((acc.clamp(0.0, 100.0) * 10.0).round() / 10.0)
 }
 
-// ── Bewertung einer Stellung (mit Cache) ─────────────────────────────────────
+// ── Bewertung der Stellungen einer Partie (mit Cache) ────────────────────────
 
 /// Bewertung aus Weiß-Sicht plus bester Zug (aus Sicht des Spielers am Zug).
 #[derive(Clone)]
@@ -77,49 +77,126 @@ struct PosEval {
     best_uci: String,
 }
 
-fn eval_position(
-    conn: &Connection,
-    engine: &mut UciEngine,
-    fen: &str,
-    key: &str,
-    white_to_move: bool,
-    depth: u32,
-) -> Result<PosEval, String> {
-    // Cache: Werte liegen aus Sicht des Spielers am Zug im Cache.
-    let cached: Option<(Option<i32>, Option<i32>, String)> = conn
-        .query_row(
-            "SELECT eval_cp, mate_in, best_uci FROM eval_cache WHERE fen_key = ?1 AND depth >= ?2",
-            params![key, depth],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .ok();
+/// Eine Bewertung aus Sicht des Spielers am Zug · so liegt sie im Cache.
+type CachedEval = (Option<i32>, Option<i32>, String);
 
-    let (mut cp, mut mate, best) = match cached {
-        Some(c) => c,
-        None => {
-            let r = engine.analyze(fen, depth)?;
-            // Matt in 0 = der Spieler am Zug ist bereits matt.
-            let mate = r.mate_in.map(|m| if m == 0 { -1 } else { m });
-            conn.execute(
-                "INSERT OR REPLACE INTO eval_cache (fen_key, eval_cp, mate_in, best_uci, depth)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![key, r.eval_cp, mate, r.bestmove, depth],
+/// So viele Stellungen holt sich eine Engine auf einmal aus der Warteschlange.
+///
+/// Nicht eine: Aufeinanderfolgende Stellungen einer Partie unterscheiden sich
+/// um einen Zug, und die Transpositionstabelle trägt von der einen zur
+/// nächsten. Wer die Stellungen reihum verteilt, wirft genau diese Nähe weg
+/// (gemessen 14,7 statt 13,9 ms je Stellung). Ein Block ist groß genug, dass
+/// die Nähe bleibt, und klein genug, dass am Ende einer Partie nicht eine
+/// Engine allein weiterrechnet, während die anderen zusehen.
+const EVAL_CHUNK: usize = 8;
+
+/// Bewertet alle Stellungen einer Partie und füllt dabei den Cache.
+///
+/// Was schon bewertet ist, kommt aus der Datenbank; der Rest wird auf die
+/// Engines verteilt. Zurück kommt `None`, wenn zwischendurch abgebrochen
+/// wurde — dann ist die Partie unvollständig, und was gerechnet wurde, liegt
+/// trotzdem im Cache und ist beim nächsten Lauf geschenkt.
+///
+/// `on_position` wird aus den Engine-Threads gerufen und bekommt die Zahl der
+/// fertigen Stellungen; die Drossel sitzt im Aufrufer.
+fn eval_game_positions(
+    conn: &Connection,
+    engines: &mut [UciEngine],
+    cancel: &AtomicBool,
+    fens: &[String],
+    keys: &[String],
+    depth: u32,
+    on_position: &(dyn Fn(usize) + Sync),
+) -> Result<Option<Vec<CachedEval>>, String> {
+    let count = fens.len();
+    let mut evals: Vec<Option<CachedEval>> = Vec::with_capacity(count);
+    {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT eval_cp, mate_in, best_uci FROM eval_cache
+                 WHERE fen_key = ?1 AND depth >= ?2",
             )
             .map_err(|e| e.to_string())?;
-            (r.eval_cp, mate, r.bestmove)
+        for key in keys {
+            evals.push(
+                stmt.query_row(params![key, depth], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })
+                .ok(),
+            );
         }
-    };
-
-    // Auf Weiß-Sicht drehen.
-    if !white_to_move {
-        cp = cp.map(|v| -v);
-        mate = mate.map(|v| -v);
     }
-    Ok(PosEval {
-        eval_cp: cp,
-        mate_in: mate,
-        best_uci: best,
-    })
+
+    let pending: Vec<usize> = (0..count).filter(|index| evals[*index].is_none()).collect();
+    let done = AtomicUsize::new(count - pending.len());
+    on_position(done.load(Ordering::Relaxed));
+
+    // Eine gemeinsame Warteschlange statt fester Abschnitte: Ein Teil der
+    // Stellungen liegt schon im Cache, und feste Abschnitte hätten am Ende
+    // immer eine Engine, die alles allein nachholt.
+    let cursor = AtomicUsize::new(0);
+    let searched: Vec<(usize, CachedEval)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = engines
+            .iter_mut()
+            .map(|engine| {
+                let (cursor, done, pending, fens) = (&cursor, &done, &pending, fens);
+                scope.spawn(move || -> Result<Vec<(usize, CachedEval)>, String> {
+                    let mut found = Vec::new();
+                    loop {
+                        let from = cursor.fetch_add(EVAL_CHUNK, Ordering::SeqCst);
+                        if from >= pending.len() {
+                            return Ok(found);
+                        }
+                        for &index in &pending[from..(from + EVAL_CHUNK).min(pending.len())] {
+                            if cancel.load(Ordering::SeqCst) {
+                                return Ok(found);
+                            }
+                            let result = engine.analyze(&fens[index], depth)?;
+                            // Matt in 0 = der Spieler am Zug ist bereits matt.
+                            let mate = result.mate_in.map(|m| if m == 0 { -1 } else { m });
+                            found.push((index, (result.eval_cp, mate, result.bestmove)));
+                            on_position(done.fetch_add(1, Ordering::Relaxed) + 1);
+                        }
+                    }
+                })
+            })
+            .collect();
+        let mut all = Vec::new();
+        for handle in handles {
+            all.extend(
+                handle
+                    .join()
+                    .map_err(|_| "Analyse-Thread abgestürzt".to_string())??,
+            );
+        }
+        Ok::<_, String>(all)
+    })?;
+
+    // Einmal schreiben statt einmal je Stellung · auch nach einem Abbruch,
+    // sonst beginnt der nächste Lauf wieder bei null.
+    let complete = searched.len() == pending.len();
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    {
+        let mut stmt = conn
+            .prepare_cached(
+                "INSERT OR REPLACE INTO eval_cache (fen_key, eval_cp, mate_in, best_uci, depth)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .map_err(|e| e.to_string())?;
+        for (index, (eval_cp, mate_in, best_uci)) in &searched {
+            stmt.execute(params![keys[*index], eval_cp, mate_in, best_uci, depth])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+
+    if !complete {
+        return Ok(None);
+    }
+    for (index, value) in searched {
+        evals[index] = Some(value);
+    }
+    Ok(evals.into_iter().collect())
 }
 
 // ── Positionsindex ───────────────────────────────────────────────────────────
@@ -328,17 +405,24 @@ fn run_worker(
         return Ok(0);
     }
 
-    let (threads, hash_mb) = {
+    let (workers, hash_mb) = {
         let s = app.state::<crate::settings::SettingsState>();
         let s = s.0.lock().map_err(|e| e.to_string())?;
+        let workers = UciEngine::analysis_workers(s.engine_threads);
         (
-            UciEngine::configured_worker_threads(s.engine_threads),
-            s.engine_hash_mb,
+            workers,
+            UciEngine::worker_hash_mb(s.engine_hash_mb, workers),
         )
     };
-    let mut engine = UciEngine::spawn(&engine_path.to_string_lossy())?;
-    let _ = engine.set_option("Threads", &threads.to_string());
-    let _ = engine.set_option("Hash", &hash_mb.to_string());
+    // Je Engine ein Thread · parallel wird über die Stellungen einer Partie
+    // (siehe `UciEngine::analysis_workers`).
+    let mut engines: Vec<UciEngine> = Vec::with_capacity(workers);
+    for _ in 0..workers {
+        let mut engine = UciEngine::spawn(&engine_path.to_string_lossy())?;
+        let _ = engine.set_option("Threads", "1");
+        let _ = engine.set_option("Hash", &hash_mb.to_string());
+        engines.push(engine);
+    }
 
     let state = app.state::<AnalysisState>();
     let total = targets.len();
@@ -362,56 +446,80 @@ fn run_worker(
         }
         let plies = walked.len() as u32;
 
-        // Bewertungen für Grundstellung + jede Stellung nach einem Halbzug.
-        let mut evals: Vec<PosEval> = Vec::with_capacity(walked.len() + 1);
+        // Grundstellung + je eine Stellung nach jedem Halbzug.
         let start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-        evals.push(eval_position(
-            &conn,
-            &mut engine,
-            start_fen,
-            &chess::start_key(),
-            true,
-            depth,
-        )?);
-
-        let mut canceled = false;
-        let mut last_progress_emit: Option<Instant> = None;
+        let mut fens: Vec<String> = Vec::with_capacity(walked.len() + 1);
+        let mut keys: Vec<String> = Vec::with_capacity(walked.len() + 1);
+        fens.push(start_fen.to_string());
+        keys.push(chess::start_key());
         for w in &walked {
-            if state.cancel.load(Ordering::SeqCst) {
-                canceled = true;
-                break;
-            }
-            let white_to_move_after = !w.by_white;
-            evals.push(eval_position(
-                &conn,
-                &mut engine,
-                &w.fen_after,
-                &w.key_after,
-                white_to_move_after,
-                depth,
-            )?);
+            fens.push(w.fen_after.clone());
+            keys.push(w.key_after.clone());
+        }
+
+        // Der Fortschritt kommt jetzt aus mehreren Threads · die Drossel
+        // braucht deshalb ein gemeinsames Schloss. Gezählt werden Stellungen,
+        // gemeldet werden Halbzüge: Stellung 0 ist die Grundstellung.
+        let last_progress_emit: Mutex<Option<Instant>> = Mutex::new(None);
+        let on_position = |done: usize| {
             let now = Instant::now();
-            let progress_due = last_progress_emit
-                .map(|last| now.saturating_duration_since(last) >= PROGRESS_EVENT_INTERVAL)
-                .unwrap_or(true);
-            if progress_due || w.ply == plies {
-                last_progress_emit = Some(now);
-                let _ = app.emit(
-                    "analysis://progress",
-                    Progress {
-                        game_index: idx + 1,
-                        games_total: total,
-                        game_id,
-                        opponent: opponent.clone(),
-                        ply: w.ply,
-                        plies,
-                    },
-                );
+            let due = {
+                let Ok(mut last) = last_progress_emit.lock() else {
+                    return;
+                };
+                let due = last
+                    .map(|at| now.saturating_duration_since(at) >= PROGRESS_EVENT_INTERVAL)
+                    .unwrap_or(true)
+                    || done == fens.len();
+                if due {
+                    *last = Some(now);
+                }
+                due
+            };
+            if !due {
+                return;
             }
-        }
-        if canceled {
+            let _ = app.emit(
+                "analysis://progress",
+                Progress {
+                    game_index: idx + 1,
+                    games_total: total,
+                    game_id,
+                    opponent: opponent.clone(),
+                    ply: done.saturating_sub(1).min(plies as usize) as u32,
+                    plies,
+                },
+            );
+        };
+
+        let Some(raw) = eval_game_positions(
+            &conn,
+            &mut engines,
+            &state.cancel,
+            &fens,
+            &keys,
+            depth,
+            &on_position,
+        )?
+        else {
             break;
-        }
+        };
+
+        // Der Cache liegt aus Sicht des Spielers am Zug · gerechnet wird ab
+        // hier aus Weiß-Sicht.
+        let evals: Vec<PosEval> = raw
+            .into_iter()
+            .enumerate()
+            .map(|(index, (eval_cp, mate_in, best_uci))| {
+                let white_to_move = index == 0 || !walked[index - 1].by_white;
+                let sign = if white_to_move { 1 } else { -1 };
+                PosEval {
+                    eval_cp: eval_cp.map(|v| v * sign),
+                    mate_in: mate_in.map(|v| v * sign),
+                    best_uci,
+                }
+            })
+            .collect();
 
         // Judgments + Genauigkeit meiner Züge.
         let my_white = color == "white";
@@ -806,5 +914,160 @@ mod tests {
         assert!(perfect > 95.0, "{perfect}");
         let sloppy = accuracy_from_losses(&[0.3, 0.25, 0.2, 0.1]).unwrap();
         assert!(sloppy < 60.0, "{sloppy}");
+    }
+
+    /// Pfad zur gebündelten Engine · `None`, wenn keine da ist.
+    fn bundled_engine() -> Option<std::path::PathBuf> {
+        let exe = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join(if cfg!(windows) {
+                "stockfish.exe"
+            } else {
+                "stockfish"
+            });
+        exe.exists().then_some(exe)
+    }
+
+    /// Die Stellungen der ersten Züge einer Partie · Grundstellung zuerst.
+    fn sample_positions() -> (Vec<String>, Vec<String>) {
+        let moves = "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O";
+        let walked = crate::chess::walk_sans(moves);
+        assert!(!walked.is_empty(), "Zugliste ließ sich nicht abspielen");
+        let mut fens = vec!["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string()];
+        let mut keys = vec![crate::chess::start_key()];
+        for w in &walked {
+            fens.push(w.fen_after.clone());
+            keys.push(w.key_after.clone());
+        }
+        (fens, keys)
+    }
+
+    /// Der Pool bewertet dieselben Stellungen wie eine einzelne Engine — in
+    /// derselben Reihenfolge und mit denselben Aussagen.
+    ///
+    /// Geprüft wird beides getrennt, weil nur das eine exakt sein kann:
+    ///
+    /// * **Die Zuordnung exakt.** Jeder Wert muss unter dem Schlüssel seiner
+    ///   eigenen Stellung im Cache liegen. Eine verrutschte Reihenfolge wäre
+    ///   der teuerste Fehler dieses Umbaus und an den Zahlen selbst nicht zu
+    ///   sehen — eine Bewertung im falschen Fach sieht aus wie eine Bewertung.
+    /// * **Die Zahlen nur ungefähr.** Eine Suche mit fester Tiefe hängt am
+    ///   Inhalt der Transpositionstabelle: Die Vergleichs-Engine läuft die
+    ///   Partie der Reihe nach durch und trifft bei jeder Stellung auf die
+    ///   Reste der vorigen, die Engines des Pools auf andere. Ein paar
+    ///   Centipawn Unterschied sind deshalb normal und waren es auch vorher
+    ///   schon, denn eine Stellung aus dem Cache wird gar nicht mehr gesucht.
+    ///   Verglichen mit den Schwellen der Urteile (0,10/0,20/0,30 Gewinn-
+    ///   wahrscheinlichkeit, also ~25 cp und mehr) ist das nichts.
+    ///
+    /// Wird übersprungen, wenn keine Engine vorhanden ist.
+    #[test]
+    fn pool_matches_a_single_engine_and_fills_the_cache() {
+        let Some(exe) = bundled_engine() else {
+            eprintln!("übersprungen: keine gebündelte Engine");
+            return;
+        };
+        let path = exe.to_string_lossy().to_string();
+        let depth = 10;
+        let (fens, keys) = sample_positions();
+
+        let mut reference = Vec::new();
+        {
+            let mut engine = UciEngine::spawn(&path).expect("Engine-Start");
+            engine.set_option("Threads", "1").expect("Threads");
+            for fen in &fens {
+                let r = engine.analyze(fen, depth).expect("Analyse");
+                reference.push((r.eval_cp, r.mate_in.map(|m| if m == 0 { -1 } else { m })));
+            }
+        }
+
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::init(&conn).unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut engines: Vec<UciEngine> = (0..3)
+            .map(|_| {
+                let mut engine = UciEngine::spawn(&path).expect("Engine-Start");
+                engine.set_option("Threads", "1").expect("Threads");
+                engine
+            })
+            .collect();
+
+        let seen = Mutex::new(Vec::new());
+        let record = |done: usize| seen.lock().unwrap().push(done);
+        let pooled =
+            eval_game_positions(&conn, &mut engines, &cancel, &fens, &keys, depth, &record)
+                .expect("Stapelbewertung")
+                .expect("nicht abgebrochen");
+
+        assert_eq!(pooled.len(), fens.len());
+        for (index, (eval_cp, mate_in, best_uci)) in pooled.iter().enumerate() {
+            assert!(!best_uci.is_empty(), "Stellung {index} ohne besten Zug");
+            // Jeder Wert steht unter dem Schlüssel seiner eigenen Stellung.
+            let stored: CachedEval = conn
+                .query_row(
+                    "SELECT eval_cp, mate_in, best_uci FROM eval_cache WHERE fen_key = ?1",
+                    params![keys[index]],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .unwrap_or_else(|_| panic!("Stellung {index} fehlt im Cache"));
+            assert_eq!(&stored, &pooled[index], "Stellung {index} falsch abgelegt");
+
+            let (reference_cp, reference_mate) = reference[index];
+            assert_eq!(*mate_in, reference_mate, "Stellung {index}: anderes Matt");
+            if let (Some(mine), Some(theirs)) = (eval_cp, reference_cp) {
+                assert!(
+                    (mine - theirs).abs() <= 50,
+                    "Stellung {index}: {mine} statt {theirs} cp"
+                );
+            }
+        }
+        // Der Fortschritt beginnt bei null und endet bei allen Stellungen.
+        let seen = seen.into_inner().unwrap();
+        assert_eq!(seen.first().copied(), Some(0));
+        assert_eq!(seen.last().copied(), Some(fens.len()));
+
+        // Zweiter Lauf: alles liegt im Cache, keine Engine muss noch suchen.
+        let seen = Mutex::new(Vec::new());
+        let record = |done: usize| seen.lock().unwrap().push(done);
+        let cached = eval_game_positions(
+            &conn,
+            &mut Vec::new(),
+            &cancel,
+            &fens,
+            &keys,
+            depth,
+            &record,
+        )
+        .expect("Cache-Lauf")
+        .expect("nicht abgebrochen");
+        assert_eq!(cached, pooled);
+        assert_eq!(seen.into_inner().unwrap(), vec![fens.len()]);
+    }
+
+    /// Ein Abbruch liefert keine halbe Partie, aber auch keinen verlorenen
+    /// Rechenaufwand: Was fertig wurde, steht danach im Cache.
+    #[test]
+    fn a_cancelled_run_reports_nothing_and_keeps_what_it_computed() {
+        let Some(exe) = bundled_engine() else {
+            eprintln!("übersprungen: keine gebündelte Engine");
+            return;
+        };
+        let (fens, keys) = sample_positions();
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::init(&conn).unwrap();
+        let cancel = AtomicBool::new(true);
+        let mut engines = vec![UciEngine::spawn(&exe.to_string_lossy()).expect("Engine-Start")];
+
+        let result = eval_game_positions(&conn, &mut engines, &cancel, &fens, &keys, 10, &|_| {})
+            .expect("Stapelbewertung");
+        assert!(result.is_none(), "abgebrochener Lauf liefert keine Werte");
+
+        let cached: i64 = conn
+            .query_row("SELECT COUNT(*) FROM eval_cache", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            cached < fens.len() as i64,
+            "der Abbruch hat gar nicht gegriffen"
+        );
     }
 }

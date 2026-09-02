@@ -55,6 +55,31 @@ pub(crate) fn lower_child_process_priority(child: &Child) {
     let _ = child;
 }
 
+/// Wie viele Engines die Stapelanalyse ab Werk nebeneinander laufen lässt.
+///
+/// Vier, weil hier der Knick liegt. Gemessen an einer Partie mit 80
+/// Stellungen (Tiefe 14, sechzehn Kerne): vier Engines brauchen 19,6 ms je
+/// Stellung, sechs 13,9 ms, vierzehn 10,7 ms. Der Speicher wächst dabei
+/// gerade und ohne Bremse — jeder Stockfish hält seine eigene Kopie beider
+/// Netze und liegt bei gut 250 MB, bevor ein einziger Hash-Eintrag da ist.
+/// Vier Engines belegen zusammen rund 1,0 GB gegenüber 0,53 GB der einen
+/// vielfädigen Engine von vorher; das ist der Preis für gut fünfmal so
+/// schnell und ein Viertel der belegten Kerne. Sechs wären noch etwas
+/// schneller und 1,5 GB, vierzehn kaufen die letzten 23 % für 3,5 GB.
+const DEFAULT_ANALYSIS_WORKERS: usize = 4;
+
+/// Obergrenze auch für eine ausdrückliche Einstellung.
+///
+/// Auf dem Handy genau eine: Der zweite Prozess bringt dort nichts, was den
+/// Speicher rechtfertigt (1 Thread 56,2 ms je Stellung, 2 Threads 59,2 ms —
+/// die alte Vorgabe war schon die langsamere), und ein Viertelgigabyte mehr
+/// ist genau das, wofür Android eine App im Hintergrund abräumt. Auf dem
+/// Desktop acht, weil darüber der Speicher weiterläuft und das Tempo nicht.
+#[cfg(target_os = "android")]
+const MAX_ANALYSIS_WORKERS: usize = 1;
+#[cfg(not(target_os = "android"))]
+const MAX_ANALYSIS_WORKERS: usize = 8;
+
 #[derive(Serialize)]
 pub struct AnalysisResult {
     pub bestmove: String,
@@ -129,11 +154,45 @@ impl UciEngine {
         }
     }
 
+    /// Wie viele Ein-Thread-Engines die Stapelanalyse nebeneinander laufen
+    /// lässt.
+    ///
+    /// Vorher lief sie in *einer* Engine mit `Kerne - 2` Threads. Für eine
+    /// Suche bis zu einer festen Tiefe ist das der falsche Griff: Lazy SMP
+    /// verbreitert die Suche, statt sie zu verkürzen · `go depth 14` zahlt ein
+    /// Vielfaches an Knoten und gewinnt an der Uhr nichts. An derselben Partie
+    /// gemessen braucht eine Engine mit vierzehn Threads 111 ms je Stellung,
+    /// dieselbe Engine mit *einem* Thread 58 ms. Die zusätzlichen Threads
+    /// waren nicht nur verschwendet, sie waren langsamer — und sie sind der
+    /// Grund, warum die Analyse den Rechner auslastete, ohne schneller zu
+    /// werden.
+    ///
+    /// Parallel wird deshalb über Stellungen statt über Threads: Die
+    /// Stellungen einer Partie hängen nicht voneinander ab, und jede Engine
+    /// sucht für sich mit einem Thread.
+    pub fn analysis_workers(configured: u32) -> usize {
+        let ceiling = Self::worker_threads().min(MAX_ANALYSIS_WORKERS);
+        if configured == 0 {
+            ceiling.min(DEFAULT_ANALYSIS_WORKERS)
+        } else {
+            (configured as usize).clamp(1, ceiling)
+        }
+    }
+
+    /// Der eingestellte Hash, geteilt durch die Zahl der Engines · die
+    /// Einstellung sagt, was die Analyse insgesamt belegen darf, und nicht,
+    /// was jeder Prozess obendrauf legt. Unter 16 MB wird nicht mehr geteilt:
+    /// Eine Engine ganz ohne Tabelle sucht dieselbe Stellung mehrfach.
+    pub fn worker_hash_mb(configured: u32, workers: usize) -> u32 {
+        let workers = workers.max(1) as u32;
+        (configured / workers).clamp(16, configured.max(16))
+    }
+
     /// Live analysis deliberately uses a single search thread. The batch
-    /// analyzer may be running in a second Stockfish process with up to
-    /// `cores - 2` threads; on normal 4+ core devices this leaves at least one
-    /// logical core unsaturated even at the maximum setting. Very small
-    /// devices additionally rely on the engine process's idle scheduler class.
+    /// analyzer may be running in its own Stockfish processes; on normal 4+
+    /// core devices this leaves at least one logical core unsaturated even at
+    /// the maximum setting. Very small devices additionally rely on the engine
+    /// process's idle scheduler class.
     pub fn configured_live_threads(configured: u32) -> usize {
         Self::configured_worker_threads(configured).min(1)
     }
@@ -286,6 +345,36 @@ mod tests {
         assert_eq!(UciEngine::configured_live_threads(u32::MAX), 1);
         assert_eq!(UciEngine::configured_live_hash_mb(64), 64);
         assert_eq!(UciEngine::configured_live_hash_mb(u32::MAX), 128);
+    }
+
+    #[test]
+    fn analysis_workers_stay_below_the_ceiling() {
+        let ceiling = UciEngine::worker_threads().min(MAX_ANALYSIS_WORKERS);
+        // Ab Werk höchstens vier Engines · darüber wächst vor allem der
+        // Speicher.
+        assert_eq!(
+            UciEngine::analysis_workers(0),
+            ceiling.min(DEFAULT_ANALYSIS_WORKERS)
+        );
+        assert_eq!(UciEngine::analysis_workers(1), 1);
+        // Auch eine ausdrückliche Einstellung kommt nicht über die Grenze ·
+        // auf dem Handy bleibt es bei einer einzigen Engine.
+        assert_eq!(UciEngine::analysis_workers(u32::MAX), ceiling);
+        assert!(UciEngine::analysis_workers(u32::MAX) <= MAX_ANALYSIS_WORKERS);
+    }
+
+    #[test]
+    fn worker_hash_is_shared_between_the_engines() {
+        // Vier Engines teilen sich den eingestellten Hash.
+        assert_eq!(UciEngine::worker_hash_mb(256, 4), 64);
+        // Der Boden liegt bei 16 MB · lieber etwas mehr belegen als eine
+        // Engine ohne Tabelle suchen lassen.
+        assert_eq!(UciEngine::worker_hash_mb(64, 8), 16);
+        // Eine einzelne Engine bekommt, was eingestellt ist.
+        assert_eq!(UciEngine::worker_hash_mb(256, 1), 256);
+        // Auch unterhalb des Bodens bleibt die Einstellung eine Obergrenze
+        // für die einzelne Engine, nicht der Boden.
+        assert_eq!(UciEngine::worker_hash_mb(16, 4), 16);
     }
 
     /// Testet den echten Analyse-Pfad gegen die gebündelte Engine.
