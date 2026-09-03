@@ -262,3 +262,116 @@ export function Zugfolge({
 export function Feldname({ children }: { children: ReactNode }) {
   return <div className="blatt-feld text-ink3">{children}</div>;
 }
+
+/**
+ * Eine Zeile im Verzeichnis · Name, Punktlinie, Zahl.
+ *
+ * Derselbe Satz wie im Register der Hülle, nur innerhalb einer Seite: das
+ * Inhaltsverzeichnis eines Repertoires, die Aufgabenliste der Endspiele. Die
+ * Zahl rechts steht kräftig, wenn sie etwas offenes meint, und blass, wenn sie
+ * nur ein Wert ist.
+ */
+export function Verzeichniszeile({
+  name,
+  zahl,
+  aktiv = false,
+  tief = 0,
+  hoehe = 44,
+  onClick,
+}: {
+  name: ReactNode;
+  zahl?: ReactNode;
+  aktiv?: boolean;
+  /** Einrückung in Stufen · ein Kapitel unter einem Teil. */
+  tief?: number;
+  hoehe?: number;
+  onClick?: () => void;
+}) {
+  const inhalt = (
+    <>
+      {aktiv && <span aria-hidden className="absolute inset-y-[7px] -start-3.5 w-[3px] bg-ink" />}
+      <span
+        className={`min-w-0 truncate ${tief ? "text-[13px]" : "text-[14px]"} ${
+          aktiv ? "font-semibold text-ink" : "text-ink2"
+        }`}
+      >
+        {name}
+      </span>
+      <span aria-hidden className="blatt-punktlinie" />
+      <span
+        className={`blatt-zahl shrink-0 text-[11.5px] ${
+          zahl != null && zahl !== "" && zahl !== "0" ? "text-ink" : "text-ink3"
+        }`}
+      >
+        {zahl}
+      </span>
+    </>
+  );
+  const klasse = "relative flex w-full items-baseline gap-2 text-start";
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={aktiv ? "true" : undefined}
+      className={klasse}
+      style={{ minHeight: hoehe, paddingInlineStart: tief * 16 }}
+    >
+      {inhalt}
+    </button>
+  ) : (
+    <div className={klasse} style={{ minHeight: hoehe, paddingInlineStart: tief * 16 }}>
+      {inhalt}
+    </div>
+  );
+}
+
+/** Der Teil über den Kapiteln · Beschriftung auf kräftiger Linie. */
+export function Verzeichnisteil({ children }: { children: ReactNode }) {
+  return <div className="blatt-feld mt-3.5 border-b border-ink pb-[5px] text-ink3">{children}</div>;
+}
+
+/**
+ * Ein Balken im Formularsatz · Haarlinienrahmen, gefüllt bis zum Wert.
+ *
+ * Kein Diagrammwerkzeug und keine Farbe: ein Kasten aus einer Linie, gefüllt
+ * mit der Schriftfarbe. So liest er sich in jedem der acht Themen gleich.
+ */
+export function Balken({ anteil, hoehe = 7 }: { anteil: number; hoehe?: number }) {
+  return (
+    <span className="block border border-line2" style={{ height: hoehe }}>
+      <span
+        className="block h-full bg-ink"
+        style={{ width: `${Math.max(0, Math.min(100, anteil))}%` }}
+      />
+    </span>
+  );
+}
+
+/**
+ * Eine Reihe gleichwertiger Schaltflächen unter dem Brett · Haarlinien oben
+ * und unten, senkrechte Trennstriche dazwischen, 44 px hoch.
+ */
+export function Schalterreihe({
+  eintraege,
+}: {
+  eintraege: { label: ReactNode; onClick?: () => void; betont?: boolean; titel?: string }[];
+}) {
+  return (
+    <div className="flex items-center border-y border-line">
+      {eintraege.map((eintrag, index) => (
+        <button
+          key={index}
+          type="button"
+          onClick={eintrag.onClick}
+          disabled={!eintrag.onClick}
+          title={eintrag.titel}
+          className={`flex h-11 flex-1 items-center justify-center text-[12.5px] disabled:text-ink3 ${
+            eintrag.betont ? "text-accent" : "text-ink2 hover:text-ink"
+          } ${index ? "border-s border-line" : ""}`}
+        >
+          {eintrag.label}
+        </button>
+      ))}
+    </div>
+  );
+}

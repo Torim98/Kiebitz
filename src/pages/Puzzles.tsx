@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Chess } from "chess.js";
 import {
   Check,
@@ -46,6 +55,11 @@ import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { openPlusDialog } from "../lib/plus/dialog";
 import { usePlusGate } from "../lib/plus/usePlus";
 import { dateLocale, deInt } from "../lib/format";
+import { useDiagramMode } from "../lib/diagramMode";
+import { useMobileShell } from "../components/MobileShell";
+
+/** Der Tagesbogen kommt nach · siehe Dashboard.tsx. */
+const PuzzlesBlatt = lazy(() => import("./blatt/PuzzlesBlatt"));
 import { isStoreCapture } from "../lib/storeCapture";
 import { DailyGoal, ImportView, PuzzleLoading } from "./puzzles/PuzzleSetup";
 
@@ -170,6 +184,8 @@ function TrainerView({
 }) {
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
+  const mobile = useMobileShell();
+  const diagramMode = useDiagramMode();
   // Die hier verbrachte Zeit ist das Taktikbudget · gemessen, nicht aus der
   // Zahl der Versuche hochgerechnet.
   useTrainingSession("tactics");
@@ -665,6 +681,113 @@ function TrainerView({
       )}
     </>
   );
+
+  if (diagramMode) {
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <PuzzlesBlatt
+          mobile={mobile}
+          kopfRechts={t("pz.subtitle", {
+            n: deInt(stats.db_total),
+            o: deInt(stats.own_total),
+            m: deInt(stats.solved),
+          })}
+          felder={[
+            {
+              label: t("eg.task"),
+              wert: (
+                <>
+                  {t("blatt.entryNo", { n: deInt(stats.today_attempts + 1) })}
+                  <span className="text-ink3"> / {deInt(goal)}</span>
+                </>
+              ),
+              gross: true,
+            },
+            {
+              label: t("blatt.motif"),
+              // Verdeckt heißt im Formularsatz: ein geschwärztes Feld, nicht
+              // ein Wort. Antippen deckt es auf, wie heute.
+              wert:
+                puzzle?.source !== "own" && mainTheme && themeHidden ? (
+                  <button
+                    type="button"
+                    onClick={() => setThemeRevealed(true)}
+                    title={t("pz.themeRevealHint")}
+                    className="inline-flex items-center gap-2"
+                  >
+                    <span aria-hidden className="inline-block h-3 w-[78px] bg-line2" />
+                    <span className="text-[11.5px] text-ink3">{t("blatt.covered")}</span>
+                  </button>
+                ) : puzzle?.source === "own" ? (
+                  t("pz.missedMove")
+                ) : mainTheme ? (
+                  themeLabel(mainTheme, locale)
+                ) : (
+                  "…"
+                ),
+            },
+            {
+              label: t("blatt.difficulty"),
+              wert: puzzle ? (
+                <>
+                  <span className="blatt-zahl">{deInt(puzzle.rating)}</span>
+                  {" · "}
+                  {t("blatt.yourRating")}{" "}
+                  <span className="blatt-zahl">{deInt(stats.personal_rating)}</span>
+                </>
+              ) : (
+                "—"
+              ),
+            },
+            {
+              label: t("blatt.streak"),
+              wert: (
+                <>
+                  <span className="blatt-zahl">{deInt(stats.streak_days)}</span>{" "}
+                  {t(stats.streak_days === 1 ? "common.days.one" : "common.days.many")}
+                  {" · "}
+                  {t("pz.todaySolved", { n: deInt(stats.today_solved) })}
+                </>
+              ),
+            },
+          ]}
+          tagesziel={`${deInt(stats.today_attempts)} / ${deInt(goal)}`}
+          amZug={orientation}
+          amZugText={orientation === "white" ? t("pz.whiteToMove") : t("pz.blackToMove")}
+          aufforderung={
+            status === "loading"
+              ? t("pz.loadingNext")
+              : status === "empty"
+                ? t("pz.noneFound")
+                : t("pz.findBest")
+          }
+          brett={puzzleBoard("puzzle")}
+          schalter={[
+            { label: t("pz.hint"), onClick: status === "playing" ? () => setShowHint(true) : undefined },
+            { label: t("pz.solution"), onClick: status === "playing" || wrong ? revealSolution : undefined },
+            { label: t("common.next"), betont: true, onClick: () => load() },
+          ]}
+          verlaufSchalter={[
+            { label: "⏮", titel: t("pz.firstPosition"), onClick: () => goToPly(0) },
+            { label: "‹", titel: t("pz.previousPosition"), onClick: () => goToPly(viewPly - 1) },
+            { label: "›", titel: t("pz.nextPosition"), onClick: () => goToPly(viewPly + 1) },
+            { label: "⏭", titel: t("pz.currentPosition"), onClick: () => goToPly(lastPly) },
+          ]}
+          verlaufNote={t("blatt.historyNote")}
+          heute={stats.today_attempts}
+          ziel={goal}
+          motive={themeStats.map((th) => ({
+            name: themeLabel(th.theme, locale),
+            quote: th.attempts > 0 ? (th.solved / th.attempts) * 100 : 0,
+          }))}
+          rating={stats.personal_rating}
+          ratingDelta={history.length >= 2 ? history[history.length - 1] - history[0] : null}
+          history={history}
+          geloest={stats.solved}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import {
   CheckCircle2,
@@ -34,6 +34,11 @@ import { Button, Card } from "../components/ui";
 import FocusBoard, { FocusButton } from "../components/FocusBoard";
 import { deInt } from "../lib/format";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
+import { useDiagramMode } from "../lib/diagramMode";
+import { useMobileShell } from "../components/MobileShell";
+
+/** Die Aufgabe im Buchsatz kommt nach · siehe Dashboard.tsx. */
+const EndgameBlatt = lazy(() => import("./blatt/EndgameBlatt"));
 
 const CATEGORY_KEY: Record<EndgameCategory, Key> = {
   mates: "eg.catMates",
@@ -56,6 +61,8 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
+  const mobile = useMobileShell();
+  const diagramMode = useDiagramMode();
   // Endspielbudget: gemessene Zeit am Brett statt vier Minuten je Drill.
   useTrainingSession("endgames", desktop);
 
@@ -395,6 +402,84 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
       </div>
     );
   };
+
+  if (diagramMode) {
+    const eigenerName = drill.side === "white" ? t("common.white") : t("common.black");
+    const gegenName = desktop ? t("blatt.engine") : drill.side === "white" ? t("common.black") : t("common.white");
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <EndgameBlatt
+          mobile={mobile}
+          felder={[
+            { label: t("eg.task"), wert: drillText(drill.name, locale), gross: true },
+            { label: t("blatt.category"), wert: t(CATEGORY_KEY[drill.category]) },
+            {
+              label: t("blatt.youPlay"),
+              wert: (
+                <span className="inline-flex items-center gap-[7px]">
+                  <span
+                    aria-hidden
+                    className="inline-block h-2.5 w-2.5 flex-none border border-ink"
+                    style={{ background: drill.side === "black" ? "var(--color-ink)" : "transparent" }}
+                  />
+                  {eigenerName}
+                </span>
+              ),
+            },
+            { label: t("blatt.opponent"), wert: gegenName },
+          ]}
+          ziel={drill.goal === "win" ? "1 : 0" : "½ : ½"}
+          oben={{ name: gegenName, farbe: drill.side === "white" ? "black" : "white" }}
+          unten={{ name: eigenerName, farbe: drill.side }}
+          stand={
+            status === "thinking"
+              ? t("eg.thinking")
+              : status === "playing"
+                ? t("eg.yourTurn")
+                : endMsg
+                  ? t(endMsg)
+                  : ""
+          }
+          brett={drillBoard("endgame")}
+          hinweis={drillText(drill.hint, locale)}
+          fussnote={t("eg.engineNote")}
+          gruppen={CATEGORY_ORDER.map((cat) => ({
+            titel: t(CATEGORY_KEY[cat]),
+            eintraege: ENDGAME_DRILLS.filter((d) => d.category === cat).map((d) => ({
+              id: d.id,
+              name: drillText(d.name, locale),
+              ziel: d.goal === "win" ? "1" : "½",
+              gemeistert: (stats[d.id]?.solved ?? 0) > 0,
+            })),
+          }))}
+          aktiv={drill.id}
+          gemeistert={mastered}
+          gesamt={ENDGAME_DRILLS.length}
+          schalter={[
+            { label: t("eg.restart"), onClick: () => start(drill) },
+            ...(desktop && status === "playing"
+              ? [{ label: t("eg.hintMove"), onClick: showHint }]
+              : []),
+            {
+              label: t("eg.nextDrill"),
+              betont: true,
+              onClick: nextUnsolved() ? () => start(nextUnsolved()!) : undefined,
+            },
+          ]}
+          zufall={{
+            titel: t("eg.randomTitle"),
+            text: t("eg.randomHint"),
+            knopf: t("eg.randomStart"),
+            onClick: () => start(randomDrill()),
+          }}
+          onWaehlen={(id) => {
+            const gewaehlt = ENDGAME_DRILLS.find((d) => d.id === id);
+            if (gewaehlt) start(gewaehlt);
+          }}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">

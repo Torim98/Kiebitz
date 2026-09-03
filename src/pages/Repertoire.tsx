@@ -1,4 +1,14 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Chess } from "chess.js";
 import {
   AlertTriangle,
@@ -52,7 +62,12 @@ import { BOARD_MAX } from "../lib/boardLayout";
 import { useBoardSelection } from "../lib/boardMoves";
 import { Button, Card, Chip } from "../components/ui";
 import FocusBoard, { FocusButton } from "../components/FocusBoard";
-import { de } from "../lib/format";
+import { de, deInt } from "../lib/format";
+import { useDiagramMode } from "../lib/diagramMode";
+import { notationLine } from "../lib/notation";
+
+/** Das Buch kommt nach · siehe Dashboard.tsx. */
+const RepertoireBlatt = lazy(() => import("./blatt/RepertoireBlatt"));
 import { errorMessage } from "../lib/errors";
 import { replaySans } from "../lib/position";
 import { shareHistory } from "../lib/share/notation";
@@ -440,7 +455,9 @@ function Panel({
 
 function LiveRepertoire() {
   const t = useT();
+  const { locale } = useI18n();
   const compact = useMobileShell();
+  const diagramMode = useDiagramMode();
   // Eröffnungsbudget: gemessene Zeit im Repertoire statt 30 Sekunden je Karte.
   useTrainingSession("openings");
   const [nodes, setNodes] = useState<RepNode[]>([]);
@@ -985,6 +1002,109 @@ function LiveRepertoire() {
             reload();
           }}
         />
+      ) : diagramMode ? (
+        // Das Buch · dieselben Varianten, dieselbe Stellung, anders gesetzt.
+        // Die Buchstellung ist ein Abdruck: Hier wird gelesen, gezogen wird
+        // erst im Training (oben, `mode === "train"`).
+        <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+          <RepertoireBlatt
+            mobile={compact}
+            kopfRechts={
+              stats
+                ? t("rep.summary", {
+                    n: deInt(stats.my_positions),
+                    p: de(stats.coverage_pct),
+                    g: deInt(stats.games_checked),
+                  })
+                : t("common.loading")
+            }
+            felder={[
+              {
+                label: t("blatt.variant"),
+                wert: selectedLine?.name ?? t("rep.startPos"),
+                gross: true,
+              },
+              {
+                label: t("blatt.side"),
+                wert: selectedLine
+                  ? t(selectedLine.side === "white" ? "common.white" : "common.black")
+                  : "—",
+              },
+              {
+                label: t("rep.reps"),
+                wert: selected ? (
+                  <>
+                    <span className="blatt-zahl">{deInt(selected.reps)}</span>
+                    {selected.lapses > 0 && (
+                      <span className="text-ink3"> {t("rep.lapses", { n: deInt(selected.lapses) })}</span>
+                    )}
+                  </>
+                ) : (
+                  "—"
+                ),
+              },
+              {
+                label: t("rep.nextReview"),
+                wert: selected ? dueLabel(t, selected, now) : "—",
+              },
+            ]}
+            faellig={dueTotal}
+            teile={(["white", "black"] as const).map((side) => ({
+              titel: t(side === "white" ? "common.white" : "common.black"),
+              zeilen: variationLines
+                .filter((line) => line.side === side)
+                .map((line) => ({ key: line.key, name: line.name, faellig: line.due })),
+            }))}
+            aktiv={selectedLineKey}
+            fen={fen}
+            unterschrift={[
+              t("blatt.bookPosition"),
+              selectedLine?.name ?? t("rep.startPos"),
+            ]}
+            amZug={baseSans.length % 2 === 0 ? "white" : "black"}
+            linie={notationLine(baseSans, locale)}
+            angaben={[
+              {
+                label: t("blatt.positionsBelow"),
+                wert: selectedLine ? deInt(selectedLine.sans.length) : "—",
+              },
+              {
+                label: t("blatt.stability"),
+                wert: selected ? t("blatt.days", { n: deInt(Math.round(selected.stability)) }) : "—",
+              },
+              {
+                label: t("blatt.reachedIn"),
+                wert: nodeStats ? deInt(nodeStats.games) : "—",
+              },
+              {
+                label: t("blatt.scored"),
+                wert: nodeStats && nodeStats.games > 0 ? `${de(nodeStats.score_pct)} %` : "—",
+              },
+            ]}
+            notiz={selected?.note.trim() ?? ""}
+            notizPlatzhalter={t("rep.notePlaceholder")}
+            abdeckung={stats ? stats.coverage_pct : null}
+            abdeckungNote={t("rep.coverageNote")}
+            abdeckungUnter={
+              stats
+                ? `${t("rep.coverageOf", { g: deInt(stats.games_checked) })} · ${t("rep.coveragePlies", { n: deInt(stats.plies) })}`
+                : ""
+            }
+            luecken={
+              gaps == null
+                ? t("common.loading")
+                : gaps.length === 0
+                  ? t("rep.gapsNone")
+                  : t("rep.gapsCollapsed", { n: deInt(gaps.length) })
+            }
+            onWaehlen={(key) => {
+              const line = variationLines.find((value) => value.key === key);
+              if (line) selectVariation(line, (line.nodeIds?.length ?? 0) - 1);
+            }}
+            onHinzufuegen={() => setMode("add")}
+            onTraining={() => setMode("train")}
+          />
+        </Suspense>
       ) : compact ? (
         // Auf dem Handy zuerst das Brett · der Variantenbaum ist eine lange
         // Liste und schöbe sonst alles Wesentliche unter die Falz.
