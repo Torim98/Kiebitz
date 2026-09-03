@@ -2,10 +2,11 @@
    Kein Farbwert. Was hier steht, sind Schrift und Satzregeln; die Farben
    kommen wie überall aus den Tokens in src/themes.css.
 
-   Die Datei hängt an den Blatt-Bausteinen und die wiederum an den nachgeladenen
-   Blatt-Fassungen der Seiten. Damit lädt die Serifenschrift genau dann, wenn
-   jemand den Modus tatsächlich eingeschaltet hat — und für alle anderen bleibt
-   das Startbündel so groß wie vorher. */
+   Die Regeln landen im einen Stylesheet der App · Tailwind zieht alles
+   zusammen, und ein paar Kilobyte CSS lohnen kein zweites. Die Schriftdateien
+   laden trotzdem nur, wenn der Modus an ist: Ein Browser holt eine Schrift
+   erst, wenn ein Zeichen in ihr gesetzt werden soll, und `.buch` gibt es nur
+   im Blatt. Wer den Modus nicht benutzt, lädt keine Serife. */
 
 /* Source Serif 4 · Latein und Latein erweitert, aufrecht und kursiv.
    Die Kursive ist keine Zugabe: Eröffnungsnamen und Bildunterschriften stehen

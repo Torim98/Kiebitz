@@ -39,9 +39,25 @@ const limits = {
   singleJs: 450 * 1024,
   // Sieben Farbwelten kosten rund 6 KiB CSS (src/themes.css) · das ist der
   // Preis dafür, dass der Themenwechsel ein Attributwechsel bleibt und kein
-  // Nachladen. Der Wert unten ist die alte Grenze plus diesen Block.
-  css: 68 * 1024,
-  fonts: 140 * 1024,
+  // Nachladen. Der Diagramm-Modus kostet rund 5 KiB obendrauf: den Buchsatz
+  // aus src/components/blatt/blatt.css und die Hilfsklassen seiner neun
+  // Seitenfassungen. Beides steht im einen Stylesheet, weil Tailwind alles
+  // zusammenzieht · geladen wird davon nichts nach.
+  css: 76 * 1024,
+  // Inter deckt die Oberfläche ab (latin + latin-ext, rund 133 KiB).
+  //
+  // Dazu kommen rund 181 KiB Source Serif 4 für den Diagramm-Modus: aufrecht
+  // und kursiv, je latin und latin-ext. Die Kursive ist keine Zugabe —
+  // Eröffnungsnamen und Bildunterschriften stehen kursiv, und eine schräg
+  // gestellte Aufrechte ist im Buchsatz das Erste, was auffällt; latin-ext
+  // trägt die Namen, die die Partien mitbringen.
+  //
+  // Die Dateien liegen im Paket, aber sie laden nur, wenn der Modus an ist:
+  // Die @font-face-Regeln stehen zwar im Stylesheet, ein Browser holt eine
+  // Schriftdatei aber erst, wenn ein Zeichen in ihr gesetzt werden soll — und
+  // `.buch` gibt es nur im Blatt. Wer den Modus nicht benutzt, lädt keine
+  // Serife.
+  fonts: 320 * 1024,
 };
 
 function collectDependencies(item, files) {

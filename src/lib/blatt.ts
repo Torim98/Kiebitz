@@ -2,7 +2,6 @@
  * Die Regeln des Blattes, die sich rechnen lassen — ohne React, ohne Daten
  * holen, damit sie prüfbar bleiben.
  */
-import type { MoveEvalRow } from "./analysis";
 
 /**
  * Die Quellen des Diagramms des Tages, in fester Reihenfolge.
@@ -33,12 +32,14 @@ export function chooseDiagramSource(offer: DiagramOffer): DiagramSource | null {
  * erste grobe Fehler ist diese Stelle, der erste Fehler die nächstbeste
  * Auskunft. Ohne beides bleibt es bei der Schlussstellung — geraten wird nicht.
  *
+ * Gelesen werden die Marken, nicht die Analysezeilen: So gilt dieselbe Regel
+ * für eine gerechnete Partie und für eine, die ihre Marken mitbringt.
+ *
  * Zurück kommt die Zahl der Halbzüge *vor* dem Diagramm, also genau das, was
  * `fenAfter` als `count` erwartet.
  */
-export function criticalPly(rows: readonly MoveEvalRow[], moveCount: number): number {
-  const find = (judgment: MoveEvalRow["judgment"]) =>
-    rows.findIndex((row) => row.judgment === judgment);
-  const index = [find("blunder"), find("mistake")].find((value) => value >= 0);
+export function criticalPly(nags: readonly (string | undefined)[], moveCount: number): number {
+  const find = (mark: string) => nags.findIndex((nag) => nag === mark);
+  const index = [find("??"), find("?")].find((value) => value >= 0);
   return index == null ? moveCount : index;
 }

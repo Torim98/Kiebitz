@@ -27,8 +27,10 @@ import {
   Zugfolge,
   type Feld,
 } from "../../components/blatt/Satz";
-import { useI18n } from "../../lib/i18n";
+import { useI18n, type Locale } from "../../lib/i18n";
 import { translateSan } from "../../lib/notation";
+import { criticalPly } from "../../lib/blatt";
+import { fenAfter, fenAfterUci } from "../../lib/position";
 import { dateLocale, deInt } from "../../lib/format";
 import { PartieZeile } from "../../components/blatt/PartieZeile";
 import type { UiGame } from "../../lib/gameUi";
@@ -39,10 +41,49 @@ export interface BlattZug {
   san: string;
   /** „?!" · „?" · „??" — die drei Urteile, die die Analyse vergibt. */
   nag?: string;
+  /** Die Anmerkung dazu · die Demo-Partie bringt eine mit, die App nicht. */
+  kommentar?: string;
 }
 
-/** Was im Diagramm des Tages steht · von Dashboard.tsx zusammengestellt. */
-export interface Tagesdiagramm {
+/**
+ * Woraus das Diagramm des Tages entsteht.
+ *
+ * Die Seite reicht Züge, Felder und Texte herein; nachgespielt wird hier.
+ * chess.js, die Notation und der Endspiel-Katalog hängen damit an dieser
+ * nachgeladenen Fassung und nicht am Startbündel.
+ */
+export type Tagesquelle =
+  | {
+      art: "game";
+      sans: string[];
+      nags: (string | undefined)[];
+      /** Anmerkungen der Demo-Partie · die App rechnet keine. */
+      kommentare?: (string | undefined)[];
+      weiss: string;
+      weissElo: string;
+      schwarz: string;
+      schwarzElo: string;
+      partie: string;
+      eco: string;
+      eroeffnung: string;
+      ergebnis: string;
+      farbe: "white" | "black";
+      notiz?: string;
+      onOeffnen?: () => void;
+    }
+  | { art: "repertoire"; sans: string[]; linie: string; seite: "white" | "black"; eigener: string }
+  | { art: "puzzle"; fen: string; setup: string[]; rating: number; eigener: string }
+  | {
+      art: "endgame";
+      fen: string;
+      seite: "white" | "black";
+      ziel: "win" | "draw";
+      name: string;
+      eigener: string;
+    };
+
+/** Was im Diagramm des Tages steht · hier aus der Quelle gerechnet. */
+interface Tagesdiagramm {
   quelle: DiagramSource;
   fen: string;
   orientation: "white" | "black";
@@ -75,7 +116,7 @@ export interface DashboardBlattProps {
   mobile: boolean;
   /** Partien in der Datenbank · null in der Web-Vorschau. */
   bestand: number | null;
-  diagramm: Tagesdiagramm | null;
+  quelle: Tagesquelle | null;
   /** Die Quellen, die heute etwas anzubieten hätten · nur im Leerfall gesetzt. */
   angebot?: { repertoire: number; puzzles: number; endgame: boolean };
   wertungen: Wertung[];
@@ -122,10 +163,151 @@ function Zuege({
   return <Zugfolge gross={gross}>{teile}</Zugfolge>;
 }
 
+/** „16…dxe5" · Nummer und Zug in der Notation der Oberflächensprache. */
+function zugName(cut: number, san: string, locale: Locale): string {
+  const ply = cut - 1;
+  const nummer = ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`;
+  return nummer + translateSan(san, locale);
+}
+
+/** „Tom 1462" · der Wert eines Namensfeldes im Formularkopf. */
+function nameMitElo(name: string, elo: string): ReactNode {
+  return (
+    <>
+      {name} <span className="blatt-zahl text-ink3">{elo}</span>
+    </>
+  );
+}
+
+/**
+ * Das Diagramm des Tages · nachgespielt, nicht gemalt.
+ *
+ * Ein Buch druckt nicht die Schlussstellung, sondern die Stelle, an der die
+ * Partie entschieden wurde; welche das ist, sagen die Marken der Analyse
+ * (`criticalPly`). Kommt die Stellung nicht aus einer Partie, bleibt der
+ * Formularkopf derselbe Kopf und ist nur anders ausgefüllt.
+ */
+function bauen(
+  quelle: Tagesquelle | null,
+  t: ReturnType<typeof useI18n>["t"],
+  locale: Locale
+): Tagesdiagramm | null {
+  if (!quelle) return null;
+
+  if (quelle.art === "game") {
+    const cut = Math.max(0, Math.min(criticalPly(quelle.nags, quelle.sans.length), quelle.sans.length));
+    const von = Math.max(0, cut - 6);
+    const letzterZug = cut > 0 ? quelle.sans[cut - 1] : null;
+    const zug = (index: number): BlattZug => ({
+      san: quelle.sans[index],
+      nag: quelle.nags[index],
+      kommentar: quelle.kommentare?.[index],
+    });
+    return {
+      quelle: "game",
+      fen: fenAfter(quelle.sans, cut),
+      orientation: quelle.farbe,
+      amZug: cut % 2 === 0 ? "white" : "black",
+      felder: [
+        { label: t("common.white"), wert: nameMitElo(quelle.weiss, quelle.weissElo), gross: true },
+        { label: t("common.black"), wert: nameMitElo(quelle.schwarz, quelle.schwarzElo), gross: true },
+        { label: t("blatt.gameField"), wert: quelle.partie },
+        {
+          label: t("games.colOpening"),
+          wert: (
+            <>
+              {quelle.eco && <span className="blatt-zahl text-ink3">{quelle.eco} </span>}
+              {quelle.eroeffnung}
+            </>
+          ),
+        },
+      ],
+      ergebnis: quelle.ergebnis,
+      zeilen: [
+        `${quelle.weiss} – ${quelle.schwarz}`,
+        letzterZug
+          ? t("blatt.positionAfter", { m: zugName(cut, letzterZug, locale) })
+          : t("blatt.startPosition"),
+      ],
+      davor: quelle.sans.slice(von, cut).map((_, index) => zug(von + index)),
+      danach: quelle.sans.slice(cut, cut + 5).map((_, index) => zug(cut + index)),
+      offset: von,
+      notiz: quelle.notiz,
+      onOeffnen: quelle.onOeffnen,
+    };
+  }
+
+  // Der Leerfall · derselbe Kopf, anders ausgefüllt.
+  const leerKopf = (woher: ReactNode, eigener: string) => [
+    { label: t("common.white"), wert: nameMitElo(eigener, ""), gross: true },
+    {
+      label: t("common.black"),
+      wert: <span className="text-ink3">{t("blatt.noNewGame")}</span>,
+      gross: true,
+    },
+    { label: t("blatt.lastGame"), wert: <span className="text-ink3">{t("blatt.none")}</span> },
+    { label: t("blatt.diagramFrom"), wert: woher },
+  ];
+
+  if (quelle.art === "repertoire") {
+    const letzterZug = quelle.sans[quelle.sans.length - 1];
+    return {
+      quelle: "repertoire",
+      fen: fenAfter(quelle.sans),
+      orientation: quelle.seite,
+      amZug: quelle.sans.length % 2 === 0 ? "white" : "black",
+      felder: leerKopf(
+        `${t("nav.repertoire")} · ${t(quelle.seite === "white" ? "common.white" : "common.black")}`,
+        quelle.eigener
+      ),
+      ergebnis: t("blatt.none"),
+      zeilen: [
+        quelle.linie,
+        letzterZug
+          ? `${t("blatt.fromRepertoire")} · ${t("blatt.positionAfter", {
+              m: zugName(quelle.sans.length, letzterZug, locale),
+            })}`
+          : t("blatt.fromRepertoire"),
+      ],
+    };
+  }
+
+  if (quelle.art === "puzzle") {
+    const fen = fenAfterUci(quelle.fen, quelle.setup);
+    const weissAmZug = fen.split(" ")[1] === "w";
+    return {
+      quelle: "puzzle",
+      fen,
+      orientation: weissAmZug ? "white" : "black",
+      amZug: weissAmZug ? "white" : "black",
+      felder: leerKopf(
+        `${t("nav.puzzles")} · ${t("pz.rating")} ${quelle.rating}`,
+        quelle.eigener
+      ),
+      ergebnis: t("blatt.none"),
+      zeilen: [t("blatt.srcPuzzle"), t("blatt.fromPuzzles")],
+    };
+  }
+
+  const weissAmZug = quelle.fen.split(" ")[1] === "w";
+  return {
+    quelle: "endgame",
+    fen: quelle.fen,
+    orientation: quelle.seite,
+    amZug: weissAmZug ? "white" : "black",
+    felder: leerKopf(
+      `${t("nav.endgame")} · ${t(quelle.ziel === "win" ? "eg.goalWin" : "eg.goalDraw")}`,
+      quelle.eigener
+    ),
+    ergebnis: t("blatt.none"),
+    zeilen: [quelle.name, t("blatt.fromEndgames")],
+  };
+}
+
 export default function DashboardBlatt({
   mobile,
   bestand,
-  diagramm,
+  quelle,
   angebot,
   wertungen,
   letzte,
@@ -139,8 +321,11 @@ export default function DashboardBlatt({
   onAllePartien,
   onPartie,
 }: DashboardBlattProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const heute = new Date();
+
+  // ── Aus der Quelle wird das Diagramm ──────────────────────────────────────
+  const diagramm = bauen(quelle, t, locale);
 
   const tagesliste = (
     <div>

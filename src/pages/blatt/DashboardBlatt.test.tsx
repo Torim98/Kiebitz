@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import DashboardBlatt, { type Tagesdiagramm } from "./DashboardBlatt";
+import DashboardBlatt, { type Tagesquelle } from "./DashboardBlatt";
 import type { UiGame } from "../../lib/gameUi";
 
 vi.mock("../../lib/i18n", () => ({
@@ -18,25 +18,23 @@ vi.mock("../../lib/i18n", () => ({
 
 afterEach(cleanup);
 
-/** Stellung nach 1.e4 e5 2.Sf3 · echt gerechnet gehört sie in die Seite, nicht hierher. */
-const FEN = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2";
-
-const spiel: Tagesdiagramm = {
-  quelle: "game",
-  fen: FEN,
-  orientation: "white",
-  amZug: "black",
-  felder: [
-    { label: "common.white", wert: "Tom", gross: true },
-    { label: "common.black", wert: "DragonSlayer_88", gross: true },
-    { label: "blatt.gameField", wert: "chess.com" },
-    { label: "games.colOpening", wert: "C50" },
-  ],
+/**
+ * Die Partie kommt als Zugliste herein · die Stellung rechnet das Blatt selbst.
+ * Nach 1.e4 e5 2.Sf3 folgt 2…Sc6??, also steht das Diagramm davor.
+ */
+const spiel: Tagesquelle = {
+  art: "game",
+  sans: ["e4", "e5", "Nf3", "Nc6"],
+  nags: [undefined, undefined, undefined, "??"],
+  weiss: "Tom",
+  weissElo: "1462",
+  schwarz: "DragonSlayer_88",
+  schwarzElo: "1448",
+  partie: "chess.com",
+  eco: "C50",
+  eroeffnung: "Italienische Partie",
   ergebnis: "1 : 0",
-  zeilen: ["Tom – DragonSlayer_88", "Stellung nach 2.Sf3"],
-  davor: [{ san: "e4" }, { san: "e5" }],
-  danach: [{ san: "Nf3" }, { san: "Nc6", nag: "??" }],
-  offset: 0,
+  farbe: "white",
 };
 
 const partie = (over: Partial<UiGame> = {}): UiGame =>
@@ -74,7 +72,7 @@ function show(props: Partial<Parameters<typeof DashboardBlatt>[0]> = {}) {
     <DashboardBlatt
       mobile={false}
       bestand={1519}
-      diagramm={spiel}
+      quelle={spiel}
       wertungen={[{ id: "cc", platform: "chess.com", tc: "Rapid", value: 1462, delta: 24 }]}
       letzte={[partie()]}
       repDue={14}
@@ -127,7 +125,13 @@ describe("Blatt des Starts", () => {
 
   it("shows where the diagram came from when no game is left", () => {
     show({
-      diagramm: { ...spiel, quelle: "repertoire" },
+      quelle: {
+        art: "repertoire",
+        sans: ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "c3"],
+        linie: "Giuoco Pianissimo",
+        seite: "white",
+        eigener: "Tom",
+      },
       angebot: { repertoire: 3, puzzles: 8, endgame: true },
     });
     expect(screen.getByText("blatt.whereFrom")).toBeTruthy();
@@ -135,7 +139,7 @@ describe("Blatt des Starts", () => {
   });
 
   it("says nothing at all rather than inventing a diagram", () => {
-    show({ diagramm: null, angebot: undefined });
+    show({ quelle: null, angebot: undefined });
     expect(document.querySelectorAll("[data-square]")).toHaveLength(0);
     // Die Tagesliste bleibt · sie hängt nicht am Diagramm.
     expect(screen.getByText("dash.dueReviews")).toBeTruthy();
