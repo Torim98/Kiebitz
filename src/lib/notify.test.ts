@@ -53,6 +53,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     theme_night: "dusk",
     theme_night_from: "19:00",
     theme_night_to: "07:00",
+    diagram_mode: false,
     import_months: 3,
     puzzle_goal: 20,
     puzzle_hide_theme: false,

@@ -3,6 +3,7 @@ import {
   DEFAULT_APPEARANCE,
   appearanceFromSettings,
   inNightWindow,
+  resolveDiagramMode,
   resolvePieceSet,
   resolveTheme,
   settingsFromAppearance,
@@ -95,6 +96,22 @@ describe("piece sets", () => {
   });
 });
 
+describe("diagram mode", () => {
+  it("stays off until it is switched on", () => {
+    expect(resolveDiagramMode(appearance(), true)).toBe(false);
+    expect(resolveDiagramMode(appearance({ diagram: true }), true)).toBe(true);
+  });
+
+  it("falls back to off without Plus", () => {
+    expect(resolveDiagramMode(appearance({ diagram: true }), false)).toBe(false);
+  });
+
+  it("keeps the choice while the unlock is still being checked", () => {
+    // Sonst spränge die App beim Start einmal durch zwei Layouts.
+    expect(resolveDiagramMode(appearance({ diagram: true }), null)).toBe(true);
+  });
+});
+
 describe("settings", () => {
   const stored = (overrides: Partial<Settings>) =>
     appearanceFromSettings({ ...(overrides as Settings) });
@@ -117,6 +134,7 @@ describe("settings", () => {
       night: "dusk",
       nightFrom: "19:00",
       nightTo: "07:00",
+      diagram: false,
     });
   });
 
@@ -133,6 +151,7 @@ describe("settings", () => {
       night: "contrast",
       nightFrom: "20:15",
       nightTo: "06:45",
+      diagram: true,
     });
     expect(appearanceFromSettings(settingsFromAppearance(prefs) as Settings)).toEqual(prefs);
   });

@@ -62,6 +62,11 @@ pub struct Settings {
     /// Nachtfenster als lokale "HH:MM" · nur bei theme_auto = "time".
     pub theme_night_from: String,
     pub theme_night_to: String,
+    /// Diagramm-Modus ("Das Blatt") · experimenteller Layoutmodus, der die
+    /// Oberfläche als Buchseite im Turnierformular-Satz setzt. Er verändert
+    /// ausschließlich das Layout; die Farbwelt oben bleibt unberührt. Wie die
+    /// übrigen Erscheinungsbild-Werte gerätelokal und nicht im Sync.
+    pub diagram_mode: bool,
     /// Monatsfenster für den Schnell-Import ("Neueste importieren").
     pub import_months: u32,
     /// Puzzle-Tagesziel (Versuche pro Tag) für Dashboard und Lernplan.
@@ -252,6 +257,7 @@ impl Default for Settings {
             theme_night: "dusk".into(),
             theme_night_from: "19:00".into(),
             theme_night_to: "07:00".into(),
+            diagram_mode: false,
             import_months: 3,
             puzzle_goal: 20,
             puzzle_hide_theme: false,

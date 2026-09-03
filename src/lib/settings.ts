@@ -44,6 +44,8 @@ export interface Settings {
   /** Nachtfenster als lokale "HH:MM" (nur bei theme_auto = "time"). */
   theme_night_from: string;
   theme_night_to: string;
+  /** Diagramm-Modus („Das Blatt") · Layoutmodus, siehe lib/theme.ts. */
+  diagram_mode: boolean;
   import_months: number;
   puzzle_goal: number;
   /** Motiv der laufenden Aufgabe im Puzzle-Training verdecken. */

@@ -141,6 +141,16 @@ export interface Appearance {
   /** Nur bei `auto: "time"` · lokale "HH:MM". */
   nightFrom: string;
   nightTo: string;
+  /**
+   * Diagramm-Modus („Das Blatt") · experimenteller Layoutmodus.
+   *
+   * Er gehört hierher, obwohl er keine Farbe anfasst: Er sitzt im
+   * Erscheinungsbild, hängt an derselben Freischaltung wie die Plus-Themen und
+   * soll wie sie sofort wirken statt erst nach dem Speichern. Eine zweite
+   * Ablage hätte dieselben Einstellungen ein zweites Mal gelesen und dieselbe
+   * Plus-Prüfung ein zweites Mal abonniert.
+   */
+  diagram: boolean;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -151,6 +161,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   night: "dusk",
   nightFrom: "19:00",
   nightTo: "07:00",
+  diagram: false,
 };
 
 /** Liest die Wahl aus den Einstellungen und verwirft dabei Unbekanntes. */
@@ -163,6 +174,7 @@ export function appearanceFromSettings(settings: Settings): Appearance {
     night: isThemeId(settings.theme_night) ? settings.theme_night : DEFAULT_APPEARANCE.night,
     nightFrom: normalizeTime(settings.theme_night_from, DEFAULT_APPEARANCE.nightFrom),
     nightTo: normalizeTime(settings.theme_night_to, DEFAULT_APPEARANCE.nightTo),
+    diagram: settings.diagram_mode === true,
   };
 }
 
@@ -176,6 +188,7 @@ export function settingsFromAppearance(appearance: Appearance): Partial<Settings
     theme_night: appearance.night,
     theme_night_from: appearance.nightFrom,
     theme_night_to: appearance.nightTo,
+    diagram_mode: appearance.diagram,
   };
 }
 
@@ -253,6 +266,17 @@ export function resolvePieceSet(appearance: Appearance, plus: boolean | null): P
 }
 
 /**
+ * Gilt der Diagramm-Modus?
+ *
+ * Dieselbe Regel wie beim Thema und beim Figurensatz: Ohne Plus fällt er auf
+ * aus zurück, solange die Freischaltung geprüft wird (`null`) bleibt die Wahl
+ * aber stehen · sonst spränge die Seite beim Start einmal durch zwei Layouts.
+ */
+export function resolveDiagramMode(appearance: Appearance, plus: boolean | null): boolean {
+  return appearance.diagram && plus !== false;
+}
+
+/**
  * Zwischenspeicher für den Kaltstart.
  *
  * Die Einstellungen kommen aus dem Backend und damit erst nach dem ersten
@@ -270,6 +294,15 @@ interface CachedAppearance {
   /** Fehlt beim klassischen Satz · das Startskript kennt keine Figuren. */
   pieces?: PieceSetId;
   /**
+   * Der Diagramm-Modus, wie er zuletzt galt · fehlt, wenn er aus war.
+   *
+   * Er steht mit im Zwischenspeicher, weil er das Layout und nicht nur die
+   * Farben bestimmt: Ohne ihn zeichnete die App beim Kaltstart erst die
+   * gewöhnliche Fassung und tauschte sie aus, sobald die Einstellungen
+   * eintreffen. Das Startskript liest ihn nicht — es kennt nur Farben.
+   */
+  diagram?: boolean;
+  /**
    * Grundton des Themas, wie er zuletzt tatsächlich gemessen wurde. Das
    * Startskript malt damit die Seite, bevor das Stylesheet steht · so kommt es
    * ohne eigene Farbtabelle aus.
@@ -283,12 +316,13 @@ function readCache(): CachedAppearance | null {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const { theme, board, pieces, bg } = parsed as Record<string, unknown>;
+    const { theme, board, pieces, diagram, bg } = parsed as Record<string, unknown>;
     if (!isThemeId(theme)) return null;
     return {
       theme,
       board: isBoardSetId(board) ? board : DEFAULT_BOARD_SET,
       pieces: isPieceSetId(pieces) ? pieces : DEFAULT_PIECE_SET,
+      diagram: diagram === true,
       bg: typeof bg === "string" ? bg : undefined,
     };
   } catch {
@@ -312,6 +346,7 @@ let plusUnlocked: boolean | null = null;
 let applied: ThemeId | null = null;
 let appliedBoard: BoardSetId | null = null;
 let appliedPieces: PieceSetId | null = null;
+let appliedDiagram: boolean | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 function systemDark(): boolean | null {
@@ -325,6 +360,7 @@ function apply() {
   const theme = resolveTheme(appearance, { now: new Date(), systemDark: systemDark(), plus: plusUnlocked });
   const board = appearance.boardSet;
   const pieces = resolvePieceSet(appearance, plusUnlocked);
+  const diagram = resolveDiagramMode(appearance, plusUnlocked);
 
   const root = document.documentElement;
   root.dataset.theme = theme;
@@ -332,6 +368,11 @@ function apply() {
   // überschriebe ein alter Wert weiterhin das Brett des Themas.
   if (board === DEFAULT_BOARD_SET) delete root.dataset.board;
   else root.dataset.board = board;
+  // Der Layoutmodus steht als eigenes Attribut am <html>. Die Seiten lesen ihn
+  // über `useDiagramMode()`; das Attribut ist für die Regeln, die sich in CSS
+  // besser sagen lassen als in React — und für den Blick in die Entwicklertools.
+  if (diagram) root.dataset.diagram = "on";
+  else delete root.dataset.diagram;
 
   // Erst jetzt, mit gesetztem Attribut, stehen die Tokens des neuen Themas am
   // <html> · und noch vor dem Ausstieg unten: Beim Start bestätigen die
@@ -339,10 +380,17 @@ function apply() {
   // es dann aber noch nie gehört.
   paintSystemBars(theme);
 
-  if (theme === applied && board === appliedBoard && pieces === appliedPieces) return;
+  if (
+    theme === applied &&
+    board === appliedBoard &&
+    pieces === appliedPieces &&
+    diagram === appliedDiagram
+  )
+    return;
   applied = theme;
   appliedBoard = board;
   appliedPieces = pieces;
+  appliedDiagram = diagram;
 
   // Den Grundton für den nächsten Kaltstart mitnehmen, statt ihn ein zweites
   // Mal aufzuschreiben · gemessen wird, was die Themendatei gerade sagt.
@@ -354,6 +402,7 @@ function apply() {
     theme,
     board: board === DEFAULT_BOARD_SET ? undefined : board,
     pieces: pieces === DEFAULT_PIECE_SET ? undefined : pieces,
+    diagram: diagram ? true : undefined,
     bg,
   });
   window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT, { detail: theme }));
@@ -417,6 +466,15 @@ export function appliedTheme(): ThemeId {
  */
 export function appliedPieceSet(): PieceSetId {
   return appliedPieces ?? readCache()?.pieces ?? DEFAULT_PIECE_SET;
+}
+
+/**
+ * Gilt der Diagramm-Modus gerade? Die Seiten fragen nicht hier, sondern über
+ * `useDiagramMode()` aus lib/diagramMode.ts · das ist dieselbe Auskunft, nur
+ * mit Anschluss an React.
+ */
+export function appliedDiagramMode(): boolean {
+  return appliedDiagram ?? readCache()?.diagram ?? false;
 }
 
 /**
@@ -500,6 +558,12 @@ export function initAppearance() {
     applied = cached.theme;
     appliedBoard = cached.board ?? DEFAULT_BOARD_SET;
     appliedPieces = cached.pieces ?? DEFAULT_PIECE_SET;
+    // Der Modus wechselt das Layout, nicht nur die Farben: Ohne den
+    // zwischengespeicherten Stand zöge die App beim Kaltstart erst die
+    // gewöhnliche Fassung auf und tauschte sie aus, sobald die Einstellungen
+    // eintreffen. Gelesen wird er über `appliedDiagramMode()`, nicht über die
+    // Wahl · die bleibt bis zur Antwort des Backends unangetastet.
+    appliedDiagram = cached.diagram ?? false;
   }
 
   if (typeof window !== "undefined" && typeof window.matchMedia === "function") {

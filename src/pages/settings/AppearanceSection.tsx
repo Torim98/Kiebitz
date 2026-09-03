@@ -8,7 +8,7 @@
  * gilt dasselbe: Die Vorschau zeichnet die Figuren des Sets, nicht ein Bild
  * davon.
  */
-import { Crown, Lock, Palette, Sparkles } from "lucide-react";
+import { BookMarked, Crown, Lock, Palette, Sparkles } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
 import { Button, Chip } from "../../components/ui";
 import { useI18n } from "../../lib/i18n";
@@ -87,6 +87,106 @@ function BoardPreview() {
   );
 }
 
+/**
+ * Der Diagramm-Modus · ein Layoutmodus, kein Thema.
+ *
+ * Er steht über der Farbwelt, weil er die Seiten anders *setzt* und nicht
+ * anders färbt · beides gehört ins Erscheinungsbild, aber der Satz kommt vor
+ * der Farbe. Gesperrt folgt er dem Muster der übrigen Plus-Funktionen:
+ * sichtbar, gedimmt, Schloss statt Schalter, Antippen öffnet die Erklärung —
+ * wer nicht weiß, was es gibt, schaltet es auch nicht frei.
+ *
+ * Gesperrt ist die ganze Zeile die Schaltfläche, offen nur der Schalter
+ * rechts: So gibt es nie eine Schaltfläche in einer Schaltfläche, und der
+ * beschreibende Text bleibt markierbar, solange er etwas nützt.
+ */
+function DiagramModeRow({
+  on,
+  locked,
+  onToggle,
+}: {
+  on: boolean;
+  locked: boolean;
+  onToggle: (on: boolean) => void;
+}) {
+  const { t } = useI18n();
+
+  const body = (
+    <>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel3 text-accent">
+        <BookMarked size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-[7px]">
+          <span className="text-[13.5px] font-medium text-ink">{t("set.diagramMode")}</span>
+          {locked ? (
+            <Lock size={12} className="shrink-0 text-ink3" />
+          ) : (
+            <Sparkles size={12} className="shrink-0 text-accent" />
+          )}
+          <span className="rounded border border-line2 px-[5px] py-[2px] text-[8px] font-medium uppercase tracking-[0.12em] text-ink3">
+            {t("set.diagramModeBadge")}
+          </span>
+        </span>
+        <span className="mt-1 block text-[12px] leading-[1.5] text-ink2">
+          {t("set.diagramModeNote")}
+        </span>
+        <span className="mt-[5px] block text-[11.5px] leading-[1.5] text-ink3">
+          {t("set.diagramModeScope")}
+        </span>
+      </span>
+    </>
+  );
+
+  if (locked) {
+    return (
+      <button
+        type="button"
+        onClick={() => openPlusDialog(THEME_FEATURE)}
+        className="flex w-full items-start gap-3 rounded-xl border border-line bg-panel2 py-3 pe-3 ps-3.5 text-start opacity-70"
+      >
+        {body}
+        <span className="flex h-11 w-[52px] shrink-0 items-center justify-center text-ink3">
+          <Lock size={15} />
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border bg-panel2 py-3 pe-3 ps-3.5 ${
+        on ? "border-accent-dim" : "border-line"
+      }`}
+    >
+      {body}
+      {/* 44 px Trefferfläche · der sichtbare Schalter ist kleiner als das, was
+          man trifft. Der Knopf wandert mit `start`, damit er von rechts nach
+          links genauso herumliegt wie umgekehrt. */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={t("set.diagramMode")}
+        onClick={() => onToggle(!on)}
+        className="flex h-11 w-[52px] shrink-0 items-center justify-end"
+      >
+        <span
+          className={`relative inline-block h-[26px] w-[46px] rounded-full transition-colors ${
+            on ? "bg-accent" : "bg-panel3 ring-1 ring-line2 ring-inset"
+          }`}
+        >
+          <span
+            className={`absolute top-[3px] h-5 w-5 rounded-full transition-all ${
+              on ? "start-[23px] bg-accent-ink" : "start-[3px] bg-ink3"
+            }`}
+          />
+        </span>
+      </button>
+    </div>
+  );
+}
+
 export default function AppearanceSection({
   appearance,
   onChange,
@@ -113,6 +213,7 @@ export default function AppearanceSection({
   const pickNight = (night: ThemeId) => onChange({ ...appearance, night });
   const pickBoard = (boardSet: BoardSetId) => onChange({ ...appearance, boardSet });
   const pickPieces = (pieceSet: PieceSetId) => onChange({ ...appearance, pieceSet });
+  const pickDiagram = (diagram: boolean) => onChange({ ...appearance, diagram });
 
   /** Kachel eines Themas · gesperrte führen zur Plus-Erklärung. */
   const themeTile = (id: ThemeId, selected: boolean, onPick: (id: ThemeId) => void) => {
@@ -146,6 +247,10 @@ export default function AppearanceSection({
   return (
     <>
       <p className="text-[12.5px] leading-relaxed text-ink2">{t("set.appearanceNote")}</p>
+
+      <div className="mt-3.5">
+        <DiagramModeRow on={appearance.diagram} locked={locked} onToggle={pickDiagram} />
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 min-[640px]:grid-cols-4">
         {THEMES.map((theme) => themeTile(theme.id, appearance.theme === theme.id, pickTheme))}
