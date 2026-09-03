@@ -191,8 +191,16 @@ function shellAround(shell: HTMLElement, body: HTMLElement): number {
  * mittig stehenden Brett nicht mehr auf den Schirm, schrumpft der Vorlauf
  * genau um so viel, wie ihr fehlt · abgeschnitten wird nichts.
  *
- * Die Werte gehen als `--board-chrome` und als Vorlauf an den Fokus; die
- * Rechnung für `--board-edge` steht unverändert im Stylesheet.
+ * Dieselbe Messung beantwortet auch, *wovon* der Platz abgezogen wird. Das
+ * Stylesheet rechnet mit `100dvh`, und auf dem Rechner stimmt das. Die
+ * Android-WebView löst `dvh` aber gegen den ganzen Schirm auf, während ihre
+ * eigene Fläche um Status- und Navigationsleiste kleiner ist: Das Brett wurde
+ * dadurch um genau diese beiden Leisten zu hoch, und der Fokus bekam die
+ * Bildlaufleiste, die er per Definition nicht haben darf. Gemessen wird
+ * deshalb die Höhe des Fokus selbst und als `--board-vh` weitergereicht.
+ *
+ * Die Werte gehen als `--board-chrome`, als `--board-vh` und als Vorlauf an
+ * den Fokus; die Rechnung für `--board-edge` steht unverändert im Stylesheet.
  */
 function useChrome(mobile: boolean) {
   const layer = useRef<HTMLDivElement | null>(null);
@@ -204,6 +212,8 @@ function useChrome(mobile: boolean) {
   const rows = useRef<HTMLDivElement | null>(null);
   const controls = useRef<HTMLDivElement | null>(null);
   const [chrome, setChrome] = useState<number | null>(null);
+  /** Die Höhe, die dem Fokus wirklich gehört · null bis zur ersten Messung. */
+  const [viewport, setViewport] = useState<number | null>(null);
   const [lead, setLead] = useState(0);
 
   useLayoutEffect(() => {
@@ -218,6 +228,12 @@ function useChrome(mobile: boolean) {
       // Ohne Layout (JSDOM) ist jede Höhe 0 · dann bleibt der Wert aus dem
       // Stylesheet stehen, statt ihn auf null zu setzen.
       if (boardHeight <= 0) return;
+      // Der Fokus liegt über dem ganzen Fenster · seine Höhe ist die Höhe, die
+      // zu vergeben ist, und zwar auch dort, wo `dvh` etwas anderes behauptet.
+      const height = Math.floor(layerEl.getBoundingClientRect().height);
+      setViewport((previous) =>
+        previous != null && Math.abs(previous - height) < 1 ? previous : height
+      );
       const around = shell === layerEl ? 0 : verticalPadding(layerEl);
       const gap = parseFloat(getComputedStyle(columnEl).rowGap) || 0;
       const aboveHeight = rows.current?.getBoundingClientRect().height ?? 0;
@@ -251,7 +267,7 @@ function useChrome(mobile: boolean) {
     };
   }, [mobile]);
 
-  return { chrome, lead, layer, card, body, column, board, rows, controls };
+  return { chrome, viewport, lead, layer, card, body, column, board, rows, controls };
 }
 
 /**
@@ -278,7 +294,8 @@ function FocusLayer({
 }) {
   const t = useT();
   const mobile = useMobileShell();
-  const { chrome, lead, layer, card, body, column, board, rows, controls } = useChrome(mobile);
+  const { chrome, viewport, lead, layer, card, body, column, board, rows, controls } =
+    useChrome(mobile);
   const [container] = useState<HTMLElement | null>(() =>
     typeof document === "undefined" ? null : document.body
   );
@@ -349,10 +366,13 @@ function FocusLayer({
     </div>
   );
 
-  // Die gemessene Höhe ersetzt den Schätzwert aus dem Stylesheet. Sie steht
-  // als Variable am Fokus selbst · `--board-edge` löst sie dort auf, egal ob
-  // sie aus der Regel oder von hier kommt.
-  const measured = { "--board-chrome": chrome != null ? `${chrome}px` : undefined } as CSSProperties;
+  // Die gemessenen Höhen ersetzen die Werte aus dem Stylesheet. Sie stehen als
+  // Variablen am Fokus selbst · `--board-edge` löst sie dort auf, egal ob sie
+  // aus der Regel oder von hier kommen.
+  const measured = {
+    "--board-chrome": chrome != null ? `${chrome}px` : undefined,
+    "--board-vh": viewport != null ? `${viewport}px` : undefined,
+  } as CSSProperties;
 
   // Auf dem Handy trägt der Schirm die Fläche selbst; auf dem Desktop ist er
   // eine Karte auf einem unscharfen Schleier.

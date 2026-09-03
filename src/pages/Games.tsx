@@ -910,6 +910,11 @@ export default function Games({
                 ]
               : []
           }
+          // Dieselben Tags wie in der Tabelle · gelesen wird der Datensatz,
+          // wenn er schon da ist, sonst die Zeile aus der Liste.
+          stichwoerter={selectedRecord?.tags ?? selected?.tags ?? []}
+          stichwortVorsatz={selected?.analysisExcluded ? t("games.analysisExcludedTag") : undefined}
+          onStichwoerter={selected?.dbId ? saveTags : undefined}
           notiz={selectedRecord?.note ?? selected?.note ?? ""}
           von={rangeFrom}
           bis={rangeTo}

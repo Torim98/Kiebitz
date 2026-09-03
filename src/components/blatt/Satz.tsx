@@ -7,8 +7,12 @@
  *
  * Kein Farbwert: alles über die Tokens aus src/themes.css.
  */
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Check } from "lucide-react";
+// Wie eine Eingabe in mehrere Stichwörter zerfällt, ist eine Regel und keine
+// Darstellung · sie steht deshalb weiter beim Tag-Editor der gewöhnlichen
+// Fassung und wird hier nur benutzt.
+import { parseTagInput } from "../TagEditor";
 import "./blatt.css";
 
 /** Kolumnentitel · oben auf jeder Buchseite, darunter die kräftige Linie. */
@@ -254,6 +258,98 @@ export function Zugfolge({
       style={{ fontSize: gross, fontVariantNumeric: "lining-nums", ...style }}
     >
       {children}
+    </div>
+  );
+}
+
+/**
+ * Die Stichwörter eines Eintrags · im Buchsatz keine Pillen, sondern Wörter.
+ *
+ * Ein Tag ist in der gewöhnlichen Fassung eine Pille: gefüllte Fläche,
+ * abgerundete Ecken, ein Kreuz zum Wegnehmen. Auf einem Blatt gibt es das
+ * nicht. Dort stehen Stichwörter als Wörter auf einer Linie, durch Punkte
+ * getrennt, wie das Schlagwortregister hinten im Band — und weil sie zum
+ * Eintrag gehören und nicht zur Liste, stehen sie da, wo auch die Bemerkung
+ * steht.
+ *
+ * Geschrieben wird hier wie in der gewöhnlichen Fassung: Ein Klick auf ein
+ * Wort nimmt es weg, das Feld darunter legt eines an. Ohne `onSchreiben`
+ * bleibt beides fort und die Zeile ist nur noch Auskunft — so wie die Partie
+ * ohne Datenbank auch keine Bemerkung annimmt.
+ *
+ * `vorsatz` ist ein Wort, das die App selbst vergibt („Nicht in Analysen") ·
+ * es steht mit, aber es lässt sich nicht wegnehmen.
+ */
+export function Stichwortzeile({
+  woerter,
+  vorsatz,
+  leer,
+  platzhalter,
+  entfernen,
+  onSchreiben,
+}: {
+  woerter: string[];
+  vorsatz?: string;
+  /** Was dasteht, solange keines vergeben ist. */
+  leer: string;
+  /** Beschriftung des Schreibfeldes. */
+  platzhalter: string;
+  /** Titel des Griffs, der ein Wort wieder wegnimmt. */
+  entfernen: string;
+  /** Fehlt sie, ist die Zeile nur zu lesen. */
+  onSchreiben?: (woerter: string[]) => void;
+}) {
+  const [entwurf, setEntwurf] = useState("");
+
+  const anlegen = () => {
+    const neue = parseTagInput(entwurf);
+    if (!neue.length || !onSchreiben) return;
+    onSchreiben([...woerter, ...neue]);
+    setEntwurf("");
+  };
+
+  return (
+    <div>
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-b border-line pb-[5px] text-[12.5px]">
+        {vorsatz && <span className="text-ink2">{vorsatz}</span>}
+        {woerter.length === 0 && !vorsatz && <span className="text-ink3">{leer}</span>}
+        {woerter.map((wort) =>
+          onSchreiben ? (
+            <button
+              key={wort}
+              type="button"
+              onClick={() => onSchreiben(woerter.filter((value) => value !== wort))}
+              title={entfernen}
+              className="py-0.5 text-ink hover:text-accent"
+            >
+              {wort}
+              <span aria-hidden className="text-ink3">
+                {" ×"}
+              </span>
+            </button>
+          ) : (
+            <span key={wort} className="py-0.5 text-ink">
+              {wort}
+            </span>
+          )
+        )}
+      </div>
+      {onSchreiben && (
+        <input
+          value={entwurf}
+          onChange={(event) => setEntwurf(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              anlegen();
+            }
+          }}
+          onBlur={anlegen}
+          placeholder={platzhalter}
+          aria-label={platzhalter}
+          className="mt-1.5 block min-h-11 w-full border-b border-line2 bg-transparent pb-[5px] text-[12.5px] text-ink placeholder:text-ink3 focus:border-ink focus:outline-none"
+        />
+      )}
     </div>
   );
 }

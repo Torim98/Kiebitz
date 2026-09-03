@@ -25,9 +25,15 @@ import javax.crypto.spec.GCMParameterSpec
  * SharedPreferences-Datei der App. Damit steht in keiner Datei ein lesbarer
  * Token, und ein Backup der App nimmt nichts Verwertbares mit.
  *
- * Gespeichert werden ausschließlich die Kontositzung und der signierte
- * Entitlement-Token. Partien, Analysen und Trainingsdaten bleiben davon
- * unberührt · sie verlassen das Gerät ohnehin nicht.
+ * Gespeichert werden die Kontositzung, der signierte Entitlement-Token und der
+ * persönliche Lichess-API-Token für den Eröffnungs-Explorer. Partien, Analysen
+ * und Trainingsdaten bleiben davon unberührt · sie verlassen das Gerät ohnehin
+ * nicht.
+ *
+ * Die Liste der erlaubten Namen steht doppelt: hier und in src-tauri/src/plus.rs
+ * (`KEYS`). Beide Seiten müssen dieselben Namen kennen — fehlt einer hier,
+ * lehnt das Plugin ihn ab, und die WebView bekommt für diesen Wert nie etwas
+ * aus dem Keystore zurück.
  */
 @TauriPlugin
 class SecureStorePlugin(private val activity: Activity) : Plugin(activity) {
@@ -38,7 +44,7 @@ class SecureStorePlugin(private val activity: Activity) : Plugin(activity) {
     const val TRANSFORMATION = "AES/GCM/NoPadding"
     const val GCM_TAG_BITS = 128
     const val IV_BYTES = 12
-    val ALLOWED_KEYS = setOf("session", "entitlement")
+    val ALLOWED_KEYS = setOf("session", "entitlement", "lichess_token")
   }
 
   private val preferences by lazy {
@@ -92,7 +98,7 @@ class SecureStorePlugin(private val activity: Activity) : Plugin(activity) {
     invoke.resolve(JSObject().apply { put("value", null) })
   }
 
-  /** Nur die beiden bekannten Schlüsselnamen sind zugelassen. */
+  /** Nur die bekannten Schlüsselnamen sind zugelassen · siehe `ALLOWED_KEYS`. */
   private fun requireKey(invoke: Invoke): String? {
     val name = invoke.getArgs().getString("key", "")
     if (name !in ALLOWED_KEYS) {

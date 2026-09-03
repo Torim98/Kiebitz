@@ -854,7 +854,7 @@ export const de = {
   "set.appearanceNote": "Die Farbwelt gilt für die ganze App und wird auf diesem Gerät gespeichert · das Telefon am Abend darf anders stehen als der Rechner am Tag.",
   "set.diagramMode": "Diagramm-Modus",
   "set.diagramModeBadge": "Experimentell",
-  "set.diagramModeNote": "Der Start als Buchseite: ein gedrucktes Diagramm statt vier Kacheln, deutsche Notation, Formularzeilen statt Karten. Die Navigation wird zum Register mit den offenen Posten.",
+  "set.diagramModeNote": "Jede Seite als Blatt aus einem Schachbuch: gedruckte Diagramme statt Kacheln, Notation in deiner Sprache, Verzeichnisse und Formularzeilen statt Karten. Start, Partien, Analyse, Training und Einstellungen sind gesetzt, die Navigation wird zum Register mit den offenen Posten.",
   "theme.dark": "Dunkel",
   "theme.darkNote": "Der Standard: sehr dunkler Grund, hoher Kontrast.",
   "theme.light": "Hell",

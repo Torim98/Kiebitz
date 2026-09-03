@@ -836,7 +836,7 @@ export const en: Record<Key, string> = {
   "set.appearanceNote": "The colour theme applies to the whole app and is stored on this device — your phone in the evening may differ from your desktop during the day.",
   "set.diagramMode": "Diagram mode",
   "set.diagramModeBadge": "Experimental",
-  "set.diagramModeNote": "The dashboard as a page from a book: a printed diagram instead of four tiles, notation in your language, form lines instead of cards. The navigation becomes a table of contents listing what is open.",
+  "set.diagramModeNote": "Every page as a leaf from a chess book: printed diagrams instead of tiles, notation in your language, indexes and form lines instead of cards. Dashboard, games, analysis, training and settings are typeset, and the navigation becomes a table of contents listing what is open.",
   "theme.dark": "Dark",
   "theme.darkNote": "The default: very dark ground, high contrast.",
   "theme.light": "Light",

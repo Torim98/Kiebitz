@@ -31,6 +31,11 @@ const SERVICE: &str = "de.torim.kiebitz";
 /// Lichess verlangt für dessen Abfragen seit Anfang 2026 eine Anmeldung; der
 /// Token gehört damit in dieselbe Ablage wie die übrigen Zugangsdaten und nicht
 /// in die settings.json.
+///
+/// Auf Android führt das Keystore-Plugin dieselbe Liste ein zweites Mal (siehe
+/// `ALLOWED_KEYS` in gen/android/…/SecureStorePlugin.kt). Wer hier einen Namen
+/// hinzufügt, muss ihn auch dort eintragen · sonst lehnt das Plugin ihn ab, und
+/// der Wert kommt auf dem Telefon nie im Keystore an.
 const KEYS: [&str; 3] = ["session", "entitlement", "lichess_token"];
 
 fn check_key(key: &str) -> Result<(), String> {
@@ -179,9 +184,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_the_two_known_keys_are_accepted() {
+    fn only_the_known_keys_are_accepted() {
         assert!(check_key("session").is_ok());
         assert!(check_key("entitlement").is_ok());
+        assert!(check_key("lichess_token").is_ok());
         assert!(check_key("../../settings.json").is_err());
         assert!(check_key("").is_err());
     }

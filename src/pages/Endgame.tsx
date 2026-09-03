@@ -356,7 +356,11 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               {status === "solved" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
               {endMsg ? t(endMsg) : ""}
             </div>
-            <div className="flex gap-2">
+            {/* Auch die Knopfreihe bricht um · „Nächste Zufallsstellung" neben
+                „Neu starten" und dem Teilen-Symbol ist auf einem 360 px
+                breiten Schirm länger als die Zeile, und ohne Umbruch lief sie
+                im Fokus über die Kante hinaus. */}
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button onClick={() => start(drill)}>
                 <RotateCcw size={14} /> {t("eg.retry")}
               </Button>
@@ -377,7 +381,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
           </div>
         ) : (
           <>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               {desktop && status === "playing" && (
                 <Button onClick={showHint}>
                   {hintLoading ? (

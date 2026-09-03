@@ -829,7 +829,7 @@ export const zh: Record<Key, string> = {
   "set.appearanceNote": "配色主题作用于整个应用，并保存在本设备上 · 晚上的手机可以与白天的电脑不同。",
   "set.diagramMode": "图示模式",
   "set.diagramModeBadge": "实验性",
-  "set.diagramModeNote": "总览页像一页棋书：用印刷图示代替四块卡片，用你的语言记谱，用表格行代替卡片。导航变成列出待办事项的目录。",
+  "set.diagramModeNote": "每一页都像棋书的书页：用印刷图示代替卡片，用你的语言记谱，用目录和表格行代替卡片。总览、对局、分析、训练和设置都按书页排版，导航则变成列出待办事项的目录。",
   "theme.dark": "深色",
   "theme.darkNote": "默认主题：极深的底色，高对比度。",
   "theme.light": "浅色",

@@ -829,7 +829,7 @@ export const es: Record<Key, string> = {
   "set.appearanceNote": "El tema de color se aplica a toda la aplicación y se guarda en este dispositivo: el teléfono por la noche puede diferir del ordenador de día.",
   "set.diagramMode": "Modo diagrama",
   "set.diagramModeBadge": "Experimental",
-  "set.diagramModeNote": "El panel como una página de libro: un diagrama impreso en lugar de cuatro fichas, notación en tu idioma, líneas de formulario en lugar de tarjetas. La navegación se convierte en un índice con lo que queda pendiente.",
+  "set.diagramModeNote": "Cada página como una hoja de un libro de ajedrez: diagramas impresos en lugar de fichas, notación en tu idioma, índices y líneas de formulario en lugar de tarjetas. El panel, las partidas, el análisis, el entrenamiento y los ajustes están compuestos, y la navegación se convierte en un índice con lo que queda pendiente.",
   "theme.dark": "Oscuro",
   "theme.darkNote": "El estándar: fondo muy oscuro y alto contraste.",
   "theme.light": "Claro",

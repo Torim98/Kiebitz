@@ -11,8 +11,12 @@
  *
  * Rechts der Eintrag zur gewählten Partie: Schlussstellung als Diagramm — hier
  * wird gelesen, nicht gezogen, also ein Abdruck — die Angaben als
- * Formularfelder, und die Notiz auf liniertem Grund. Das ist das einzige Feld
- * auf dem Blatt, in das man schreibt.
+ * Formularfelder, darunter die Stichwörter und die Notiz auf liniertem Grund.
+ * Die beiden letzten sind das, was auf diesem Blatt geschrieben wird: was der
+ * Nutzer selbst zu dieser Partie beiträgt. In der Liste stehen sie nicht ·
+ * dort ersetzen die zwei Marken am Zeilenende die Tag-Spalte, und ein Register
+ * bleibt nur lesbar, solange in seinen Zeilen nichts steht, was zur nächsten
+ * nicht passt.
  */
 import type { ReactNode } from "react";
 import { Bildunterschrift, Diagramm } from "../../components/blatt/Diagramm";
@@ -22,6 +26,7 @@ import {
   Feldname,
   Kolumnentitel,
   Rubrik,
+  Stichwortzeile,
   Weg,
 } from "../../components/blatt/Satz";
 import { useI18n } from "../../lib/i18n";
@@ -61,6 +66,12 @@ export interface GamesBlattProps {
   unterschrift: string[];
   /** Angaben zur gewählten Partie · Formularfelder unter dem Diagramm. */
   angaben: { label: string; wert: ReactNode }[];
+  /** Stichwörter der gewählten Partie · dieselben Tags wie in der Tabelle. */
+  stichwoerter: string[];
+  /** Wort, das die App selbst vergibt · steht mit, lässt sich nicht wegnehmen. */
+  stichwortVorsatz?: string;
+  /** Fehlt sie (Demo-Partien ohne Datenbank), sind die Stichwörter nur zu lesen. */
+  onStichwoerter?: (woerter: string[]) => void;
   notiz: string;
   von: number;
   bis: number;
@@ -83,6 +94,9 @@ export default function GamesBlatt({
   fen,
   unterschrift,
   angaben,
+  stichwoerter,
+  stichwortVorsatz,
+  onStichwoerter,
   notiz,
   von,
   bis,
@@ -222,6 +236,20 @@ export default function GamesBlatt({
             <div className="mt-[3px] truncate text-[12.5px] text-ink">{angabe.wert}</div>
           </div>
         ))}
+      </div>
+      {/* Stichwörter und Bemerkung gehören zusammen: Beides schreibt der Nutzer
+          selbst zu dieser einen Partie, und beides steht im Band unter dem
+          Diagramm und nicht in der Zeile darüber. */}
+      <div className="mt-3.5">
+        <Feldname>{t("games.colTags")}</Feldname>
+        <Stichwortzeile
+          woerter={stichwoerter}
+          vorsatz={stichwortVorsatz}
+          leer={t("games.noTags")}
+          platzhalter={t("games.tagPlaceholder")}
+          entfernen={t("games.removeTag")}
+          onSchreiben={onStichwoerter}
+        />
       </div>
       <div className="mt-3.5">
         <Feldname>{t("games.notes")}</Feldname>

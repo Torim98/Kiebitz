@@ -829,7 +829,7 @@ export const fr: Record<Key, string> = {
   "set.appearanceNote": "Le thème de couleurs s'applique à toute l'application et reste sur cet appareil : le téléphone le soir peut différer de l'ordinateur en journée.",
   "set.diagramMode": "Mode diagramme",
   "set.diagramModeBadge": "Expérimental",
-  "set.diagramModeNote": "Le tableau de bord comme une page de livre : un diagramme imprimé au lieu de quatre tuiles, la notation dans votre langue, des lignes de formulaire au lieu de cartes. La navigation devient un sommaire qui liste ce qui reste à faire.",
+  "set.diagramModeNote": "Chaque page comme un feuillet de livre d’échecs : des diagrammes imprimés au lieu de tuiles, la notation dans votre langue, des index et des lignes de formulaire au lieu de cartes. Le tableau de bord, les parties, l’analyse, l’entraînement et les réglages sont composés, et la navigation devient un sommaire qui liste ce qui reste à faire.",
   "theme.dark": "Sombre",
   "theme.darkNote": "Le thème par défaut : fond très sombre, fort contraste.",
   "theme.light": "Clair",

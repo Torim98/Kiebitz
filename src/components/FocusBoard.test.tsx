@@ -144,6 +144,11 @@ describe("focus board", () => {
     // Vorlauf = halbe freie Fläche über dem Brett: (740 − 360) / 2 − 40.
     expect(column.style.paddingTop).toBe("150px");
     expect(layer.style.getPropertyValue("--board-chrome")).toBe("200px");
+    // Die Höhe, von der abgezogen wird, ist die gemessene und nicht `100dvh` ·
+    // die Android-WebView löst `dvh` gegen den ganzen Schirm auf, also samt
+    // Status- und Navigationsleiste, und das Brett wurde um genau die beiden
+    // zu hoch. Siehe „Fokus-Brett" in src/index.css.
+    expect(layer.style.getPropertyValue("--board-vh")).toBe("800px");
 
     stub(controls, 160);
     fireEvent(window, new Event("resize"));
