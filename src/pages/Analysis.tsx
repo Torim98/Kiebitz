@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -29,7 +31,7 @@ import {
   Zap,
   RotateCcw,
 } from "lucide-react";
-import { featuredGame } from "../data/demo";
+import { featuredGame, games as demoGames } from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
 import { useI18n, type Key, type Locale, type TFunc } from "../lib/i18n";
 import { isStoreCapture } from "../lib/storeCapture";
@@ -90,6 +92,10 @@ import {
 } from "../lib/clocks";
 import { tcLabel } from "../lib/gameUi";
 import { accuraciesFromMoveEvals } from "../lib/accuracy";
+import { useDiagramMode } from "../lib/diagramMode";
+
+/** Die kommentierte Partie kommt nach · siehe Dashboard.tsx. */
+const AnalysisBlatt = lazy(() => import("./blatt/AnalysisBlatt"));
 
 /** Leere Zugliste als Konstante · ein neues Array je Render würde die
     davon abhängigen useMemo-Ketten bei jedem Durchlauf neu rechnen. */
@@ -429,6 +435,7 @@ export default function Analysis({
   // Die Bedienleiste unter dem Brett fasst auf Handybreite ihre Nebenaktionen
   // zusammen · siehe `boardControls`.
   const mobile = useMobileShell();
+  const diagramMode = useDiagramMode();
   // Analysebudget: die Zeit, die vor einer Partie verbracht wird. Bisher zählte
   // nur ein im Kalender abgehakter Termin · eine Engine, die im Hintergrund
   // 1.000 Partien rechnet, hat nie ein Partie-Review ersetzt, aber wer eine
@@ -972,6 +979,22 @@ export default function Analysis({
     const prevEval = ply <= 1 ? 20 : evalNum(viewMoves[ply - 2]?.evalCp ?? null, viewMoves[ply - 2]?.mateIn ?? null);
     return commentFor(t, sans.slice(0, ply - 1), currentMove, prevEval);
   }, [scratch, variation, live, currentMove, ply, sans, viewMoves, t]);
+
+  /**
+   * Die Anmerkung zu einem beliebigen Zug · dieselbe Regel wie für den
+   * laufenden. Im Buchsatz stehen sie alle, nicht nur die des Halbzugs, auf
+   * dem man gerade steht.
+   */
+  const blattKommentar = (index: number): string | null => {
+    const move = viewMoves[index];
+    if (!move) return null;
+    if (!live) return featuredGame.moves[index]?.comment ?? null;
+    if (!move.judgment) return null;
+    if (!(["inaccuracy", "mistake", "blunder"] as MoveJudgment[]).includes(move.judgment)) return null;
+    const prevEval =
+      index === 0 ? 20 : evalNum(viewMoves[index - 1]?.evalCp ?? null, viewMoves[index - 1]?.mateIn ?? null);
+    return commentFor(t, sans.slice(0, index), move, prevEval);
+  };
 
   const evalSeries = viewMoves
     .map((m, i) => ({ ply: i + 1, eval: Math.max(-600, Math.min(600, evalNum(m.evalCp, m.mateIn))) / 100 }))
@@ -1591,6 +1614,114 @@ export default function Analysis({
       </div>
     );
   };
+
+  // ── Die kommentierte Partie ───────────────────────────────────────────────
+  //
+  // Dieselben Züge, dieselben Urteile, dasselbe Brett — anders gesetzt. Der
+  // Kommentar kommt aus derselben `commentFor`-Regel, die die Seite unten
+  // für den laufenden Zug benutzt; hier stehen sie alle.
+  if (diagramMode && !scratch) {
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <AnalysisBlatt
+          mobile={mobile}
+          kopfRechts={
+            <>
+              {live && game.id != null
+                ? t("blatt.entryNo", { n: deInt(game.id) })
+                : live || scratch || loadingGame
+                  ? t("nav.analysis")
+                  : featuredGame.engine}
+            </>
+          }
+          felder={[
+            {
+              label: t("common.white"),
+              wert: (
+                <>
+                  {whitePlayer.name}{" "}
+                  {whitePlayer.elo > 0 && (
+                    <span className="blatt-zahl text-ink3">{whitePlayer.elo}</span>
+                  )}
+                </>
+              ),
+              gross: true,
+            },
+            {
+              label: t("common.black"),
+              wert: (
+                <>
+                  {blackPlayer.name}{" "}
+                  {blackPlayer.elo > 0 && (
+                    <span className="blatt-zahl text-ink3">{blackPlayer.elo}</span>
+                  )}
+                </>
+              ),
+              gross: true,
+            },
+            {
+              label: t("blatt.gameField"),
+              wert: live
+                ? gameMeta.slice(0, 1).concat(game.played_at).join(" · ")
+                : scratch || loadingGame
+                  ? "—"
+                  : featuredGame.event,
+            },
+            {
+              label: t("games.colOpening"),
+              // Ohne Partie steht hier nichts · erfunden wird keine.
+              wert:
+                live || (!scratch && !loadingGame) ? (
+                  <>
+                    <span className="blatt-zahl text-ink3">
+                      {(live ? game.eco : demoGames[0]?.eco) ?? ""}{" "}
+                    </span>
+                    {(live ? game.opening : demoGames[0]?.opening) ?? ""}
+                  </>
+                ) : (
+                  "—"
+                ),
+            },
+          ]}
+          ergebnis={
+            live
+              ? game.result === "draw"
+                ? "½ : ½"
+                : (game.result === "win") === (game.color === "white")
+                  ? "1 : 0"
+                  : "0 : 1"
+              : "—"
+          }
+          oben={{ name: topPlayer.name, elo: topPlayer.elo, farbe: topIsWhite ? "white" : "black" }}
+          unten={{
+            name: bottomPlayer.name,
+            elo: bottomPlayer.elo,
+            farbe: topIsWhite ? "black" : "white",
+          }}
+          brett={boardRow("blatt")}
+          zuege={viewMoves.map((move, index) => ({
+            san: move.san,
+            nag: move.judgment && MARKED_IN_LIST.includes(move.judgment) ? NAG[move.judgment] : undefined,
+            farbe: move.judgment ? JUDGMENT_COLOR[move.judgment] : undefined,
+            kommentar: blattKommentar(index),
+          }))}
+          ply={ply}
+          onPly={setPly}
+          kurve={evalSeries.map((point) => point.eval)}
+          bewertung={shownEval / 100}
+          bilanz={(["brilliant", "great", "excellent", "inaccuracy", "mistake", "blunder"] as const)
+            .filter((key) => summary[key] > 0)
+            .map((key) => ({
+              name: judgmentLabel(t, key),
+              zahl: summary[key],
+              farbe: JUDGMENT_COLOR[key],
+            }))}
+          acpl={summary.acpl}
+          genauigkeit={live ? (game.accuracy ?? derivedAccuracies?.mine.overall ?? null) : null}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">

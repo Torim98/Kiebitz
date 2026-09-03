@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,6 +38,10 @@ import { useMobileShell } from "../components/MobileShell";
 import MobileSheet from "../components/MobileSheet";
 import TagEditor from "../components/TagEditor";
 import { de, deInt } from "../lib/format";
+import { useDiagramMode } from "../lib/diagramMode";
+
+/** Das Verzeichnis kommt nach · siehe Dashboard.tsx. */
+const GamesBlatt = lazy(() => import("./blatt/GamesBlatt"));
 import { replaySans } from "../lib/position";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
 
@@ -73,6 +77,7 @@ export default function Games({
   const backend = useBackendInfo();
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
+  const diagramMode = useDiagramMode();
   const [dbGames, setDbGames] = useState<UiGame[] | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<GameRecord | null>(null);
   const [filteredTotal, setFilteredTotal] = useState(0);
@@ -827,6 +832,97 @@ export default function Games({
       <div className="px-4 py-3">{importBody}</div>
     </MobileSheet>
   ) : null;
+
+  // Dieselben Daten, anders gesetzt · Filter, Liste und Eintrag stehen oben
+  // schon fertig da und werden hier nur anders ausgegeben.
+  if (diagramMode) {
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <GamesBlatt
+          mobile={mobile}
+          bestand={databaseLoaded ? libraryTotal : null}
+          filter={[
+            {
+              label: t("games.filters"),
+              wert: query,
+              platzhalter: t("games.searchPlaceholder"),
+              leer: query === "",
+              onChange: setQuery,
+            },
+            {
+              label: t("games.colSource"),
+              wert: source === "alle" ? t("games.allSources") : source,
+              leer: source === "alle",
+              breite: 112,
+              onClick: () => setSource(source === "alle" ? "chess.com" : source === "chess.com" ? "lichess" : "alle"),
+            },
+            {
+              label: t("games.colResult"),
+              wert: result === "alle" ? t("games.allResults") : resultLabels[result],
+              leer: result === "alle",
+              breite: 96,
+              onClick: () =>
+                setResult(
+                  result === "alle" ? "win" : result === "win" ? "draw" : result === "draw" ? "loss" : "alle"
+                ),
+            },
+            {
+              label: t("games.colMode"),
+              wert: tc ? tcLabel(tc, locale) : t("blatt.filterAll"),
+              leer: tc === "",
+              breite: 104,
+              onClick: tc ? () => setTc("") : undefined,
+            },
+          ]}
+          treffer={totalResults}
+          zeilen={paged.map((game, index) => ({
+            game,
+            // Die laufende Nummer zählt rückwärts vom Bestand · die neueste
+            // Partie trägt die höchste, wie der letzte Eintrag im Band.
+            nummer: databaseLoaded ? libraryTotal - (rangeFrom - 1) - index : null,
+          }))}
+          gewaehlt={selected}
+          fen={previewFen}
+          unterschrift={[
+            selected?.id != null && databaseLoaded
+              ? `${t("blatt.entryNo", { n: deInt(libraryTotal - (rangeFrom - 1) - paged.findIndex((g) => g.id === selected?.id)) })} · ${t("blatt.finalPosition")}`
+              : t("blatt.finalPosition"),
+            selected ? `${ownName} – ${selected.opponent}` : "",
+          ]}
+          angaben={
+            selected
+              ? [
+                  { label: t("games.colSource"), wert: `${selected.source} · ${selected.tc}` },
+                  { label: t("games.colDate"), wert: selected.date },
+                  {
+                    label: t("games.colOpening"),
+                    wert: (
+                      <>
+                        <span className="blatt-zahl text-ink3">{selected.eco} </span>
+                        {selected.opening}
+                      </>
+                    ),
+                  },
+                  {
+                    label: t("games.colAccuracy"),
+                    wert: selected.accuracy != null ? `${de(selected.accuracy)} %` : "—",
+                  },
+                ]
+              : []
+          }
+          notiz={selectedRecord?.note ?? selected?.note ?? ""}
+          von={rangeFrom}
+          bis={rangeTo}
+          blatt={safePage}
+          blaetter={totalPages}
+          onZurueck={() => setPage((value) => Math.max(1, value - 1))}
+          onWeiter={() => setPage((value) => Math.min(totalPages, value + 1))}
+          onWaehlen={(game) => setSelectedId(game.id)}
+          onAnalyse={() => selected?.dbId != null && openAnalysis(selected.dbId)}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1560px] px-4 py-6 sm:px-6">
