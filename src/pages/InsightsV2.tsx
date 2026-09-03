@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -18,9 +18,20 @@ import { errorStats, type PhaseErrors } from "../lib/analysis";
 import { puzzleInsights, type PuzzleInsights } from "../lib/puzzles";
 import { buildInsights } from "../lib/stats";
 import { deepInsights, type DeepInsights } from "../lib/insights";
-import { buildDna } from "../lib/dna";
-import { buildFindings, findingsFor, type Finding, type FindingTab } from "../lib/findings";
-import { deInt } from "../lib/format";
+import { buildDna, weakestAxis } from "../lib/dna";
+import {
+  buildFindings,
+  findingsFor,
+  localizeFindingParams,
+  type Finding,
+  type FindingTab,
+} from "../lib/findings";
+import { de, deInt } from "../lib/format";
+import { useDiagramMode } from "../lib/diagramMode";
+import { Befund } from "../components/blatt/Befund";
+
+/** Das Profil kommt nach · siehe Dashboard.tsx. */
+const InsightsBlatt = lazy(() => import("./blatt/InsightsBlatt"));
 import { usePageMemory } from "../lib/pageMemory";
 import type { PageId } from "../App";
 import Overview from "./insights/Overview";
@@ -69,6 +80,7 @@ export default function InsightsV2({
   const { locale, t } = useI18n();
   const mobile = useMobileShell();
   const desktop = backend.mode === "desktop";
+  const diagramMode = useDiagramMode();
 
   // Der Reiter übersteht einen Absprung in die Puzzles oder ins Repertoire ·
   // ohne ihn käme man zwar an derselben Scroll-Position, aber auf einer anderen
@@ -162,6 +174,159 @@ export default function InsightsV2({
   const subtitle = deepData
     ? t("ins.subtitleDeep", { n: deInt(live.totalGames) })
     : t("common.loading");
+
+  // ── Das Profil ────────────────────────────────────────────────────────────
+  //
+  // Dieselben Daten, andere Form: Aus dem Netz werden gestapelte Skalen, aus
+  // der Reiterleiste ein Register. Die fünf Tiefenreiter behalten ihren
+  // Inhalt und bekommen nur die Hülle.
+  if (diagramMode && !loading && deepData) {
+    const monate = deepData.progress.months;
+    const befundListe = findings.slice(0, 3);
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <InsightsBlatt
+          mobile={mobile}
+          kopfRechts={subtitle}
+          reiter={TABS.map(({ id, key }) => ({
+            id,
+            name: t(key),
+            plus: id !== "overview" && !deepGate.unlocked && !deepGate.pending,
+          }))}
+          aktiv={tab}
+          onReiter={(id) => setTab(id as InsightTab)}
+          felder={[
+            {
+              label: t("nav.games"),
+              wert: (
+                <>
+                  <span className="blatt-zahl">{deInt(live.totalGames)}</span>{" "}
+                  {t("blatt.inTheDatabase")}
+                </>
+              ),
+              gross: true,
+            },
+            {
+              label: t("ins.scoreRate"),
+              wert: <span className="blatt-zahl">{de(live.scoreRate)} %</span>,
+            },
+            {
+              label: t("ins.avgAccuracy"),
+              wert:
+                live.avgAccuracy != null ? (
+                  <span className="blatt-zahl">{de(live.avgAccuracy)} %</span>
+                ) : (
+                  "—"
+                ),
+            },
+            {
+              label: t("ins.form20"),
+              wert: <span className="blatt-zahl">{de(live.recentForm.scorePct)} %</span>,
+            },
+          ]}
+          schwaechste={
+            dna.length > 0 ? t(`dna.${weakestAxis(dna)?.key ?? "tactics"}` as Key) : "—"
+          }
+          dna={dna.map((axis) => ({
+            name: t(`dna.${axis.key}` as Key),
+            wert: axis.value,
+            feld: axis.field,
+          }))}
+          dnaNote={t("dna.note")}
+          grundlage={[
+            {
+              name: t("nav.games"),
+              wert: deInt(live.totalGames),
+              neben: t("blatt.analysedShort", { p: de(live.analysisCoverage) }),
+            },
+            {
+              name: t("ins.avgAccuracy"),
+              wert: live.avgAccuracy != null ? `${de(live.avgAccuracy)} %` : "—",
+              neben: t("ins.scoreRate"),
+            },
+          ]}
+          phasen={live.phaseAccuracy.map((phase) => ({
+            name: t(`ins.phase.${phase.phase}` as Key),
+            wert: phase.accuracy != null ? `${de(phase.accuracy)} %` : "—",
+            neben: t("blatt.gamesN", { n: deInt(phase.games) }),
+          }))}
+          befunde={
+            befundListe.length > 0 ? (
+              befundListe.map((finding, index) => {
+                const params = localizeFindingParams(finding.params, t, locale);
+                return (
+                  <Befund
+                    key={finding.id}
+                    titel={t(finding.titleKey, params)}
+                    text={t(finding.bodyKey, params)}
+                    schwere={finding.severity}
+                    ton={finding.tone}
+                    letzte={index === befundListe.length - 1}
+                    onClick={finding.action ? () => onAction(finding) : undefined}
+                  />
+                );
+              })
+            ) : (
+              <div className="py-3 text-[12.5px] text-ink3">{t("ins.noGames")}</div>
+            )
+          }
+          genauigkeit={monate
+            .map((month) => month.accuracy)
+            .filter((value): value is number => value != null)}
+          patzer={monate
+            .map((month) => month.blunders_per_100)
+            .filter((value): value is number => value != null)}
+          kurvenNote={t("blatt.curvesNote")}
+          monateNote={t("blatt.monthsNote")}
+          kinder={
+            tab === "overview" ? undefined : (
+              <PlusLock feature="full_insights">
+                {tab === "strength" && (
+                  <Strength
+                    deep={deepData}
+                    live={live}
+                    errors={analysisErrors}
+                    findings={findingsFor(findings, "strength")}
+                    onAction={onAction}
+                  />
+                )}
+                {tab === "time" && (
+                  <Time deep={deepData} findings={findingsFor(findings, "time")} onAction={onAction} />
+                )}
+                {tab === "openings" && (
+                  <Openings
+                    deep={deepData}
+                    live={live}
+                    findings={findingsFor(findings, "openings")}
+                    onAction={onAction}
+                    desktop={desktop}
+                    onOpenRepertoire={toRepertoire}
+                  />
+                )}
+                {tab === "patterns" && (
+                  <Patterns
+                    deep={deepData}
+                    live={live}
+                    findings={findingsFor(findings, "patterns")}
+                    onAction={onAction}
+                  />
+                )}
+                {tab === "training" && (
+                  <Training
+                    deep={deepData}
+                    puzzles={puzzleData}
+                    findings={findingsFor(findings, "training")}
+                    onAction={onAction}
+                    desktop={desktop}
+                  />
+                )}
+              </PlusLock>
+            )
+          }
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6">

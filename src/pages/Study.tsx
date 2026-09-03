@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CalendarPlus,
@@ -27,6 +27,8 @@ import {
   templateText,
   trainingProgram,
   AREA_COLOR,
+  AREA_KEY,
+  AREAS,
   AREA_SOFT,
   type Area,
   type StudyData,
@@ -43,6 +45,11 @@ import {
   type MetricWindow,
 } from "../lib/insights";
 import { buildFindings, localizeFindingParams, type Finding } from "../lib/findings";
+import { useDiagramMode } from "../lib/diagramMode";
+import { Befund } from "../components/blatt/Befund";
+
+/** Der Coach kommt nach · siehe Dashboard.tsx. */
+const StudyBlatt = lazy(() => import("./blatt/StudyBlatt"));
 import {
   buildPlan,
   buildWeekPlan,
@@ -84,7 +91,7 @@ import TodaySession, {
 } from "../components/TodaySession";
 import { useMobileShell } from "../components/MobileShell";
 import { onDataChange } from "../lib/changes";
-import { deInt } from "../lib/format";
+import { dateLocale, deInt } from "../lib/format";
 import { isStoreCapture } from "../lib/storeCapture";
 import { DEMO_PLAN_STATE } from "./studyDemo";
 import { ENDGAME_TYPE_CATEGORY, type EndgameCategory } from "../data/endgames";
@@ -126,6 +133,7 @@ export default function Study({
   // Mobil ist diese Seite auch der Einstieg zu Repertoire, Puzzles und
   // Endspielen · am Desktop stehen die in der Sidebar.
   const mobile = useMobileShell();
+  const diagramMode = useDiagramMode();
   const { locale, t } = useI18n();
   const desktop = backend.mode === "desktop";
   const storeCapture = isStoreCapture();
@@ -903,6 +911,109 @@ export default function Study({
       proposalAction={proposalAction}
     />
   );
+
+  // ── Der Coach ─────────────────────────────────────────────────────────────
+  //
+  // Links, woran gearbeitet werden soll, rechts, was die Woche daraus gemacht
+  // hat. Dieselben Befunde, dieselben gemessenen Minuten — anders gesetzt.
+  if (diagramMode && week) {
+    const bereiche = AREAS.map((area) => {
+      const wocheArea = week.byArea.find((entry) => entry.area === area);
+      const last = (state?.program?.load_28d ?? []).find((entry) => entry.area === area);
+      return {
+        name: t(AREA_KEY[area]),
+        farbe: AREA_COLOR[area],
+        ist: wocheArea?.minutes ?? 0,
+        soll: wocheArea?.target ?? 0,
+        einheiten: last?.items ?? 0,
+        minuten28: last?.minutes ?? 0,
+      };
+    });
+    const wochentage = (state?.program?.days ?? []).slice(-7);
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <StudyBlatt
+          mobile={mobile}
+          kopfRechts={t("st.weekBudgetValue", { a: deInt(week.minutes), m: deInt(week.target) })}
+          felder={[
+            {
+              label: t("nav.repertoire"),
+              wert: (
+                <>
+                  <span className="blatt-zahl">{deInt(data?.due_now ?? 0)}</span>{" "}
+                  {t("dash.dueReviews")}
+                </>
+              ),
+              gross: true,
+            },
+            {
+              label: t("blatt.puzzlesToday"),
+              wert: (
+                <span className="blatt-zahl">
+                  {deInt(data?.today_puzzle_attempts ?? 0)} / {deInt(dose?.perDay ?? data?.puzzle_goal ?? 0)}
+                </span>
+              ),
+            },
+            {
+              label: t("dash.gamesWithoutAnalysis"),
+              wert: <span className="blatt-zahl">{deInt(data?.unanalyzed ?? 0)}</span>,
+            },
+            {
+              label: t("st.weekBudget"),
+              wert: (
+                <span className="blatt-zahl">
+                  {t("st.weekBudgetValue", { a: deInt(week.minutes), m: deInt(week.target) })}
+                </span>
+              ),
+            },
+          ]}
+          serie={data?.streak_days ?? 0}
+          befunde={
+            (plan?.prescriptions.length ?? 0) > 0 ? (
+              plan!.prescriptions.map((prescription, index) => {
+                const finding = prescription.finding;
+                const params = localizeFindingParams(finding.params, t, locale);
+                const doseParams: Record<string, string | number> = {};
+                for (const [key, value] of Object.entries(prescription.doseParams)) {
+                  doseParams[key] = typeof value === "number" ? deInt(value) : value;
+                }
+                return (
+                  <Befund
+                    key={prescription.id}
+                    titel={t(finding.titleKey, params)}
+                    text={t(finding.bodyKey, params)}
+                    schwere={finding.severity}
+                    ton={finding.tone}
+                    verordnung={prescription.doseKey ? t(prescription.doseKey, doseParams) : undefined}
+                    letzte={index === plan!.prescriptions.length - 1}
+                    onClick={() => areaAction(prescription.area)}
+                  />
+                );
+              })
+            ) : (
+              <div className="py-3 text-[12.5px] text-ink3">{t("st.coachEmpty")}</div>
+            )
+          }
+          bereiche={bereiche}
+          tage={wochentage.map((day) => ({
+            name: new Date(day.day_ts * 1000).toLocaleDateString(dateLocale(), { weekday: "short" }),
+            werte: AREAS.map((area) => day[area]),
+          }))}
+          wocheIst={week.minutes}
+          wocheSoll={week.target}
+          aufgaben={areas.map((area) => ({
+            zahl: area.status,
+            sache: area.label,
+            neben: t(AREA_KEY[area.area]),
+            weg: t("blatt.wayTrain"),
+            erledigt: false,
+            onWeg: area.onClick,
+          }))}
+          onInsights={() => go("insights")}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">

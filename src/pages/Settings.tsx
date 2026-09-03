@@ -1,5 +1,7 @@
 import {
   Fragment,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -100,6 +102,10 @@ import {
   type SyncInfo,
 } from "../lib/sync";
 import { legalDocument, legalDocuments, type LegalDoc } from "../lib/legal";
+import { useDiagramMode } from "../lib/diagramMode";
+
+/** Die Einstellungen im Buchsatz kommen nach · siehe Dashboard.tsx. */
+const SettingsBlatt = lazy(() => import("./blatt/SettingsBlatt"));
 import { openExternal } from "../lib/ext";
 import { lichessToken, setLichessToken } from "../lib/lichess";
 import { configureAutoSync, useSyncStatus } from "../lib/syncManager";
@@ -223,6 +229,7 @@ export default function SettingsPage({
   // Für das Layout zählt die Shell, nicht die Plattform · so lässt sich die
   // Android-Oberfläche in der Browser-Vorschau (?mobile-preview) ansehen.
   const compact = useMobileShell();
+  const diagramMode = useDiagramMode();
   const playStore = backend.info?.distribution === "play-store";
   const examplePath = useMemo(() => examplePaths(backend.info?.platform), [backend.info?.platform]);
 
@@ -2502,6 +2509,61 @@ export default function SettingsPage({
       ))}
     </div>
   );
+
+  const meldungen = (
+    <>
+      {!desktop && (
+        <div className="mb-3 border-y border-line py-2.5 text-[12.5px] text-ink3">
+          {t("set.webNote")}
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3 border-y border-accent-dim py-2.5 text-[12.5px] text-accent">
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="mb-3 border-y border-loss-dim py-2.5 text-[12.5px] text-loss">{error}</div>
+      )}
+    </>
+  );
+
+  // Dieselben achtzehn Abschnitte, derselbe Inhalt · nur anders gesetzt.
+  // Umsortiert wird nichts: Wer eine Einstellung an ihrem Platz gelernt hat,
+  // findet sie hier an derselben Stelle wieder.
+  const blatt = diagramMode ? (
+    <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <SettingsBlatt
+        mobile={compact}
+        abschnitte={sections.map((section) => ({
+          id: section.id,
+          titel: section.title,
+          zeile: section.summary,
+          gruppe: section.group,
+          inhalt: section.content,
+        }))}
+        gruppenTitel={(gruppe) => groupLabel(gruppe as GroupId)}
+        aktiv={activeSection}
+        ankerId={(id) => anchorId(id as SectionId)}
+        onSpringen={(id) => jumpTo(id as SectionId)}
+        onSichtbar={(id) => reveal(id as SectionId)}
+        meldungen={meldungen}
+        speichern={
+          desktop && draft ? (
+            <button
+              type="button"
+              onClick={save}
+              className={`blatt-kolumne tracking-[0.12em] text-accent ${dirty ? "" : "opacity-50"}`}
+            >
+              {t("common.save")}
+            </button>
+          ) : undefined
+        }
+      />
+    </Suspense>
+  ) : null;
+
+  if (blatt) return blatt;
 
   return (
     <div className="mx-auto w-full max-w-[860px] px-4 py-6 sm:px-6 min-[1160px]:max-w-[1096px]">
