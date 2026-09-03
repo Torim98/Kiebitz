@@ -1,9 +1,26 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, BookOpen, ChevronRight, Cpu, Puzzle } from "lucide-react";
-import { games as demoGames, profile, ratings, ratingHistory, repertoireStats, puzzleStats } from "../data/demo";
+import {
+  featuredGame,
+  games as demoGames,
+  profile,
+  ratings,
+  ratingHistory,
+  repertoireStats,
+  puzzleStats,
+} from "../data/demo";
 import { useBackendInfo } from "../lib/backend";
-import { LOCALE_TAGS, useI18n } from "../lib/i18n";
-import { listGameSummaries, type GameSummary } from "../lib/db";
+import { LOCALE_TAGS, useI18n, type Locale } from "../lib/i18n";
+import { translateSan } from "../lib/notation";
+import { getGame, listGameSummaries, type GameRecord, type GameSummary } from "../lib/db";
+import { gameAnalysis, type MoveEvalRow } from "../lib/analysis";
+import { useDiagramMode } from "../lib/diagramMode";
+import { chooseDiagramSource, criticalPly } from "../lib/blatt";
+import { fenAfter, fenAfterUci } from "../lib/position";
+import { repDue, type DueItem } from "../lib/repertoire";
+import { nextPuzzle, type PuzzleOut } from "../lib/puzzles";
+import { endgameStats } from "../lib/endgame";
+import { drillText, ENDGAME_DRILLS, type EndgameDrill } from "../data/endgames";
 import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
 import { puzzleStats as fetchPuzzleStats, type PuzzleStats } from "../lib/puzzles";
@@ -20,6 +37,15 @@ import type { PageId } from "../App";
  * Starts, die es braucht, und der Rest der Seite steht ohne es sofort.
  */
 const RatingHistoryChart = lazy(() => import("../components/RatingHistoryChart"));
+
+/**
+ * Das Blatt kommt nach, nicht mit.
+ *
+ * Es ist die zweite Darstellung derselben Seite und nur für die zu sehen, die
+ * den Diagramm-Modus eingeschaltet haben · mitsamt der Serifenschrift, die es
+ * mitbringt. Wer den Modus nicht benutzt, lädt davon nichts.
+ */
+const DashboardBlatt = lazy(() => import("./blatt/DashboardBlatt"));
 import { isStoreCapture } from "../lib/storeCapture";
 
 /**
@@ -56,6 +82,22 @@ function HistoryLegend({
   );
 }
 
+/** „Tom 1462" · der Wert eines Namensfeldes im Formularkopf. */
+function nameWithElo(name: string, elo: string): ReactNode {
+  return (
+    <>
+      {name} <span className="blatt-zahl text-ink3">{elo}</span>
+    </>
+  );
+}
+
+/** „16…dxe5" · Nummer und Zug in der Notation der Oberflächensprache. */
+function moveLabel(cut: number, san: string, locale: Locale): string {
+  const ply = cut - 1;
+  const nummer = ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`;
+  return nummer + translateSan(san, locale);
+}
+
 export default function Dashboard({
   go,
   openAnalysis,
@@ -79,6 +121,20 @@ export default function Dashboard({
       : { cc: profile.ccUser, li: profile.liUser, name: "" }
   );
   const [goal, setGoal] = useState(puzzleStats.todayGoal);
+  const diagramMode = useDiagramMode();
+  // Die Partie hinter dem Diagramm des Tages · nur der Modus braucht sie, und
+  // nur er holt sie. Die Züge stehen nicht in der Übersicht, die Urteile der
+  // Auto-Analyse ohnehin nicht.
+  const [blattGame, setBlattGame] = useState<{ record: GameRecord; rows: MoveEvalRow[] } | null>(
+    null
+  );
+  // Womit die übrigen Quellen aufwarten können, wenn keine Partie da ist ·
+  // in der Reihenfolge Partie → Repertoire → Puzzle → Endspiel (lib/blatt.ts).
+  const [nachrueck, setNachrueck] = useState<{
+    rep: DueItem | null;
+    puzzle: PuzzleOut | null;
+    endgame: EndgameDrill | null;
+  } | null>(null);
 
   useEffect(() => {
     if (backend.mode === "desktop") {
@@ -95,6 +151,7 @@ export default function Dashboard({
   }, [backend.mode]);
 
   const live = records !== null && records.length > 0;
+
   const dash = useMemo(
     () =>
       live ? buildDashboard(records!, { locale, ccUser: users.cc, liUser: users.li }) : null,
@@ -127,6 +184,268 @@ export default function Dashboard({
   // keine Linie · dann gehört er auch nicht in die Legende. Vorher standen dort
   // Namen ohne sichtbare Entsprechung im Diagramm.
   const historySeries = allSeries.filter((s) => history.some((point) => point[s.key] != null));
+  // ── Das Diagramm des Tages ────────────────────────────────────────────────
+  //
+  // Ein Buch druckt nicht die Schlussstellung, sondern die Stelle, an der die
+  // Partie entschieden wurde. Welche das ist, hat die Auto-Analyse schon
+  // beurteilt · `criticalPly` liest es aus ihren Urteilen (lib/blatt.ts).
+  const featuredId = recent[0]?.dbId ?? null;
+
+  useEffect(() => {
+    if (!diagramMode || backend.mode !== "desktop" || featuredId == null) {
+      setBlattGame(null);
+      return;
+    }
+    let alive = true;
+    void Promise.all([getGame(featuredId), gameAnalysis(featuredId).catch(() => [])])
+      .then(([record, rows]) => {
+        if (alive) setBlattGame({ record, rows });
+      })
+      .catch(() => {
+        if (alive) setBlattGame(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [diagramMode, backend.mode, featuredId]);
+
+  // Ohne Partie in der Datenbank rückt die Stellung aus der nächsten Quelle
+  // nach, die etwas anzubieten hat. Geholt wird das nur dann — solange eine
+  // Partie da ist, gewinnt sie ohnehin.
+  useEffect(() => {
+    if (!diagramMode || backend.mode !== "desktop" || featuredId != null) {
+      setNachrueck(null);
+      return;
+    }
+    let alive = true;
+    void Promise.all([
+      repDue(1, 1).catch(() => [] as DueItem[]),
+      nextPuzzle({}).catch(() => null),
+      endgameStats().catch(() => []),
+    ]).then(([due, puzzle, stats]) => {
+      if (!alive) return;
+      // Die erste Aufgabe, die noch nicht gelöst wurde · aus der eigenen
+      // Statistik, nicht geraten.
+      const gemeistert = new Set(stats.filter((row) => row.solved > 0).map((row) => row.drill_id));
+      setNachrueck({
+        rep: due[0] ?? null,
+        puzzle,
+        endgame: ENDGAME_DRILLS.find((drill) => !gemeistert.has(drill.id)) ?? null,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [diagramMode, backend.mode, featuredId]);
+
+  /** Urteil der Analyse als Marke, wie sie im Buch neben dem Zug steht. */
+  const nagOf = (judgment: string): string | undefined =>
+    judgment === "blunder" ? "??" : judgment === "mistake" ? "?" : judgment === "inaccuracy" ? "?!" : undefined;
+
+  const tagesdiagramm = useMemo(() => {
+    if (!diagramMode) return null;
+
+    /** Gemeinsame Form für die echte und die Demo-Partie. */
+    const build = (g: {
+      sans: string[];
+      nags: (string | undefined)[];
+      white: string;
+      whiteElo: string;
+      black: string;
+      blackElo: string;
+      partie: string;
+      eco: string;
+      opening: string;
+      ergebnis: string;
+      titel: string;
+      note?: string;
+      color: "white" | "black";
+      onOeffnen?: () => void;
+      cut: number;
+    }) => {
+      const cut = Math.max(0, Math.min(g.cut, g.sans.length));
+      const fen = fenAfter(g.sans, cut);
+      const davor = g.sans.slice(Math.max(0, cut - 6), cut).map((san, i) => ({
+        san,
+        nag: g.nags[Math.max(0, cut - 6) + i],
+      }));
+      const danach = g.sans.slice(cut, cut + 5).map((san, i) => ({ san, nag: g.nags[cut + i] }));
+      const letzterZug = cut > 0 ? g.sans[cut - 1] : null;
+      return {
+        quelle: "game" as const,
+        fen,
+        orientation: g.color,
+        amZug: (cut % 2 === 0 ? "white" : "black") as "white" | "black",
+        felder: [
+          { label: t("common.white"), wert: nameWithElo(g.white, g.whiteElo), gross: true },
+          { label: t("common.black"), wert: nameWithElo(g.black, g.blackElo), gross: true },
+          { label: t("blatt.gameField"), wert: g.partie },
+          {
+            label: t("games.colOpening"),
+            wert: (
+              <>
+                {g.eco && <span className="blatt-zahl text-ink3">{g.eco} </span>}
+                {g.opening}
+              </>
+            ),
+          },
+        ],
+        ergebnis: g.ergebnis,
+        zeilen: [
+          g.titel,
+          letzterZug
+            ? t("blatt.positionAfter", { m: moveLabel(cut, letzterZug, locale) })
+            : t("blatt.startPosition"),
+        ],
+        davor,
+        danach,
+        offset: Math.max(0, cut - 6),
+        notiz: g.note?.trim() || undefined,
+        onOeffnen: g.onOeffnen,
+      };
+    };
+
+    if (blattGame) {
+      const { record, rows } = blattGame;
+      const sans = record.moves ? record.moves.split(" ").filter(Boolean) : [];
+      if (sans.length === 0) return null;
+      const nags = sans.map((_, index) => nagOf(rows[index]?.judgment ?? ""));
+      const me = record.my_name || users.name || users.cc || users.li || t("blatt.you");
+      const white = record.color === "white" ? me : record.opponent;
+      const black = record.color === "white" ? record.opponent : me;
+      const whiteElo = String(record.color === "white" ? record.my_elo : record.opp_elo);
+      const blackElo = String(record.color === "white" ? record.opp_elo : record.my_elo);
+      const punkte =
+        record.result === "draw"
+          ? "½ : ½"
+          : (record.result === "win") === (record.color === "white")
+            ? "1 : 0"
+            : "0 : 1";
+      return build({
+        sans,
+        nags,
+        white,
+        whiteElo,
+        black,
+        blackElo,
+        partie: [record.source, record.time_class, new Date(record.played_ts * 1000).toLocaleDateString(dateLocale())]
+          .filter(Boolean)
+          .join(" · "),
+        eco: record.eco,
+        opening: record.opening,
+        ergebnis: punkte,
+        titel: `${white} – ${black}`,
+        note: record.note,
+        color: record.color,
+        onOeffnen: record.id != null ? () => openAnalysis(record.id!) : undefined,
+        cut: criticalPly(rows, sans.length),
+      });
+    }
+
+    // Kein Spiel in der Datenbank · die Stellung rückt nach. Der Formularkopf
+    // bleibt derselbe Kopf, er ist nur anders ausgefüllt.
+    if (nachrueck) {
+      const quelle = chooseDiagramSource({
+        game: false,
+        repertoire: nachrueck.rep != null,
+        puzzle: nachrueck.puzzle != null,
+        endgame: nachrueck.endgame != null,
+      });
+      if (quelle == null) return null;
+
+      const leerKopf = (woher: string) => [
+        {
+          label: t("common.white"),
+          wert: nameWithElo(users.name || users.cc || users.li || t("blatt.you"), ""),
+          gross: true,
+        },
+        { label: t("common.black"), wert: <span className="text-ink3">{t("blatt.noNewGame")}</span>, gross: true },
+        { label: t("blatt.lastGame"), wert: <span className="text-ink3">{t("blatt.none")}</span> },
+        { label: t("blatt.diagramFrom"), wert: woher },
+      ];
+
+      if (quelle === "repertoire" && nachrueck.rep) {
+        const item = nachrueck.rep;
+        const letzter = item.prompt_sans[item.prompt_sans.length - 1];
+        return {
+          quelle,
+          fen: fenAfter(item.prompt_sans),
+          orientation: item.side,
+          amZug: (item.prompt_sans.length % 2 === 0 ? "white" : "black") as "white" | "black",
+          felder: leerKopf(
+            `${t("nav.repertoire")} · ${t(item.side === "white" ? "common.white" : "common.black")}`
+          ),
+          ergebnis: t("blatt.none"),
+          zeilen: [
+            item.line,
+            letzter
+              ? `${t("blatt.fromRepertoire")} · ${t("blatt.positionAfter", {
+                  m: moveLabel(item.prompt_sans.length, letzter, locale),
+                })}`
+              : t("blatt.fromRepertoire"),
+          ],
+        };
+      }
+
+      if (quelle === "puzzle" && nachrueck.puzzle) {
+        const p = nachrueck.puzzle;
+        const fen = fenAfterUci(p.fen, p.moves.slice(0, p.setup_plies));
+        const weissAmZug = fen.split(" ")[1] === "w";
+        return {
+          quelle,
+          fen,
+          orientation: (weissAmZug ? "white" : "black") as "white" | "black",
+          amZug: (weissAmZug ? "white" : "black") as "white" | "black",
+          felder: leerKopf(`${t("nav.puzzles")} · ${t("pz.rating")} ${deInt(p.rating)}`),
+          ergebnis: t("blatt.none"),
+          zeilen: [t("blatt.srcPuzzle"), t("blatt.fromPuzzles")],
+        };
+      }
+
+      if (quelle === "endgame" && nachrueck.endgame) {
+        const drill = nachrueck.endgame;
+        const weissAmZug = drill.fen.split(" ")[1] === "w";
+        return {
+          quelle,
+          fen: drill.fen,
+          orientation: drill.side,
+          amZug: (weissAmZug ? "white" : "black") as "white" | "black",
+          felder: leerKopf(
+            `${t("nav.endgame")} · ${t(drill.goal === "win" ? "eg.goalWin" : "eg.goalDraw")}`
+          ),
+          ergebnis: t("blatt.none"),
+          zeilen: [drillText(drill.name, locale), t("blatt.fromEndgames")],
+        };
+      }
+      return null;
+    }
+
+    // Web-Vorschau: die Demo-Partie bringt ihre Urteile selbst mit.
+    if (!live) {
+      const sans = featuredGame.moves.map((m) => m.san);
+      const nags = featuredGame.moves.map((m) => m.nag);
+      const cut = nags.findIndex((nag) => nag === "??");
+      return build({
+        sans,
+        nags,
+        white: profile.name,
+        whiteElo: "1462",
+        black: "DragonSlayer_88",
+        blackElo: "1448",
+        partie: featuredGame.event,
+        eco: demoGames[0]?.eco ?? "",
+        opening: demoGames[0]?.opening ?? "",
+        ergebnis: "1 : 0",
+        titel: `${profile.name} – DragonSlayer_88`,
+        note: demoGames[0]?.note,
+        color: "white",
+        cut: cut >= 0 ? cut : sans.length,
+      });
+    }
+
+    return null;
+  }, [diagramMode, blattGame, nachrueck, live, locale, t, users, openAnalysis]);
+
   const historyColors: Record<string, string> = {
     "chess.com-rapid": chart.cc,
     "chess.com-blitz": chart.gold,
@@ -147,6 +466,59 @@ export default function Dashboard({
   const name = storeCapture
     ? "Alex"
     : backend.mode === "desktop" ? users.name || users.cc || users.li : profile.name;
+
+  // Der Modus ist eine zweite Darstellung derselben Daten · alles, was oben
+  // geladen und gerechnet wurde, gilt hier unverändert weiter.
+  if (diagramMode) {
+    return (
+      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <DashboardBlatt
+          mobile={mobile}
+          bestand={live ? records!.length : null}
+          diagramm={tagesdiagramm}
+          angebot={
+            // Nur wenn die Stellung *nicht* aus einer Partie kommt · dann
+            // ersetzt die Herkunft die Anmerkung.
+            tagesdiagramm?.quelle === "game"
+              ? undefined
+              : {
+                  repertoire: rep ? rep.due_now : repertoireStats.dueToday,
+                  puzzles: Math.max(
+                    0,
+                    (pz ? goal : puzzleStats.todayGoal) -
+                      (pz ? pz.today_attempts : puzzleStats.todaySolved)
+                  ),
+                  endgame: nachrueck?.endgame != null,
+                }
+          }
+          wertungen={cards.map((r) => ({
+            id: r.id,
+            platform: r.platform,
+            tc: r.tc,
+            value: r.value,
+            delta: r.delta,
+          }))}
+          letzte={recent}
+          repDue={rep ? rep.due_now : repertoireStats.dueToday}
+          repNeben={
+            rep
+              ? t("dash.repSummary", { n: rep.my_positions, p: de(rep.coverage_pct) })
+              : t("dash.streak", { n: repertoireStats.streak })
+          }
+          unanalyzed={unanalyzed}
+          puzzles={{
+            done: pz ? pz.today_attempts : puzzleStats.todaySolved,
+            goal: pz ? goal : puzzleStats.todayGoal,
+          }}
+          onRepertoire={() => go("repertoire")}
+          onAnalyse={() => go("analysis")}
+          onPuzzles={() => go("puzzles")}
+          onAllePartien={() => openGames()}
+          onPartie={(game) => (game.dbId != null ? openAnalysis(game.dbId) : openGames())}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6">

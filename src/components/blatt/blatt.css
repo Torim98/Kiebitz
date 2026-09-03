@@ -1,0 +1,88 @@
+/* ── Der Buchsatz des Diagramm-Modus ─────────────────────────────────────────
+   Kein Farbwert. Was hier steht, sind Schrift und Satzregeln; die Farben
+   kommen wie überall aus den Tokens in src/themes.css.
+
+   Die Datei hängt an den Blatt-Bausteinen und die wiederum an den nachgeladenen
+   Blatt-Fassungen der Seiten. Damit lädt die Serifenschrift genau dann, wenn
+   jemand den Modus tatsächlich eingeschaltet hat — und für alle anderen bleibt
+   das Startbündel so groß wie vorher. */
+
+/* Source Serif 4 · Latein und Latein erweitert, aufrecht und kursiv.
+   Die Kursive ist keine Zugabe: Eröffnungsnamen und Bildunterschriften stehen
+   im Entwurf kursiv, und eine schräg gestellte Aufrechte ist im Buchsatz das
+   Erste, was auffällt. Die unicode-range-Angaben sind dieselben Schnitte, die
+   auch Inter in index.css benutzt. */
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("@fontsource-variable/source-serif-4/files/source-serif-4-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("@fontsource-variable/source-serif-4/files/source-serif-4-latin-ext-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* Die Oberfläche läuft weiter in Inter; nur der Buchsatz wechselt.
+   Für Chinesisch, Devanagari und Arabisch gibt es keinen Schnitt in Source
+   Serif 4 · dort greifen dieselben System-Serifen, die der Browser ohnehin
+   führt, und zuletzt die Schriftfamilie der Oberfläche. */
+.buch {
+  font-family:
+    "Source Serif 4 Variable", "Iowan Old Style", Georgia, "Noto Serif SC",
+    "Noto Serif Devanagari", "Noto Naskh Arabic", "Times New Roman", serif;
+}
+
+/* Die Beschriftung eines Turnierformulars · Ersatz für echte Kapitälchen. */
+.blatt-feld {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Der Kolumnentitel oben auf der Seite und die Überschrift einer Rubrik. */
+.blatt-kolumne {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* Zahlen in einem Formular stehen untereinander, nicht nebeneinander. */
+.blatt-zahl {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Die Punktlinie des Registers · ein Strich, der bis zur Zahl führt.
+   Als eigene Regel, weil sie in jeder Registerzeile steht und Tailwind für
+   „gepunktete Unterkante, um drei Pixel angehoben" keine Klasse hat. */
+.blatt-punktlinie {
+  flex: 1;
+  border-bottom: 1px dotted var(--color-line2);
+  transform: translateY(-3px);
+}

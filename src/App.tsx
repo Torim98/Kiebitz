@@ -62,6 +62,13 @@ import { usePlus } from "./lib/plus/usePlus";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
+import { useDiagramMode } from "./lib/diagramMode";
+import { useOpenItems } from "./lib/openItems";
+import {
+  RegisterNav,
+  RegisterSidebar,
+  type RegisterZahlen,
+} from "./components/blatt/Register";
 import { tourSteps } from "./lib/tourSteps";
 
 export type { PageId };
@@ -550,7 +557,57 @@ export default function App() {
   const showBack = depth > 2 || !BOTTOM_NAV.includes(page);
 
   // Inhalt der Desktop-Sidebar · auch für den Drawer im schmalen Fenster.
-  const sidebarContent = (
+  // ── Die Hülle des Diagramm-Modus ─────────────────────────────────────────
+  //
+  // Sie wechselt mit dem Modus, und sie wechselt vollständig: Register statt
+  // Leiste, auf jedem Tab. Das ist Hülle und nicht Seiteninhalt — stiege sie
+  // von Tab zu Tab um, wäre sie keine Hülle mehr.
+  //
+  // Die Zahlen daneben unterscheiden Bestand und offenen Posten: Der
+  // Partienstand ist ein Bestand und steht blass, fällige Wiederholungen sind
+  // ein Grund hinzugehen und stehen kräftig.
+  const diagramMode = useDiagramMode();
+  const openItems = useOpenItems();
+
+  const registerZahlen: RegisterZahlen = {
+    ...(gameCount != null ? { games: { text: deInt(gameCount), offen: false } } : {}),
+    ...(openItems
+      ? {
+          analysis: { text: deInt(openItems.analysis), offen: openItems.analysis > 0 },
+          repertoire: { text: deInt(openItems.repertoire), offen: openItems.repertoire > 0 },
+          puzzles: {
+            text: `${deInt(openItems.puzzles)}/${deInt(openItems.puzzleGoal)}`,
+            offen: openItems.puzzles < openItems.puzzleGoal,
+          },
+        }
+      : {}),
+  };
+
+  const registerFoot = (
+    <>
+      {backend.mode === "desktop"
+        ? gameCount != null
+          ? t("app.dbCount", { n: deInt(gameCount) })
+          : t("app.dbReady")
+        : t("app.demoSync")}
+      <br />
+      {backend.mode === "desktop"
+        ? t("app.desktopBackend", { v: backend.info?.version ?? "?" })
+        : backend.mode === "web"
+          ? t("app.webMode")
+          : t("app.connecting")}
+    </>
+  );
+
+  const sidebarContent = diagramMode ? (
+    <RegisterSidebar
+      items={nav}
+      page={page}
+      zahlen={registerZahlen}
+      onSelect={navigate}
+      foot={registerFoot}
+    />
+  ) : (
     <>
       <div className="flex items-center gap-2.5 px-5 pb-5 pt-6">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
@@ -654,6 +711,14 @@ export default function App() {
       </div>
     </>
   );
+
+  /** Die Reiterleiste des Telefons · im Modus das Register, sonst wie heute. */
+  const bottomBar = (rail: boolean) =>
+    diagramMode ? (
+      <RegisterNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={rail} />
+    ) : (
+      <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={rail} />
+    );
 
   const mainContent = (
     <Suspense fallback={
@@ -803,9 +868,7 @@ export default function App() {
     return (
       <ShellProvider mobile>
       <div className={`flex h-full ${rail ? "flex-row" : "flex-col"}`}>
-        {rail && (
-          <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail />
-        )}
+        {rail && bottomBar(true)}
         {/* min-h-0: sonst wächst die Spalte mit dem Inhalt, statt <main>
             scrollen zu lassen · Flex-Kinder schrumpfen ohne das nicht. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -831,9 +894,7 @@ export default function App() {
           {updateNotice}
           {showAds && <AdBanner android={backend.info?.platform === "android"} />}
         </div>
-        {!rail && (
-          <MobileNav items={bottomNav} activeId={activeTab} onSelect={navigate} rail={false} />
-        )}
+        {!rail && bottomBar(false)}
         {overlays}
       </div>
       </ShellProvider>

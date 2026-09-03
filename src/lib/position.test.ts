@@ -7,7 +7,7 @@
  * denselben Zug verschieden.
  */
 import { describe, expect, it } from "vitest";
-import { fenAfter, moveBetween, replaySans } from "./position";
+import { fenAfter, moveBetween, replaySans, fenAfterUci } from "./position";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -79,5 +79,24 @@ describe("the move between two positions", () => {
     expect(moveBetween(START, START)).toBeNull();
     expect(moveBetween("", START)).toBeNull();
     expect(moveBetween(START, "kaputt")).toBeNull();
+  });
+});
+
+describe("fenAfterUci", () => {
+  it("plays the setup move of a puzzle", () => {
+    const start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    expect(fenAfterUci(start, ["e2e4"])).toContain("4P3");
+    expect(fenAfterUci(start, [])).toBe(start);
+  });
+
+  it("takes a promotion with it", () => {
+    const fen = fenAfterUci("8/P7/8/8/8/8/8/K6k w - - 0 1", ["a7a8q"]);
+    expect(fen.startsWith("Q7/")).toBe(true);
+  });
+
+  it("keeps the last valid position when a move does not fit", () => {
+    const start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    expect(fenAfterUci(start, ["e2e4", "e2e4"])).toContain("4P3");
+    expect(fenAfterUci("kaputt", ["e2e4"])).toBe("kaputt");
   });
 });

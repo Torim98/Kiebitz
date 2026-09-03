@@ -51,6 +51,35 @@ export function replaySans(sans: string[] | undefined, count?: number, base?: st
 }
 
 /**
+ * Dasselbe für UCI-Züge ("e2e4", "d7d8q").
+ *
+ * Gebraucht für die Aufgaben von Lichess: Ihr erster Zug ist der
+ * gegnerische, der die Stellung erst herstellt (`setup_plies`). Wer die
+ * Aufgabe nur *zeigen* will — das Diagramm des Tages tut das — braucht diese
+ * Stellung, nicht die davor.
+ */
+export function fenAfterUci(base: string, ucis: readonly string[]): string {
+  let chess: Chess;
+  try {
+    chess = new Chess(base);
+  } catch {
+    return base;
+  }
+  try {
+    for (const uci of ucis) {
+      chess.move({
+        from: uci.slice(0, 2),
+        to: uci.slice(2, 4),
+        ...(uci.length > 4 ? { promotion: uci[4] } : {}),
+      });
+    }
+  } catch {
+    // Unbrauchbarer Zug · dann eben die letzte gültige Stellung.
+  }
+  return chess.fen();
+}
+
+/**
  * Wendet SAN-Züge an und liefert nach ungültigen Demo-Daten die letzte gültige
  * Stellung.
  */

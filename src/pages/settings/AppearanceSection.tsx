@@ -131,9 +131,6 @@ function DiagramModeRow({
         <span className="mt-1 block text-[12px] leading-[1.5] text-ink2">
           {t("set.diagramModeNote")}
         </span>
-        <span className="mt-[5px] block text-[11.5px] leading-[1.5] text-ink3">
-          {t("set.diagramModeScope")}
-        </span>
       </span>
     </>
   );
