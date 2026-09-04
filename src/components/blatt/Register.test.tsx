@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Database, LayoutDashboard, Puzzle } from "lucide-react";
-import { RegisterNav, RegisterSidebar, type RegisterItem } from "./Register";
+import { RegisterAppBar, RegisterNav, RegisterSidebar, type RegisterItem } from "./Register";
 
 vi.mock("../../lib/i18n", () => ({
   useI18n: () => ({ locale: "de", t: (key: string) => key }),
@@ -77,6 +77,43 @@ describe("Register", () => {
     ).toBeNull();
     fireEvent.click(screen.getByText("nav.puzzles"));
     expect(onSelect).toHaveBeenCalledWith("puzzles");
+  });
+
+  it("carries the same handles in the app bar as the ordinary one", () => {
+    const onSettings = vi.fn();
+    const onBack = vi.fn();
+    render(
+      <RegisterAppBar
+        title="nav.settings"
+        showBack
+        onBack={onBack}
+        onSettings={onSettings}
+        settingsActive
+      />
+    );
+    expect(screen.getByText("Kiebitz")).toBeTruthy();
+    // Der Kolumnentitel nennt das Kapitel neben der Marke.
+    expect(screen.getByText(/nav\.settings/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("app.back"));
+    expect(onBack).toHaveBeenCalled();
+    const zahnrad = screen.getByLabelText("nav.settings");
+    expect(zahnrad.getAttribute("aria-current")).toBe("page");
+    fireEvent.click(zahnrad);
+    expect(onSettings).toHaveBeenCalled();
+  });
+
+  it("shows the claim on the start, where there is no chapter", () => {
+    render(
+      <RegisterAppBar
+        title={null}
+        showBack={false}
+        onBack={vi.fn()}
+        onSettings={vi.fn()}
+        settingsActive={false}
+      />
+    );
+    expect(screen.getByText(/app\.tagline/)).toBeTruthy();
+    expect(screen.queryByLabelText("app.back")).toBeNull();
   });
 
   it("keeps the tab bar reachable on a phone", () => {

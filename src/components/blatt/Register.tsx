@@ -15,7 +15,7 @@
  * hinzugehen und stehen kräftig.
  */
 import type { ReactNode } from "react";
-import { Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import type { PageId } from "../../lib/nav";
 import { useT, type Key } from "../../lib/i18n";
 import PlanBadge from "../PlanBadge";
@@ -131,6 +131,97 @@ export function RegisterSidebar({
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Die Marke im Zeilensatz · gesperrte Versalien neben einem Haarlinienkasten.
+ *
+ * Dieselben zwei Teile wie oben im Register, nur nebeneinander statt
+ * übereinander: Wo die Hülle wenig Höhe hat — die App-Bar des Telefons, die
+ * Kopfzeile des schmalen Fensters — steht die Marke in einer Zeile.
+ */
+export function RegisterMarke({ gross = 32 }: { gross?: number }) {
+  return (
+    <>
+      <span
+        className="flex flex-none items-center justify-center border border-ink text-ink"
+        style={{ height: gross, width: gross }}
+      >
+        <Bird size={Math.round(gross * 0.53)} />
+      </span>
+      <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-ink">
+        Kiebitz
+      </span>
+    </>
+  );
+}
+
+/**
+ * Die App-Bar des Telefons im Register-Satz · der lebende Kolumnentitel.
+ *
+ * Sie trägt dasselbe wie die gewöhnliche Fassung und an denselben Stellen:
+ * Zurück, Marke, Kontext, Modell, Zahnrad. Nur gesetzt ist sie anders. Oben
+ * auf einer Buchseite steht der laufende Titel — links die Marke in gesperrten
+ * Versalien, dahinter, im Buchsatz, das Kapitel. Kein Farbfeld hinter dem
+ * Vogel, kein gerundeter Kasten: ein Rahmen aus einer Haarlinie, wie im
+ * Register der Seitenleiste.
+ *
+ * Höhe, Randabstände und Sicherheitsbereiche bleiben, wie sie sind · die Hülle
+ * wechselt im Modus ihren Satz, nicht ihre Maße.
+ */
+export function RegisterAppBar({
+  title,
+  showBack,
+  onBack,
+  onSettings,
+  settingsActive,
+}: {
+  /** Seitentitel · null auf dem Start, dort steht der Claim daneben. */
+  title: string | null;
+  showBack: boolean;
+  onBack: () => void;
+  onSettings: () => void;
+  settingsActive: boolean;
+}) {
+  const t = useT();
+  return (
+    <header
+      className="mobile-app-bar flex shrink-0 items-center gap-0.5 border-b border-line bg-panel pb-2"
+      style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
+    >
+      {showBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t("app.back")}
+          className="-ms-0.5 p-1.5 text-ink2 transition-colors hover:text-ink"
+        >
+          <ArrowLeft size={20} />
+        </button>
+      )}
+      <span className="ms-1 flex items-center gap-2.5">
+        <RegisterMarke gross={32} />
+      </span>
+      {/* Das Kapitel steht im Buchsatz neben der Marke · aufrecht, wenn es
+          eine Seite gibt, und als Claim auf dem Start. */}
+      <span className="buch min-w-0 flex-1 truncate px-2 text-[14.5px] text-ink3">
+        · {title ?? t("app.tagline")}
+      </span>
+      <PlanBadge />
+      <button
+        type="button"
+        onClick={onSettings}
+        data-tour="nav-settings"
+        aria-label={t("nav.settings")}
+        aria-current={settingsActive ? "page" : undefined}
+        className={`p-2 transition-colors hover:text-ink ${
+          settingsActive ? "text-ink" : "text-ink3"
+        }`}
+      >
+        <SettingsIcon size={20} />
+      </button>
+    </header>
   );
 }
 

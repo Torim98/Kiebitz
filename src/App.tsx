@@ -65,6 +65,8 @@ import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
 import { useDiagramMode } from "./lib/diagramMode";
 import { useOpenItems } from "./lib/openItems";
 import {
+  RegisterAppBar,
+  RegisterMarke,
   RegisterNav,
   RegisterSidebar,
   type RegisterZahlen,
@@ -893,13 +895,25 @@ export default function App() {
         {/* min-h-0: sonst wächst die Spalte mit dem Inhalt, statt <main>
             scrollen zu lassen · Flex-Kinder schrumpfen ohne das nicht. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <MobileAppBar
-            title={barTitle}
-            showBack={showBack}
-            onBack={back}
-            onSettings={() => navigate("settings")}
-            settingsActive={page === "settings"}
-          />
+          {/* Auch die App-Bar wechselt mit dem Modus · sie ist Hülle, und die
+              Hülle wechselt vollständig: Register unten, Kolumnentitel oben. */}
+          {diagramMode ? (
+            <RegisterAppBar
+              title={barTitle}
+              showBack={showBack}
+              onBack={back}
+              onSettings={() => navigate("settings")}
+              settingsActive={page === "settings"}
+            />
+          ) : (
+            <MobileAppBar
+              title={barTitle}
+              showBack={showBack}
+              onBack={back}
+              onSettings={() => navigate("settings")}
+              settingsActive={page === "settings"}
+            />
+          )}
           {/* Der Wrapper spannt genau die Fläche von <main> auf · darin legt
               sich das Detailblatt (MobileSheet) über den Inhalt, während
               App-Bar und Navigation scharf und bedienbar bleiben. */}
@@ -937,11 +951,18 @@ export default function App() {
         className="flex shrink-0 items-center justify-between border-b border-line bg-panel px-4 pb-2 md:hidden"
         style={{ paddingTop: "calc(0.5rem + env(safe-area-inset-top))" }}
       >
+        {/* Dieselbe Marke, derselbe Platz · im Modus nur anders gesetzt. */}
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
-            <Bird size={17} />
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+          {diagramMode ? (
+            <RegisterMarke gross={32} />
+          ) : (
+            <>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                <Bird size={17} />
+              </span>
+              <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
+            </>
+          )}
           <PlanBadge />
         </div>
         <button

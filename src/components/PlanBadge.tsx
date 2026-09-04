@@ -20,14 +20,36 @@
 import { Sparkles } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { usePlus } from "../lib/plus/usePlus";
+import { useDiagramMode } from "../lib/diagramMode";
 
 export default function PlanBadge() {
   const t = useT();
   const plus = usePlus();
+  const diagram = useDiagramMode();
 
   if (plus.loading) return null;
 
   const label = plus.isPlus ? t("plus.planPlus") : t("plus.planFree");
+  const aria = t("plus.planLabel", { p: label });
+
+  // Im Diagramm-Modus ist das Abzeichen keine Pille mehr, sondern der Vermerk
+  // auf einem Formular: gesperrte Versalien in einem Kasten aus einer
+  // Haarlinie · derselbe Kasten, in dem auf dem Blatt auch das Ergebnis und
+  // die gespielte Farbe stehen. Kein Rund, keine Fläche, kein Funkelsymbol —
+  // was das Modell sagt, sagt hier das Wort und die Kräftigkeit der Linie.
+  if (diagram) {
+    return (
+      <span
+        title={label}
+        aria-label={aria}
+        className={`inline-flex h-4 shrink-0 items-center border px-1.5 text-[9px] font-medium uppercase leading-none tracking-[0.16em] ${
+          plus.isPlus ? "border-ink text-ink" : "border-line2 text-ink3"
+        }`}
+      >
+        {label}
+      </span>
+    );
+  }
 
   // Feste Höhe statt senkrechter Polsterung: `py-0.5` ergab bei 10,5 px Schrift
   // eine Pille von 16,5 px. Die geht in keiner üblichen Bildschirmskalierung
@@ -41,7 +63,7 @@ export default function PlanBadge() {
   return (
     <span
       title={label}
-      aria-label={t("plus.planLabel", { p: label })}
+      aria-label={aria}
       className={`inline-flex h-4 shrink-0 items-center gap-1 rounded-full border text-[10.5px] font-medium leading-none ${
         plus.isPlus
           ? "border-accent-dim bg-accent-soft pl-1.5 pr-2 text-accent"

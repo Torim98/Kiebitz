@@ -87,3 +87,61 @@
   border-bottom: 1px dotted var(--color-line2);
   transform: translateY(-3px);
 }
+
+/* ── Der Formularsatz der Einstellungen ──────────────────────────────────────
+
+   Die Einstellungen sind die eine Seite, die fast nur aus Bedienteilen
+   besteht. Alles andere im Modus lässt sich neu setzen, weil es Auskunft ist:
+   Eine Partie wird zur Zeile, ein Befund zur Rangzahl. Ein Eingabefeld bleibt
+   ein Eingabefeld · umschreiben lässt sich daran nur, wie es aussieht.
+
+   Achtzehn Abschnitte dafür zu doppeln, wäre die zweite App gewesen, die der
+   Modus ausdrücklich nicht ist: Jede neue Einstellung müsste danach an zwei
+   Stellen gepflegt werden, und die zweite bliebe irgendwann zurück. Diese
+   Regeln setzen deshalb dieselben Teile anders, statt neue zu erfinden.
+
+   Was sie tun, ist in beiden Richtungen dasselbe wie überall im Blatt: Ecken
+   werden eckig, Flächen werden Kanten. Kein Farbwert · alles aus den Tokens.
+   Sie gelten nur unter `.blatt-formular`, also nur auf dem Einstellungsblatt;
+   die gewöhnliche Fassung sieht sie nie. */
+
+/* Ein Formular hat keine gerundeten Felder. */
+.blatt-formular button,
+.blatt-formular input,
+.blatt-formular select,
+.blatt-formular textarea {
+  border-radius: 0;
+}
+
+/* Eingaben stehen auf einer Linie, nicht in einem Kasten · derselbe Satz wie
+   im Formularkopf und in der Stichwortzeile. Kästchen und Schieber bleiben
+   ausgenommen: Ihre Form ist ihre Bedienung, nicht ihre Erscheinung. */
+.blatt-formular input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.blatt-formular select,
+.blatt-formular textarea {
+  background: transparent;
+  border-width: 0 0 1px 0;
+  padding-inline: 0;
+}
+
+/* Die gefüllte Hauptschaltfläche wird zum Kasten aus einer Haarlinie. Der
+   Rahmen liegt innen (`inset`), damit die Fläche dabei ihre Maße behält —
+   ein echter Rahmen schöbe jede Leiste um zwei Bildpunkte auseinander. */
+.blatt-formular button.bg-accent {
+  background: transparent;
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* Die stille Schaltfläche und das gewählte Feld einer Reihe tragen ebenfalls
+   nur noch ihre Kante. Beides sind Schaltflächen · die farbigen Flächen der
+   Vorschaubilder daneben bleiben unberührt. */
+.blatt-formular button.bg-panel2,
+.blatt-formular button.bg-panel3 {
+  background: transparent;
+}
+
+.blatt-formular button.bg-accent-soft {
+  background: transparent;
+  border-color: var(--color-accent);
+}

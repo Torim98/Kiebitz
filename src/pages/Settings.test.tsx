@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackendState } from "../lib/backend";
 import { dbInfo, type Settings } from "../lib/settings";
 import { puzzleStats } from "../lib/puzzles";
@@ -7,6 +7,7 @@ import { syncInfo } from "../lib/sync";
 import { legalDocuments } from "../lib/legal";
 import { checkUpdate, installUpdate } from "../lib/updater";
 import { ShellProvider } from "../components/MobileShell";
+import { DEFAULT_APPEARANCE, setAppearance } from "../lib/theme";
 import { grantPlus, revokePlus } from "../test/plus";
 import SettingsPage from "./Settings";
 
@@ -520,5 +521,64 @@ describe("Settings loading", () => {
     fireEvent.click(screen.getByRole("button", { name: "set.tourOpen" }));
     expect(startTour).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+/**
+ * Der Diagramm-Modus ist eine zweite Darstellung derselben Seite · keine
+ * zweite Seite. Geprüft wird genau das: Er darf nichts wegnehmen, was die
+ * gewöhnliche Fassung kann, und er muss dasselbe tun, was sie tut.
+ */
+describe("Settings in diagram mode", () => {
+  beforeEach(() => {
+    act(() => setAppearance({ ...DEFAULT_APPEARANCE, diagram: true }));
+  });
+
+  afterEach(() => {
+    act(() => setAppearance(DEFAULT_APPEARANCE));
+  });
+
+  /**
+   * Das Blatt kehrte vorher vor den beiden Fenstern der Seite um: Es gab sein
+   * eigenes Ergebnis zurück, bevor Lizenztexte und Werksrücksetzung überhaupt
+   * gerendert wurden. Die Schaltflächen dazu standen also da und taten nichts.
+   */
+  it("still opens the windows the page has", async () => {
+    await renderDesktop();
+
+    // Das Blatt wird nachgeladen · erst danach steht die Seite da.
+    const griff = await screen.findByRole("button", { name: /set\.resetAction/ });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(griff);
+    const fenster = screen.getByRole("dialog");
+    expect(within(fenster).getByText("set.resetConfirm")).toBeTruthy();
+  });
+
+  // Achtzehn offene Abschnitte sind auf einem Telefon eine Wand aus Text ·
+  // und jeder offene Abschnitt holt seine Daten. Der Modus klappt deshalb zu,
+  // wie es die gewöhnliche Fassung dort seit jeher tut.
+  it("collapses the sections on the phone and fetches nothing until one opens", async () => {
+    mocks.getSettings.mockResolvedValue(androidSettings);
+    mocks.backend = {
+      mode: "desktop",
+      info: { version: "0.6.1", backend: "tauri", platform: "android" },
+    };
+
+    await act(async () => {
+      render(
+        <ShellProvider mobile>
+          <SettingsPage />
+        </ShellProvider>
+      );
+    });
+
+    expect(await screen.findByText("set.database")).toBeTruthy();
+    sectionLoads.forEach((fn) => expect(fn).not.toHaveBeenCalled());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /set\.database/ }));
+    });
+    expect(vi.mocked(dbInfo)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(puzzleStats)).not.toHaveBeenCalled();
   });
 });

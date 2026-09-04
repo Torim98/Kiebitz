@@ -325,6 +325,11 @@ export default function SettingsPage({
   }, []);
   const revealedRef = useRef(revealed);
   revealedRef.current = revealed;
+  // Dieselbe Meldung für das Blatt, nur ohne die Kennung der Seite: Der
+  // Diagramm-Modus kennt seine Abschnitte als Zeichenketten. Fest verdrahtet,
+  // weil ein Abschnitt sie in einem Effekt hält · ein bei jedem Bild neu
+  // gebauter Pfeil ließe den Effekt bei jedem Bild neu laufen.
+  const revealAny = useCallback((id: string) => reveal(id as SectionId), [reveal]);
 
   /** Frischt eine Anzeige nur auf, wenn ihr Bereich überhaupt zu sehen war. */
   const refreshDbInfo = () => {
@@ -2529,6 +2534,93 @@ export default function SettingsPage({
     </>
   );
 
+  // Die beiden Fenster der Seite · Lizenztexte und Werkseinstellungen.
+  // Sie hängen an Schaltern, die es in beiden Fassungen gibt, und gehören
+  // deshalb in beide: Im Diagramm-Modus kehrte die Seite vorher vor ihnen um,
+  // sodass „Lizenzen anzeigen“ und „Auf Werkseinstellungen“ dort ins Leere
+  // griffen.
+  const dialoge = (
+    <>
+    {legalShown && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="legal-title"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setLegalShown(null);
+        }}
+      >
+        <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+            <div className="min-w-0">
+              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
+                {t("set.legal")}
+              </div>
+              <h2 id="legal-title" className="truncate text-[15px] font-semibold">
+                {legalShown.title}
+              </h2>
+            </div>
+            <Button onClick={() => setLegalShown(null)}>{t("set.legalClose")}</Button>
+          </div>
+          {/* Lizenztexte sind bewusst unformatiert: Zeilenumbrüche und
+              Einrückung gehören zum Text, den sie mitliefern. */}
+          <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+            {legalError ? (
+              <p className="text-[12.5px] text-loss">{t("set.legalFailed", { e: legalError })}</p>
+            ) : legalText === null ? (
+              <p className="flex items-center gap-2 text-[12.5px] text-ink3">
+                <Loader2 size={14} className="animate-spin text-accent" /> {t("set.legalLoading")}
+              </p>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-ink2">
+                {legalText}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {resetOpen && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-title"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !resetBusy) setResetOpen(false);
+        }}
+      >
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
+          <div className="flex items-center gap-3 border-b border-line px-5 py-4">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
+              <AlertTriangle size={18} />
+            </div>
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">Kiebitz</div>
+              <h2 id="reset-title" className="text-[16px] font-semibold">{t("set.resetConfirmTitle")}</h2>
+            </div>
+          </div>
+          <p className="px-5 py-4 text-[13px] leading-relaxed text-ink2">{t("set.resetConfirm")}</p>
+          <div className="flex justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
+            <Button onClick={() => setResetOpen(false)} disabled={resetBusy}>{t("common.cancel")}</Button>
+            <button
+              type="button"
+              disabled={resetBusy}
+              onClick={runFactoryReset}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:opacity-45"
+            >
+              {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {t("set.resetAction")}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
+  );
+
   // Dieselben achtzehn Abschnitte, derselbe Inhalt · nur anders gesetzt.
   // Umsortiert wird nichts: Wer eine Einstellung an ihrem Platz gelernt hat,
   // findet sie hier an derselben Stelle wieder.
@@ -2547,7 +2639,7 @@ export default function SettingsPage({
         aktiv={activeSection}
         ankerId={(id) => anchorId(id as SectionId)}
         onSpringen={(id) => jumpTo(id as SectionId)}
-        onSichtbar={(id) => reveal(id as SectionId)}
+        onSichtbar={revealAny}
         meldungen={meldungen}
         speichern={
           desktop && draft ? (
@@ -2561,6 +2653,7 @@ export default function SettingsPage({
           ) : undefined
         }
       />
+      {dialoge}
     </Suspense>
   ) : null;
 
@@ -2624,83 +2717,7 @@ export default function SettingsPage({
         </div>
       )}
 
-      {legalShown && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="legal-title"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setLegalShown(null);
-          }}
-        >
-          <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
-            <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">
-                  {t("set.legal")}
-                </div>
-                <h2 id="legal-title" className="truncate text-[15px] font-semibold">
-                  {legalShown.title}
-                </h2>
-              </div>
-              <Button onClick={() => setLegalShown(null)}>{t("set.legalClose")}</Button>
-            </div>
-            {/* Lizenztexte sind bewusst unformatiert: Zeilenumbrüche und
-                Einrückung gehören zum Text, den sie mitliefern. */}
-            <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-              {legalError ? (
-                <p className="text-[12.5px] text-loss">{t("set.legalFailed", { e: legalError })}</p>
-              ) : legalText === null ? (
-                <p className="flex items-center gap-2 text-[12.5px] text-ink3">
-                  <Loader2 size={14} className="animate-spin text-accent" /> {t("set.legalLoading")}
-                </p>
-              ) : (
-                <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-ink2">
-                  {legalText}
-                </pre>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resetOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reset-title"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !resetBusy) setResetOpen(false);
-          }}
-        >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line2 bg-panel shadow-2xl shadow-black/50">
-            <div className="flex items-center gap-3 border-b border-line px-5 py-4">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-loss-soft text-loss">
-                <AlertTriangle size={18} />
-              </div>
-              <div>
-                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">Kiebitz</div>
-                <h2 id="reset-title" className="text-[16px] font-semibold">{t("set.resetConfirmTitle")}</h2>
-              </div>
-            </div>
-            <p className="px-5 py-4 text-[13px] leading-relaxed text-ink2">{t("set.resetConfirm")}</p>
-            <div className="flex justify-end gap-2 border-t border-line bg-panel2/40 px-5 py-3.5">
-              <Button onClick={() => setResetOpen(false)} disabled={resetBusy}>{t("common.cancel")}</Button>
-              <button
-                type="button"
-                disabled={resetBusy}
-                onClick={runFactoryReset}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-1.5 text-[12.5px] font-medium text-loss transition-colors hover:border-loss disabled:opacity-45"
-              >
-                {resetBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                {t("set.resetAction")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {dialoge}
     </div>
   );
 }
