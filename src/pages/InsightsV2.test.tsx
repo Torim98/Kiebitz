@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
 import { ShellProvider } from "../components/MobileShell";
 import InsightsV2 from "./InsightsV2";
 import { demoDeepInsights } from "./insights/demo";
 import { grantPlus } from "../test/plus";
+import { DEFAULT_APPEARANCE, setAppearance } from "../lib/theme";
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -185,5 +186,39 @@ describe("deep Insights", () => {
 
     expect(container.querySelector("table")).toBeNull();
     expect(screen.getAllByText(/Weiß · \d+ Partien · Genauigkeit/).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Der Diagramm-Modus ist eine zweite Darstellung, kein Nachbrenner: Wer ihn
+ * angeschaltet hat, darf die Kachelfassung auch nicht für den Augenblick des
+ * Ladens zu sehen bekommen. Vor dieser Prüfung stand die gewöhnliche Seite
+ * da, bis die Tiefenzahlen eintrafen — beim Wechsel auf den Reiter blitzte
+ * sie sichtbar auf.
+ */
+describe("diagram mode", () => {
+  afterEach(() => {
+    act(() => setAppearance(DEFAULT_APPEARANCE));
+  });
+
+  it("stays empty while the numbers are still coming", async () => {
+    const base = invokeMock.getMockImplementation()!;
+    invokeMock.mockImplementation((command: string, ...rest: unknown[]) =>
+      command === "deep_insights" ? new Promise(() => {}) : base(command, ...rest)
+    );
+    act(() => setAppearance({ ...DEFAULT_APPEARANCE, diagram: true }));
+
+    const { container } = render(<LocaleProvider>{page()}</LocaleProvider>);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Die Reiterleiste und der Ladehinweis gehören zur gewöhnlichen Fassung ·
+    // sie sind das, was aufblitzte.
+    expect(screen.queryByRole("navigation")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Übersicht/ })).toBeNull();
+    expect(screen.queryByText(/Tiefenanalyse wird gerechnet|Tiefenzahlen/)).toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(container.textContent).toBe("");
   });
 });

@@ -49,6 +49,7 @@ import { useDiagramMode } from "../lib/diagramMode";
 import { Befund } from "../components/blatt/Befund";
 
 /** Der Coach kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const StudyBlatt = lazy(() => import("./blatt/StudyBlatt"));
 import {
   buildPlan,
@@ -916,6 +917,9 @@ export default function Study({
   //
   // Links, woran gearbeitet werden soll, rechts, was die Woche daraus gemacht
   // hat. Dieselben Befunde, dieselben gemessenen Minuten — anders gesetzt.
+  // Ohne die Woche gibt es nichts zu setzen · bis dahin die leere Seite und
+  // nicht die Kachelfassung (siehe LeereSeite.tsx).
+  if (diagramMode && !week) return <LeereSeite />;
   if (diagramMode && week) {
     const bereiche = AREAS.map((area) => {
       const wocheArea = week.byArea.find((entry) => entry.area === area);
@@ -931,7 +935,7 @@ export default function Study({
     });
     const wochentage = (state?.program?.days ?? []).slice(-7);
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <StudyBlatt
           mobile={mobile}
           kopfRechts={t("st.weekBudgetValue", { a: deInt(week.minutes), m: deInt(week.target) })}

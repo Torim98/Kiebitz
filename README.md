@@ -68,7 +68,6 @@ values instead.
 
 Build, packaging and release mechanics: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 The two layout modes and what each one is for: [`docs/design.md`](docs/design.md).
-Where the project stands and what is next: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Stack
 

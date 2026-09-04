@@ -39,6 +39,7 @@ const RatingHistoryChart = lazy(() => import("../components/RatingHistoryChart")
  * den Diagramm-Modus eingeschaltet haben · mitsamt der Serifenschrift, die es
  * mitbringt. Wer den Modus nicht benutzt, lädt davon nichts.
  */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const DashboardBlatt = lazy(() => import("./blatt/DashboardBlatt"));
 
 /**
@@ -358,7 +359,7 @@ export default function Dashboard({
   // geladen und gerechnet wurde, gilt hier unverändert weiter.
   if (diagramMode) {
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <DashboardBlatt
           mobile={mobile}
           bestand={live ? records!.length : null}

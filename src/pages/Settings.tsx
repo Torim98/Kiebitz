@@ -105,6 +105,7 @@ import { legalDocument, legalDocuments, type LegalDoc } from "../lib/legal";
 import { useDiagramMode } from "../lib/diagramMode";
 
 /** Die Einstellungen im Buchsatz kommen nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const SettingsBlatt = lazy(() => import("./blatt/SettingsBlatt"));
 import { openExternal } from "../lib/ext";
 import { lichessToken, setLichessToken } from "../lib/lichess";
@@ -2532,7 +2533,7 @@ export default function SettingsPage({
   // Umsortiert wird nichts: Wer eine Einstellung an ihrem Platz gelernt hat,
   // findet sie hier an derselben Stelle wieder.
   const blatt = diagramMode ? (
-    <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+    <Suspense fallback={<LeereSeite />}>
       <SettingsBlatt
         mobile={compact}
         abschnitte={sections.map((section) => ({

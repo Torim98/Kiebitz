@@ -15,6 +15,8 @@ import { useMobileShell } from "../../components/MobileShell";
 import { examplePaths } from "../../lib/paths";
 import { deInt } from "../../lib/format";
 import { Button, Card } from "../../components/ui";
+import { useDiagramMode } from "../../lib/diagramMode";
+import { LeereSeite } from "../../components/blatt/LeereSeite";
 
 export function DailyGoal({
   attempts,
@@ -53,6 +55,12 @@ export function DailyGoal({
 
 export function PuzzleLoading() {
   const t = useT();
+  // Im Diagramm-Modus bleibt die Seite leer, statt für den Augenblick des
+  // Ladens ihre gewöhnliche Fassung zu zeigen · siehe LeereSeite.tsx. Die
+  // Entscheidung sitzt hier und nicht bei den beiden Aufrufern, damit sie für
+  // jeden weiteren mitgilt.
+  const diagramMode = useDiagramMode();
+  if (diagramMode) return <LeereSeite />;
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6">
       <header className="mb-5">

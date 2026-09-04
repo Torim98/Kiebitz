@@ -59,6 +59,7 @@ import { useDiagramMode } from "../lib/diagramMode";
 import { useMobileShell } from "../components/MobileShell";
 
 /** Der Tagesbogen kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const PuzzlesBlatt = lazy(() => import("./blatt/PuzzlesBlatt"));
 import { isStoreCapture } from "../lib/storeCapture";
 import { DailyGoal, ImportView, PuzzleLoading } from "./puzzles/PuzzleSetup";
@@ -692,7 +693,7 @@ function TrainerView({
 
   if (diagramMode) {
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <PuzzlesBlatt
           mobile={mobile}
           kopfRechts={t("pz.subtitle", {

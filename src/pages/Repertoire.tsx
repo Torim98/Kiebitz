@@ -67,6 +67,7 @@ import { useDiagramMode } from "../lib/diagramMode";
 import { notationLine } from "../lib/notation";
 
 /** Das Buch kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const RepertoireBlatt = lazy(() => import("./blatt/RepertoireBlatt"));
 import { errorMessage } from "../lib/errors";
 import { replaySans } from "../lib/position";
@@ -972,14 +973,20 @@ function LiveRepertoire() {
           </p>
         </div>
         {mode !== "train" && mode !== "free" && (
-          <div className="flex flex-wrap items-center gap-2">
+          /* „Daneben" heißt auch auf dem Telefon daneben: Die beiden Knöpfe
+             teilen sich dort eine volle Zeile, statt umzubrechen. Untereinander
+             las sich der freie Lauf wie eine Nachrangigkeit · dabei ist er an
+             jedem Tag ohne fällige Wiederholung der einzige Weg, der etwas
+             hergibt. Beide dürfen schrumpfen (`flex-auto`, `min-w-0`), der
+             längere Name behält dabei seinen Vorsprung. */
+          <div className={compact ? "flex w-full items-center gap-2" : "flex flex-wrap items-center gap-2"}>
             <Button
               primary={dueTotal > 0}
               onClick={() => setMode("train")}
-              className={dueTotal === 0 ? "opacity-60" : ""}
+              className={`${compact ? "min-w-0 flex-auto" : ""} ${dueTotal === 0 ? "opacity-60" : ""}`}
             >
               <GraduationCap size={16} />
-              {t("rep.startTraining", { n: dueTotal })}
+              <span className="truncate">{t("rep.startTraining", { n: dueTotal })}</span>
             </Button>
             {/* Üben, ohne zu müssen. Steht immer daneben und wird zum Haupt-
                 knopf, sobald der Plan nichts mehr hergibt · sonst wäre der
@@ -990,9 +997,10 @@ function LiveRepertoire() {
                 primary={dueTotal === 0}
                 onClick={() => setMode("free")}
                 title={t("rep.freeNote")}
+                className={compact ? "min-w-0 flex-auto" : ""}
               >
                 <Shuffle size={16} />
-                {t("rep.freeTraining")}
+                <span className="truncate">{t("rep.freeTraining")}</span>
               </Button>
             )}
           </div>
@@ -1039,7 +1047,7 @@ function LiveRepertoire() {
         // Das Buch · dieselben Varianten, dieselbe Stellung, anders gesetzt.
         // Die Buchstellung ist ein Abdruck: Hier wird gelesen, gezogen wird
         // erst im Training (oben, `mode === "train"`).
-        <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+        <Suspense fallback={<LeereSeite />}>
           <RepertoireBlatt
             mobile={compact}
             kopfRechts={

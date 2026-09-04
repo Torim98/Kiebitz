@@ -96,6 +96,7 @@ import { accuraciesFromMoveEvals } from "../lib/accuracy";
 import { useDiagramMode } from "../lib/diagramMode";
 
 /** Die kommentierte Partie kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const AnalysisBlatt = lazy(() => import("./blatt/AnalysisBlatt"));
 
 /** Leere Zugliste als Konstante · ein neues Array je Render würde die
@@ -1616,6 +1617,13 @@ export default function Analysis({
     );
   };
 
+  // Eine angesteuerte Partie ist erst ausgewählt, wenn die Partienliste da ist.
+  // Bis dahin sähe `scratch` wie das freie Brett aus, und die Seite stünde
+  // einen Augenblick in ihrer gewöhnlichen Fassung (siehe LeereSeite.tsx).
+  // Ohne Ziel bleibt es beim freien Brett · das ist keine Wartezeit, sondern
+  // der Zustand, und für ihn gibt es kein Blatt.
+  if (diagramMode && targetGameId != null && selectedId == null) return <LeereSeite />;
+
   // ── Die kommentierte Partie ───────────────────────────────────────────────
   //
   // Dieselben Züge, dieselben Urteile, dasselbe Brett — anders gesetzt. Der
@@ -1623,7 +1631,7 @@ export default function Analysis({
   // für den laufenden Zug benutzt; hier stehen sie alle.
   if (diagramMode && !scratch) {
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <AnalysisBlatt
           mobile={mobile}
           kopfRechts={

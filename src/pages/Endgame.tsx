@@ -38,6 +38,7 @@ import { useDiagramMode } from "../lib/diagramMode";
 import { useMobileShell } from "../components/MobileShell";
 
 /** Die Aufgabe im Buchsatz kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const EndgameBlatt = lazy(() => import("./blatt/EndgameBlatt"));
 
 const CATEGORY_KEY: Record<EndgameCategory, Key> = {
@@ -429,7 +430,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     const eigenerName = drill.side === "white" ? t("common.white") : t("common.black");
     const gegenName = desktop ? t("blatt.engine") : drill.side === "white" ? t("common.black") : t("common.white");
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <EndgameBlatt
           mobile={mobile}
           felder={[

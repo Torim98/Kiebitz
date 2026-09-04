@@ -41,6 +41,7 @@ import { de, deInt } from "../lib/format";
 import { useDiagramMode } from "../lib/diagramMode";
 
 /** Das Verzeichnis kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const GamesBlatt = lazy(() => import("./blatt/GamesBlatt"));
 import { replaySans } from "../lib/position";
 import { exportPgn, importPgn, PgnPlayerMismatchError } from "../lib/pgn";
@@ -837,7 +838,7 @@ export default function Games({
   // schon fertig da und werden hier nur anders ausgegeben.
   if (diagramMode) {
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <GamesBlatt
           mobile={mobile}
           bestand={databaseLoaded ? libraryTotal : null}

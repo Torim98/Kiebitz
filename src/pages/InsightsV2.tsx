@@ -31,6 +31,7 @@ import { useDiagramMode } from "../lib/diagramMode";
 import { Befund } from "../components/blatt/Befund";
 
 /** Das Profil kommt nach · siehe Dashboard.tsx. */
+import { LeereSeite } from "../components/blatt/LeereSeite";
 const InsightsBlatt = lazy(() => import("./blatt/InsightsBlatt"));
 import { usePageMemory } from "../lib/pageMemory";
 import type { PageId } from "../App";
@@ -180,11 +181,15 @@ export default function InsightsV2({
   // Dieselben Daten, andere Form: Aus dem Netz werden gestapelte Skalen, aus
   // der Reiterleiste ein Register. Die fünf Tiefenreiter behalten ihren
   // Inhalt und bekommen nur die Hülle.
+  //
+  // Solange die Zahlen fehlen, bleibt die Seite leer, statt einen Augenblick
+  // in ihrer gewöhnlichen Fassung zu stehen · siehe LeereSeite.tsx.
+  if (diagramMode && (loading || !deepData)) return <LeereSeite />;
   if (diagramMode && !loading && deepData) {
     const monate = deepData.progress.months;
     const befundListe = findings.slice(0, 3);
     return (
-      <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
+      <Suspense fallback={<LeereSeite />}>
         <InsightsBlatt
           mobile={mobile}
           kopfRechts={subtitle}
