@@ -51,14 +51,30 @@ function EngineLineCard({
   info,
   line,
   onMove,
+  blatt = false,
 }: {
   blackToMove: boolean;
   depthLabel: string;
   info: LiveInfo;
   line: string;
   onMove?: (uci: string) => void;
+  /** Buchsatz statt Kachel · siehe die Anmerkung am Bauteil unten. */
+  blatt?: boolean;
 }) {
-  const content = (
+  const content = blatt ? (
+    /* Eine Variante steht im Buch als Zeile: die Bewertung vorn, die Züge im
+       Fließsatz dahinter, die Tiefe am Rand. Kein Kasten — die Haarlinie
+       darunter trennt sie von der nächsten. */
+    <div className="flex items-baseline gap-2.5">
+      <span className="blatt-zahl w-[46px] shrink-0 text-[13px] font-medium text-accent">
+        {lineEvalLabel(blackToMove, info)}
+      </span>
+      <span className="buch notation min-w-0 flex-1 truncate text-[13px] leading-[1.5] text-ink2">
+        {line}
+      </span>
+      <span className="blatt-zahl shrink-0 text-[10.5px] text-ink3">{depthLabel}</span>
+    </div>
+  ) : (
     <>
       <div className="flex items-center justify-between">
         <span className="text-[14px] font-semibold tabular-nums text-accent">
@@ -70,17 +86,24 @@ function EngineLineCard({
     </>
   );
   const firstMove = info.pv[0];
+  const klasse = blatt
+    ? "w-full border-b border-line py-[7px] text-left"
+    : "w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-left";
 
   return onMove && firstMove ? (
     <button
       type="button"
       onClick={() => onMove(firstMove)}
-      className="w-full rounded-lg border border-line bg-panel2 px-3 py-2 text-left transition-colors hover:border-line2 hover:bg-panel3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+      className={`${klasse} transition-colors ${
+        blatt
+          ? "hover:border-line2"
+          : "hover:border-line2 hover:bg-panel3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+      }`}
     >
       {content}
     </button>
   ) : (
-    <div className="rounded-lg border border-line bg-panel2 px-3 py-2">{content}</div>
+    <div className={klasse}>{content}</div>
   );
 }
 
@@ -95,6 +118,7 @@ export default function LiveEngine({
   onEval,
   onBestMove,
   onMove,
+  blatt = false,
 }: {
   fen: string;
   demoLines: { eval: string; depth: number; line: string }[];
@@ -103,6 +127,16 @@ export default function LiveEngine({
   onBestMove?: (uci: string | null) => void;
   /** Spielt den ersten Zug einer angeklickten Hauptvariante. */
   onMove?: (uci: string) => void;
+  /**
+   * Buchsatz statt Kachel · für den Diagramm-Modus.
+   *
+   * Die Engine ist dieselbe und rechnet dasselbe; nur gesetzt ist sie anders.
+   * Am freien Brett sind ihre Linien das, was auf einer kommentierten
+   * Buchseite die Varianten sind — also stehen sie als Rubrik mit Zeilen und
+   * nicht als Karte mit Kästen. Kein zweites Bauteil: Ein doppelter
+   * Engine-Anschluss wäre ein zweiter Ort, an dem dieselbe Suche startet.
+   */
+  blatt?: boolean;
 }) {
   const t = useT();
   const [engine, setEngine] = useState<EngineState>({ mode: "checking" });
@@ -303,44 +337,62 @@ export default function LiveEngine({
     .filter((l): l is LiveInfo => l != null);
   const depth = ordered[0]?.depth ?? 0;
 
-  return (
-    <section className="rounded-xl border border-line bg-panel">
-      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <h2 className="flex items-center gap-2 text-[13px] font-medium text-ink2">
-          <Cpu size={15} className={available ? "text-accent" : "text-ink3"} />
-          {t("eng.title")}
-        </h2>
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
-          style={{
-            color: available ? "var(--color-win)" : "var(--color-ink3)",
-            background: available ? "var(--color-accent-soft)" : "var(--color-panel2)",
-          }}
-        >
-          <span
-            className="inline-block h-1.5 w-1.5 rounded-full"
-            style={{ background: available ? "var(--color-win)" : "var(--color-draw)" }}
-          />
-          {engine.mode === "checking"
-            ? "…"
-            : available
-              ? (engine as { info: EngineInfo }).info.name
-              : t("eng.notConnected")}
-        </span>
-      </header>
+  const stand =
+    engine.mode === "checking"
+      ? "…"
+      : available
+        ? (engine as { info: EngineInfo }).info.name
+        : t("eng.notConnected");
 
-      <div className="p-4">
+  return (
+    <section className={blatt ? "" : "rounded-xl border border-line bg-panel"}>
+      {blatt ? (
+        /* Die Rubrik des Blattes · Beschriftung auf kräftiger Linie, der Name
+           der Engine rechts darin statt in einer Pille. */
+        <header className="blatt-kolumne flex items-baseline justify-between gap-4 border-b border-ink pb-[5px] text-ink3">
+          <span className="min-w-0 truncate">{t("eng.title")}</span>
+          <span className="shrink-0 truncate">{stand}</span>
+        </header>
+      ) : (
+        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+          <h2 className="flex items-center gap-2 text-[13px] font-medium text-ink2">
+            <Cpu size={15} className={available ? "text-accent" : "text-ink3"} />
+            {t("eng.title")}
+          </h2>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px]"
+            style={{
+              color: available ? "var(--color-win)" : "var(--color-ink3)",
+              background: available ? "var(--color-accent-soft)" : "var(--color-panel2)",
+            }}
+          >
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{ background: available ? "var(--color-win)" : "var(--color-draw)" }}
+            />
+            {stand}
+          </span>
+        </header>
+      )}
+
+      <div className={blatt ? "pt-2.5" : "p-4"}>
         {available ? (
           <>
-            <div className="mb-3 flex items-center justify-between">
+            <div className={`flex items-center justify-between ${blatt ? "mb-1" : "mb-3"}`}>
               <button
                 onClick={() => setRunning((r) => !r)}
-                className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink"
+                className={
+                  blatt
+                    ? "inline-flex min-h-11 items-center gap-2 text-[12.5px] text-ink2 transition-colors hover:text-ink"
+                    : "inline-flex items-center gap-2 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-[12.5px] text-ink2 transition-colors hover:border-line2 hover:text-ink"
+                }
               >
                 {running ? <Pause size={13} /> : <Play size={13} />}
                 {running ? t("eng.pause") : t("eng.analyze")}
               </button>
-              <span className="text-[11.5px] tabular-nums text-ink3">
+              <span
+                className={`text-[11.5px] text-ink3 ${blatt ? "blatt-zahl" : "tabular-nums"}`}
+              >
                 {running && depth > 0
                   ? `${t("eng.depth", { d: depth })}${nps ? ` · ${t("eng.mnps", { x: (nps / 1_000_000).toFixed(1) })}` : ""}`
                   : running
@@ -349,7 +401,7 @@ export default function LiveEngine({
               </span>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className={blatt ? "flex flex-col" : "flex flex-col gap-2"}>
               {ordered.length > 0
                 ? ordered.map((l) => (
                     <EngineLineCard
@@ -359,10 +411,17 @@ export default function LiveEngine({
                       info={l}
                       line={pvToSan(fen, l.pv)}
                       onMove={onMove}
+                      blatt={blatt}
                     />
                   ))
                 : running && (
-                    <div className="rounded-lg border border-dashed border-line2 px-3 py-4 text-center text-[12px] text-ink3">
+                    <div
+                      className={
+                        blatt
+                          ? "border-b border-line py-[7px] text-[12px] text-ink3"
+                          : "rounded-lg border border-dashed border-line2 px-3 py-4 text-center text-[12px] text-ink3"
+                      }
+                    >
                       {t("eng.calculating")}
                     </div>
                   )}
@@ -370,18 +429,36 @@ export default function LiveEngine({
           </>
         ) : (
           <>
-            <div className="flex flex-col gap-2.5">
-              {demoLines.map((l, i) => (
-                <div key={i} className="rounded-lg border border-line bg-panel2 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-semibold text-accent">{l.eval}</span>
-                    <span className="text-[11px] text-ink3">{t("eng.depth", { d: l.depth })}</span>
+            <div className={blatt ? "flex flex-col" : "flex flex-col gap-2.5"}>
+              {demoLines.map((l, i) =>
+                blatt ? (
+                  <div key={i} className="flex items-baseline gap-2.5 border-b border-line py-[7px]">
+                    <span className="blatt-zahl w-[46px] shrink-0 text-[13px] font-medium text-accent">
+                      {l.eval}
+                    </span>
+                    <span className="buch notation min-w-0 flex-1 truncate text-[13px] leading-[1.5] text-ink2">
+                      {l.line}
+                    </span>
+                    <span className="blatt-zahl shrink-0 text-[10.5px] text-ink3">
+                      {t("eng.depth", { d: l.depth })}
+                    </span>
                   </div>
-                  <div className="mt-1 text-[12px] leading-relaxed text-ink2">{l.line}</div>
-                </div>
-              ))}
+                ) : (
+                  <div key={i} className="rounded-lg border border-line bg-panel2 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] font-semibold text-accent">{l.eval}</span>
+                      <span className="text-[11px] text-ink3">{t("eng.depth", { d: l.depth })}</span>
+                    </div>
+                    <div className="mt-1 text-[12px] leading-relaxed text-ink2">{l.line}</div>
+                  </div>
+                )
+              )}
             </div>
-            <p className="mt-3 border-t border-line pt-3 text-[11.5px] leading-relaxed text-ink3">
+            <p
+              className={`text-[11.5px] leading-relaxed text-ink3 ${
+                blatt ? "mt-2.5" : "mt-3 border-t border-line pt-3"
+              }`}
+            >
               {engine.mode === "web" ? t("eng.webHint") : t("eng.notFound")}
             </p>
           </>

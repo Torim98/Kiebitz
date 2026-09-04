@@ -1760,6 +1760,7 @@ export const es: Record<Key, string> = {
   "blatt.entryNo": "N.º {n}",
   "blatt.filterAll": "todos",
   "blatt.theGame": "La partida",
+  "blatt.freeBoardHint": "Aún no hay jugadas. Mueve en el tablero: las jugadas aparecen aquí y el motor las sigue.",
   "blatt.plyOf": "Medio movimiento {n} / {total}",
   "blatt.evalCurve": "Curva de evaluación",
   "blatt.halfMoves": "{n} medios movimientos",

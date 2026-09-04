@@ -1767,6 +1767,7 @@ export const en: Record<Key, string> = {
   "blatt.entryNo": "No. {n}",
   "blatt.filterAll": "all",
   "blatt.theGame": "The game",
+  "blatt.freeBoardHint": "No move yet. Drag on the board — the moves appear here and the engine follows along.",
   "blatt.plyOf": "Ply {n} / {total}",
   "blatt.evalCurve": "Evaluation curve",
   "blatt.halfMoves": "{n} plies",

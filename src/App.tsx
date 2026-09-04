@@ -69,7 +69,7 @@ import {
   RegisterMarke,
   RegisterNav,
   RegisterSidebar,
-  type RegisterZahlen,
+  registerZahlen,
 } from "./components/blatt/Register";
 import { tourSteps } from "./lib/tourSteps";
 
@@ -586,25 +586,13 @@ export default function App() {
   // Leiste, auf jedem Tab. Das ist Hülle und nicht Seiteninhalt — stiege sie
   // von Tab zu Tab um, wäre sie keine Hülle mehr.
   //
-  // Die Zahlen daneben unterscheiden Bestand und offenen Posten: Der
-  // Partienstand ist ein Bestand und steht blass, fällige Wiederholungen sind
-  // ein Grund hinzugehen und stehen kräftig.
+  // Was die Zahlen daneben bedeuten — Bestand oder offener Posten, und wann
+  // gar keine dasteht — ist die Sache des Registers und steht in
+  // `registerZahlen` (Register.tsx).
   const diagramMode = useDiagramMode();
   const openItems = useOpenItems();
 
-  const registerZahlen: RegisterZahlen = {
-    ...(gameCount != null ? { games: { text: deInt(gameCount), offen: false } } : {}),
-    ...(openItems
-      ? {
-          analysis: { text: deInt(openItems.analysis), offen: openItems.analysis > 0 },
-          repertoire: { text: deInt(openItems.repertoire), offen: openItems.repertoire > 0 },
-          puzzles: {
-            text: `${deInt(openItems.puzzles)}/${deInt(openItems.puzzleGoal)}`,
-            offen: openItems.puzzles < openItems.puzzleGoal,
-          },
-        }
-      : {}),
-  };
+  const zahlen = registerZahlen({ gameCount, openItems });
 
   const registerFoot = (
     <>
@@ -626,7 +614,7 @@ export default function App() {
     <RegisterSidebar
       items={nav}
       page={page}
-      zahlen={registerZahlen}
+      zahlen={zahlen}
       onSelect={navigate}
       foot={registerFoot}
     />

@@ -1760,6 +1760,7 @@ export const ar: Record<Key, string> = {
   "blatt.entryNo": "رقم {n}",
   "blatt.filterAll": "الكل",
   "blatt.theGame": "المباراة",
+  "blatt.freeBoardHint": "لا نقلة بعد. حرّك على الرقعة — تظهر النقلات هنا ويحلّل المحرّك معها.",
   "blatt.plyOf": "نصف نقلة {n} / {total}",
   "blatt.evalCurve": "منحنى التقييم",
   "blatt.halfMoves": "{n} أنصاف نقلات",

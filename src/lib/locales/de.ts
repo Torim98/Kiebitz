@@ -1789,6 +1789,7 @@ export const de = {
   "blatt.entryNo": "Nr. {n}",
   "blatt.filterAll": "alle",
   "blatt.theGame": "Die Partie",
+  "blatt.freeBoardHint": "Noch kein Zug. Zieh auf dem Brett — die Züge stehen hier, die Engine rechnet mit.",
   "blatt.plyOf": "Halbzug {n} / {total}",
   "blatt.evalCurve": "Bewertungsverlauf",
   "blatt.halfMoves": "{n} Halbzüge",

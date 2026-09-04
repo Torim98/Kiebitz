@@ -43,6 +43,13 @@ Its rules:
   colour as a field, two marks at the end instead of a tag column. `PartieZeile.tsx`
 - **Ranks, not colour bars.** A finding carries its severity as a number saying
   which one is due first, not as a red bar saying how bad it is. `Befund.tsx`
+- **Every state of a page, not only the full one.** A tab opened with nothing
+  chosen yet is a page of the book too: the analysis board without a game
+  carries no form head and no annotations, but it keeps the controls that get
+  you to a game and shows the engine's lines where the commentary would be.
+  A page hands those controls to its variant (`laufleiste`, `motor` in
+  `AnalysisBlatt`) instead of dropping them — the mode changes the layout and
+  must not cost a function.
 - **Book type.** Source Serif 4, and only where `.buch` is set — the interface
   stays on Inter. `blatt.css` also holds the four typographic rules the mode
   uses: `.blatt-kolumne` (running heads and section rules), `.blatt-feld` (form

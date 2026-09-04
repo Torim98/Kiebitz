@@ -18,11 +18,13 @@ const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
   chessdbQuery: vi.fn(),
   engineMove: "f1c4",
+  diagram: false,
 }));
 
 vi.mock("../lib/backend", () => ({
   useBackendInfo: () => ({ mode: "desktop", info: { platform: "windows" } }),
 }));
+vi.mock("../lib/diagramMode", () => ({ useDiagramMode: () => mocks.diagram }));
 vi.mock("../lib/db", () => ({
   listGameSummaries: () => mocks.listGames().then((games: typeof excludedGame[]) =>
     games.map((game) => ({ ...game, has_moves: Boolean(game.moves), has_note: Boolean(game.note) }))
@@ -211,6 +213,7 @@ beforeEach(() => {
   mocks.setGameNote.mockResolvedValue(undefined);
   mocks.setGameTags.mockImplementation((_id: number, tags: string[]) => Promise.resolve(tags));
   mocks.engineMove = "f1c4";
+  mocks.diagram = false;
 });
 
 afterEach(() => {
@@ -795,6 +798,54 @@ describe("Analysis page", () => {
       await gameOnBoard("7");
 
       expect(originLink()).toBeNull();
+    });
+  });
+  /**
+   * Der Diagramm-Modus auf diesem Tab.
+   *
+   * Geprüft wird die Stelle, an der die Hülle sonst auseinanderfiele: Wer über
+   * das Register auf „Analyse" geht, hat noch keine Partie gewählt. Auch
+   * dieser Zustand ist eine Buchseite — und er behält die Laufleiste, sonst
+   * käme man von hier zu keiner Partie mehr.
+   */
+  describe("diagram mode", () => {
+    beforeEach(() => {
+      mocks.diagram = true;
+    });
+
+    it("sets the free board as a page of the book and keeps the game picker", async () => {
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      // Der Kolumnentitel · daran hängt, dass überhaupt das Blatt dasteht.
+      expect(await screen.findByText("Kiebitz · Analyse")).toBeTruthy();
+      // Ohne Zug steht der Hinweis statt einer erfundenen Partie.
+      expect(screen.getByText(/Noch kein Zug/)).toBeTruthy();
+      // Die Laufleiste bleibt, und sie steht im Formularsatz.
+      const picker = screen.getByRole("combobox") as HTMLSelectElement;
+      expect(picker.value).toBe("");
+      expect(picker.closest("[data-tour='analysis-run']")?.className).toContain("blatt-formular");
+      // Am freien Brett trägt die Engine die rechte Spalte.
+      expect(screen.getByTestId("live-engine")).toBeTruthy();
+    });
+
+    it("writes no demo annotation onto a move played on the free board", async () => {
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+      await screen.findByText("Kiebitz · Analyse");
+
+      fireEvent.click(screen.getByRole("button", { name: "play e4" }));
+
+      expect(await screen.findByRole("button", { name: "1.e4" })).toBeTruthy();
+      expect(screen.queryByText(/Zu passiv/)).toBeNull();
+    });
+
+    it("keeps the commented game on a chosen game", async () => {
+      render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
+
+      await screen.findByText("Kiebitz · Analyse");
+      // Mit Partie steht der Ergebniskasten da · das freie Brett hat keinen.
+      expect(await screen.findByText("1 : 0")).toBeTruthy();
+      // Und die Bilanz statt der Engine.
+      expect(screen.queryByTestId("live-engine")).toBeNull();
     });
   });
 });

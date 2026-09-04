@@ -1760,6 +1760,7 @@ export const hi: Record<Key, string> = {
   "blatt.entryNo": "क्र. {n}",
   "blatt.filterAll": "सभी",
   "blatt.theGame": "बाज़ी",
+  "blatt.freeBoardHint": "अभी कोई चाल नहीं। बोर्ड पर चलें — चालें यहाँ दिखेंगी और इंजन साथ-साथ गणना करेगा।",
   "blatt.plyOf": "अर्ध-चाल {n} / {total}",
   "blatt.evalCurve": "मूल्यांकन वक्र",
   "blatt.halfMoves": "{n} अर्ध-चालें",

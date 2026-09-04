@@ -7,7 +7,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Database, LayoutDashboard, Puzzle } from "lucide-react";
-import { RegisterAppBar, RegisterNav, RegisterSidebar, type RegisterItem } from "./Register";
+import {
+  RegisterAppBar,
+  RegisterNav,
+  RegisterSidebar,
+  registerZahlen,
+  type RegisterItem,
+} from "./Register";
 
 vi.mock("../../lib/i18n", () => ({
   useI18n: () => ({ locale: "de", t: (key: string) => key }),
@@ -124,5 +130,47 @@ describe("Register", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button.className).toContain("h-14");
     }
+  });
+  /**
+   * Die Regel, nach der die Zahlen überhaupt entstehen.
+   *
+   * Sie ist der Grund, warum die Repertoire-Zeile an einem Tag ohne fällige
+   * Wiederholung genauso aussieht wie Endspiele und Insights: leer.
+   */
+  describe("registerZahlen", () => {
+    const voll = { analysis: 4, repertoire: 14, puzzles: 12, puzzleGoal: 20 };
+
+    it("marks a holding pale and an open item bold", () => {
+      // Dreistellig, damit die Prüfung nicht am Tausendertrennzeichen der
+      // gerade eingestellten Sprache hängt · geprüft wird die Regel, nicht
+      // die Zahlenschreibung (die steht in lib/format).
+      const zahlen = registerZahlen({ gameCount: 519, openItems: voll });
+      expect(zahlen.games).toEqual({ text: "519", offen: false });
+      expect(zahlen.repertoire).toEqual({ text: "14", offen: true });
+      expect(zahlen.analysis).toEqual({ text: "4", offen: true });
+    });
+
+    it("leaves the line empty instead of writing a zero", () => {
+      const zahlen = registerZahlen({
+        gameCount: 519,
+        openItems: { ...voll, analysis: 0, repertoire: 0 },
+      });
+      expect(zahlen.repertoire).toBeUndefined();
+      expect(zahlen.analysis).toBeUndefined();
+    });
+
+    it("keeps the daily puzzle goal, which is a standing and not a zero", () => {
+      const zahlen = registerZahlen({
+        gameCount: null,
+        openItems: { ...voll, puzzles: 0 },
+      });
+      expect(zahlen.puzzles).toEqual({ text: "0/20", offen: true });
+      // Ohne gezählte Datenbank steht auch kein Bestand da.
+      expect(zahlen.games).toBeUndefined();
+    });
+
+    it("stays empty as long as nothing has been counted", () => {
+      expect(registerZahlen({ gameCount: null, openItems: null })).toEqual({});
+    });
   });
 });

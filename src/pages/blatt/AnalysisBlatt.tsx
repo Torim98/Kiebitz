@@ -52,6 +52,28 @@ export interface BilanzZeile {
 
 export interface AnalysisBlattProps {
   mobile: boolean;
+  /**
+   * Das freie Brett · keine Partie, also auch kein Formularkopf.
+   *
+   * Ein leerer Turnierzettel wäre gelogen: Es gibt keine Namen, keine
+   * Eröffnung und kein Ergebnis einzutragen. Stattdessen führt die Seite,
+   * was sie hat — die Züge, die auf dem Brett entstehen, und die Linien der
+   * Engine.
+   */
+  frei: boolean;
+  /**
+   * Die Laufleiste der Seite · Partiewahl, Blättern, Rechnen lassen.
+   *
+   * Sie kommt fertig von der Seite, wie das Brett: Der Modus setzt sie neu
+   * (`blatt-formular`), baut sie aber nicht ein zweites Mal.
+   */
+  laufleiste?: ReactNode;
+  /** Meldung eines Laufs, falls eine ansteht. */
+  meldung?: ReactNode;
+  /** Die Engine · nur am freien Brett, wo sie die rechte Spalte trägt. */
+  motor?: ReactNode;
+  /** Züge aus einer geteilten Stellung · sie stehen vor den eigenen. */
+  vorlauf?: string | null;
   /** Kopfzeile rechts · Partienummer und Engine, von der Seite gesetzt. */
   kopfRechts: ReactNode;
   felder: Feld[];
@@ -113,6 +135,11 @@ function Kurve({ werte, ply, hoehe = 76 }: { werte: number[]; ply: number; hoehe
 
 export default function AnalysisBlatt({
   mobile,
+  frei,
+  laufleiste,
+  meldung,
+  motor,
+  vorlauf,
   kopfRechts,
   felder,
   ergebnis,
@@ -172,7 +199,18 @@ export default function AnalysisBlatt({
 
   const partietext = (
     <div>
-      <Rubrik>{t("blatt.theGame")}</Rubrik>
+      <Rubrik>{frei ? t("an.freeBoard") : t("blatt.theGame")}</Rubrik>
+      {/* Die Züge aus einem geteilten Link stehen vor den eigenen und sind
+          nicht anklickbar · die Stellungen davor reisen nicht mit, nur ihre
+          Notation. Dieselbe Regel wie in der gewöhnlichen Fassung. */}
+      {vorlauf && (
+        <div className="buch notation mt-3 border-b border-line pb-2 text-[13px] leading-[1.6] text-ink3">
+          {vorlauf}
+        </div>
+      )}
+      {frei && zuege.length === 0 && (
+        <div className="mt-3 text-[12.5px] leading-[1.6] text-ink3">{t("blatt.freeBoardHint")}</div>
+      )}
       {abschnitte.map((abschnitt, i) => (
         <div key={i} className={i === 0 ? "mt-3" : "mt-2.5"}>
           {satz(abschnitt.zuege)}
@@ -300,24 +338,38 @@ export default function AnalysisBlatt({
   const kopf = (
     <>
       <Kolumnentitel links={t("blatt.analysisTitle")} rechts={kopfRechts} />
-      <div className="mt-4 flex items-end">
-        <div className="min-w-0 flex-1">
-          <Formularkopf
-            felder={mobile ? felder.slice(0, 2) : felder}
-            spalten={mobile ? "1fr 1fr" : "0.95fr 1.3fr 1.35fr 1.4fr"}
-          />
-        </div>
-        <div className={`flex-none border-s border-line ${mobile ? "w-[62px] ps-2.5" : "w-24 ps-3.5"}`}>
-          <Feldname>{t("blatt.result")}</Feldname>
-          <div className="mt-1.5">
-            <Ergebniskasten hoehe={mobile ? 27 : 32} gross={mobile ? 13 : 15}>
-              {ergebnis}
-            </Ergebniskasten>
+      {/* Erst die Wahl, dann der Zettel: Die Laufleiste sagt, welche Partie
+          aufgeschlagen ist, der Formularkopf darunter, was in ihr steht. */}
+      {laufleiste && <div className="mt-3.5">{laufleiste}</div>}
+      {meldung}
+      {!frei && (
+        <div className="mt-4 flex items-end">
+          <div className="min-w-0 flex-1">
+            <Formularkopf
+              felder={mobile ? felder.slice(0, 2) : felder}
+              spalten={mobile ? "1fr 1fr" : "0.95fr 1.3fr 1.35fr 1.4fr"}
+            />
+          </div>
+          <div
+            className={`flex-none border-s border-line ${mobile ? "w-[62px] ps-2.5" : "w-24 ps-3.5"}`}
+          >
+            <Feldname>{t("blatt.result")}</Feldname>
+            <div className="mt-1.5">
+              <Ergebniskasten hoehe={mobile ? 27 : 32} gross={mobile ? 13 : 15}>
+                {ergebnis}
+              </Ergebniskasten>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </>
   );
+
+  // Was rechts neben dem Brett steht. Mit Partie ist es die Bilanz der
+  // Auto-Annotation; am freien Brett gibt es keine, dafür rechnet die Engine
+  // mit — ihre Linien sind hier das, was auf einer Buchseite die Varianten
+  // sind.
+  const neben = frei ? motor : auswertung;
 
   if (mobile) {
     return (
@@ -325,7 +377,7 @@ export default function AnalysisBlatt({
         {kopf}
         <div className="mt-3.5">{brettSpalte}</div>
         <div className="mt-4">{partietext}</div>
-        <div className="mt-4">{auswertung}</div>
+        {neben && <div className="mt-4">{neben}</div>}
       </div>
     );
   }
@@ -335,9 +387,15 @@ export default function AnalysisBlatt({
       {kopf}
       <div className="flex min-h-0 flex-1 gap-9 pt-5">
         {brettSpalte}
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-6">
+        {/* Mit Partie stehen Text und Bilanz an den beiden Enden der Spalte,
+            wie Satz und Fußnote auf einer Buchseite. Am freien Brett wächst
+            der Zugtext von oben nach; dann rückt die Engine dicht darunter
+            und nicht an den Fuß einer leeren Spalte. */}
+        <div
+          className={`flex min-w-0 flex-1 flex-col gap-6 ${frei ? "" : "justify-between"}`}
+        >
           {partietext}
-          {auswertung}
+          {neben}
         </div>
       </div>
     </div>

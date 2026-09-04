@@ -1760,6 +1760,7 @@ export const zh: Record<Key, string> = {
   "blatt.entryNo": "第 {n} 号",
   "blatt.filterAll": "全部",
   "blatt.theGame": "对局",
+  "blatt.freeBoardHint": "还没有着法。在棋盘上走子——着法会列在这里，引擎同步计算。",
   "blatt.plyOf": "第 {n} / {total} 半回合",
   "blatt.evalCurve": "评估曲线",
   "blatt.halfMoves": "{n} 半回合",

@@ -990,7 +990,12 @@ export default function Analysis({
   const blattKommentar = (index: number): string | null => {
     const move = viewMoves[index];
     if (!move) return null;
-    if (!live) return featuredGame.moves[index]?.comment ?? null;
+    // Im Web steht die Demo-Partie; auf dem freien Brett steht nichts. Die
+    // Anmerkungen der Demo gehören zu deren Zügen und nicht zu den eigenen —
+    // ohne diese Unterscheidung hätte das freie Brett fremde Urteile über
+    // selbst gespielte Züge geschrieben.
+    if (!desktop) return featuredGame.moves[index]?.comment ?? null;
+    if (!live) return null;
     if (!move.judgment) return null;
     if (!(["inaccuracy", "mistake", "blunder"] as MoveJudgment[]).includes(move.judgment)) return null;
     const prevEval =
@@ -1624,16 +1629,225 @@ export default function Analysis({
   // der Zustand, und für ihn gibt es kein Blatt.
   if (diagramMode && targetGameId != null && selectedId == null) return <LeereSeite />;
 
+  // ── Die Laufleiste ────────────────────────────────────────────────────────
+  //
+  // Welche Partie gezeigt wird, ob sie gerechnet werden soll, wie weit ein Lauf
+  // ist: Das steht in beiden Fassungen. Der Modus ändert das Layout und darf
+  // keine Bedienung kosten — die Blatt-Fassung ohne Partiewahl hätte den Tab um
+  // genau das gebracht, wofür man ihn öffnet.
+  //
+  // Gebaut wird sie deshalb nur einmal. Im Blatt trägt sie dieselben Teile im
+  // Formularsatz: `blatt-formular` nimmt Rundungen und Flächen zurück (siehe
+  // blatt.css), statt die Leiste ein zweites Mal zu setzen.
+  const laufleiste = desktop ? (
+    <div
+      className={
+        diagramMode
+          ? "blatt-formular flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line pb-2.5"
+          : "mb-4 flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-line bg-panel px-3 py-2.5"
+      }
+      data-tour="analysis-run"
+    >
+      {/* Links steht, welche Partie gezeigt wird · Auswahlliste und die
+          beiden Pfeile, die in ihr weiterblättern, gehören zusammen und
+          stehen deshalb in einer Gruppe.
+
+          Auf Telefonbreite nimmt die Gruppe eine eigene Zeile (`basis-full`).
+          `flex-1` allein hätte das nicht getan: Ein Element mit
+          `flex-basis: 0` bricht nie um, es schrumpft · und die Auswahlliste
+          war unter der laufenden Analyse auf ihren blossen Pfeil
+          zusammengedrückt, mit den beiden Blätterknöpfen quer über dem
+          Fortschrittstext. */}
+      <div className="flex w-full min-w-0 basis-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:basis-0">
+        <select
+          value={selectedId ?? ""}
+          onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
+          className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
+        >
+          <option value="">{t("an.freeBoard")}</option>
+          {games.map((g) => (
+            <option key={g.id} value={g.id ?? undefined}>
+              {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
+              {g.result === "win" ? t("common.win") : g.result === "loss" ? t("common.loss") : t("common.draw")}
+            </option>
+          ))}
+        </select>
+        <Button
+          onClick={() => stepGame(-1)}
+          disabled={!canStepGame(-1)}
+          title={t("an.prevGame")}
+          label={t("an.prevGame")}
+          className="shrink-0"
+          compact
+        >
+          <ChevronUp size={15} />
+        </Button>
+        <Button
+          onClick={() => stepGame(1)}
+          disabled={!canStepGame(1)}
+          title={t("an.nextGame")}
+          label={t("an.nextGame")}
+          className="shrink-0"
+          compact
+        >
+          <ChevronDown size={15} />
+        </Button>
+      </div>
+
+      {running ? (
+        <>
+          {/* Der Stand des Laufs · auf Telefonbreite eine eigene Zeile,
+              in der Text und Balken übereinander stehen. Nebeneinander
+              blieb für den Balken nichts übrig: Der Text brach auf zwei
+              Zeilen um, der Balken schrumpfte auf null, und zu sehen war
+              nur ein zerrissener Satz ohne jeden Fortschritt. */}
+          <div className="flex w-full min-w-0 basis-full items-start gap-2 text-[12px] text-ink2 sm:w-auto sm:min-w-[220px] sm:flex-1 sm:basis-0 sm:items-center">
+            {/* Der Kreisel steht an der ersten Textzeile, nicht in der
+                Mitte eines mehrzeiligen Blocks. */}
+            <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-accent sm:mt-0" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+              <span className="min-w-0 leading-snug">
+                {progress
+                  ? t("an.progress", {
+                      i: progress.game_index,
+                      n: progress.games_total,
+                      opp: progress.opponent,
+                      a: Math.ceil(progress.ply / 2),
+                      b: Math.ceil(progress.plies / 2),
+                    })
+                  : t("an.running")}
+              </span>
+              {progress && (
+                <div className="h-1.5 w-full min-w-[72px] shrink-0 overflow-hidden rounded-full bg-panel3 sm:w-auto sm:flex-1 sm:shrink">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all"
+                    style={{ width: `${(progress.ply / progress.plies) * 100}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          <Button className="ml-auto shrink-0" onClick={() => cancelAnalysis()}>
+            <Square size={13} /> {t("an.stop")}
+          </Button>
+        </>
+      ) : (
+        /* Rechts steht genau eine laute Schaltfläche: die Partie, die
+           gerade offen ist, rechnen zu lassen. Die Stapelläufe darunter
+           sind eine Entscheidung pro Import, keine pro Sitzung · als
+           vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
+           dass die Leiste keinen Hauptknopf mehr hatte. */
+        <div className="flex shrink-0 items-center gap-2">
+          {selectedId != null && (
+            <Button
+              primary
+              onClick={() => {
+                setNotice(null);
+                setRunning(true);
+                startAnalysis({ gameIds: [selectedId] }).catch((e) => {
+                  setRunning(false);
+                  setNotice(String(e));
+                });
+              }}
+            >
+              <Zap size={14} />
+              {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
+            </Button>
+          )}
+          {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
+              Historie ist die automatische Hintergrundanalyse und damit
+              eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
+          {unanalyzed.length > 0 && (
+            <Menu label={t("an.batchRuns")}>
+              <MenuItem
+                onClick={() => {
+                  if (!batchGate.unlocked) {
+                    openPlusDialog("background_analysis");
+                    return;
+                  }
+                  setNotice(null);
+                  setRunning(true);
+                  startAnalysis({ limit: 10 }).catch((e) => {
+                    setRunning(false);
+                    setNotice(String(e));
+                  });
+                }}
+              >
+                <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
+                {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
+              </MenuItem>
+              {unanalyzed.length > 10 && (
+                <MenuItem
+                  onClick={() => {
+                    if (!batchGate.unlocked) {
+                      openPlusDialog("background_analysis");
+                      return;
+                    }
+                    setNotice(null);
+                    setRunning(true);
+                    startAnalysis({}).catch((e) => {
+                      setRunning(false);
+                      setNotice(String(e));
+                    });
+                  }}
+                >
+                  <Zap size={15} /> {t("an.analyzeAll")}
+                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
+                </MenuItem>
+              )}
+            </Menu>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  /** Meldung eines Laufs · dieselbe Auskunft, im Blatt ohne Kasten. */
+  const meldung = notice ? (
+    <div
+      className={
+        diagramMode
+          ? "border-b border-accent-dim pb-2 pt-2.5 text-[12.5px] text-accent"
+          : "mb-4 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[12.5px] text-accent"
+      }
+    >
+      {notice}
+    </div>
+  ) : null;
+
   // ── Die kommentierte Partie ───────────────────────────────────────────────
   //
   // Dieselben Züge, dieselben Urteile, dasselbe Brett — anders gesetzt. Der
   // Kommentar kommt aus derselben `commentFor`-Regel, die die Seite unten
   // für den laufenden Zug benutzt; hier stehen sie alle.
-  if (diagramMode && !scratch) {
+  //
+  // Auch das freie Brett gehört hierher. Der Modus ist eine Hülle über der
+  // ganzen App: Wer über das Register auf „Analyse" geht, hat noch keine
+  // Partie gewählt — stünde dort die gewöhnliche Fassung, wäre der Tab der
+  // eine, der aus dem Buch herausfällt. Ohne Partie gibt es keine
+  // Anmerkungen und keine Bilanz; was das freie Brett zu sagen hat, sagen
+  // die Linien der Engine, und die stehen dann in der rechten Spalte.
+  if (diagramMode) {
     return (
       <Suspense fallback={<LeereSeite />}>
         <AnalysisBlatt
           mobile={mobile}
+          frei={scratch}
+          laufleiste={laufleiste}
+          meldung={meldung}
+          motor={
+            scratch ? (
+              <LiveEngine
+                blatt
+                fen={fen}
+                demoLines={[]}
+                onEval={(cp, mate) => setLiveEval({ cp, mate })}
+                onBestMove={setLiveBestUci}
+                onMove={(uci) => playBoardMove(uci.slice(0, 2), uci.slice(2, 4), uci[4] ?? "q")}
+              />
+            ) : null
+          }
+          vorlauf={opened?.history ?? null}
           kopfRechts={
             <>
               {live && game.id != null
@@ -1794,170 +2008,9 @@ export default function Analysis({
         </header>
       )}
 
-      {desktop && (
-        <div
-          className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-line bg-panel px-3 py-2.5"
-          data-tour="analysis-run"
-        >
-          {/* Links steht, welche Partie gezeigt wird · Auswahlliste und die
-              beiden Pfeile, die in ihr weiterblättern, gehören zusammen und
-              stehen deshalb in einer Gruppe.
+      {laufleiste}
 
-              Auf Telefonbreite nimmt die Gruppe eine eigene Zeile (`basis-full`).
-              `flex-1` allein hätte das nicht getan: Ein Element mit
-              `flex-basis: 0` bricht nie um, es schrumpft · und die Auswahlliste
-              war unter der laufenden Analyse auf ihren blossen Pfeil
-              zusammengedrückt, mit den beiden Blätterknöpfen quer über dem
-              Fortschrittstext. */}
-          <div className="flex w-full min-w-0 basis-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:basis-0">
-            <select
-              value={selectedId ?? ""}
-              onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
-              className="min-w-0 max-w-[380px] flex-1 rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-[12.5px] text-ink focus:border-accent-dim focus:outline-none"
-            >
-              <option value="">{t("an.freeBoard")}</option>
-              {games.map((g) => (
-                <option key={g.id} value={g.id ?? undefined}>
-                  {g.analyzed ? "✓" : "○"} {g.played_at} · {g.opponent} ·{" "}
-                  {g.result === "win" ? t("common.win") : g.result === "loss" ? t("common.loss") : t("common.draw")}
-                </option>
-              ))}
-            </select>
-            <Button
-              onClick={() => stepGame(-1)}
-              disabled={!canStepGame(-1)}
-              title={t("an.prevGame")}
-              label={t("an.prevGame")}
-              className="shrink-0"
-              compact
-            >
-              <ChevronUp size={15} />
-            </Button>
-            <Button
-              onClick={() => stepGame(1)}
-              disabled={!canStepGame(1)}
-              title={t("an.nextGame")}
-              label={t("an.nextGame")}
-              className="shrink-0"
-              compact
-            >
-              <ChevronDown size={15} />
-            </Button>
-          </div>
-
-          {running ? (
-            <>
-              {/* Der Stand des Laufs · auf Telefonbreite eine eigene Zeile,
-                  in der Text und Balken übereinander stehen. Nebeneinander
-                  blieb für den Balken nichts übrig: Der Text brach auf zwei
-                  Zeilen um, der Balken schrumpfte auf null, und zu sehen war
-                  nur ein zerrissener Satz ohne jeden Fortschritt. */}
-              <div className="flex w-full min-w-0 basis-full items-start gap-2 text-[12px] text-ink2 sm:w-auto sm:min-w-[220px] sm:flex-1 sm:basis-0 sm:items-center">
-                {/* Der Kreisel steht an der ersten Textzeile, nicht in der
-                    Mitte eines mehrzeiligen Blocks. */}
-                <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-accent sm:mt-0" />
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-                  <span className="min-w-0 leading-snug">
-                    {progress
-                      ? t("an.progress", {
-                          i: progress.game_index,
-                          n: progress.games_total,
-                          opp: progress.opponent,
-                          a: Math.ceil(progress.ply / 2),
-                          b: Math.ceil(progress.plies / 2),
-                        })
-                      : t("an.running")}
-                  </span>
-                  {progress && (
-                    <div className="h-1.5 w-full min-w-[72px] shrink-0 overflow-hidden rounded-full bg-panel3 sm:w-auto sm:flex-1 sm:shrink">
-                      <div
-                        className="h-full rounded-full bg-accent transition-all"
-                        style={{ width: `${(progress.ply / progress.plies) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <Button className="ml-auto shrink-0" onClick={() => cancelAnalysis()}>
-                <Square size={13} /> {t("an.stop")}
-              </Button>
-            </>
-          ) : (
-            /* Rechts steht genau eine laute Schaltfläche: die Partie, die
-               gerade offen ist, rechnen zu lassen. Die Stapelläufe darunter
-               sind eine Entscheidung pro Import, keine pro Sitzung · als
-               vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
-               dass die Leiste keinen Hauptknopf mehr hatte. */
-            <div className="flex shrink-0 items-center gap-2">
-              {selectedId != null && (
-                <Button
-                  primary
-                  onClick={() => {
-                    setNotice(null);
-                    setRunning(true);
-                    startAnalysis({ gameIds: [selectedId] }).catch((e) => {
-                      setRunning(false);
-                      setNotice(String(e));
-                    });
-                  }}
-                >
-                  <Zap size={14} />
-                  {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
-                </Button>
-              )}
-              {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
-                  Historie ist die automatische Hintergrundanalyse und damit
-                  eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
-              {unanalyzed.length > 0 && (
-                <Menu label={t("an.batchRuns")}>
-                  <MenuItem
-                    onClick={() => {
-                      if (!batchGate.unlocked) {
-                        openPlusDialog("background_analysis");
-                        return;
-                      }
-                      setNotice(null);
-                      setRunning(true);
-                      startAnalysis({ limit: 10 }).catch((e) => {
-                        setRunning(false);
-                        setNotice(String(e));
-                      });
-                    }}
-                  >
-                    <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
-                    {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-                  </MenuItem>
-                  {unanalyzed.length > 10 && (
-                    <MenuItem
-                      onClick={() => {
-                        if (!batchGate.unlocked) {
-                          openPlusDialog("background_analysis");
-                          return;
-                        }
-                        setNotice(null);
-                        setRunning(true);
-                        startAnalysis({}).catch((e) => {
-                          setRunning(false);
-                          setNotice(String(e));
-                        });
-                      }}
-                    >
-                      <Zap size={15} /> {t("an.analyzeAll")}
-                      {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-                    </MenuItem>
-                  )}
-                </Menu>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {notice && (
-        <div className="mb-4 rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5 text-[12.5px] text-accent">
-          {notice}
-        </div>
-      )}
+      {meldung}
 
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,var(--board-col))_minmax(320px,1fr)] min-[1660px]:grid-cols-[minmax(0,var(--board-col))_minmax(360px,1fr)_340px]">
         {/* Brett + Eval-Bar. Die Spalte ist so breit wie Brett plus Balken ·

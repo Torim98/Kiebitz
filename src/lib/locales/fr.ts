@@ -1760,6 +1760,7 @@ export const fr: Record<Key, string> = {
   "blatt.entryNo": "N° {n}",
   "blatt.filterAll": "tous",
   "blatt.theGame": "La partie",
+  "blatt.freeBoardHint": "Aucun coup pour l'instant. Jouez sur l'échiquier : les coups s'inscrivent ici et le moteur suit.",
   "blatt.plyOf": "Demi-coup {n} / {total}",
   "blatt.evalCurve": "Courbe d’évaluation",
   "blatt.halfMoves": "{n} demi-coups",

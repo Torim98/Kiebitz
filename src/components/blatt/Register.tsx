@@ -17,6 +17,7 @@
 import type { ReactNode } from "react";
 import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import type { PageId } from "../../lib/nav";
+import { deInt } from "../../lib/format";
 import { useT, type Key } from "../../lib/i18n";
 import PlanBadge from "../PlanBadge";
 import "./blatt.css";
@@ -34,6 +35,55 @@ export interface RegisterZahl {
 }
 
 export type RegisterZahlen = Partial<Record<PageId, RegisterZahl>>;
+
+/**
+ * Was neben den Kapiteln steht · aus dem Bestand und den offenen Posten.
+ *
+ * Zwei Regeln stecken darin, und beide gehören zum Register und nicht zu den
+ * Seiten:
+ *
+ * - Ein Bestand steht blass, ein offener Posten kräftig. 1.519 Partien sind
+ *   kein Grund hinzugehen, 14 fällige Wiederholungen schon.
+ * - **Ein offener Posten, von dem keiner offen ist, steht gar nicht da.** Die
+ *   Zeile behält dann nur ihre Punktlinie, wie Endspiele, Training und
+ *   Insights. Eine 0 wäre eine Auskunft über nichts und zöge den Blick
+ *   ausgerechnet auf die Zeile, die gerade nichts von einem will.
+ *
+ * Das Tagesziel der Puzzles ist die Ausnahme: „0/20" ist keine Null, sondern
+ * ein Stand — es sagt, wie weit der Tag ist, und fehlte es, sähe der Tag ohne
+ * Puzzle aus wie ein Tag ohne Ziel.
+ */
+export function registerZahlen({
+  gameCount,
+  openItems,
+}: {
+  /** Partien in der Datenbank · `null`, solange sie nicht gezählt sind. */
+  gameCount: number | null;
+  openItems: {
+    analysis: number;
+    repertoire: number;
+    puzzles: number;
+    puzzleGoal: number;
+  } | null;
+}): RegisterZahlen {
+  return {
+    ...(gameCount != null ? { games: { text: deInt(gameCount), offen: false } } : {}),
+    ...(openItems
+      ? {
+          ...(openItems.analysis > 0
+            ? { analysis: { text: deInt(openItems.analysis), offen: true } }
+            : {}),
+          ...(openItems.repertoire > 0
+            ? { repertoire: { text: deInt(openItems.repertoire), offen: true } }
+            : {}),
+          puzzles: {
+            text: `${deInt(openItems.puzzles)}/${deInt(openItems.puzzleGoal)}`,
+            offen: openItems.puzzles < openItems.puzzleGoal,
+          },
+        }
+      : {}),
+  };
+}
 
 /** Die Marke · dieselbe wie in der heutigen Leiste, nur anders gesetzt. */
 function Marke() {
