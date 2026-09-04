@@ -97,18 +97,11 @@ describe("piece sets", () => {
 });
 
 describe("diagram mode", () => {
+  // Anders als Thema und Figurensatz hängt der Layoutmodus an keiner
+  // Freischaltung · deshalb steht hier nur die Wahl und kein Plus-Zustand.
   it("stays off until it is switched on", () => {
-    expect(resolveDiagramMode(appearance(), true)).toBe(false);
-    expect(resolveDiagramMode(appearance({ diagram: true }), true)).toBe(true);
-  });
-
-  it("falls back to off without Plus", () => {
-    expect(resolveDiagramMode(appearance({ diagram: true }), false)).toBe(false);
-  });
-
-  it("keeps the choice while the unlock is still being checked", () => {
-    // Sonst spränge die App beim Start einmal durch zwei Layouts.
-    expect(resolveDiagramMode(appearance({ diagram: true }), null)).toBe(true);
+    expect(resolveDiagramMode(appearance())).toBe(false);
+    expect(resolveDiagramMode(appearance({ diagram: true }))).toBe(true);
   });
 });
 

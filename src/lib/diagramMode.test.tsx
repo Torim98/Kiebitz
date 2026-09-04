@@ -1,8 +1,8 @@
 /**
- * Der Weg vom Schalter zur Seite.
+ * Der Weg von der Wahl zur Seite.
  *
  * Geprüft wird nicht die Auflösung (die steht in theme.test.ts), sondern die
- * Kette: Wahl → Freischaltung → das, was eine Seite abliest.
+ * Kette: Wahl → angewendeter Stand → das, was eine Seite abliest.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
@@ -34,7 +34,7 @@ describe("useDiagramMode", () => {
     expect(mode()).toBe("an");
   });
 
-  it("falls back to off when Plus lapses", () => {
+  it("stays on when Plus lapses · the mode is free", () => {
     act(() => {
       setPlusUnlocked(true);
       setAppearance({ ...DEFAULT_APPEARANCE, diagram: true });
@@ -43,7 +43,7 @@ describe("useDiagramMode", () => {
     expect(mode()).toBe("an");
 
     act(() => setPlusUnlocked(false));
-    expect(mode()).toBe("aus");
+    expect(mode()).toBe("an");
   });
 
   it("marks the document, so CSS can join in", () => {

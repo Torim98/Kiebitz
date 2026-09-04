@@ -1,15 +1,15 @@
 /**
- * Der Schalter des Diagramm-Modus.
+ * Die Zeile für den Layoutmodus.
  *
- * Die Themenauswahl daneben hat ihre Prüfung in theme.test.ts; hier geht es
- * um die eine Zeile, die neu dazugekommen ist — und darum, dass sie gesperrt
- * das übliche Verhalten zeigt, statt zu verschwinden.
+ * Die Themenauswahl daneben hat ihre Prüfung in theme.test.ts; hier geht es um
+ * die eine Zeile darüber — darum, dass sie den Modus nennt, in den sie führt,
+ * und dass sie auch ohne Plus schaltet statt in die Erklärung zu springen.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import AppearanceSection from "./AppearanceSection";
 import { onPlusDialog } from "../../lib/plus/dialog";
-import { DEFAULT_APPEARANCE, THEME_FEATURE, type Appearance } from "../../lib/theme";
+import { DEFAULT_APPEARANCE, type Appearance } from "../../lib/theme";
 import { grantPlus, revokePlus } from "../../test/plus";
 
 vi.mock("../../lib/i18n", () => ({
@@ -32,8 +32,6 @@ function show(overrides: Partial<Appearance> = {}) {
   render(<AppearanceSection appearance={{ ...DEFAULT_APPEARANCE, ...overrides }} onChange={onChange} />);
 }
 
-const toggle = () => screen.getByRole("switch");
-
 beforeEach(() => {
   onChange.mockReset();
   grantPlus();
@@ -41,44 +39,41 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe("diagram mode switch", () => {
-  it("stands above the themes and says it is experimental", () => {
+describe("layout mode row", () => {
+  it("stands above the themes", () => {
     show();
-    expect(screen.getByText("set.diagramModeBadge")).toBeTruthy();
-    const section = screen.getByText("set.diagramMode").closest("div");
+    const row = screen.getByText("set.diagramMode");
     const themes = screen.getByText("theme.dark");
-    // "vorangestellt" heißt hier wörtlich: der Schalter steht im Dokument vor
-    // der ersten Themenkachel.
-    expect(section!.compareDocumentPosition(themes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // "vorangestellt" heißt hier wörtlich: die Zeile steht im Dokument vor der
+    // ersten Themenkachel.
+    expect(row.compareDocumentPosition(themes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("reports the state and hands the change up", () => {
+  it("names the other mode and switches to it", () => {
     show();
-    expect(toggle().getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(toggle());
+    fireEvent.click(screen.getByText("set.diagramMode"));
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_APPEARANCE, diagram: true });
   });
 
-  it("switches back off", () => {
+  it("names the way back once the diagram mode is on", () => {
     show({ diagram: true });
-    expect(toggle().getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(toggle());
+    expect(screen.queryByText("set.diagramMode")).toBeNull();
+    fireEvent.click(screen.getByText("set.dashboardMode"));
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_APPEARANCE, diagram: false });
   });
 
-  it("stays visible without Plus, but locked", () => {
+  it("switches without Plus", () => {
     revokePlus();
     show();
-    expect(screen.getByText("set.diagramMode")).toBeTruthy();
-    // Kein Schalter mehr · die ganze Zeile führt zur Plus-Erklärung.
-    expect(screen.queryByRole("switch")).toBeNull();
 
     const asked: (string | null)[] = [];
     const stop = onPlusDialog((feature) => asked.push(feature));
-    fireEvent.click(screen.getByText("set.diagramModeNote"));
+    fireEvent.click(screen.getByText("set.diagramMode"));
     stop();
 
-    expect(asked).toEqual([THEME_FEATURE]);
-    expect(onChange).not.toHaveBeenCalled();
+    // Der Layoutmodus hängt an keiner Freischaltung · kein Schloss, keine
+    // Erklärung, nur der Wechsel.
+    expect(asked).toEqual([]);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_APPEARANCE, diagram: true });
   });
 });

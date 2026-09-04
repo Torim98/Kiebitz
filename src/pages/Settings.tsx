@@ -2567,12 +2567,25 @@ export default function SettingsPage({
 
   return (
     <div className="mx-auto w-full max-w-[860px] px-4 py-6 sm:px-6 min-[1160px]:max-w-[1096px]">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-        <div>
+      {/* Die Kopfzeile trägt auf dem Handy nur noch die eine Zeile, die sagt,
+          was hier zu finden ist: Den Seitennamen nennt schon die App-Bar
+          darüber (die Überschrift ist dort ohnehin ausgeblendet, siehe
+          `.page-title` in src/index.css), und „Speichern" steht im
+          Hinweisstreifen, sobald es etwas zu speichern gibt (siehe
+          `sectionList`). Vorher stand der Knopf zusätzlich hier — meist blass,
+          weil nichts zu speichern war, und mangels Platz neben dem Text in
+          einer eigenen Zeile darunter. Das war die dritte Zeile eines Kopfes,
+          der eigentlich nur einen Satz zu sagen hat. */}
+      <header
+        className={`flex flex-wrap items-end justify-between gap-x-4 gap-y-3 ${
+          compact ? "mb-4" : "mb-5"
+        }`}
+      >
+        <div className="min-w-0">
           <h1 className="page-title text-[21px] font-semibold tracking-tight">{t("set.title")}</h1>
           <p className="mt-0.5 text-[13px] text-ink3">{t("set.subtitle")}</p>
         </div>
-        {desktop && draft && (
+        {desktop && draft && !compact && (
           <Button primary onClick={save} className={dirty ? "" : "opacity-50"}>
             <Check size={15} /> {t("common.save")}
           </Button>

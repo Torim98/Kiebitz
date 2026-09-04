@@ -624,14 +624,22 @@ function TrainerView({
       <div className="mt-3 grid min-h-[52px] items-center">
         {actionRow(
           "solved",
-          <div className="flex w-full items-center justify-between rounded-lg border border-accent-dim bg-accent-soft px-4 py-2.5">
-            <div className="flex items-center gap-2 text-[13.5px] font-medium text-accent">
-              <CheckCircle2 size={17} />
-              {failedRef.current ? t("pz.solvedWithHelp") : t("pz.correct")}
-              {ratingDelta != null &&
-                t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-accent-dim bg-accent-soft px-3.5 py-2.5">
+            {/* Die Meldung darf umbrechen, der Knopf nicht: `min-w-0` hebt die
+                Mindestbreite eines Flex-Kindes auf, sonst schöbe sich der Text
+                bis unter „Weiter". Auf einem 360 px breiten Schirm steht die
+                Bewertung dadurch in der zweiten Zeile statt an der Kante des
+                Knopfes · das Rasterfeld darüber hält die Höhe (siehe
+                `actionRow`). */}
+            <div className="flex min-w-0 items-center gap-2 text-[13.5px] font-medium text-accent">
+              <CheckCircle2 size={17} className="shrink-0" />
+              <span className="min-w-0">
+                {failedRef.current ? t("pz.solvedWithHelp") : t("pz.correct")}
+                {ratingDelta != null &&
+                  t("pz.ratingDelta", { d: `${ratingDelta >= 0 ? "+" : ""}${ratingDelta}` })}
+              </span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <Button primary onClick={() => load()}>
                 <SkipForward size={15} /> {t("common.next")}
               </Button>
@@ -640,11 +648,11 @@ function TrainerView({
         )}
         {actionRow(
           "wrong",
-          <div className="flex w-full items-center justify-between rounded-lg border border-loss-dim bg-loss-soft px-4 py-2.5">
-            <span className="text-[13.5px] text-loss">
+          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-2.5">
+            <span className="min-w-0 text-[13.5px] text-loss">
               {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
             </span>
-            <div className="flex gap-2">
+            <div className="flex shrink-0 gap-2">
               <Button onClick={() => setShowHint(true)}>
                 <Lightbulb size={15} /> {t("pz.hint")}
               </Button>
@@ -656,8 +664,8 @@ function TrainerView({
         )}
         {actionRow(
           "open",
-          <div className="flex w-full items-center justify-between">
-            <span className="text-[13px] text-ink3">
+          <div className="flex w-full items-center justify-between gap-3">
+            <span className="min-w-0 text-[13px] text-ink3">
               {status === "loading"
                 ? t("pz.loadingNext")
                 : status === "empty"

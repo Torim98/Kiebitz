@@ -101,6 +101,16 @@ export interface CachedEntitlement {
   fetched_at: number;
   refresh_after: string | null;
   jwks: JsonWebKeySet;
+  /**
+   * Das Konto derselben Abfrage · fehlt in älteren Zwischenspeichern.
+   *
+   * Der Token sagt, was freigeschaltet ist, aber nicht, wer angemeldet ist:
+   * Die Adresse steht nur in der Antwort von `/v1/account/me`. Ohne sie stand
+   * in den Einstellungen nach jedem Start „Konto wird geladen …", bis
+   * `refresh_after` ablief oder jemand von Hand aktualisierte · und ohne Netz
+   * dauerhaft.
+   */
+  account?: PlusAccount;
 }
 
 export interface JsonWebKeySet {

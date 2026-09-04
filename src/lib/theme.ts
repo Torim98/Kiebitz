@@ -142,13 +142,13 @@ export interface Appearance {
   nightFrom: string;
   nightTo: string;
   /**
-   * Diagramm-Modus („Das Blatt") · experimenteller Layoutmodus.
+   * Diagramm-Modus („Das Blatt") · Layoutmodus.
    *
    * Er gehört hierher, obwohl er keine Farbe anfasst: Er sitzt im
-   * Erscheinungsbild, hängt an derselben Freischaltung wie die Plus-Themen und
-   * soll wie sie sofort wirken statt erst nach dem Speichern. Eine zweite
-   * Ablage hätte dieselben Einstellungen ein zweites Mal gelesen und dieselbe
-   * Plus-Prüfung ein zweites Mal abonniert.
+   * Erscheinungsbild und soll wie die Farbwelt sofort wirken statt erst nach
+   * dem Speichern. Eine zweite Ablage hätte dieselben Einstellungen ein
+   * zweites Mal gelesen. Eine Freischaltung braucht er nicht · siehe
+   * `resolveDiagramMode`.
    */
   diagram: boolean;
 }
@@ -268,12 +268,13 @@ export function resolvePieceSet(appearance: Appearance, plus: boolean | null): P
 /**
  * Gilt der Diagramm-Modus?
  *
- * Dieselbe Regel wie beim Thema und beim Figurensatz: Ohne Plus fällt er auf
- * aus zurück, solange die Freischaltung geprüft wird (`null`) bleibt die Wahl
- * aber stehen · sonst spränge die Seite beim Start einmal durch zwei Layouts.
+ * Anders als Thema und Figurensatz hängt er an keiner Freischaltung: Er ist
+ * kein Zubehör, sondern die zweite Art, dieselbe App zu lesen · wer lieber ein
+ * Blatt als eine Kachelwand vor sich hat, soll das umstellen dürfen, ohne
+ * dafür zu bezahlen. Deshalb steht hier nur noch die Wahl selbst.
  */
-export function resolveDiagramMode(appearance: Appearance, plus: boolean | null): boolean {
-  return appearance.diagram && plus !== false;
+export function resolveDiagramMode(appearance: Appearance): boolean {
+  return appearance.diagram;
 }
 
 /**
@@ -360,7 +361,7 @@ function apply() {
   const theme = resolveTheme(appearance, { now: new Date(), systemDark: systemDark(), plus: plusUnlocked });
   const board = appearance.boardSet;
   const pieces = resolvePieceSet(appearance, plusUnlocked);
-  const diagram = resolveDiagramMode(appearance, plusUnlocked);
+  const diagram = resolveDiagramMode(appearance);
 
   const root = document.documentElement;
   root.dataset.theme = theme;

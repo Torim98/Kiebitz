@@ -124,7 +124,9 @@ async function restoreCachedEntitlement(now: number): Promise<EntitlementClaims 
   if (!cached?.token || !cached.jwks?.keys?.length) return null;
   try {
     const claims = await verifyEntitlementToken(cached.token, cached.jwks, now);
-    setState({ fetchedAt: cached.fetched_at ?? null });
+    // Das Konto gehört zum geprüften Token und kommt deshalb mit heraus: So
+    // steht die Adresse schon beim ersten Bild da · auch ohne Netz.
+    setState({ fetchedAt: cached.fetched_at ?? null, account: cached.account ?? null });
     return claims;
   } catch {
     // Abgelaufen oder nicht mehr prüfbar: still auf Free zurück. Der nächste
@@ -175,7 +177,11 @@ async function refreshDue(now: number): Promise<boolean> {
 export async function refreshEntitlement(options: { force?: boolean } = {}): Promise<void> {
   if (!sessionToken) return;
   const now = Date.now();
-  if (!options.force && !(await refreshDue(now))) return;
+  // Fehlt das Konto, ist die Abfrage immer fällig · `refresh_after` gilt für
+  // die Freischaltung, und die kann gültig sein, während niemand weiß, wer
+  // angemeldet ist. Genau das war der Zwischenspeicher einer älteren Fassung,
+  // in dem das Konto noch nicht mitstand.
+  if (!options.force && state.account && !(await refreshDue(now))) return;
   if (state.refreshing) return;
   setState({ refreshing: true });
   const token = sessionToken;
@@ -196,6 +202,7 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
       fetched_at: Date.now(),
       refresh_after: entitlement.refresh_after,
       jwks,
+      account,
     };
     await writeSecret("entitlement", JSON.stringify(cached));
     setState({
