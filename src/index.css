@@ -31,6 +31,21 @@ html[data-store-capture="true"] :focus {
   outline: none !important;
 }
 
+/* Recharts hängt an seine Zeichenebenen ein `tabindex="-1"` (die
+   z-Index-Portale in `<g class="recharts-zIndex-layer_*">`). Chrome und die
+   WebView setzen den Fokus beim Antippen auf genau dieses Element und ziehen
+   ihren eigenen Rahmen um dessen Bounding-Box · einen Kasten quer durch das
+   Diagramm, den sonst kein Bedienelement der App trägt und der bei mehreren
+   Ebenen auch mehrfach erscheint.
+
+   Erreichbar ist die Ebene nur mit der Maus oder dem Finger; über die
+   Tabulatortaste kommt niemand dorthin (`tabindex="-1"`). Der Rahmen weist
+   also auf nichts hin, was man von dort aus bedienen könnte, und kann weg. */
+.recharts-wrapper [tabindex="-1"]:focus,
+.recharts-wrapper [tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 @theme {
   /* Inter deckt Latein ab; für Chinesisch, Devanagari und Arabisch greift der
      Browser glyphenweise auf die nachfolgenden Familien zurück. Die Noto-Namen

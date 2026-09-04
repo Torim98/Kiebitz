@@ -82,9 +82,22 @@ export default function RatingHistoryChart({
       <LineChart {...chartSurface} data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
         <CartesianGrid stroke={chart.grid} vertical={false} />
         {/* Beschriftet ist nur der Monatserste; alle anderen Tage tragen
-            einen leeren Namen und bleiben dadurch stumm. */}
+            einen leeren Namen und bleiben dadurch stumm.
+
+            Die Achse liest den Namen aber *nicht* aus den Daten (kein
+            `dataKey`), sondern bekommt ihn erst beim Beschriften. Der Grund
+            ist der Tooltip: Mit `dataKey="month"` bildet Recharts seine
+            Kategorien aus den Werten dieser Spalte · und die sind an rund
+            neunzig von hundert Tagen derselbe leere Text. Alle diese Tage
+            fallen dann auf dieselbe Kategorie, und die Zuordnung
+            „Zeigerposition → Stützpunkt" landet immer beim *ersten* leeren
+            Tag. Wer im September zeigt, liest den Stand vom zweiten April.
+
+            Ohne `dataKey` nummeriert Recharts die Stützpunkte durch. Die
+            Nummern sind eindeutig, die Zuordnung stimmt, und die Beschriftung
+            holt sich der Formatierer über dieselbe Nummer aus den Daten. */}
         <XAxis
-          dataKey="month"
+          tickFormatter={(index: number) => history[index]?.month ?? ""}
           tick={chart.tick}
           tickLine={false}
           axisLine={{ stroke: chart.axis }}
