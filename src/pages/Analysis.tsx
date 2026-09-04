@@ -1793,8 +1793,15 @@ export default function Analysis({
         >
           {/* Links steht, welche Partie gezeigt wird · Auswahlliste und die
               beiden Pfeile, die in ihr weiterblättern, gehören zusammen und
-              stehen deshalb in einer Gruppe. */}
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              stehen deshalb in einer Gruppe.
+
+              Auf Telefonbreite nimmt die Gruppe eine eigene Zeile (`basis-full`).
+              `flex-1` allein hätte das nicht getan: Ein Element mit
+              `flex-basis: 0` bricht nie um, es schrumpft · und die Auswahlliste
+              war unter der laufenden Analyse auf ihren blossen Pfeil
+              zusammengedrückt, mit den beiden Blätterknöpfen quer über dem
+              Fortschrittstext. */}
+          <div className="flex w-full min-w-0 basis-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:basis-0">
             <select
               value={selectedId ?? ""}
               onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
@@ -1813,6 +1820,7 @@ export default function Analysis({
               disabled={!canStepGame(-1)}
               title={t("an.prevGame")}
               label={t("an.prevGame")}
+              className="shrink-0"
               compact
             >
               <ChevronUp size={15} />
@@ -1822,6 +1830,7 @@ export default function Analysis({
               disabled={!canStepGame(1)}
               title={t("an.nextGame")}
               label={t("an.nextGame")}
+              className="shrink-0"
               compact
             >
               <ChevronDown size={15} />
@@ -1830,27 +1839,38 @@ export default function Analysis({
 
           {running ? (
             <>
-              <div className="flex min-w-[220px] flex-1 items-center gap-2 text-[12px] text-ink2">
-                <Loader2 size={14} className="animate-spin text-accent" />
-                {progress
-                  ? t("an.progress", {
-                      i: progress.game_index,
-                      n: progress.games_total,
-                      opp: progress.opponent,
-                      a: Math.ceil(progress.ply / 2),
-                      b: Math.ceil(progress.plies / 2),
-                    })
-                  : t("an.running")}
-                {progress && (
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel3">
-                    <div
-                      className="h-full rounded-full bg-accent transition-all"
-                      style={{ width: `${(progress.ply / progress.plies) * 100}%` }}
-                    />
-                  </div>
-                )}
+              {/* Der Stand des Laufs · auf Telefonbreite eine eigene Zeile,
+                  in der Text und Balken übereinander stehen. Nebeneinander
+                  blieb für den Balken nichts übrig: Der Text brach auf zwei
+                  Zeilen um, der Balken schrumpfte auf null, und zu sehen war
+                  nur ein zerrissener Satz ohne jeden Fortschritt. */}
+              <div className="flex w-full min-w-0 basis-full items-start gap-2 text-[12px] text-ink2 sm:w-auto sm:min-w-[220px] sm:flex-1 sm:basis-0 sm:items-center">
+                {/* Der Kreisel steht an der ersten Textzeile, nicht in der
+                    Mitte eines mehrzeiligen Blocks. */}
+                <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-accent sm:mt-0" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                  <span className="min-w-0 leading-snug">
+                    {progress
+                      ? t("an.progress", {
+                          i: progress.game_index,
+                          n: progress.games_total,
+                          opp: progress.opponent,
+                          a: Math.ceil(progress.ply / 2),
+                          b: Math.ceil(progress.plies / 2),
+                        })
+                      : t("an.running")}
+                  </span>
+                  {progress && (
+                    <div className="h-1.5 w-full min-w-[72px] shrink-0 overflow-hidden rounded-full bg-panel3 sm:w-auto sm:flex-1 sm:shrink">
+                      <div
+                        className="h-full rounded-full bg-accent transition-all"
+                        style={{ width: `${(progress.ply / progress.plies) * 100}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
-              <Button onClick={() => cancelAnalysis()}>
+              <Button className="ml-auto shrink-0" onClick={() => cancelAnalysis()}>
                 <Square size={13} /> {t("an.stop")}
               </Button>
             </>
