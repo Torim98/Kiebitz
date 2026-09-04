@@ -27,6 +27,14 @@ const SERVICE: &str = "de.torim.kiebitz";
 /// der WebView, und ein freier Name machte daraus einen allgemeinen
 /// Geheimnisspeicher für beliebigen Frontend-Code.
 ///
+/// Die Berechtigung liegt in zwei Einträgen und nicht in einem: `entitlement`
+/// trägt den signierten Token, `entitlement_keys` den öffentlichen
+/// Schlüsselsatz und das Konto dazu. Der Grund ist der Windows Credential
+/// Manager — er nimmt höchstens `CRED_MAX_CREDENTIAL_BLOB_SIZE` (2560 Byte,
+/// bei UTF-16 also 1280 Zeichen) je Eintrag an und lehnt alles darüber mit
+/// Fehler 1783 ab. In einem Eintrag lagen die beiden bei rund 2660 Byte und
+/// wurden damit jedes Mal abgelehnt; getrennt liegt keiner über 1900.
+///
 /// `lichess_token` ist der persönliche API-Token für den Eröffnungs-Explorer.
 /// Lichess verlangt für dessen Abfragen seit Anfang 2026 eine Anmeldung; der
 /// Token gehört damit in dieselbe Ablage wie die übrigen Zugangsdaten und nicht
@@ -36,7 +44,12 @@ const SERVICE: &str = "de.torim.kiebitz";
 /// `ALLOWED_KEYS` in gen/android/…/SecureStorePlugin.kt). Wer hier einen Namen
 /// hinzufügt, muss ihn auch dort eintragen · sonst lehnt das Plugin ihn ab, und
 /// der Wert kommt auf dem Telefon nie im Keystore an.
-const KEYS: [&str; 3] = ["session", "entitlement", "lichess_token"];
+const KEYS: [&str; 4] = [
+    "session",
+    "entitlement",
+    "entitlement_keys",
+    "lichess_token",
+];
 
 fn check_key(key: &str) -> Result<(), String> {
     if KEYS.contains(&key) {
@@ -187,6 +200,7 @@ mod tests {
     fn only_the_known_keys_are_accepted() {
         assert!(check_key("session").is_ok());
         assert!(check_key("entitlement").is_ok());
+        assert!(check_key("entitlement_keys").is_ok());
         assert!(check_key("lichess_token").is_ok());
         assert!(check_key("../../settings.json").is_err());
         assert!(check_key("").is_err());

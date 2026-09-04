@@ -100,6 +100,35 @@ export interface CachedEntitlement {
   /** Zeitpunkt der letzten erfolgreichen Abfrage (Unix-Millisekunden). */
   fetched_at: number;
   refresh_after: string | null;
+  /**
+   * Schlüsselsatz und Konto standen bis Version 1.1.1 hier mit drin.
+   *
+   * Sie stehen jetzt unter `entitlement_keys`, weil beides zusammen den
+   * Windows Credential Manager überlief (siehe `CachedEntitlementKeys`).
+   * Gelesen werden sie hier weiterhin · ein vorhandener Zwischenspeicher
+   * soll beim ersten Start nach dem Update nicht verfallen, sondern in die
+   * neue Form übernommen werden.
+   */
+  jwks?: JsonWebKeySet;
+  account?: PlusAccount;
+}
+
+/**
+ * Prüfschlüssel und Konto · der zweite Teil des Zwischenspeichers.
+ *
+ * Getrennt vom Token nicht aus Ordnungsliebe, sondern weil der Windows
+ * Credential Manager höchstens 2560 Byte je Eintrag annimmt — bei UTF-16 also
+ * 1280 Zeichen — und alles darüber mit Fehler 1783 ablehnt. In einem Eintrag
+ * maßen signierter Token, Schlüsselsatz und Konto rund 2660 Byte: knapp hundert
+ * zu viel, jedes Mal. Auf dem Desktop kam die Freischaltung deshalb nie in der
+ * Ablage an, während Android sie ohne Weiteres nahm. Getrennt bleibt der
+ * größere der beiden bei rund 1900 Byte.
+ *
+ * Der Schlüsselsatz bleibt in der sicheren Ablage und wandert nicht daneben in
+ * eine Klartextdatei: Läge er offen, könnte ihn jemand austauschen und sich
+ * damit selbst ein gültig aussehendes Entitlement ausstellen.
+ */
+export interface CachedEntitlementKeys {
   jwks: JsonWebKeySet;
   /**
    * Das Konto derselben Abfrage · fehlt in älteren Zwischenspeichern.

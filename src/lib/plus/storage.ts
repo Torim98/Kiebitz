@@ -24,6 +24,15 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /**
+ * Die Berechtigung steht in zwei Einträgen: `entitlement` trägt den signierten
+ * Token, `entitlement_keys` den öffentlichen Schlüsselsatz und das Konto. Das
+ * ist keine Ordnungsfrage, sondern eine Grenze des Windows Credential Manager:
+ * Er nimmt höchstens 2560 Byte je Eintrag an — bei UTF-16 also 1280 Zeichen —
+ * und lehnt alles darüber mit Fehler 1783 ab. In einem Eintrag maßen die beiden
+ * rund 2660 Byte, also knapp hundert zu viel; auf dem Desktop kam die
+ * Freischaltung deshalb nie in der Ablage an. Getrennt bleibt jeder Eintrag
+ * deutlich darunter.
+ *
  * `lichess_token` ist der persönliche API-Token für den Eröffnungs-Explorer ·
  * siehe lib/lichess.ts. Er ist kein Kontowert, gehört aber in dieselbe Ablage:
  * ein Zugangsdatum bleibt eines, auch wenn es zu einem fremden Dienst gehört.
@@ -31,7 +40,7 @@ import { invoke } from "@tauri-apps/api/core";
  * Dieselben Namen führt das Backend (`KEYS` in src-tauri/src/plus.rs) und auf
  * Android noch einmal das Keystore-Plugin (`ALLOWED_KEYS`).
  */
-export type SecretKey = "session" | "entitlement" | "lichess_token";
+export type SecretKey = "session" | "entitlement" | "entitlement_keys" | "lichess_token";
 
 const memory = new Map<SecretKey, string>();
 

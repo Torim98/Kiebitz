@@ -22,11 +22,13 @@ import {
   featureUnlocked,
   plusState,
   purchaseWithGooglePlay,
+  initPlus,
   refreshEntitlement,
   requestSignInLink,
   resetPlusStore,
   restoreGooglePlayPurchases,
   signInWithCode,
+  signOut,
   startCheckout,
   type PlusState,
 } from "./store";
@@ -462,5 +464,193 @@ describe("when the key store refuses the value", () => {
     const error = plusState().error;
     expect(error?.code).toBe("verify_failed");
     expect(error?.offline).toBe(false);
+  });
+});
+
+/**
+ * Die Aufteilung des Zwischenspeichers auf zwei Einträge.
+ *
+ * Der Windows Credential Manager nimmt höchstens 2560 Byte je Eintrag an — als
+ * UTF-16 also 1280 Zeichen — und lehnt alles darüber mit Fehler 1783 ab. Token,
+ * Schlüsselsatz und Konto in einem JSON maßen zusammen rund 2660 Byte und
+ * standen damit knapp hundert Byte hinter dieser Wand: Auf dem Desktop kam die
+ * Freischaltung nie in der Ablage an, während Android sie ohne Weiteres nahm.
+ *
+ * Der Größentest unten ist deshalb kein Zierat: Er ist die Wache davor, dass
+ * ein weiteres Feld im Token dieselbe Grenze noch einmal findet.
+ */
+describe("the entitlement cache", () => {
+  /** `CRED_MAX_CREDENTIAL_BLOB_SIZE` · 2560 Byte, in UTF-16 also 1280 Zeichen. */
+  const WINDOWS_LIMIT_CHARS = 1280;
+
+  const fetchMock = vi.fn();
+
+  function base64Url(bytes: Uint8Array): string {
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  const segment = (value: unknown) => base64Url(new TextEncoder().encode(JSON.stringify(value)));
+
+  /**
+   * Ein Token, wie ihn die API ausstellt · mit allen Feldern aus
+   * `getEntitlement` und dem vollen Plus-Satz, denn an dessen Länge hängt die
+   * Größe.
+   */
+  async function realisticEntitlement(email: string) {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+      "sign",
+      "verify",
+    ]);
+    const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const kid = "kiebitz-plus-2026-08-1";
+    const seconds = Math.floor(Date.now() / 1000);
+    const account = {
+      id: "acc_01JQZK7X3M4N5P6Q7R8S9T0V1W",
+      email,
+      plan: "plus" as const,
+      status: "active" as const,
+      providers: ["stripe" as const],
+      trial: false,
+      trial_eligible: false,
+    };
+    const head = segment({ alg: "ES256", typ: "JWT", kid });
+    const payload = segment({
+      iss: "https://api.kiebitz.dev",
+      sub: account.id,
+      aud: "kiebitz-app",
+      plan: "plus",
+      features: [...FREE_FEATURES, ...PLUS_ONLY_FEATURES],
+      provider: "stripe",
+      providers: ["stripe"],
+      status: "active",
+      trial: false,
+      trial_until: null,
+      entitlement_valid_until: seconds + 30 * 86_400,
+      iat: seconds - 60,
+      exp: seconds + 7 * 86_400,
+    });
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      pair.privateKey,
+      new TextEncoder().encode(`${head}.${payload}`)
+    );
+    return {
+      account,
+      token: `${head}.${payload}.${base64Url(new Uint8Array(signature))}`,
+      jwks: {
+        keys: [
+          { kty: "EC", crv: "P-256", x: publicJwk.x!, y: publicJwk.y!, alg: "ES256", use: "sig", kid },
+        ],
+      },
+    };
+  }
+
+  async function signIn(email = "tommaurerhof@googlemail.com") {
+    const issued = await realisticEntitlement(email);
+    fetchMock.mockImplementation((url: string) => {
+      const path = String(url);
+      const json = (body: unknown, status = 200) =>
+        Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          })
+        );
+      if (path.endsWith("/v1/auth/magic-link/consume")) return json({ access_token: "session" }, 201);
+      if (path.endsWith("/v1/account/me")) return json(issued.account);
+      if (path.endsWith("/v1/entitlements/me"))
+        return json({ entitlement_token: issued.token, refresh_after: null });
+      if (path.endsWith("/.well-known/jwks.json")) return json(issued.jwks);
+      return json({});
+    });
+    await signInWithCode("one-time-code");
+    return issued;
+  }
+
+  beforeEach(() => {
+    resetPlusStore();
+    resetSecretFallback();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    resetPlusStore();
+    resetSecretFallback();
+  });
+
+  it("keeps every entry inside what Windows accepts", async () => {
+    await signIn();
+
+    const token = (await storage.readSecret("entitlement"))!;
+    const keys = (await storage.readSecret("entitlement_keys"))!;
+
+    // Nicht knapp darunter, sondern mit Luft: Wer dem Token ein Feld
+    // hinzufügt, soll es hier merken und nicht erst auf einem Windows-Rechner.
+    // In einem Eintrag maßen beide zusammen rund 1330 Zeichen — fünfzig über
+    // der Wand. Getrennt bleibt der größere unter tausend.
+    expect(token.length).toBeLessThanOrEqual(WINDOWS_LIMIT_CHARS - 280);
+    expect(keys.length).toBeLessThanOrEqual(WINDOWS_LIMIT_CHARS - 280);
+  });
+
+  it("puts the token in one entry and the keys in the other", async () => {
+    const issued = await signIn();
+
+    const token = JSON.parse((await storage.readSecret("entitlement"))!);
+    const keys = JSON.parse((await storage.readSecret("entitlement_keys"))!);
+
+    expect(token.token).toBe(issued.token);
+    // Der Schlüsselsatz gehört nicht mehr in den ersten Eintrag · genau das
+    // war die Überschreitung.
+    expect(token.jwks).toBeUndefined();
+    expect(keys.jwks.keys[0].kid).toBe("kiebitz-plus-2026-08-1");
+    expect(keys.account.email).toBe("tommaurerhof@googlemail.com");
+  });
+
+  it("carries an older single-entry cache over instead of dropping it", async () => {
+    const issued = await realisticEntitlement("someone@example.com");
+    // Die Form vor der Aufteilung: alles in einem Eintrag.
+    await storage.writeSecret(
+      "entitlement",
+      JSON.stringify({
+        token: issued.token,
+        fetched_at: Date.now(),
+        refresh_after: new Date(Date.now() + 86_400_000).toISOString(),
+        jwks: issued.jwks,
+        account: issued.account,
+      })
+    );
+    await storage.writeSecret("session", "session");
+
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    await initPlus();
+
+    // Ohne Netz und nach dem Update: Plus gilt weiter, die Adresse steht da.
+    expect(featureUnlocked("no_ads", plusState())).toBe(true);
+    expect(plusState().account?.email).toBe("someone@example.com");
+
+    // Und der Zwischenspeicher steht jetzt in der neuen Form.
+    await vi.waitFor(async () => {
+      expect(await storage.readSecret("entitlement_keys")).not.toBeNull();
+    });
+    const moved = JSON.parse((await storage.readSecret("entitlement"))!);
+    expect(moved.jwks).toBeUndefined();
+    expect(moved.token).toBe(issued.token);
+  });
+
+  it("forgets both entries when signing out", async () => {
+    await signIn();
+    expect(await storage.readSecret("entitlement_keys")).not.toBeNull();
+
+    await signOut();
+
+    expect(await storage.readSecret("entitlement")).toBeNull();
+    expect(await storage.readSecret("entitlement_keys")).toBeNull();
   });
 });

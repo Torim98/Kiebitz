@@ -44,7 +44,7 @@ class SecureStorePlugin(private val activity: Activity) : Plugin(activity) {
     const val TRANSFORMATION = "AES/GCM/NoPadding"
     const val GCM_TAG_BITS = 128
     const val IV_BYTES = 12
-    val ALLOWED_KEYS = setOf("session", "entitlement", "lichess_token")
+    val ALLOWED_KEYS = setOf("session", "entitlement", "entitlement_keys", "lichess_token")
   }
 
   private val preferences by lazy {

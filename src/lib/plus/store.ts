@@ -33,6 +33,7 @@ import { claimsStillValid, verifyEntitlementToken } from "./token";
 import {
   isPlusOnlyFeature,
   type CachedEntitlement,
+  type CachedEntitlementKeys,
   type CheckoutSession,
   type EntitlementClaims,
   type EntitlementResponse,
@@ -108,34 +109,86 @@ function cancelReturnPolling(): void {
 async function clearSession(): Promise<void> {
   cancelReturnPolling();
   sessionToken = null;
-  await Promise.all([deleteSecret("session"), deleteSecret("entitlement")]);
+  await Promise.all([
+    deleteSecret("session"),
+    deleteSecret("entitlement"),
+    deleteSecret("entitlement_keys"),
+  ]);
   setState({ signedIn: false, account: null, claims: null, error: null, fetchedAt: null });
 }
 
-/** Den zwischengespeicherten Token prüfen · offline der einzige Weg zu Plus. */
-async function restoreCachedEntitlement(now: number): Promise<EntitlementClaims | null> {
-  const raw = await readSecret("entitlement");
+/** Einen Eintrag der Ablage als JSON lesen · Unsinn darin zählt als nichts. */
+async function readCached<T>(key: "entitlement" | "entitlement_keys"): Promise<T | null> {
+  const raw = await readSecret(key);
   if (!raw) return null;
-  let cached: CachedEntitlement;
   try {
-    cached = JSON.parse(raw) as CachedEntitlement;
+    return JSON.parse(raw) as T;
   } catch {
-    await deleteSecret("entitlement");
+    await deleteSecret(key);
     return null;
   }
-  if (!cached?.token || !cached.jwks?.keys?.length) return null;
+}
+
+/** Beide Einträge zusammen · die Ablage löschen heißt: beide löschen. */
+async function dropCachedEntitlement(): Promise<void> {
+  await Promise.all([deleteSecret("entitlement"), deleteSecret("entitlement_keys")]);
+}
+
+/**
+ * Den zwischengespeicherten Token prüfen · offline der einzige Weg zu Plus.
+ *
+ * Token und Prüfschlüssel stehen seit der Aufteilung in zwei Einträgen (siehe
+ * `CachedEntitlementKeys`). Ein Zwischenspeicher aus einer älteren Fassung
+ * trägt beides noch in einem · der gilt hier weiter und wird gleich in die
+ * neue Form übernommen, damit niemand nach dem Update ohne Netz auf Free fällt.
+ */
+async function restoreCachedEntitlement(now: number): Promise<EntitlementClaims | null> {
+  const [cached, stored] = await Promise.all([
+    readCached<CachedEntitlement>("entitlement"),
+    readCached<CachedEntitlementKeys>("entitlement_keys"),
+  ]);
+  if (!cached?.token) return null;
+
+  const legacy = stored === null && Boolean(cached.jwks?.keys?.length);
+  const keys: CachedEntitlementKeys | null = legacy
+    ? { jwks: cached.jwks!, account: cached.account }
+    : stored;
+  if (!keys?.jwks?.keys?.length) return null;
+
+  let claims: EntitlementClaims;
   try {
-    const claims = await verifyEntitlementToken(cached.token, cached.jwks, now);
-    // Das Konto gehört zum geprüften Token und kommt deshalb mit heraus: So
-    // steht die Adresse schon beim ersten Bild da · auch ohne Netz.
-    setState({ fetchedAt: cached.fetched_at ?? null, account: cached.account ?? null });
-    return claims;
+    claims = await verifyEntitlementToken(cached.token, keys.jwks, now);
   } catch {
     // Abgelaufen oder nicht mehr prüfbar: still auf Free zurück. Der nächste
     // erfolgreiche Netzaufruf stellt Plus wieder her.
-    await deleteSecret("entitlement");
+    await dropCachedEntitlement();
     return null;
   }
+
+  // Das Konto gehört zum geprüften Token und kommt deshalb mit heraus: So
+  // steht die Adresse schon beim ersten Bild da · auch ohne Netz.
+  setState({ fetchedAt: cached.fetched_at ?? null, account: keys.account ?? null });
+  // Die Übernahme darf den Start nicht aufhalten und ihn erst recht nicht
+  // scheitern lassen · gelingt sie nicht, gilt beim nächsten Mal wieder die
+  // alte Form, und die funktioniert ja.
+  if (legacy) void writeCachedEntitlement(cached, keys).catch(() => {});
+  return claims;
+}
+
+/** Beide Teile ablegen · erst die Schlüssel, dann der Token, der sie braucht. */
+async function writeCachedEntitlement(
+  cached: CachedEntitlement,
+  keys: CachedEntitlementKeys
+): Promise<void> {
+  await writeSecret("entitlement_keys", JSON.stringify(keys));
+  await writeSecret(
+    "entitlement",
+    JSON.stringify({
+      token: cached.token,
+      fetched_at: cached.fetched_at,
+      refresh_after: cached.refresh_after,
+    } satisfies CachedEntitlement)
+  );
 }
 
 /**
@@ -241,8 +294,6 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
     token: entitlement.entitlement_token,
     fetched_at: Date.now(),
     refresh_after: entitlement.refresh_after,
-    jwks,
-    account,
   };
   setState({
     account,
@@ -254,7 +305,7 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
   });
 
   try {
-    await writeSecret("entitlement", JSON.stringify(cached));
+    await writeCachedEntitlement(cached, { jwks, account });
   } catch (error) {
     // Der Stand von eben bleibt stehen; gemeldet wird nur, dass er den
     // nächsten Start nicht überlebt.
