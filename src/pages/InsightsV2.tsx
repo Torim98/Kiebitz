@@ -362,10 +362,15 @@ export default function InsightsV2({
             } ${tab === id ? "bg-panel3 text-ink shadow-sm" : "text-ink3 hover:bg-panel2 hover:text-ink2"}`}
           >
             <Icon size={14} className={`shrink-0 ${tab === id ? "text-accent" : ""}`} />
-            <span className="max-w-full truncate">{t(key)}</span>
-            {id !== "overview" && !deepGate.unlocked && !deepGate.pending && (
-              <Sparkles size={11} className="shrink-0 text-accent" />
-            )}
+            {/* Beschriftung und Sternchen bleiben eine Zeile · mobil stehen die
+                Reiter sonst dreistöckig da, und das Sternchen sähe aus wie eine
+                eigene Angabe statt wie eine Marke am Namen. */}
+            <span className="flex min-w-0 max-w-full items-center gap-1">
+              <span className="truncate">{t(key)}</span>
+              {id !== "overview" && !deepGate.unlocked && !deepGate.pending && (
+                <Sparkles size={11} className="shrink-0 text-accent" />
+              )}
+            </span>
           </button>
         ))}
       </nav>

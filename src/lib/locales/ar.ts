@@ -1643,6 +1643,7 @@ export const ar: Record<Key, string> = {
   "plus.checkedLabel": "آخر تحقق",
   "plus.errorOffline": "تعذّر جلب الحالة. يواصل Kiebitz بآخر حالة مؤكدة.",
   "plus.errorRefresh": "تعذّر تحديث الحالة الآن. تبقى آخر حالة مؤكدة سارية.",
+  "plus.errorStore": "Kiebitz Plus سارٍ، لكن تعذّر حفظ التأكيد على هذا الجهاز · يُعاد جلبه بعد كلّ تشغيل.",
   "plus.startTrial": "جرّب 7 أيام مجانًا",
   "plus.subscribe": "اشترك في Kiebitz Plus",
   "plus.manage": "إدارة الاشتراك",

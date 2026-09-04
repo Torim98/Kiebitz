@@ -34,9 +34,19 @@ export class PlusApiError extends Error {
     this.name = "PlusApiError";
   }
 
-  /** Kein Netz, DNS tot, Zertifikatsfehler · kein Zustand des Kontos. */
+  /**
+   * Kein Netz, DNS tot, Zertifikatsfehler · kein Zustand des Kontos.
+   *
+   * Geprüft wird der Code und nicht nur der Status: `status === 0` heißt bloß
+   * „keine HTTP-Antwort", und das trifft ebenso auf einen Fehler zu, der die
+   * API nie erreicht hat — eine fehlgeschlagene Signaturprüfung etwa oder
+   * einen Schlüsselspeicher, der den Wert nicht annimmt. Wer die alle „offline"
+   * nennt, schickt den Benutzer sein Netz reparieren, während das Netz in
+   * Ordnung war. `network_unavailable` vergibt allein `apiRequest` unten, und
+   * nur dort ist wirklich nichts angekommen.
+   */
   get offline(): boolean {
-    return this.status === 0;
+    return this.status === 0 && this.code === "network_unavailable";
   }
 }
 

@@ -380,7 +380,16 @@ export default function PlusSection() {
               Hinweis, kein Sperrzustand. */}
           {plus.error && (
             <p className="rounded-lg border border-line2 bg-panel2 px-3 py-2 text-[12.5px] text-ink3">
-              {plus.error.offline ? t("plus.errorOffline") : t("plus.errorRefresh")}
+              {/* Drei verschiedene Lagen, drei verschiedene Sätze: kein Netz,
+                  eine Abfrage, die gerade nicht durchkam, und ein Stand, der
+                  gilt, sich aber nicht ablegen ließ. Der letzte stand früher
+                  als „Status konnte nicht geholt werden" da — geholt war er,
+                  nur nicht gespeichert. */}
+              {plus.error.code === "cache_unavailable"
+                ? t("plus.errorStore")
+                : plus.error.offline
+                  ? t("plus.errorOffline")
+                  : t("plus.errorRefresh")}
             </p>
           )}
 

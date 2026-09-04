@@ -1,15 +1,16 @@
 /**
- * Die Zeile für den Layoutmodus.
+ * Die Zeile für den Layoutmodus und das, was ohne Plus gesperrt ist.
  *
  * Die Themenauswahl daneben hat ihre Prüfung in theme.test.ts; hier geht es um
  * die eine Zeile darüber — darum, dass sie den Modus nennt, in den sie führt,
- * und dass sie auch ohne Plus schaltet statt in die Erklärung zu springen.
+ * und dass sie auch ohne Plus schaltet statt in die Erklärung zu springen —
+ * und darum, welche Bretter die Sperre überhaupt betrifft.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import AppearanceSection from "./AppearanceSection";
 import { onPlusDialog } from "../../lib/plus/dialog";
-import { DEFAULT_APPEARANCE, type Appearance } from "../../lib/theme";
+import { DEFAULT_APPEARANCE, THEME_FEATURE, type Appearance } from "../../lib/theme";
 import { grantPlus, revokePlus } from "../../test/plus";
 
 vi.mock("../../lib/i18n", () => ({
@@ -75,5 +76,43 @@ describe("layout mode row", () => {
     // Erklärung, nur der Wechsel.
     expect(asked).toEqual([]);
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_APPEARANCE, diagram: true });
+  });
+});
+
+describe("without Plus", () => {
+  it("leaves the default board open", () => {
+    revokePlus();
+    show();
+
+    const asked: (string | null)[] = [];
+    const stop = onPlusDialog((feature) => asked.push(feature));
+    fireEvent.click(screen.getByText("board.auto"));
+    stop();
+
+    // "Zum Thema" ist die Vorgabe · wer sie wählt, wählt nichts Bezahltes.
+    expect(asked).toEqual([]);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_APPEARANCE, boardSet: "auto" });
+  });
+
+  it("sends the other boards to the explanation", () => {
+    revokePlus();
+    show();
+
+    const asked: (string | null)[] = [];
+    const stop = onPlusDialog((feature) => asked.push(feature));
+    fireEvent.click(screen.getByText("board.sepia"));
+    stop();
+
+    expect(asked).toEqual([THEME_FEATURE]);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("says nothing twice about the preview", () => {
+    revokePlus();
+    show();
+
+    // Was Plus kostet, trägt sein Sternchen und erklärt sich beim Antippen ·
+    // ein Kasten, der dasselbe noch einmal sagt, stand nur im Weg.
+    expect(screen.queryByText("plus.previewHint")).toBeNull();
   });
 });

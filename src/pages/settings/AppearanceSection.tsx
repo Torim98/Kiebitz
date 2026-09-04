@@ -13,12 +13,11 @@ import {
   BookMarked,
   Crown,
   LayoutGrid,
-  Lock,
   Palette,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useSyncExternalStore } from "react";
-import { Button, Chip } from "../../components/ui";
+import { Chip } from "../../components/ui";
 import { useI18n } from "../../lib/i18n";
 import { openPlusDialog } from "../../lib/plus/dialog";
 import { usePlusGate } from "../../lib/plus/usePlus";
@@ -32,6 +31,7 @@ import {
 import { PIECE_SETS, pieceSetDef, type PieceSetId } from "../../lib/pieces/sets";
 import {
   BOARD_SETS,
+  DEFAULT_BOARD_SET,
   THEMES,
   THEME_FEATURE,
   type Appearance,
@@ -96,6 +96,56 @@ function BoardPreview() {
 }
 
 /**
+ * Miniatur des Blatts · Kolumnentitel, kräftige Linie, Registerzeilen.
+ *
+ * Dieselbe Regel wie bei den Themenkacheln: gezeigt wird die Sache und nicht
+ * ihre Beschreibung. Was das Blatt ausmacht, steht hier in klein — der
+ * Satzspiegel auf hellem Grund, die Linie unter dem Kolumnentitel und die
+ * Punktlinien des Registers.
+ *
+ * Ohne Serife: Die Buchschrift lädt erst, wenn ein Zeichen in ihr gesetzt
+ * werden soll, und das soll sie erst im Blatt und nicht schon in den
+ * Einstellungen. Die Form allein sagt hier ohnehin mehr als ein Wort.
+ */
+function BlattPreview() {
+  return (
+    <span className="flex h-11 w-16 shrink-0 flex-col gap-[3px] overflow-hidden rounded-md border border-line bg-bg px-2 py-1.5">
+      <span className="h-[3px] w-5 rounded-[1px] bg-ink3" />
+      <span className="h-px w-full bg-ink" />
+      {[0, 1, 2].map((row) => (
+        <span key={row} className="flex items-center gap-1">
+          <span className="h-[3px] w-2.5 shrink-0 rounded-[1px] bg-ink2" />
+          <span className="flex-1 border-b border-dotted border-line2" />
+          <span className="h-[3px] w-1.5 shrink-0 rounded-[1px] bg-ink2" />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Miniatur des Dashboards · zwei Wertungskacheln und ein Verlauf darunter. */
+function KachelPreview() {
+  return (
+    <span className="flex h-11 w-16 shrink-0 flex-col gap-1 overflow-hidden rounded-md border border-line bg-bg p-1.5">
+      <span className="flex flex-1 gap-1">
+        {[0, 1].map((card) => (
+          <span
+            key={card}
+            className="flex flex-1 flex-col justify-center gap-[3px] rounded-[3px] bg-panel3 px-1"
+          >
+            <span className="h-[3px] w-2.5 rounded-full bg-ink3" />
+            <span
+              className={`h-[5px] w-4 rounded-full ${card === 0 ? "bg-ink2" : "bg-accent"}`}
+            />
+          </span>
+        ))}
+      </span>
+      <span className="h-2.5 shrink-0 rounded-[3px] bg-panel3" />
+    </span>
+  );
+}
+
+/**
  * Der Layoutmodus · die zweite Art, dieselbe App zu lesen.
  *
  * Er steht über der Farbwelt, weil er die Seiten anders *setzt* und nicht
@@ -108,11 +158,16 @@ function BoardPreview() {
  * beantwortete aber die Frage „wo bin ich?" und nicht die Frage „wo will ich
  * hin?", und daneben brauchte er drei Zeilen Erklärung. Ein Ziel und ein Tipp
  * darauf sagen dasselbe kürzer.
+ *
+ * Neben dem Ziel steht es auch: eine Miniatur dessen, was einen dort erwartet.
+ * Ein Name allein verrät nicht, dass der eine Modus in Kacheln und der andere
+ * in Formularzeilen denkt — ein Blick darauf schon.
  */
 function LayoutModeRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
   const { t } = useI18n();
   // Angezeigt wird der jeweils andere Modus · er ist das Ziel des Tipps.
   const target = on ? t("set.dashboardMode") : t("set.diagramMode");
+  const toBlatt = !on;
   const Icon = on ? LayoutGrid : BookMarked;
   return (
     <button
@@ -122,13 +177,17 @@ function LayoutModeRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) 
       // Sprachbedienung, wohin der Tipp führt, und die Suche nach dem
       // gelesenen Wort findet trotzdem dieselbe Schaltfläche.
       aria-label={t("set.layoutModeSwitch", { m: target })}
-      className="flex w-full items-center gap-3 rounded-xl border border-line bg-panel2 py-2.5 pe-3 ps-3.5 text-start transition-colors hover:border-line2"
+      className="group flex w-full items-center gap-3 rounded-xl border border-line bg-panel2 p-2.5 text-start transition-colors hover:border-accent-dim hover:bg-panel3"
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-panel3 text-accent">
-        <Icon size={16} />
+      {toBlatt ? <BlattPreview /> : <KachelPreview />}
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <Icon size={15} className="shrink-0 text-accent" />
+        <span className="min-w-0 truncate text-[13.5px] font-medium text-ink">{target}</span>
       </span>
-      <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">{target}</span>
-      <ArrowLeftRight size={15} className="shrink-0 text-ink3" />
+      <ArrowLeftRight
+        size={15}
+        className="shrink-0 text-ink3 transition-colors group-hover:text-accent"
+      />
     </button>
   );
 }
@@ -183,8 +242,7 @@ export default function AppearanceSection({
         <ThemePreview />
         <span className="flex items-center gap-1.5 px-0.5">
           <span className="flex-1 truncate text-[12.5px] font-medium text-ink">{t(def.nameKey)}</span>
-          {def.plus && blocked && <Lock size={12} className="shrink-0 text-ink3" />}
-          {def.plus && !blocked && <Sparkles size={12} className="shrink-0 text-accent" />}
+          {def.plus && <Sparkles size={12} className="shrink-0 text-accent" />}
         </span>
       </button>
     );
@@ -205,43 +263,39 @@ export default function AppearanceSection({
         {t(THEMES.find((theme) => theme.id === appearance.theme)!.descKey)}
       </p>
 
-      {locked && (
-        <div className="mt-3 rounded-lg border border-accent-dim bg-accent-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-accent">
-          {t("plus.previewHint")}
-          <div className="mt-2">
-            <Button primary onClick={() => openPlusDialog(THEME_FEATURE)}>
-              <Sparkles size={14} /> {t("plus.startTrial")}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* ── Brett ─────────────────────────────────────────────────────────── */}
       <h4 className="mt-5 flex items-center gap-2 text-[13px] font-medium text-ink">
         <Palette size={14} className="text-ink3" /> {t("set.boardSet")}
       </h4>
       <p className="mt-1 text-[12px] leading-relaxed text-ink3">{t("set.boardSetNote")}</p>
       <div className="mt-2.5 flex flex-wrap gap-2">
-        {BOARD_SETS.map((set) => (
-          <button
-            key={set.id}
-            // "auto" zeigt das Brett des gewählten Themas, die übrigen ihr
-            // eigenes · derselbe Weg wie bei den Themenkacheln.
-            data-theme={set.id === "auto" ? appearance.theme : undefined}
-            data-board={set.id === "auto" ? undefined : set.id}
-            onClick={() => (locked ? openPlusDialog(THEME_FEATURE) : pickBoard(set.id))}
-            aria-pressed={appearance.boardSet === set.id}
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors ${
-              appearance.boardSet === set.id
-                ? "border-accent-dim bg-accent-soft text-accent"
-                : "border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
-            } ${locked ? "opacity-70" : ""}`}
-          >
-            <BoardPreview />
-            {t(set.nameKey)}
-            {locked && <Lock size={12} className="text-ink3" />}
-          </button>
-        ))}
+        {BOARD_SETS.map((set) => {
+          // "auto" ist die Vorgabe und damit das Brett, mit dem jeder ohnehin
+          // spielt · es gehört nicht hinter die Freischaltung. Zu Plus
+          // gehören allein die eigenen Bretter daneben.
+          const plus = set.id !== DEFAULT_BOARD_SET;
+          const blocked = plus && locked;
+          return (
+            <button
+              key={set.id}
+              // "auto" zeigt das Brett des gewählten Themas, die übrigen ihr
+              // eigenes · derselbe Weg wie bei den Themenkacheln.
+              data-theme={plus ? undefined : appearance.theme}
+              data-board={plus ? set.id : undefined}
+              onClick={() => (blocked ? openPlusDialog(THEME_FEATURE) : pickBoard(set.id))}
+              aria-pressed={appearance.boardSet === set.id}
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12.5px] transition-colors ${
+                appearance.boardSet === set.id
+                  ? "border-accent-dim bg-accent-soft text-accent"
+                  : "border-line bg-panel2 text-ink2 hover:border-line2 hover:text-ink"
+              } ${blocked ? "opacity-70" : ""}`}
+            >
+              <BoardPreview />
+              {t(set.nameKey)}
+              {plus && <Sparkles size={12} className="text-accent" />}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Figuren ───────────────────────────────────────────────────────── */}
@@ -267,8 +321,7 @@ export default function AppearanceSection({
             >
               <PiecePreview set={set.id} />
               {t(set.nameKey)}
-              {set.plus && blocked && <Lock size={12} className="text-ink3" />}
-              {set.plus && !blocked && <Sparkles size={12} className="text-accent" />}
+              {set.plus && <Sparkles size={12} className="text-accent" />}
             </button>
           );
         })}

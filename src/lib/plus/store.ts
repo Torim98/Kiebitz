@@ -35,6 +35,8 @@ import {
   type CachedEntitlement,
   type CheckoutSession,
   type EntitlementClaims,
+  type EntitlementResponse,
+  type JsonWebKeySet,
   type PlusAccount,
   type PlusFeature,
 } from "./types";
@@ -169,6 +171,17 @@ async function refreshDue(now: number): Promise<boolean> {
 }
 
 /**
+ * Fremde Fehler auf den einen Fehlertyp der Oberfläche abbilden.
+ *
+ * `status: 0` heißt „es gab keine HTTP-Antwort" und stimmt für all diese Fälle;
+ * unterschieden werden sie am Code, denn nur `network_unavailable` bedeutet
+ * wirklich „kein Netz" (siehe `PlusApiError.offline`).
+ */
+function asPlusError(error: unknown, code: string): PlusApiError {
+  return error instanceof PlusApiError ? error : new PlusApiError(0, code, String(error));
+}
+
+/**
  * Entitlement neu holen, prüfen und ablegen.
  *
  * Der Aufruf schlägt bewusst nicht durch: Die Oberfläche zeigt den Fehler an,
@@ -185,34 +198,16 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
   if (state.refreshing) return;
   setState({ refreshing: true });
   const token = sessionToken;
+
+  let account: PlusAccount;
+  let entitlement: EntitlementResponse;
+  let jwks: JsonWebKeySet;
   try {
-    const [account, entitlement, jwks] = await Promise.all([
+    [account, entitlement, jwks] = await Promise.all([
       fetchAccount(token),
       fetchEntitlement(token),
       fetchJwks(),
     ]);
-    const claims = await verifyEntitlementToken(
-      entitlement.entitlement_token,
-      jwks,
-      Date.now(),
-      account.id
-    );
-    const cached: CachedEntitlement = {
-      token: entitlement.entitlement_token,
-      fetched_at: Date.now(),
-      refresh_after: entitlement.refresh_after,
-      jwks,
-      account,
-    };
-    await writeSecret("entitlement", JSON.stringify(cached));
-    setState({
-      account,
-      claims,
-      error: null,
-      refreshing: false,
-      signedIn: true,
-      fetchedAt: cached.fetched_at,
-    });
   } catch (error) {
     // Eine ungültige Sitzung ist der einzige Fehler, der den lokalen Zustand
     // ändert · alles andere lässt den zwischengespeicherten Token stehen.
@@ -221,10 +216,49 @@ export async function refreshEntitlement(options: { force?: boolean } = {}): Pro
       setState({ refreshing: false, error });
       return;
     }
-    setState({
-      refreshing: false,
-      error: error instanceof PlusApiError ? error : new PlusApiError(0, "refresh_failed", String(error)),
-    });
+    setState({ refreshing: false, error: asPlusError(error, "refresh_failed") });
+    return;
+  }
+
+  let claims: EntitlementClaims;
+  try {
+    claims = await verifyEntitlementToken(entitlement.entitlement_token, jwks, Date.now(), account.id);
+  } catch (error) {
+    // Eine unsignierte oder fremde Antwort schaltet nichts frei · und sie ist
+    // ausdrücklich kein Netzfehler, auch wenn beide hier zusammenliefen.
+    setState({ refreshing: false, error: asPlusError(error, "verify_failed") });
+    return;
+  }
+
+  // Ab hier steht ein geprüfter Stand fest, und ab hier gilt er auch.
+  //
+  // Das Ablegen kommt danach und nicht davor: Es ist die Vorsorge für den
+  // nächsten Start, nicht die Bedingung für diesen. Vorher stand das Schreiben
+  // im selben `try` wie die Abfrage — nahm der Schlüsselspeicher den Wert nicht
+  // an, verfiel damit auch das eben Geprüfte, und Plus blieb auf dem Gerät aus,
+  // obwohl Konto und Berechtigung in Ordnung waren.
+  const cached: CachedEntitlement = {
+    token: entitlement.entitlement_token,
+    fetched_at: Date.now(),
+    refresh_after: entitlement.refresh_after,
+    jwks,
+    account,
+  };
+  setState({
+    account,
+    claims,
+    error: null,
+    refreshing: false,
+    signedIn: true,
+    fetchedAt: cached.fetched_at,
+  });
+
+  try {
+    await writeSecret("entitlement", JSON.stringify(cached));
+  } catch (error) {
+    // Der Stand von eben bleibt stehen; gemeldet wird nur, dass er den
+    // nächsten Start nicht überlebt.
+    setState({ error: asPlusError(error, "cache_unavailable") });
   }
 }
 

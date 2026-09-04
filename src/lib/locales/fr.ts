@@ -1643,6 +1643,7 @@ export const fr: Record<Key, string> = {
   "plus.checkedLabel": "Dernière vérification",
   "plus.errorOffline": "Le statut n’a pas pu être récupéré. Kiebitz continue avec le dernier état confirmé.",
   "plus.errorRefresh": "Le statut n’a pas pu être actualisé à l’instant. Le dernier état confirmé reste valable.",
+  "plus.errorStore": "Kiebitz Plus s’applique, mais la confirmation n’a pas pu être enregistrée sur cet appareil · elle est récupérée après chaque redémarrage.",
   "plus.startTrial": "Essayer 7 jours gratuitement",
   "plus.subscribe": "S’abonner à Kiebitz Plus",
   "plus.manage": "Gérer l’abonnement",

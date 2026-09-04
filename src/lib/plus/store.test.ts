@@ -20,7 +20,9 @@ vi.mock("./billing", () => ({
 import { acknowledgePurchase, playPurchaseTokens, purchasePlus } from "./billing";
 import {
   featureUnlocked,
+  plusState,
   purchaseWithGooglePlay,
+  refreshEntitlement,
   requestSignInLink,
   resetPlusStore,
   restoreGooglePlayPurchases,
@@ -28,6 +30,7 @@ import {
   startCheckout,
   type PlusState,
 } from "./store";
+import * as storage from "./storage";
 import { resetSecretFallback } from "./storage";
 import { FREE_FEATURES, PLUS_ONLY_FEATURES, type EntitlementClaims } from "./types";
 
@@ -287,5 +290,177 @@ describe("buying through Google Play", () => {
 
     expect(await restoreGooglePlayPurchases()).toBe(0);
     expect(order).toEqual([]);
+  });
+});
+
+/**
+ * Was passiert, wenn der Schlüsselspeicher nicht mitspielt.
+ *
+ * Der Anlass ist kein gedachter: Der Windows Credential Manager nimmt höchstens
+ * 2560 Byte je Eintrag, und der abgelegte Entitlement-Satz — signierter Token,
+ * öffentlicher Schlüsselsatz und Konto in einem JSON — liegt hart an dieser
+ * Grenze. Kippt er darüber, lehnt Windows das Schreiben mit einem Fehler ab.
+ *
+ * Früher stand das Schreiben im selben `try` wie die Abfrage. Der Fehler riss
+ * damit den eben geprüften Stand mit: In den Einstellungen stand danach
+ * dauerhaft „Konto wird geladen …" neben der Meldung, der Status habe sich
+ * nicht holen lassen — obwohl Konto, Berechtigung und Netz in Ordnung waren.
+ */
+describe("when the key store refuses the value", () => {
+  const fetchMock = vi.fn();
+
+  function base64Url(bytes: Uint8Array): string {
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  const segment = (value: unknown) => base64Url(new TextEncoder().encode(JSON.stringify(value)));
+
+  /** Ein echtes Schlüsselpaar · geprüft wird die Signatur, nicht eine Attrappe. */
+  async function signedEntitlement() {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+      "sign",
+      "verify",
+    ]);
+    const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const kid = "kiebitz-test-1";
+    const seconds = Math.floor(Date.now() / 1000);
+    const head = segment({ alg: "ES256", typ: "JWT", kid });
+    const payload = segment({
+      iss: "https://api.kiebitz.dev",
+      sub: "acc_1",
+      aud: "kiebitz-app",
+      plan: "plus",
+      features: [...FREE_FEATURES, ...PLUS_ONLY_FEATURES],
+      provider: "stripe",
+      providers: ["stripe"],
+      status: "active",
+      trial: false,
+      trial_until: null,
+      entitlement_valid_until: seconds + 30 * 86_400,
+      iat: seconds - 60,
+      exp: seconds + 7 * 86_400,
+    });
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      pair.privateKey,
+      new TextEncoder().encode(`${head}.${payload}`)
+    );
+    return {
+      token: `${head}.${payload}.${base64Url(new Uint8Array(signature))}`,
+      jwks: {
+        keys: [
+          { kty: "EC", crv: "P-256", x: publicJwk.x!, y: publicJwk.y!, alg: "ES256", use: "sig", kid },
+        ],
+      },
+    };
+  }
+
+  beforeEach(() => {
+    resetPlusStore();
+    resetSecretFallback();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    resetPlusStore();
+    resetSecretFallback();
+  });
+
+  async function signInWithWorkingApi() {
+    const { token, jwks } = await signedEntitlement();
+    fetchMock.mockImplementation((url: string) => {
+      const path = String(url);
+      const json = (body: unknown, status = 200) =>
+        Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          })
+        );
+      if (path.endsWith("/v1/auth/magic-link/consume")) return json({ access_token: "session" }, 201);
+      if (path.endsWith("/v1/account/me"))
+        return json({ id: "acc_1", email: "someone@example.com" });
+      if (path.endsWith("/v1/entitlements/me"))
+        return json({ entitlement_token: token, refresh_after: null });
+      if (path.endsWith("/.well-known/jwks.json")) return json(jwks);
+      return json({});
+    });
+    await signInWithCode("one-time-code");
+  }
+
+  it("keeps the verified state when it cannot be stored", async () => {
+    const failed = vi
+      .spyOn(storage, "writeSecret")
+      .mockImplementation(async (key) => {
+        // Die Sitzung passt in den Speicher, der größere Entitlement-Satz nicht.
+        if (key === "entitlement") throw new Error("The stub received bad data. (os error 1783)");
+      });
+
+    await signInWithWorkingApi();
+
+    const after = plusState();
+    // Plus gilt, das Konto steht da · genau das ging vorher verloren.
+    expect(featureUnlocked("no_ads", after)).toBe(true);
+    expect(after.account?.email).toBe("someone@example.com");
+    expect(after.fetchedAt).not.toBeNull();
+    expect(failed).toHaveBeenCalledWith("entitlement", expect.any(String));
+  });
+
+  it("names the real trouble instead of blaming the network", async () => {
+    vi.spyOn(storage, "writeSecret").mockImplementation(async (key) => {
+      if (key === "entitlement") throw new Error("The stub received bad data. (os error 1783)");
+    });
+
+    await signInWithWorkingApi();
+
+    const error = plusState().error;
+    expect(error?.code).toBe("cache_unavailable");
+    // Das Netz war in Ordnung · wer hier „offline" meldet, schickt den
+    // Benutzer seinen Router neu starten.
+    expect(error?.offline).toBe(false);
+  });
+
+  it("still reports a dead network as offline", async () => {
+    // Erst anmelden, damit eine Sitzung steht · dann fällt das Netz aus.
+    await signInWithWorkingApi();
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await refreshEntitlement({ force: true });
+
+    const error = plusState().error;
+    expect(error?.code).toBe("network_unavailable");
+    expect(error?.offline).toBe(true);
+    // Der zwischengespeicherte Stand bleibt · ein Netzausfall nimmt kein Plus weg.
+    expect(featureUnlocked("no_ads", plusState())).toBe(true);
+  });
+
+  it("does not call a bad signature a network problem", async () => {
+    await signInWithWorkingApi();
+    // Dieselbe API, aber ein fremder Schlüsselsatz: Die Prüfung schlägt fehl.
+    const foreign = await signedEntitlement();
+    const before = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((url: string) =>
+      String(url).endsWith("/.well-known/jwks.json")
+        ? Promise.resolve(
+            new Response(JSON.stringify(foreign.jwks), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        : before(url)
+    );
+
+    await refreshEntitlement({ force: true });
+
+    const error = plusState().error;
+    expect(error?.code).toBe("verify_failed");
+    expect(error?.offline).toBe(false);
   });
 });

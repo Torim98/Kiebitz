@@ -1670,6 +1670,7 @@ export const de = {
   "plus.checkedLabel": "Zuletzt geprüft",
   "plus.errorOffline": "Der Status ließ sich nicht abrufen. Kiebitz arbeitet mit dem zuletzt bestätigten Stand weiter.",
   "plus.errorRefresh": "Der Status ließ sich gerade nicht aktualisieren. Der zuletzt bestätigte Stand gilt weiter.",
+  "plus.errorStore": "Kiebitz Plus gilt, die Bestätigung ließ sich auf diesem Gerät aber nicht ablegen · nach jedem Neustart wird sie neu geholt.",
   "plus.startTrial": "7 Tage kostenlos testen",
   "plus.subscribe": "Kiebitz Plus abonnieren",
   "plus.manage": "Abonnement verwalten",

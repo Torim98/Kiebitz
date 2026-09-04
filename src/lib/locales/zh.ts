@@ -1643,6 +1643,7 @@ export const zh: Record<Key, string> = {
   "plus.checkedLabel": "上次检查",
   "plus.errorOffline": "无法获取状态。Kiebitz 继续按最近一次确认的状态运行。",
   "plus.errorRefresh": "此刻无法刷新状态，最近一次确认的状态继续有效。",
+  "plus.errorStore": "Kiebitz Plus 已生效，但确认信息无法保存在本设备 · 每次重新启动都会重新获取。",
   "plus.startTrial": "免费试用 7 天",
   "plus.subscribe": "订阅 Kiebitz Plus",
   "plus.manage": "管理订阅",

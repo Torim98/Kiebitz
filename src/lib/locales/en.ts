@@ -1649,6 +1649,7 @@ export const en: Record<Key, string> = {
   "plus.checkedLabel": "Last checked",
   "plus.errorOffline": "The status could not be fetched. Kiebitz keeps working with the last confirmed state.",
   "plus.errorRefresh": "The status could not be refreshed just now. The last confirmed state still applies.",
+  "plus.errorStore": "Kiebitz Plus applies, but the confirmation could not be stored on this device · it is fetched again after every restart.",
   "plus.startTrial": "Try free for 7 days",
   "plus.subscribe": "Subscribe to Kiebitz Plus",
   "plus.manage": "Manage subscription",

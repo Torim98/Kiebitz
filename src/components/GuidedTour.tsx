@@ -79,6 +79,27 @@ function measure(anchors: string[]): { rect: Rect; node: Element } | null {
 const SPOT_MAX = 0.55;
 
 /**
+ * Unterkante der Fläche, auf der die Blase stehen darf.
+ *
+ * Auf Android liegt die Anzeige nicht im Dokument, sondern als native Fläche
+ * über dem WebView — das DOM kennt davon nur den reservierten Slot. Wer allein
+ * mit `innerHeight` rechnet, stellt die Blase deshalb ahnungslos unter die
+ * Anzeige, und ihre untere Hälfte samt "Weiter" verschwindet dahinter. Für die
+ * Blase endet das Fenster darum an der Oberkante des Slots.
+ *
+ * Der Ausschnitt bleibt davon unberührt: Die Leiste unten liegt *unter* der
+ * Anzeige und ist weiterhin ganz zu sehen · nur die Blase weicht ihr aus.
+ */
+function bubbleBottom(): number {
+  const vh = window.innerHeight;
+  const slot = document.querySelector('[data-ad-slot="android-banner"]');
+  if (!slot) return vh;
+  const rect = slot.getBoundingClientRect();
+  // Ungeladen ist der Slot 0 px hoch und nichts liegt über der Seite.
+  return rect.height > 0 ? Math.min(vh, rect.top) : vh;
+}
+
+/**
  * Der sichtbare Teil des Bereichs, und höchstens ein gutes halbes Fenster.
  *
  * Ohne die Deckelung verschluckt eine lange Karte (die Trainingsvorschläge
@@ -123,7 +144,7 @@ const clamp = (value: number, min: number, max: number) =>
  */
 function place(rect: Rect, w: number, h: number, prefer?: TourSide): Placement {
   const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vh = bubbleBottom();
   const order = prefer ? [prefer, ...SIDES.filter((s) => s !== prefer)] : SIDES;
   const side = order.find((s) => fits(s, rect, w, h, vw, vh)) ?? prefer ?? "bottom";
 
@@ -149,7 +170,7 @@ function centered(w: number, h: number): Placement {
   return {
     rect: null,
     side: "center",
-    top: Math.max(MARGIN, window.innerHeight / 2 - h / 2),
+    top: Math.max(MARGIN, bubbleBottom() / 2 - h / 2),
     left: Math.max(MARGIN, window.innerWidth / 2 - w / 2),
   };
 }

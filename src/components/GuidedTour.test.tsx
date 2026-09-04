@@ -30,6 +30,32 @@ function anchor(mark: string, rect: { top: number; left: number; width: number; 
   return node;
 }
 
+/**
+ * Der reservierte Platz der Android-Anzeige.
+ *
+ * Im Gerät liegt dort eine native Fläche über dem WebView; im Test genügt der
+ * Slot mit seiner Lage, denn genau danach richtet sich die Blase.
+ */
+function adSlot(top: number, height = 50) {
+  const node = document.createElement("div");
+  node.dataset.adSlot = "android-banner";
+  node.getBoundingClientRect = () =>
+    ({
+      top,
+      left: 0,
+      width: 360,
+      height,
+      right: 360,
+      bottom: top + height,
+      x: 0,
+      y: top,
+      toJSON: () => "",
+    }) as DOMRect;
+  document.body.appendChild(node);
+  created.push(node);
+  return node;
+}
+
 afterEach(() => {
   created.splice(0).forEach((node) => node.remove());
 });
@@ -102,6 +128,21 @@ describe("GuidedTour", () => {
     expect(Number.parseFloat(spot.style.height)).toBeCloseTo(434.4, 1);
     // Unter dem Ausschnitt bleibt Platz, also steht die Blase dort.
     expect(Number.parseFloat(screen.getByRole("dialog").style.top)).toBeGreaterThan(440);
+  });
+
+  it("stellt sich nicht unter die Anzeige", async () => {
+    // Die Leiste unten wie auf dem Handy, darüber die Anzeige: jsdom misst
+    // 768 px Höhe, die Anzeige beginnt bei 660.
+    anchor("nav-dashboard", { top: 712, left: 8, width: 344, height: 48 });
+    adSlot(660);
+    render(<GuidedTour steps={steps} onNavigate={vi.fn()} onDone={vi.fn()} />);
+
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(dialog.style.top).not.toBe(""));
+    // Die Blase steht ganz oberhalb der Anzeige · gemessen wird ihre Unterkante,
+    // und ohne Layout in jsdom zählt dafür das Ausweichmaß.
+    const top = Number.parseFloat(dialog.style.top);
+    expect(top + 210).toBeLessThanOrEqual(660);
   });
 
   it("bricht nicht ab, wenn das Element eines Schritts fehlt", async () => {

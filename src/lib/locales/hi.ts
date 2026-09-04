@@ -1643,6 +1643,7 @@ export const hi: Record<Key, string> = {
   "plus.checkedLabel": "अंतिम जाँच",
   "plus.errorOffline": "स्थिति नहीं मिल सकी। Kiebitz अंतिम पुष्ट स्थिति के साथ चलता रहता है।",
   "plus.errorRefresh": "अभी स्थिति ताज़ा नहीं हो सकी। अंतिम पुष्ट स्थिति ही लागू है।",
+  "plus.errorStore": "Kiebitz Plus चालू है, पर पुष्टि इस डिवाइस पर सहेजी नहीं जा सकी · हर बार शुरू होने पर वह फिर से ली जाती है।",
   "plus.startTrial": "7 दिन मुफ़्त आज़माएँ",
   "plus.subscribe": "Kiebitz Plus लीजिए",
   "plus.manage": "सदस्यता प्रबंधित करें",
