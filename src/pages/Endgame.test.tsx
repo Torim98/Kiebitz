@@ -89,10 +89,10 @@ describe("Endgame trainer", () => {
 
     const status = screen.getByTestId("endgame-status");
     expect(status.textContent).toBe("eg.yourTurn");
-    expect(status.className).toContain("min-h-10");
-    expect(status.parentElement?.className).toContain(
-      "grid-cols-[minmax(0,1fr)_8rem]"
-    );
+    // Der Stand hat eine eigene Zeile mit reservierter Hoehe · er teilt sie
+    // sich nur mit dem Ziel und rutscht deshalb nicht mit dem Namen mit.
+    expect(status.className).toContain("min-h-5");
+    expect(status.parentElement?.className).toContain("justify-between");
 
     fireEvent.click(screen.getByRole("button", { name: "make move" }));
     expect(status.textContent).toBe("eg.thinking");

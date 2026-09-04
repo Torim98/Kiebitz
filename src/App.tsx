@@ -526,15 +526,36 @@ export default function App() {
 
   // Mobile: Sidebar wird zum Slide-in-Drawer hinter einem Hamburger-Button.
   const [navOpen, setNavOpen] = useState(false);
+  /**
+   * Zurück an den Kopf der offenen Seite.
+   *
+   * Der Griff, den jede Reiterleiste hat: Wer weit unten steht und denselben
+   * Reiter noch einmal antippt, meint damit nicht „dorthin, wo ich schon bin",
+   * sondern „nach oben". Ohne das bleibt einem auf dem Telefon nur, eine lange
+   * Seite von Hand zurückzuwischen.
+   */
+  const scrollToTop = useCallback(() => {
+    const main = mainRef.current;
+    if (!main || main.scrollTop === 0) return;
+    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    main.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
   // Ein Ziel, dessen Elternseite gerade offen ist, wird als Detailebene
   // geöffnet · Zurück führt dann dorthin zurück statt auf den Start.
+  //
+  // Und wer die Seite wählt, auf der er ohnehin steht, will an ihren Anfang.
+  // Ein zweites Mal dieselbe Seite einzuhängen wäre die Alternative gewesen ·
+  // dann verlöre die Seite aber ihren Zustand (offener Reiter, laufende
+  // Sitzung, halb ausgefülltes Feld), und das will beim Blättern niemand.
   const navigate = useCallback(
     (id: PageId) => {
-      if (NAV_PARENT[id] === pageRef.current) push(id);
+      if (id === pageRef.current) scrollToTop();
+      else if (NAV_PARENT[id] === pageRef.current) push(id);
       else goTo(id);
       setNavOpen(false);
     },
-    [goTo, push]
+    [goTo, push, scrollToTop]
   );
 
   // Auf dem Desktop führt der Rundgang an der Seitenleiste entlang, mobil an

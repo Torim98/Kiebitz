@@ -294,25 +294,43 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
    * das Fokus-Brett zeigen dieselben. Das Brett bekommt je eine eigene
    * Kennung, weil react-chessboard seine Instanzen daran unterscheidet.
    */
+  /**
+   * Der Kopf des Drills · zwei feste Zeilen statt einer, die umbricht.
+   *
+   * Vorher standen Name, Ziel und Stand in einer Reihe, die sich den Platz
+   * teilen mussten. Auf 360 Pixel geht das nicht auf: „Zufall: zwei Damen
+   * gegen König" braucht zwei Zeilen, das Ziel rutschte auf eine dritte, und
+   * „Du bist am Zug" stand oben rechts an der Zeile klebend, mit der es nichts
+   * zu tun hat. Drei Angaben, drei Höhen, keine Ordnung.
+   *
+   * Jetzt hat jede Angabe ihren Platz: der Name über die volle Breite, weil er
+   * die längste ist und ohnehin umbrechen darf · darunter, an ihm ausgerichtet,
+   * das Ziel links und der Stand rechts. Der Stand bleibt damit auf seiner
+   * Zeile stehen, egal wie lang der Name ist, und wechselt zwischen „am Zug"
+   * und „rechnet", ohne dass etwas darunter springt.
+   */
   const drillHead = (
-    <div className="mb-3 grid min-h-10 grid-cols-[minmax(0,1fr)_8rem] items-start gap-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]">
-        <Crown size={15} className="shrink-0 text-accent" />
-        <span className="font-medium">{drillText(drill.name, locale)}</span>
+    <div className="mb-3 flex min-h-10 flex-col justify-center gap-1">
+      <div className="flex items-start gap-2 text-[13.5px] leading-snug">
+        <Crown size={15} className="mt-[2px] shrink-0 text-accent" />
+        <span className="min-w-0 font-medium">{drillText(drill.name, locale)}</span>
+      </div>
+      {/* Eingerückt auf Höhe des Namens · Zeichenbreite plus Abstand. */}
+      <div className="flex min-h-5 items-center justify-between gap-3 ps-[23px]">
         <span
-          className={`rounded-full px-2 py-0.5 text-[10.5px] ${
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] ${
             drill.goal === "win" ? "bg-accent-soft text-accent" : "bg-panel3 text-gold"
           }`}
         >
           {drill.goal === "win" ? t("eg.goalWin") : t("eg.goalDraw")}
         </span>
+        <span
+          data-testid="endgame-status"
+          className="min-h-5 min-w-0 truncate text-[12.5px] leading-5 text-ink3"
+        >
+          {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
+        </span>
       </div>
-      <span
-        data-testid="endgame-status"
-        className="min-h-10 text-right text-[12.5px] leading-5 text-ink3"
-      >
-        {status === "thinking" ? t("eg.thinking") : status === "playing" ? t("eg.yourTurn") : ""}
-      </span>
     </div>
   );
 

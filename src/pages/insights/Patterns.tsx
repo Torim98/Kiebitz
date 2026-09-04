@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
+import { barCursor, chart, chartSurface, ChartTooltip } from "../../components/chartTheme";
 import { useI18n } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
 import type { DeepInsights } from "../../lib/insights";
@@ -92,7 +92,7 @@ export default function Patterns({
         defaultOpen
       >
         <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={indexData} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
+          <BarChart {...chartSurface} data={indexData} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />
@@ -268,7 +268,7 @@ export default function Patterns({
         disabled={live.resultTrend.length < 2}
       >
         <ResponsiveContainer width="100%" height={245}>
-          <LineChart data={live.resultTrend} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
+          <LineChart {...chartSurface} data={live.resultTrend} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="month" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis domain={[0, 100]} tick={chart.tick} tickLine={false} axisLine={false} />

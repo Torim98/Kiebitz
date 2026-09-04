@@ -174,13 +174,26 @@ async function readyFonts(): Promise<void> {
 }
 
 /**
- * Zeichnet die Karte und liefert sie als PNG.
+ * Zeichnet die Karte auf eine Leinwand und gibt sie zurück.
+ *
+ * Getrennt vom PNG, und zwar aus einem sichtbaren Grund: Der Dialog zeigt
+ * diese Leinwand unmittelbar an. Ging das Bild erst durch `toBlob`, eine
+ * Objekt-Adresse und ein <img>, dann kostete jeder Haken im Dialog eine
+ * PNG-Kodierung von 1080×1080 und einen Bildwechsel · auf dem Telefon lange
+ * genug, dass man den Pfeil nachziehen sieht. Gezeichnet wird an Ort und
+ * Stelle; kodiert erst, wenn jemand das Bild wirklich mitnimmt.
+ *
+ * `target` ist die Leinwand, die schon im Dialog hängt. Fehlt sie, entsteht
+ * eine eigene · dann verhält sich der Aufruf wie früher.
  *
  * Wirft, wenn der WebView das Bild nicht hergibt · die Oberfläche fängt das ab
  * und bietet weiterhin den Link an. Ein Share ohne Bild ist immer noch ein
  * Share; eine Fehlermeldung ohne Ausweg wäre keiner.
  */
-export async function renderShareCard(options: ShareCardOptions): Promise<Blob> {
+export async function drawShareCard(
+  options: ShareCardOptions,
+  target?: HTMLCanvasElement | null
+): Promise<HTMLCanvasElement> {
   await readyFonts();
   // Die Figuren des Absenders kommen nachgeladen · ohne dieses Warten trüge
   // die Karte den klassischen Satz, während auf dem Bildschirm ein anderer
@@ -188,7 +201,7 @@ export async function renderShareCard(options: ShareCardOptions): Promise<Blob> 
   await loadPieceGlyphs(options.pieceSet ?? DEFAULT_PIECE_SET);
 
   const size = CARD_SIZE;
-  const canvas = document.createElement("canvas");
+  const canvas = target ?? document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
@@ -320,7 +333,17 @@ export async function renderShareCard(options: ShareCardOptions): Promise<Blob> 
     ctx.textAlign = "left";
   }
 
-  return await new Promise<Blob>((resolve, reject) => {
+  return canvas;
+}
+
+/**
+ * Die gezeichnete Karte als PNG · für Zwischenablage, Datei und Systemdialog.
+ *
+ * Erst hier fällt die teure Arbeit an, und erst dann, wenn das Bild das Gerät
+ * verlässt. Die Vorschau kommt ohne diesen Schritt aus.
+ */
+export function shareCardBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error("card export failed"));

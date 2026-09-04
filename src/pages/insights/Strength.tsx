@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
+import { barCursor, chart, chartSurface, ChartTooltip } from "../../components/chartTheme";
 import { useI18n, type Key } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
 import type { PhaseErrors } from "../../lib/analysis";
@@ -137,7 +137,7 @@ export default function Strength({
         </div>
         {hasErrors && (
           <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={errorData} margin={{ top: 18, right: 8, bottom: 0, left: -20 }}>
+            <BarChart {...chartSurface} data={errorData} margin={{ top: 18, right: 8, bottom: 0, left: -20 }}>
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
               <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
@@ -176,7 +176,7 @@ export default function Strength({
               lowerIsBetter
             />
             <ResponsiveContainer width="100%" height={230}>
-              <BarChart data={benchData} margin={{ top: 18, right: 8, bottom: 0, left: -20 }}>
+              <BarChart {...chartSurface} data={benchData} margin={{ top: 18, right: 8, bottom: 0, left: -20 }}>
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="phase" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
                 <YAxis tick={chart.tick} tickLine={false} axisLine={false} />

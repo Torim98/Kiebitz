@@ -17,7 +17,7 @@ describe("share board", () => {
   //
   // Geholt werden die Zeichnungen vorher: `boardSvg` zeichnet, was zur Hand
   // ist, und ein Set kommt nachgeladen. Die Karte wartet dafür an einer Stelle
-  // (`renderShareCard`), damit das Bild nicht den klassischen Satz trägt,
+  // (`drawShareCard`), damit das Bild nicht den klassischen Satz trägt,
   // während auf dem Bildschirm ein anderer steht.
   it("draws the chosen piece set", async () => {
     await loadPieceGlyphs("kiebitz");

@@ -8,7 +8,7 @@
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from "recharts";
 import { Compass, Crosshair, Sparkles } from "lucide-react";
 import { Card } from "../../components/ui";
-import { chart } from "../../components/chartTheme";
+import { chart, chartSurface } from "../../components/chartTheme";
 import { useI18n, type Key } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
 import type { DeepInsights } from "../../lib/insights";
@@ -105,7 +105,7 @@ export default function Overview({
           }
         >
           <ResponsiveContainer width="100%" height={280}>
-            <RadarChart data={radarData} outerRadius="72%">
+            <RadarChart {...chartSurface} data={radarData} outerRadius="72%">
               <PolarGrid stroke={chart.grid} />
               <PolarAngleAxis dataKey="axis" tick={{ ...chart.tick, fontSize: 11 }} />
               {hasField && (

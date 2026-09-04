@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Chess } from "chess.js";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { chartSurface } from "../components/chartTheme";
 import {
   BookOpen,
   ChevronDown,
@@ -1997,8 +1998,12 @@ export default function Analysis({
             <div className="px-2 pb-1 pt-2">
               {evalSeries.length >= 2 ? (
                 <ResponsiveContainer width="100%" height={110}>
-                  <AreaChart data={evalSeries} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}
-                    onClick={(e) => e?.activeLabel != null && goToPly(Number(e.activeLabel))}>
+                  <AreaChart
+                    {...chartSurface}
+                    data={evalSeries}
+                    margin={{ top: 4, right: 6, bottom: 0, left: 6 }}
+                    onClick={(e) => e?.activeLabel != null && goToPly(Number(e.activeLabel))}
+                  >
                     <XAxis dataKey="ply" hide />
                     <YAxis domain={[-6, 6]} hide />
                     <ReferenceLine y={0} stroke="var(--color-line2)" />

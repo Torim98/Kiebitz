@@ -119,6 +119,78 @@ export function repDue(dueLimit?: number, newLimit?: number): Promise<DueItem[]>
   });
 }
 
+/**
+ * Karten für das freie Üben · aus dem Buch selbst statt aus dem Plan.
+ *
+ * FSRS entscheidet, *was* wiederholt werden muss, und das ist die richtige
+ * Antwort auf die Frage „womit halte ich mein Repertoire?". Es ist die falsche
+ * Antwort auf „ich will jetzt üben": Wer abends eine halbe Stunde Zeit hat,
+ * bekommt vom Plan an manchen Tagen nichts, und das Buch steht ungenutzt da.
+ * Diese Liste ist die Gegenrichtung · sie nimmt jede Stelle, an der ich am Zug
+ * bin, ganz gleich wann sie das nächste Mal dran wäre.
+ *
+ * Geschwister fallen zusammen: Kennt das Buch an einer Stelle zwei eigene
+ * Züge, ist das *eine* Frage mit zwei richtigen Antworten und keine zwei
+ * Fragen · genau so behandelt der Trainer sie auch. Gefragt wird deshalb je
+ * Elternstellung einmal.
+ *
+ * Die Reihenfolge ist gewürfelt. Der Baum von oben nach unten abzufragen hieße,
+ * jede Sitzung mit demselben ersten Zug zu beginnen und dabei den Weg zur
+ * Stellung mitzulernen statt der Stellung.
+ *
+ * `random` ist nur für den Test da · im Betrieb würfelt `Math.random`.
+ */
+export function repFreeItems(nodes: RepNode[], random: () => number = Math.random): DueItem[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  /** SAN-Kette von der Grundstellung bis zu diesem Zug. */
+  const pathSans = (node: RepNode): string[] => {
+    const sans: string[] = [];
+    let current: RepNode | undefined = node;
+    // Die Obergrenze schützt nur vor einer defekten `parent_id`, die die
+    // Schleife sonst ewig laufen ließe · dieselbe Vorsicht wie im Backend.
+    for (let step = 0; current && step < 64; step += 1) {
+      sans.push(current.san);
+      current = current.parent_id === 0 ? undefined : byId.get(current.parent_id);
+    }
+    return sans.reverse();
+  };
+
+  /** Name der Variante · der nächste benannte Knoten über dem Zug, wie im Backend. */
+  const lineName = (node: RepNode): string => {
+    let current: RepNode | undefined = node;
+    for (let step = 0; current && step < 64; step += 1) {
+      if (current.name.trim() !== "") return current.name;
+      current = current.parent_id === 0 ? undefined : byId.get(current.parent_id);
+    }
+    return "";
+  };
+
+  const asked = new Set<string>();
+  const items: DueItem[] = [];
+  for (const node of nodes) {
+    if (!node.my_move) continue;
+    const question = `${node.side}:${node.parent_id}`;
+    if (asked.has(question)) continue;
+    asked.add(question);
+    const sans = pathSans(node);
+    items.push({
+      node_id: node.id,
+      side: node.side,
+      prompt_sans: sans.slice(0, -1),
+      expected_san: node.san,
+      line: lineName(node),
+      is_new: node.reps === 0,
+    });
+  }
+
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
 /** Grade: 1 = falsch, 2 = schwer, 3 = gut, 4 = leicht. */
 export function repReview(nodeId: number, grade: 1 | 2 | 3 | 4): Promise<ReviewResult> {
   return invoke<ReviewResult>("rep_review", { nodeId, grade }).then((r) => {

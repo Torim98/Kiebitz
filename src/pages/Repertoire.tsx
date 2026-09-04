@@ -467,7 +467,7 @@ function LiveRepertoire() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
   const [nodeStats, setNodeStats] = useState<NodeGameStats | null>(null);
-  const [mode, setMode] = useState<"browse" | "add" | "train">("browse");
+  const [mode, setMode] = useState<"browse" | "add" | "train" | "free">("browse");
   /** Zug, mit dem der Baukasten aufgeht, wenn er vom Brett aus gestartet wurde. */
   const [seedSans, setSeedSans] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -696,6 +696,18 @@ function LiveRepertoire() {
   };
 
   const dueTotal = stats?.due_now ?? 0;
+  /**
+   * Wie viele Fragen das Buch überhaupt hergibt · unabhängig davon, wann sie
+   * das nächste Mal fällig wären. Ohne eine einzige eigene Stellung gibt es
+   * nichts zu üben, und dann steht der Knopf auch nicht da.
+   */
+  const freeTotal = useMemo(() => {
+    const asked = new Set<string>();
+    for (const node of nodes) {
+      if (node.my_move) asked.add(`${node.side}:${node.parent_id}`);
+    }
+    return asked.size;
+  }, [nodes]);
 
   const treePanel = (
     <Panel compact={compact} icon={<ListTree size={14} />} title={t("rep.variants")} pad={false}>
@@ -959,15 +971,31 @@ function LiveRepertoire() {
               : t("common.loading")}
           </p>
         </div>
-        {mode !== "train" && (
-          <Button
-            primary
-            onClick={() => setMode("train")}
-            className={dueTotal === 0 ? "opacity-60" : ""}
-          >
-            <GraduationCap size={16} />
-            {t("rep.startTraining", { n: dueTotal })}
-          </Button>
+        {mode !== "train" && mode !== "free" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              primary={dueTotal > 0}
+              onClick={() => setMode("train")}
+              className={dueTotal === 0 ? "opacity-60" : ""}
+            >
+              <GraduationCap size={16} />
+              {t("rep.startTraining", { n: dueTotal })}
+            </Button>
+            {/* Üben, ohne zu müssen. Steht immer daneben und wird zum Haupt-
+                knopf, sobald der Plan nichts mehr hergibt · sonst wäre der
+                einzige sichtbare Weg an manchen Tagen ein grauer Knopf mit
+                einer Null darauf. */}
+            {freeTotal > 0 && (
+              <Button
+                primary={dueTotal === 0}
+                onClick={() => setMode("free")}
+                title={t("rep.freeNote")}
+              >
+                <Shuffle size={16} />
+                {t("rep.freeTraining")}
+              </Button>
+            )}
+          </div>
         )}
       </header>
 
@@ -980,11 +1008,16 @@ function LiveRepertoire() {
         </div>
       )}
 
-      {mode === "train" ? (
+      {mode === "train" || mode === "free" ? (
         <RepertoireTrainer
+          // Die Kennung wechselt mit der Betriebsart · so zieht der Trainer
+          // beim Umschalten einen frischen Stapel, statt den alten zu behalten.
+          key={mode}
           nodes={nodes}
           dueLimit={limits.due}
           newLimit={limits.fresh}
+          free={mode === "free"}
+          onFreeTraining={freeTotal > 0 ? () => setMode("free") : undefined}
           onExit={() => {
             setMode("browse");
             reload();
@@ -1102,7 +1135,7 @@ function LiveRepertoire() {
               if (line) selectVariation(line, (line.nodeIds?.length ?? 0) - 1);
             }}
             onHinzufuegen={() => setMode("add")}
-            onTraining={() => setMode("train")}
+            onTraining={() => setMode(dueTotal > 0 || freeTotal === 0 ? "train" : "free")}
           />
         </Suspense>
       ) : compact ? (

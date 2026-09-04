@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
+import { barCursor, chart, chartSurface, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
@@ -248,7 +248,7 @@ export default function Openings({
 
       <Section title={t("ins.openingsTitle")} summary={t("ins.opPlayedSummary")} defaultOpen>
         <ResponsiveContainer width="100%" height={320}>
-          <BarChart
+          <BarChart {...chartSurface}
             data={live.openings}
             layout="vertical"
             margin={{ top: 0, right: 42, bottom: 0, left: 12 }}

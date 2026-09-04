@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
+import { barCursor, chart, chartSurface, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
 import { de, deInt } from "../../lib/format";
@@ -118,7 +118,7 @@ export default function Time({
         defaultOpen
       >
         <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={speedData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
+          <BarChart {...chartSurface} data={speedData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis tick={chart.tick} tickLine={false} axisLine={false} />
@@ -246,7 +246,7 @@ export default function Time({
         disabled={driftData.length < 3}
       >
         <ResponsiveContainer width="100%" height={230}>
-          <LineChart data={driftData} margin={{ top: 10, right: 10, bottom: 0, left: -18 }}>
+          <LineChart {...chartSurface} data={driftData} margin={{ top: 10, right: 10, bottom: 0, left: -18 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} />
             <YAxis tick={chart.tick} tickLine={false} axisLine={false} />

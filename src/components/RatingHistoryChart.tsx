@@ -20,7 +20,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { chart, RATING_CHART_HEIGHT, type ChartTooltipProps } from "./chartTheme";
+import {
+  chart,
+  chartSurface,
+  RATING_CHART_HEIGHT,
+  type ChartTooltipProps,
+} from "./chartTheme";
 import { deInt } from "../lib/format";
 import type { HistoryPoint, RatingHistorySeries } from "../lib/stats";
 
@@ -74,7 +79,7 @@ export default function RatingHistoryChart({
 }) {
   return (
     <ResponsiveContainer width="100%" height={RATING_CHART_HEIGHT}>
-      <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
+      <LineChart {...chartSurface} data={history} margin={{ top: 6, right: 8, bottom: 0, left: -16 }}>
         <CartesianGrid stroke={chart.grid} vertical={false} />
         {/* Beschriftet ist nur der Monatserste; alle anderen Tage tragen
             einen leeren Namen und bleiben dadurch stumm. */}

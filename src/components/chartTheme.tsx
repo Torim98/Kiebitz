@@ -28,6 +28,24 @@ export const chart = {
 };
 
 /**
+ * Eigenschaften, die jede Zeichenfläche trägt.
+ *
+ * Recharts 3 macht ein Diagramm von sich aus tastaturbedienbar:
+ * `accessibilityLayer` steht auf `true` und setzt `tabindex="0"` samt
+ * `role="application"` auf das <svg>. Auf dem Telefon ist das ein Rückschritt.
+ * Eine Berührung setzt damit den Fokus, der Browser zieht seinen eigenen
+ * orangefarbenen Fokusrahmen um die ganze Fläche · ein Rahmen, den sonst kein
+ * Bedienelement der App hat · und der Fokus stellt den Tooltip zusätzlich auf
+ * den *ersten* Messpunkt, statt auf den berührten. Wer im August tippt, liest
+ * den Stand vom April.
+ *
+ * Verloren geht dadurch nichts: Die Zahlen hinter den Diagrammen stehen auf
+ * denselben Seiten als Kennzahl, Liste oder Legende, und die Zeichenfläche
+ * selbst hat nie eine Auskunft getragen, die es nur dort gab.
+ */
+export const chartSurface = { accessibilityLayer: false } as const;
+
+/**
  * Höhe der Ratingverlaufs-Zeichenfläche.
  *
  * Sie steht hier und nicht in RatingHistoryChart.tsx, weil der Start sie schon

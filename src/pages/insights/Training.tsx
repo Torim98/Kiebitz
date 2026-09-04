@@ -21,7 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { barCursor, chart, ChartTooltip } from "../../components/chartTheme";
+import { barCursor, chart, chartSurface, ChartTooltip } from "../../components/chartTheme";
 import { useMobileShell } from "../../components/MobileShell";
 import { useI18n, type Key } from "../../lib/i18n";
 import { dateLocale, de, deInt } from "../../lib/format";
@@ -125,7 +125,7 @@ export default function Training({
         defaultOpen
       >
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={monthData} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
+          <LineChart {...chartSurface} data={monthData} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={18} />
             <YAxis
@@ -176,7 +176,7 @@ export default function Training({
         disabled={monthData.length < 3}
       >
         <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={monthData} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
+          <BarChart {...chartSurface} data={monthData} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
             <CartesianGrid stroke={chart.grid} vertical={false} />
             <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={18} />
             <YAxis yAxisId="left" tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -322,7 +322,7 @@ export default function Training({
           defaultOpen
         >
           <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={rows} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
+            <ComposedChart {...chartSurface} data={rows} margin={{ top: 12, right: 4, bottom: 0, left: -16 }}>
               <CartesianGrid stroke={chart.grid} vertical={false} />
               <XAxis
                 dataKey="label"
@@ -439,7 +439,7 @@ export default function Training({
         >
           <div className="grid gap-4 min-[950px]:grid-cols-2">
             <ResponsiveContainer width="100%" height={230}>
-              <LineChart data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -12 }}>
+              <LineChart {...chartSurface} data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -12 }}>
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
                 <YAxis domain={["dataMin - 40", "dataMax + 40"]} tick={chart.tick} tickLine={false} axisLine={false} />
@@ -448,7 +448,7 @@ export default function Training({
               </LineChart>
             </ResponsiveContainer>
             <ResponsiveContainer width="100%" height={230}>
-              <BarChart data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
+              <BarChart {...chartSurface} data={timeline} margin={{ top: 12, right: 8, bottom: 0, left: -20 }}>
                 <CartesianGrid stroke={chart.grid} vertical={false} />
                 <XAxis dataKey="label" tick={chart.tick} tickLine={false} axisLine={{ stroke: chart.axis }} minTickGap={24} />
                 <YAxis tick={chart.tick} tickLine={false} axisLine={false} allowDecimals={false} />
@@ -511,7 +511,7 @@ export default function Training({
 
         <Section title={t("ins.pzByHour")} summary={t("ins.pzByHourNote")} disabled={activeHours.length === 0}>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart
+            <BarChart {...chartSurface}
               data={activeHours.map((slot) => ({ ...slot, label: `${slot.key}`, rate: solveRate(slot) }))}
               margin={{ top: 8, right: 8, bottom: 0, left: -20 }}
             >

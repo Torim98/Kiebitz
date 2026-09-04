@@ -8,6 +8,9 @@
  *
  * Die Vorschau zeigt genau das Bild, das hinausgeht. Wer einen Schalter
  * umlegt, sieht die Wirkung sofort; nichts wird erst beim Absenden entschieden.
+ * „Sofort" ist wörtlich gemeint: Die Vorschau *ist* die Leinwand, auf die
+ * gezeichnet wird, kein PNG-Abzug davon. Nur wer das Bild mitnimmt, bezahlt
+ * die Kodierung (siehe `share/card.ts`).
  *
  * Verdeckt bleibt beim Puzzle nicht nur die Lösung, sondern auch das Motiv:
  * „Matt in 2" über dem Brett wäre schon die halbe Lösung · dieselbe Überlegung
@@ -31,7 +34,7 @@ import { useI18n, type Key } from "../lib/i18n";
 import { evalLabel } from "../lib/evaluation";
 import { themeLabel } from "../lib/puzzles";
 import { appliedPieceSet } from "../lib/theme";
-import { renderShareCard } from "../lib/share/card";
+import { CARD_SIZE, drawShareCard, shareCardBlob } from "../lib/share/card";
 import type { ShareEval, ShareKind, ShareMove, SharePayload } from "../lib/share/codec";
 import { copyImage, copyText, saveImage, shareNative, shareTargets } from "../lib/share/deliver";
 import { shareUrl } from "../lib/share/link";
@@ -132,7 +135,7 @@ export default function ShareDialog({
   const [withHistory, setWithHistory] = useState(true);
   const [withEval, setWithEval] = useState(!puzzle);
   const [revealed, setRevealed] = useState(false);
-  const [card, setCard] = useState<{ blob: Blob; url: string } | null>(null);
+  const [cardReady, setCardReady] = useState(false);
   const [cardError, setCardError] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +143,7 @@ export default function ShareDialog({
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const cardRef = useRef<HTMLCanvasElement | null>(null);
 
   // Eigene Kennung, damit Vorschau und Link nicht bei jedem Tastendruck neu
   // gebaut werden, nur weil `subject.line` ein neues leeres Feld ist.
@@ -171,11 +175,19 @@ export default function ShareDialog({
   const shownHeading = heading.trim() || defaultHeading;
   const message = `${shownHeading} · ${t("sh.via")}\n${url}`;
 
-  // Vorschau bauen · gebremst, damit jeder Tastendruck im Titelfeld nicht ein
-  // eigenes Bild rendert.
+  // Die Überschrift für das Bild hinkt dem Feld absichtlich hinterher: Ein
+  // Neuzeichnen je Tastendruck wäre verschenkte Arbeit. Alles andere im Dialog
+  // ist ein Schalter, und ein Schalter wartet auf nichts.
+  const [settledHeading, setSettledHeading] = useState(shownHeading);
+  useEffect(() => {
+    if (settledHeading === shownHeading) return;
+    const timer = window.setTimeout(() => setSettledHeading(shownHeading), 140);
+    return () => window.clearTimeout(timer);
+  }, [shownHeading, settledHeading]);
+
+  // Vorschau zeichnen · unmittelbar auf die Leinwand, die im Dialog hängt.
   useEffect(() => {
     let alive = true;
-    let created: string | null = null;
     const chips = [
       t(whiteToMove(subject.fen) ? "sh.whiteToMove" : "sh.blackToMove"),
       evalText(evaluation),
@@ -184,49 +196,35 @@ export default function ShareDialog({
       revealed && subject.theme ? themeLabel(subject.theme, locale) : "",
     ].filter(Boolean);
 
-    const timer = window.setTimeout(() => {
-      renderShareCard({
+    drawShareCard(
+      {
         fen: subject.fen,
         orientation,
         lastMove: subject.lastMove ?? null,
         arrow: revealed ? (line.length ? line[0] : null) : null,
-        heading: shownHeading,
+        heading: settledHeading,
         chips,
         badge: t(words.badge),
         tagline: t("sh.tagline"),
         // Das geteilte Bild zeigt die Figuren, die der Absender vor sich hat.
         pieceSet: appliedPieceSet(),
+      },
+      cardRef.current
+    )
+      .then(() => {
+        if (!alive) return;
+        setCardReady(true);
+        setCardError(false);
       })
-        .then((blob) => {
-          if (!alive) return;
-          created = URL.createObjectURL(blob);
-          setCard((previous) => {
-            if (previous) URL.revokeObjectURL(previous.url);
-            return { blob, url: created! };
-          });
-          setCardError(false);
-        })
-        .catch(() => {
-          if (alive) setCardError(true);
-        });
-    }, 120);
+      .catch(() => {
+        if (alive) setCardError(true);
+      });
 
     return () => {
       alive = false;
-      window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subject, orientation, revealed, evaluation, shownHeading, locale, t]);
-
-  // Das zuletzt erzeugte Bild freigeben, wenn der Dialog geht.
-  useEffect(() => {
-    return () => {
-      setCard((previous) => {
-        if (previous) URL.revokeObjectURL(previous.url);
-        return null;
-      });
-    };
-  }, []);
+  }, [subject, orientation, revealed, evaluation, settledHeading, locale, t]);
 
   // Escape schließt · derselbe Griff wie in den übrigen Dialogen der App.
   useEffect(() => {
@@ -237,6 +235,16 @@ export default function ShareDialog({
     closeRef.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  /**
+   * Das PNG der Vorschau · gebaut in dem Augenblick, in dem es gebraucht wird.
+   * Solange niemand kopiert, speichert oder teilt, entsteht es gar nicht.
+   */
+  const cardBlob = async (): Promise<Blob | null> => {
+    const canvas = cardRef.current;
+    if (!canvas || !cardReady) return null;
+    return await shareCardBlob(canvas);
+  };
 
   const run = async (action: () => Promise<string | null>) => {
     setBusy(true);
@@ -303,10 +311,19 @@ export default function ShareDialog({
 
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
           <div className="relative overflow-hidden rounded-xl border border-line bg-panel2">
-            {card ? (
-              <img src={card.url} alt={t("sh.preview")} className="block w-full" />
-            ) : (
-              <div className="flex aspect-square items-center justify-center text-[12.5px] text-ink3">
+            <canvas
+              ref={cardRef}
+              width={CARD_SIZE}
+              height={CARD_SIZE}
+              role="img"
+              aria-label={t("sh.preview")}
+              className={`block aspect-square w-full ${cardReady ? "" : "invisible"}`}
+            />
+            {/* Der Hinweis liegt nur so lange darüber, bis zum ersten Mal
+                gezeichnet wurde · danach wird an Ort und Stelle ersetzt, ohne
+                dass die Vorschau zwischendurch verschwindet. */}
+            {!cardReady && (
+              <div className="absolute inset-0 flex items-center justify-center text-[12.5px] text-ink3">
                 {cardError ? (
                   <span className="px-6 text-center">{t("sh.imageFailed")}</span>
                 ) : (
@@ -365,7 +382,7 @@ export default function ShareDialog({
                   await shareNative({
                     title: shownHeading,
                     text: message,
-                    image: card?.blob ?? null,
+                    image: await cardBlob(),
                   });
                   return null;
                 })
@@ -384,18 +401,27 @@ export default function ShareDialog({
           </Button>
           {targets.copyImage && (
             <Button
-              disabled={busy || !card}
-              onClick={() => run(async () => (await copyImage(card!.blob), t("sh.imageCopied")))}
+              disabled={busy || !cardReady}
+              onClick={() =>
+                run(async () => {
+                  const blob = await cardBlob();
+                  if (!blob) return null;
+                  await copyImage(blob);
+                  return t("sh.imageCopied");
+                })
+              }
             >
               <Copy size={14} /> {t("sh.copyImage")}
             </Button>
           )}
           {targets.saveImage && (
             <Button
-              disabled={busy || !card}
+              disabled={busy || !cardReady}
               onClick={() =>
                 run(async () => {
-                  const path = await saveImage(card!.blob, "kiebitz-stellung.png");
+                  const blob = await cardBlob();
+                  if (!blob) return null;
+                  const path = await saveImage(blob, "kiebitz-stellung.png");
                   return path ? t("sh.imageSaved", { path }) : null;
                 })
               }

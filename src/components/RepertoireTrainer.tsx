@@ -8,8 +8,15 @@ import {
   ChevronRight,
   GraduationCap,
   Lightbulb,
+  Shuffle,
 } from "lucide-react";
-import { repDue, repReview, type DueItem, type RepNode } from "../lib/repertoire";
+import {
+  repDue,
+  repFreeItems,
+  repReview,
+  type DueItem,
+  type RepNode,
+} from "../lib/repertoire";
 import Board from "./Board";
 import { BOARD_MAX } from "../lib/boardLayout";
 import CapturedPieces from "./CapturedPieces";
@@ -76,17 +83,35 @@ interface Answer {
  * Bewertet wird jeder eigene Zug einzeln (FSRS), die Note kommt aus der
  * Antwortzeit. Ein Fehler hängt die Karte ans Ende der Sitzung, statt sie erst
  * am nächsten Tag wiederzubringen.
+ *
+ * Zwei Betriebsarten teilen sich diesen Trainer:
+ *
+ *  · Der Plan (`free` aus). Der Stapel kommt von FSRS, jede Antwort schreibt
+ *    einen Lernstand, und wenn nichts fällig ist, gibt es nichts zu tun.
+ *  · Das freie Üben (`free` an). Der Stapel kommt aus dem Buch selbst, in
+ *    gewürfelter Reihenfolge, und **keine** Antwort rührt den Lernstand an.
+ *    Das ist der Punkt daran: Wer zwischendurch übt, soll seinen Plan nicht
+ *    verschieben. Ein richtiger Zug in einer Stellung, die morgen ohnehin
+ *    drankäme, würde sie sonst um Wochen wegschieben · und ein falscher würde
+ *    eine sitzende Variante zurückwerfen, nur weil jemand freiwillig geübt
+ *    hat. Gezählt wird die Sitzung trotzdem; sie steht nur nirgends nach.
  */
 export default function RepertoireTrainer({
   nodes,
   dueLimit,
   newLimit,
+  free = false,
   onExit,
+  onFreeTraining,
 }: {
   nodes: RepNode[];
   dueLimit?: number;
   newLimit?: number;
+  /** Freies Üben statt Plan · siehe Kopf dieser Datei. */
+  free?: boolean;
   onExit: () => void;
+  /** Angeboten, wenn der Plan nichts hergibt · fehlt beim freien Üben selbst. */
+  onFreeTraining?: () => void;
 }) {
   const backend = useBackendInfo();
   const t = useT();
@@ -120,14 +145,32 @@ export default function RepertoireTrainer({
     timersRef.current = [];
   }, []);
 
-  // Der Stapel wird genau einmal gezogen · träfen später geladene Grenzen ein,
-  // würde die laufende Sitzung mitten im Zählen neu beginnen.
-  const limitsRef = useRef({ dueLimit, newLimit });
+  // Der Stapel wird genau einmal gezogen · träfen später geladene Grenzen oder
+  // ein nachgeladenes Buch ein, würde die laufende Sitzung mitten im Zählen
+  // neu beginnen.
+  const startRef = useRef({ dueLimit, newLimit, free, nodes });
   useEffect(() => {
-    repDue(limitsRef.current.dueLimit, limitsRef.current.newLimit)
+    const start = startRef.current;
+    if (start.free) {
+      setItems(repFreeItems(start.nodes));
+      return;
+    }
+    repDue(start.dueLimit, start.newLimit)
       .then(setItems)
       .catch(() => setItems([]));
   }, []);
+
+  /**
+   * Den Lernstand einer Karte fortschreiben · beim freien Üben bleibt er, wie
+   * er war. Alles andere an der Sitzung läuft in beiden Fällen gleich.
+   */
+  const record = useCallback(
+    (nodeId: number, grade: 1 | 2 | 3 | 4) => {
+      if (free) return;
+      repReview(nodeId, grade).catch(() => {});
+    },
+    [free]
+  );
 
   // Ein laufender Vorlauf darf nicht in eine beendete Sitzung hineinfeuern.
   useEffect(() => clearTimers, [clearTimers]);
@@ -253,7 +296,7 @@ export default function RepertoireTrainer({
 
   const accept = (answer: Answer, san: string, side: "white" | "black") => {
     if (!failedRef.current) {
-      repReview(answer.id, gradeForAnswer(Date.now() - askedAtRef.current)).catch(() => {});
+      record(answer.id, gradeForAnswer(Date.now() - askedAtRef.current));
       setDoneCount((c) => ({ ...c, ok: c.ok + 1 }));
       // Nur sauber Gekonntes gilt als erledigt · ein Fehler soll später in
       // dieser Sitzung noch einmal drankommen.
@@ -281,7 +324,7 @@ export default function RepertoireTrainer({
     if (!failedRef.current) {
       failedRef.current = true;
       const missed = answers[0];
-      repReview(missed.id, 1).catch(() => {});
+      record(missed.id, 1);
       setDoneCount((c) => ({ ...c, fail: c.fail + 1 }));
       // Der Zug kommt am Ende der Sitzung wieder · einmal falsch heißt nicht
       // "morgen wieder", sondern "gleich noch einmal".
@@ -301,7 +344,7 @@ export default function RepertoireTrainer({
     if (!item || state !== "ask") return;
     if (!failedRef.current) {
       failedRef.current = true;
-      repReview(answers[0].id, 1).catch(() => {});
+      record(answers[0].id, 1);
       setDoneCount((c) => ({ ...c, fail: c.fail + 1 }));
       if (!requeuedRef.current.has(item.node_id)) {
         requeuedRef.current.add(item.node_id);
@@ -343,20 +386,34 @@ export default function RepertoireTrainer({
 
   if (items == null) return null;
   if (!item) {
+    const answered = doneCount.ok + doneCount.fail > 0;
     return (
       <div className="mx-auto max-w-[480px] rounded-xl border border-line bg-panel px-6 py-10 text-center">
         <GraduationCap size={28} className="mx-auto text-accent" />
         <div className="mt-3 text-[17px] font-semibold">
-          {doneCount.ok + doneCount.fail > 0 ? t("rep.trainingDone") : t("rep.nothingDue")}
+          {answered ? t("rep.trainingDone") : free ? t("rep.freeEmpty") : t("rep.nothingDue")}
         </div>
         <div className="mt-1.5 text-[13px] text-ink3">
-          {doneCount.ok + doneCount.fail > 0
-            ? t("rep.sessionResult", { ok: doneCount.ok, fail: doneCount.fail })
-            : t("rep.allLearned")}
+          {answered
+            ? t(free ? "rep.freeResult" : "rep.sessionResult", {
+                ok: doneCount.ok,
+                fail: doneCount.fail,
+              })
+            : free
+              ? t("rep.freeEmptyHint")
+              : t("rep.allLearned")}
         </div>
-        <Button primary onClick={onExit} className="mt-5">
-          {t("rep.backToRep")}
-        </Button>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <Button primary onClick={onExit}>
+            {t("rep.backToRep")}
+          </Button>
+          {/* Der Ausweg aus dem leeren Plan · üben kann man trotzdem. */}
+          {onFreeTraining && !free && (
+            <Button onClick={onFreeTraining}>
+              <Shuffle size={14} /> {t("rep.freeTraining")}
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
@@ -383,8 +440,16 @@ export default function RepertoireTrainer({
           {item.line || t("rep.fallbackLine")} ·{" "}
           {item.side === "white" ? t("common.white") : t("common.black")}
         </span>
-        <span className="text-ink3">
-          {idx + 1} / {items.length} {item.is_new && t("rep.newTag")}
+        <span className="flex items-center gap-1.5 text-ink3">
+          {free && (
+            <span
+              className="flex items-center gap-1 rounded-full border border-line2 px-2 py-0.5 text-[11px]"
+              title={t("rep.freeNote")}
+            >
+              <Shuffle size={11} /> {t("rep.freeTag")}
+            </span>
+          )}
+          {idx + 1} / {items.length} {item.is_new && !free && t("rep.newTag")}
         </span>
       </div>
       {/* Eine Repertoire-Zeile läuft aus der Grundstellung · was fehlt, wurde
@@ -530,6 +595,11 @@ export default function RepertoireTrainer({
           {chainRef.current > 0 && (
             <div className="mt-3 border-t border-line pt-2.5 text-[12px] text-ink3">
               {t("rep.lineDepth", { n: chainRef.current + 1 })}
+            </div>
+          )}
+          {free && (
+            <div className="mt-3 border-t border-line pt-2.5 text-[12px] leading-relaxed text-ink3">
+              {t("rep.freeNote")}
             </div>
           )}
         </Card>
