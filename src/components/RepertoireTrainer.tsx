@@ -435,12 +435,19 @@ export default function RepertoireTrainer({
    */
   const trainHead = (
     <>
-      <div className="mb-3 flex items-center justify-between text-[13px]">
-        <span className="font-medium">
+      {/* Der Name einer Variante ist lang · „Scandinavian Defense: Bronstein
+          Variation" bricht auf dem Telefon in zwei Zeilen um. Der Zähler
+          rechts darf davon nichts abbekommen: Ohne `shrink-0` gab die Seite ihm
+          den Rest der Zeile und brach ihn selbst um, sodass „3 /" und „12"
+          untereinander neben dem Merkmal standen. Er behält deshalb seine
+          Breite, und beide Seiten stehen oben bündig · bei einzeiligem Namen
+          sieht das aus wie vorher. */}
+      <div className="mb-3 flex items-start justify-between gap-3 text-[13px]">
+        <span className="min-w-0 font-medium">
           {item.line || t("rep.fallbackLine")} ·{" "}
           {item.side === "white" ? t("common.white") : t("common.black")}
         </span>
-        <span className="flex items-center gap-1.5 text-ink3">
+        <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-ink3">
           {free && (
             <span
               className="flex items-center gap-1 rounded-full border border-line2 px-2 py-0.5 text-[11px]"

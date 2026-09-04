@@ -301,6 +301,25 @@ describe("Board badges", () => {
     expect(badge.style.top).toBe("37.5%");
   });
 
+  it("keeps a marker at the edge of the board fully on the board", () => {
+    render(
+      <Board
+        boardId="test"
+        fen={FEN}
+        width={400}
+        badges={[{ square: "h8", label: "?", color: "#e66767", title: "Fehler" }]}
+      />
+    );
+
+    // Ohne Grenze stünde der Marker bei 100 % / 0 % und damit zur Hälfte
+    // neben dem Brett · auf dem Handy bekäme die Seite dadurch eine
+    // waagerechte Bildlaufleiste. Er rückt um seinen halben Durchmesser
+    // (6,5 % / 2) herein und schließt so genau mit der Brettkante ab.
+    const badge = screen.getByTitle("Fehler");
+    expect(badge.style.left).toBe("96.75%");
+    expect(badge.style.top).toBe("3.25%");
+  });
+
   it("renders element labels such as the book symbol", () => {
     render(
       <Board
@@ -338,10 +357,12 @@ describe("Board end overlay", () => {
   it("follows the board orientation", () => {
     render(<Board boardId="test" fen={FEN} width={400} orientation="black" end={END} />);
 
-    // Gedreht liegt e1 in Spalte 3 und der obersten Reihe.
+    // Gedreht liegt e1 in Spalte 3 und der obersten Reihe · dort rückt der
+    // Marker um seinen halben Durchmesser (7,5 % / 2) herein, statt zur
+    // Hälfte über die Brettkante hinauszustehen.
     const mark = screen.getByTestId("board-end-mark");
     expect(mark.style.left).toBe("50%");
-    expect(mark.style.top).toBe("0%");
+    expect(mark.style.top).toBe("3.75%");
   });
 
   it("hides the strip on click and brings it back for the next ending", () => {

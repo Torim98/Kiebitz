@@ -509,7 +509,11 @@ export default function StudyPlanner({
           </div>
         )}
 
-        {proposal}
+        {/* Am Desktop steht der Vorschlag oben in der Karte · dort sitzt auch
+            der Knopf, der ihn anfordert (in der Kopfzeile). Mobil steht der
+            Knopf unter dem Kalender, und der Vorschlag gehört an dieselbe
+            Stelle · siehe unten. */}
+        {!mobile && proposal}
 
         <div>
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -845,7 +849,13 @@ export default function StudyPlanner({
           <p className="mt-3 text-[12px] leading-relaxed text-ink3">{t("st.weekNote")}</p>
         </div>
 
-        {mobile && proposalAction}
+        {/* Der Vorschlag tritt genau dort auf, wo der Knopf stand, der ihn
+            angefordert hat. Oben in der Karte erschien er weit außerhalb des
+            Bildes: Auf dem Telefon liegen zwischen Knopf und Kartenkopf der
+            ganze Kalender und die Tagesliste, und ein Tipp auf „Die nächsten
+            sieben Tage planen" sah dadurch nach nichts aus. Beide schließen
+            einander aus · den Knopf gibt es nur ohne Vorschlag. */}
+        {mobile && (proposal ?? proposalAction)}
 
         <div ref={libraryRef} className="scroll-mt-4 rounded-xl border border-line bg-panel2 p-3">
           {/* Schmal stehen Titel und Schalter untereinander · nebeneinander

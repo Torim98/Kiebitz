@@ -904,7 +904,9 @@ export default function App() {
               sich das Detailblatt (MobileSheet) über den Inhalt, während
               App-Bar und Navigation scharf und bedienbar bleiben. */}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <main ref={mainRef} className="safe-x min-w-0 flex-1 overflow-y-auto">
+            {/* Waagerecht wird nie geblättert · siehe die Desktop-Fassung
+                unten. */}
+            <main ref={mainRef} className="safe-x min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
               {mainContent}
             </main>
             <div
@@ -963,9 +965,22 @@ export default function App() {
         </div>
       )}
 
+      {/* Gescrollt wird hier nur senkrecht.
+
+          `overflow-y-auto` allein macht aus der waagerechten Achse still
+          ebenfalls `auto`: Alles, was auch nur ein paar Pixel breiter ist als
+          der Inhaltsbereich, brachte deshalb eine waagerechte Bildlaufleiste
+          mit — der Zitterschlag eines Bretts nach einem Fehlversuch
+          (`animate-shake`, ±5 px) ließ sie eine halbe Sekunde lang in jedem
+          Bild erscheinen und wieder verschwinden. Waagerecht blättern soll man
+          hier ohnehin nie; breite Inhalte (Zugleiste, Tabellen) bringen ihren
+          eigenen Bildlauf mit.
+
+          Geschnitten wurde auch bisher schon · `auto` schneidet genauso, es
+          hing nur eine Leiste daran. */}
       <main
         ref={mainRef}
-        className="min-w-0 flex-1 overflow-y-auto"
+        className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {mainContent}

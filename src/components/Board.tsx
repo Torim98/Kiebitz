@@ -5,6 +5,7 @@ import {
   startTransition,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -81,6 +82,15 @@ function customPiecesFor(glyphs: Record<string, string>): PieceRenderObject | un
 const EMPTY_ARROWS: [string, string, string?][] = [];
 const EMPTY_BADGES: BoardBadge[] = [];
 const EMPTY_STYLES: Record<string, CSSProperties> = {};
+
+/**
+ * Durchmesser der Marker in Prozent der Brettkante · als Zahl und nicht als
+ * Klasse, weil `badgePosition` mit ihr rechnet: Ein Marker am Brettrand rückt
+ * um seinen halben Durchmesser herein.
+ */
+const BADGE_SIZE = 6.5;
+/** Der Marker des Partieendes ist etwas größer · er ist die Aussage. */
+const END_MARK_SIZE = 7.5;
 
 type BoardArrow = [string, string, string?];
 type BoardBadge = { square: string; label: ReactNode; color: string; title?: string };
@@ -448,7 +458,19 @@ export default function Board({
   draggableRef.current = draggable;
   fenRef.current = fen;
 
-  useEffect(() => {
+  /**
+   * Die Breite wird *vor* dem ersten Bild gemessen.
+   *
+   * `width` ist nur die Obergrenze (`BOARD_MAX`, 880 px) · wie breit das Brett
+   * wirklich wird, sagt der Container. Als nachlaufender Effekt gemessen, malte
+   * der Browser vorher genau ein Bild mit der Obergrenze: In einer Handyspalte
+   * von 380 px erschien für einen Frame ein 880 px breites Brett und schrumpfte
+   * dann. Sichtbar war das überall dort, wo ein Brett neu ins Bild kommt · beim
+   * Wechsel in den Varianten-Baukasten des Repertoires und beim Zurückgehen
+   * genauso wie beim Öffnen des Fokus. `useLayoutEffect` misst noch vor dem
+   * Zeichnen, damit das erste Bild schon das richtige ist.
+   */
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     let frame: number | null = null;
@@ -711,16 +733,29 @@ export default function Board({
     };
   }, [mouseDrag]);
 
-  // Der Marker sitzt wie bei chess.com mittig auf der oberen rechten Ecke des
-  // Zielfelds und ueberlappt das Nachbarfeld nur minimal.
-  const badgePosition = (square: string) => {
+  /**
+   * Der Marker sitzt wie bei chess.com mittig auf der oberen rechten Ecke des
+   * Zielfelds und ueberlappt das Nachbarfeld nur minimal.
+   *
+   * An den Rändern des Bretts rückt er so weit herein, dass er ganz auf dem
+   * Brett bleibt (`size` ist sein Durchmesser in Prozent der Brettkante). Auf
+   * dem Handy reicht das Brett bis an die Bildschirmkante: Ein Marker auf der
+   * h-Linie stand dort zur Hälfte neben dem Brett, und weil der Inhaltsbereich
+   * seine Breite mitrechnet, bekam die ganze Seite dadurch eine waagerechte
+   * Bildlaufleiste · in der Analyse wie im Fokus. Hereingerückt bleibt der
+   * Marker vollständig sichtbar, und das Brett schließt weiter bündig mit
+   * der Kante ab.
+   */
+  const badgePosition = (square: string, size: number) => {
     const file = square.charCodeAt(0) - 97;
     const rank = Number(square[1]);
     const x = orientation === "white" ? file : 7 - file;
     const y = orientation === "white" ? 8 - rank : rank - 1;
+    const half = size / 2;
+    const inside = (percent: number) => Math.min(Math.max(percent, half), 100 - half);
     return {
-      left: `${(x + 1) * 12.5}%`,
-      top: `${y * 12.5}%`,
+      left: `${inside((x + 1) * 12.5)}%`,
+      top: `${inside(y * 12.5)}%`,
       transform: "translate(-50%, -50%)",
     };
   };
@@ -783,8 +818,13 @@ export default function Board({
           <span
             key={`${badge.square}-${index}`}
             title={badge.title}
-            className="pointer-events-none absolute z-20 flex h-[6.5%] min-h-4 w-[6.5%] min-w-4 items-center justify-center rounded-full border border-white/85 text-[clamp(7px,1.05vw,11px)] font-extrabold leading-none text-white shadow-md"
-            style={{ ...badgePosition(badge.square), background: badge.color }}
+            className="pointer-events-none absolute z-20 flex min-h-4 min-w-4 items-center justify-center rounded-full border border-white/85 text-[clamp(7px,1.05vw,11px)] font-extrabold leading-none text-white shadow-md"
+            style={{
+              ...badgePosition(badge.square, BADGE_SIZE),
+              height: `${BADGE_SIZE}%`,
+              width: `${BADGE_SIZE}%`,
+              background: badge.color,
+            }}
           >
             {badge.label}
           </span>
@@ -809,8 +849,13 @@ export default function Board({
                 <span
                   key={`mark-${endKey}`}
                   data-testid="board-end-mark"
-                  className="board-end-mark pointer-events-none absolute z-30 flex h-[7.5%] min-h-4 w-[7.5%] min-w-4 items-center justify-center rounded-full border border-white/90 text-[clamp(8px,1.2vw,13px)] font-extrabold leading-none text-white shadow-lg"
-                  style={{ ...badgePosition(endSquare), background: end.color }}
+                  className="board-end-mark pointer-events-none absolute z-30 flex min-h-4 min-w-4 items-center justify-center rounded-full border border-white/90 text-[clamp(8px,1.2vw,13px)] font-extrabold leading-none text-white shadow-lg"
+                  style={{
+                    ...badgePosition(endSquare, END_MARK_SIZE),
+                    height: `${END_MARK_SIZE}%`,
+                    width: `${END_MARK_SIZE}%`,
+                    background: end.color,
+                  }}
                 >
                   {end.mark}
                 </span>

@@ -339,7 +339,10 @@ function FocusLayer({
   // die Spalte als Ganzes, wandert das Brett bei jeder Leiste mit, die unter
   // ihm um eine Zeile wächst.
   const content = (
-    <div ref={body} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
+    <div
+      ref={body}
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-2"
+    >
       <div
         ref={column}
         className="mx-auto flex w-full grow flex-col gap-2"

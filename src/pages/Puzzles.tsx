@@ -604,7 +604,7 @@ function TrainerView({
    * `invisible` ist `visibility: hidden` · der Platz bleibt stehen, und die
    * Knöpfe der verdeckten Zustände sind weder anklickbar noch vorlesbar.
    */
-  const actionRow = (key: typeof actionState, content: ReactNode) => (
+  const actionRow = (key: typeof actionState | "reserve", content: ReactNode) => (
     <div
       key={key}
       data-action-row={key}
@@ -612,6 +612,31 @@ function TrainerView({
       className={`col-start-1 row-start-1 w-full ${key === actionState ? "" : "invisible"}`}
     >
       {content}
+    </div>
+  );
+
+  /**
+   * Die Meldung nach einem Fehlversuch · `delta` ist der Rating-Zusatz.
+   *
+   * Sie steht zweimal im Raster: einmal mit dem, was gerade gilt, und einmal
+   * unsichtbar mit einem Platzhalter-Zusatz. Der Grund ist die Reihenfolge, in
+   * der die beiden Dinge eintreffen: „Leider falsch" erscheint sofort, die
+   * Wertung erst, wenn der Versuch gespeichert ist. Auf einem schmalen Schirm
+   * brach der Satz durch die paar Zeichen mehr in eine zweite Zeile um, die
+   * Zeile wuchs · und das Brett darüber sprang genau dann nach oben, wenn man
+   * gerade auf die Meldung schaut. Reserviert steht die Höhe von Anfang an.
+   */
+  const wrongRow = (delta: string) => (
+    <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-2.5">
+      <span className="min-w-0 text-[13.5px] text-loss">{t("pz.wrong", { d: delta })}</span>
+      <div className="flex shrink-0 gap-2">
+        <Button onClick={() => setShowHint(true)}>
+          <Lightbulb size={15} /> {t("pz.hint")}
+        </Button>
+        <Button onClick={revealSolution}>
+          <Eye size={15} /> {t("pz.solution")}
+        </Button>
+      </div>
     </div>
   );
 
@@ -647,22 +672,10 @@ function TrainerView({
             </div>
           </div>
         )}
-        {actionRow(
-          "wrong",
-          <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-loss-dim bg-loss-soft px-3.5 py-2.5">
-            <span className="min-w-0 text-[13.5px] text-loss">
-              {t("pz.wrong", { d: ratingDelta != null ? ` (Rating ${ratingDelta})` : "" })}
-            </span>
-            <div className="flex shrink-0 gap-2">
-              <Button onClick={() => setShowHint(true)}>
-                <Lightbulb size={15} /> {t("pz.hint")}
-              </Button>
-              <Button onClick={revealSolution}>
-                <Eye size={15} /> {t("pz.solution")}
-              </Button>
-            </div>
-          </div>
-        )}
+        {actionRow("wrong", wrongRow(ratingDelta != null ? ` (Rating ${ratingDelta})` : ""))}
+        {/* Nur als Platzhalter · nie sichtbar, hält aber die Höhe der
+            Meldung mit Wertung frei (siehe `wrongRow`). */}
+        {actionRow("reserve", wrongRow(" (Rating -00)"))}
         {actionRow(
           "open",
           <div className="flex w-full items-center justify-between gap-3">

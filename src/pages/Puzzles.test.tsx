@@ -201,17 +201,20 @@ describe("Puzzle training", () => {
         .filter((row) => !row.className.includes("invisible"))
         .map((row) => row.getAttribute("data-action-row"));
 
+    // „reserve" ist die Meldung mit Rating-Zusatz · sie bleibt immer
+    // unsichtbar und hält die Höhe frei, die der Zusatz später braucht.
     expect(rows().map((row) => row.getAttribute("data-action-row"))).toEqual([
       "solved",
       "wrong",
+      "reserve",
       "open",
     ]);
     expect(visible()).toEqual(["open"]);
 
     fireEvent.click(screen.getByRole("button", { name: "play a3" }));
     await waitFor(() => expect(visible()).toEqual(["wrong"]));
-    // Die anderen beiden bleiben stehen und halten die Höhe.
-    expect(rows()).toHaveLength(3);
+    // Die anderen bleiben stehen und halten die Höhe.
+    expect(rows()).toHaveLength(4);
   });
 
   it("keeps the theme covered until it is tapped", async () => {
