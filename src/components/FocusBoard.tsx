@@ -64,11 +64,22 @@ export function FocusButton({ onClick, compact = true }: { onClick: () => void; 
       onClick={() => (locked ? openPlusDialog(FOCUS_FEATURE) : onClick())}
       title={label}
       label={label}
+      className={compact ? "relative" : ""}
       compact={compact}
     >
       <Maximize2 size={15} />
       {!compact && t("board.focus")}
-      {locked && <Sparkles size={11} className="text-accent" aria-hidden="true" />}
+      {/* Trägt der Griff nur sein Zeichen, sitzt die Funke als kleine Marke in
+          der Ecke und nicht als zweites Zeichen daneben: Nebeneinander war der
+          Knopf anderthalb mal so breit wie die Zeichenknöpfe neben ihm, und
+          beides stand darin gedrängt bis an den Rand. */}
+      {locked && (
+        <Sparkles
+          size={compact ? 9 : 11}
+          className={compact ? "absolute end-[3px] top-[3px] text-accent" : "text-accent"}
+          aria-hidden="true"
+        />
+      )}
     </Button>
   );
 }

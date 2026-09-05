@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { loadLocale, LocaleProvider } from "./lib/i18n";
 import App from "./App";
+import { resetTagline } from "./lib/tagline";
 
 const mocks = vi.hoisted(() => ({
   backend: {
@@ -105,6 +106,10 @@ function pageTitle() {
 
 describe("mobile navigation", () => {
   it("replaces the drawer with an app bar carrying title, back and settings", async () => {
+    // Der Claim wird beim Start gezogen · für den Test wird die Wahl auf den
+    // ersten Satz festgelegt, sonst stünde in jedem Lauf ein anderer da.
+    resetTagline();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     let container: HTMLElement = document.createElement("div");
     await act(async () => {
       container = render(<LocaleProvider><App /></LocaleProvider>).container;

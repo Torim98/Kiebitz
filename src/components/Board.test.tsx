@@ -496,19 +496,20 @@ describe("Board shapes", () => {
     );
     const surface = stubSurface();
 
-    // Der erste Finger liegt auf dem Brett · der zweite zeichnet.
+    // Der erste Finger liegt auf dem Brett · der zweite zeichnet. Welcher der
+    // erste ist, sagt `isPrimary` — genau wie in der WebView.
     fireEvent.pointerDown(surface, {
-      button: 0, buttons: 1, pointerId: 1, pointerType: "touch", ...at("a1"),
+      button: 0, buttons: 1, pointerId: 1, pointerType: "touch", isPrimary: true, ...at("a1"),
     });
     fireEvent.pointerDown(surface, {
-      button: 0, buttons: 1, pointerId: 2, pointerType: "touch", ...at("e2"),
+      button: 0, buttons: 1, pointerId: 2, pointerType: "touch", isPrimary: false, ...at("e2"),
     });
     fireEvent.pointerMove(window, { pointerId: 2, pointerType: "touch", ...at("e4") });
     fireEvent.pointerUp(window, {
-      button: 0, pointerId: 2, pointerType: "touch", ...at("e4"),
+      button: 0, pointerId: 2, pointerType: "touch", isPrimary: false, ...at("e4"),
     });
     fireEvent.pointerUp(window, {
-      button: 0, pointerId: 1, pointerType: "touch", ...at("a1"),
+      button: 0, pointerId: 1, pointerType: "touch", isPrimary: true, ...at("a1"),
     });
 
     expect(arrows()).toBe(1);
@@ -517,12 +518,59 @@ describe("Board shapes", () => {
     // Ein einzelner Finger wischt die Markierungen erst beim Loslassen weg ·
     // sonst hätte der Finger, der zum Zeichnen dazukommt, sie mitgenommen.
     fireEvent.pointerDown(surface, {
-      button: 0, buttons: 1, pointerId: 5, pointerType: "touch", ...at("b3"),
+      button: 0, buttons: 1, pointerId: 5, pointerType: "touch", isPrimary: true, ...at("b3"),
     });
     expect(arrows()).toBe(1);
     fireEvent.pointerUp(window, {
-      button: 0, pointerId: 5, pointerType: "touch", ...at("b3"),
+      button: 0, pointerId: 5, pointerType: "touch", isPrimary: true, ...at("b3"),
     });
     expect(arrows()).toBe(0);
+  });
+
+  /**
+   * Der Zug mit dem Finger hält sein `pointerup` an, damit der
+   * Kompatibilitäts-Klick der WebView den Zug nicht ein zweites Mal auslöst.
+   * Solange das Zeichnen die liegenden Finger selbst zählte, kam bei ihm
+   * genau dieses Loslassen nie an: Nach dem ersten gezogenen Zug galt jeder
+   * weitere Finger als der zweite, und statt der Figur bewegte sich ein Pfeil.
+   */
+  it("still drags pieces after a finished drag", () => {
+    const onPieceDrop = vi.fn(() => true);
+    render(
+      <Board boardId="test" fen={FEN} width={400} draggable mouseDrag onPieceDrop={onPieceDrop} />
+    );
+    stubSurface();
+    const piece = document.querySelector<HTMLElement>('[data-square="e2"] [data-piece]')!;
+    const originalElementFromPoint = document.elementFromPoint;
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => document.querySelector('[data-square="e4"]')),
+    });
+
+    // Ausgelöst wird am Feld und nicht am Fenster · nur so laufen die
+    // Zeigerereignisse wirklich erst durch die Griff-, dann durch die
+    // Blasenphase, und genau daran hing der Fehler.
+    const dragPiece = (pointerId: number, from: string, to: string) => {
+      fireEvent.pointerDown(piece, {
+        button: 0, buttons: 1, pointerId, pointerType: "touch", isPrimary: true, ...at(from),
+      });
+      fireEvent.pointerMove(piece, { pointerId, pointerType: "touch", ...at(to) });
+      fireEvent.pointerUp(piece, {
+        button: 0, pointerId, pointerType: "touch", isPrimary: true, ...at(to),
+      });
+    };
+
+    dragPiece(11, "e2", "e4");
+    expect(onPieceDrop).toHaveBeenCalledTimes(1);
+
+    // Derselbe Griff ein zweites Mal · und nicht plötzlich ein Pfeil.
+    dragPiece(12, "e2", "e4");
+    expect(onPieceDrop).toHaveBeenCalledTimes(2);
+    expect(arrows()).toBe(0);
+
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: originalElementFromPoint,
+    });
   });
 });

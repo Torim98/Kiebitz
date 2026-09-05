@@ -19,6 +19,7 @@ import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "luci
 import type { PageId } from "../../lib/nav";
 import { deInt } from "../../lib/format";
 import { useT, type Key } from "../../lib/i18n";
+import { taglineKey } from "../../lib/tagline";
 import PlanBadge from "../PlanBadge";
 import "./blatt.css";
 
@@ -99,7 +100,7 @@ function Marke() {
           <span className="text-[13px] font-semibold uppercase tracking-[0.14em]">Kiebitz</span>
           <PlanBadge />
         </div>
-        <div className="mt-0.5 text-[11px] text-ink3">{t("app.tagline")}</div>
+        <div className="mt-0.5 text-[11px] text-ink3">{t(taglineKey())}</div>
       </div>
     </div>
   );
@@ -256,7 +257,7 @@ export function RegisterAppBar({
       {/* Das Kapitel steht im Buchsatz neben der Marke · aufrecht, wenn es
           eine Seite gibt, und als Claim auf dem Start. */}
       <span className="buch min-w-0 flex-1 truncate px-2 text-[14.5px] text-ink3">
-        · {title ?? t("app.tagline")}
+        · {title ?? t(taglineKey())}
       </span>
       <PlanBadge />
       <button

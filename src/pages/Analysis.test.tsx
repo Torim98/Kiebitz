@@ -352,6 +352,31 @@ describe("Analysis page", () => {
     });
 
     /**
+     * In der App wird aus den beiden ein Knopf.
+     *
+     * „Diese Partie analysieren" neben „Mehrere Partien" passt auf 360 px
+     * nicht in eine Zeile; untereinander gestellt hatte die Leiste zwei
+     * Hauptknöpfe übereinander. Ein Knopf, und alle drei Wege stehen darin.
+     */
+    it("merges both analysis controls into one button on the phone", async () => {
+      mocks.listGames.mockResolvedValue(twoGames);
+      render(
+        <ShellProvider mobile>
+          <LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>
+        </ShellProvider>
+      );
+      await gameOnBoard("7");
+
+      expect(screen.queryByRole("button", { name: "Diese Partie analysieren" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Mehrere Partien" })).toBeNull();
+
+      const trigger = screen.getByRole("button", { name: "Analysieren" });
+      fireEvent.click(trigger);
+      expect(screen.getByRole("menuitem", { name: /Diese Partie analysieren/ })).toBeTruthy();
+      expect(screen.getByRole("menuitem", { name: /Alle analysieren/ })).toBeTruthy();
+    });
+
+    /**
      * Auf Handybreite ist für acht Tasten und die Bewertung kein Platz. Die
      * Leiste bleibt trotzdem einzeilig und vollständig sichtbar: Blättern
      * steht da, alles Seltenere klappt darüber auf.

@@ -48,7 +48,16 @@ export default function Overview({
     value: axis.reliable ? axis.value : 0,
     field: axis.field ?? 0,
   }));
-  const hasField = dna.some((axis) => axis.field != null);
+  /**
+   * Das Vergleichsfeld wird nur gezeichnet, wenn es zu *jeder* Achse eine
+   * Vergleichszahl gibt.
+   *
+   * Es gibt sie nur zu zweien. Die übrigen Achsen bekamen darum eine 0, und
+   * die Fläche fiel dort in den Mittelpunkt zusammen: ein Vieleck, das keine
+   * Aussage ist, plus ein grauer Punkt in der Mitte, den nichts erklärt.
+   * Lieber gar kein Vergleich als ein Vergleich mit einer erfundenen Null.
+   */
+  const hasField = dna.every((axis) => axis.field != null);
 
   return (
     <div className="space-y-4">
@@ -115,14 +124,20 @@ export default function Overview({
                   stroke={chart.axis}
                   fill={chart.axis}
                   fillOpacity={0.12}
+                  dot={false}
+                  activeDot={false}
                 />
               )}
+              {/* Ohne Tooltip erklärt nichts, was ein Punkt unter dem Zeiger
+                  bedeutet · die Zahlen stehen ohnehin unter dem Bild. */}
               <Radar
                 name={t("dna.you")}
                 dataKey="value"
                 stroke={chart.accent}
                 fill={chart.accent}
                 fillOpacity={0.28}
+                dot={false}
+                activeDot={false}
               />
             </RadarChart>
           </ResponsiveContainer>

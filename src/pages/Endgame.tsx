@@ -5,6 +5,7 @@ import {
   Crown,
   Lightbulb,
   Loader2,
+  MoreHorizontal,
   RotateCcw,
   Share2,
   Shuffle,
@@ -30,8 +31,8 @@ import { BOARD_MAX } from "../lib/boardLayout";
 import { moveTargetStyles } from "../lib/boardMoves";
 import { randomDrill } from "../lib/randomEndgame";
 import { useTrainingSession } from "../lib/session";
-import { Button, Card } from "../components/ui";
-import FocusBoard, { FocusButton } from "../components/FocusBoard";
+import { Button, Card, Menu, MenuItem } from "../components/ui";
+import FocusBoard, { FocusButton, FocusMenuItem } from "../components/FocusBoard";
 import { deInt } from "../lib/format";
 import { maybeRequestPlayReview } from "../lib/reviewPrompt";
 import { useDiagramMode } from "../lib/diagramMode";
@@ -354,9 +355,33 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     </div>
   );
 
-  /** Im Fokus fehlt der Griff zum Fokus · dort ist man schon. */
+  /**
+   * Die Nebenaktionen der Knopfreihe · Teilen und der Fokus.
+   *
+   * In der App stehen sie hinter einem Zeichen. Ausgeschrieben passten
+   * „Zug zeigen", „Neu starten" und die beiden Zeichen auf einem 360 px
+   * breiten Schirm nicht in eine Zeile: Der Fokus rutschte allein in eine
+   * zweite Zeile unter die anderen. Es ist dieselbe Zusammenfassung, die die
+   * Analyse unter ihrem Brett schon benutzt.
+   *
+   * Im Fokus fehlt der Griff zum Fokus · dort ist man schon.
+   */
+  const nebenaktionen = (inFocus: boolean) =>
+    mobile ? (
+      <Menu label={t("an.boardActions")} align="end" compact icon={<MoreHorizontal size={15} />}>
+        <MenuItem onClick={openShare}>
+          <Share2 size={15} /> {t("sh.title")}
+        </MenuItem>
+        {!inFocus && <FocusMenuItem onClick={() => setFocused(true)} />}
+      </Menu>
+    ) : (
+      <>
+        {shareButton}
+        {!inFocus && <FocusButton onClick={() => setFocused(true)} />}
+      </>
+    );
+
   const drillActions = (inFocus: boolean) => {
-    const focusButton = inFocus ? null : <FocusButton onClick={() => setFocused(true)} />;
     return (
       <div className="mt-3 min-h-[52px]">
         {status === "solved" || status === "failed" ? (
@@ -383,8 +408,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               <Button onClick={() => start(drill)}>
                 <RotateCcw size={14} /> {t("eg.retry")}
               </Button>
-              {shareButton}
-              {focusButton}
+              {nebenaktionen(inFocus)}
               {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
               {status === "solved" && drill.category === "random" && (
                 <Button primary onClick={() => start(randomDrill())}>
@@ -414,8 +438,7 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               <Button onClick={() => start(drill)}>
                 <RotateCcw size={14} /> {t("eg.restart")}
               </Button>
-              {shareButton}
-              {focusButton}
+              {nebenaktionen(inFocus)}
             </div>
             <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink3">
               {drillText(drill.hint, locale)}

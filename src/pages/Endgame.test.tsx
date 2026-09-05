@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Endgame from "./Endgame";
+import { ShellProvider } from "../components/MobileShell";
 
 const engineMove = vi.hoisted(() => vi.fn(() => new Promise<string>(() => {})));
 
@@ -98,5 +99,32 @@ describe("Endgame trainer", () => {
     expect(status.textContent).toBe("eg.thinking");
     expect(engineMove).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("endgame-status")).toBe(status);
+  });
+
+  /**
+   * Vier Knöpfe nebeneinander sind auf 360 px eine Zeile zu viel · der Fokus
+   * stand allein in einer zweiten darunter. In der App liegen Teilen und
+   * Fokus deshalb hinter einem Zeichen, wie schon unter dem Analysebrett.
+   */
+  it("folds sharing and focus into one menu on the phone", () => {
+    render(
+      <ShellProvider mobile>
+        <Endgame />
+      </ShellProvider>
+    );
+
+    expect(screen.queryByTitle("sh.title")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^board\.focus/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "an.boardActions" }));
+    expect(screen.getByRole("menuitem", { name: "sh.title" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /board.focus/ })).toBeTruthy();
+  });
+
+  it("keeps both handles side by side on the desktop", () => {
+    render(<Endgame />);
+    expect(screen.getByTitle("sh.title")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^board\.focus/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "an.boardActions" })).toBeNull();
   });
 });

@@ -6,6 +6,11 @@
  * unten die Partien als Formularzeilen. Die vier Wertungen stehen als
  * Randnotiz — sie sind das Kleingedruckte, nicht die Überschrift.
  *
+ * Das Fazit der ganzen Partie steht hier bewusst nicht: Die Anmerkung gehört
+ * zu der einen Stellung, die im Diagramm steht. Was aus der Analyse zu diesem
+ * Zug zu sagen ist und was der Nutzer sich selbst notiert hat — mehr trägt die
+ * Spalte nicht. Das Urteil über die ganze Partie steht in der Analyse.
+ *
  * Die Komponente holt nichts. Sie bekommt genau das, was `Dashboard.tsx`
  * ohnehin schon geladen hat, und setzt es anders. Der Modus ist eine zweite
  * Darstellung derselben Daten.
@@ -32,7 +37,7 @@ import { translateSan } from "../../lib/notation";
 import { criticalPly } from "../../lib/blatt";
 import { fenAfter, fenAfterUci } from "../../lib/position";
 import { dateLocale, deInt } from "../../lib/format";
-import { PartieZeile } from "../../components/blatt/PartieZeile";
+import { MarkenSchluessel, PartieZeile } from "../../components/blatt/PartieZeile";
 import type { UiGame } from "../../lib/gameUi";
 import type { DiagramSource } from "../../lib/blatt";
 
@@ -73,7 +78,18 @@ export type Tagesquelle =
       weissElo: string;
       schwarz: string;
       schwarzElo: string;
-      partie: string;
+      /**
+       * Woher die Partie kommt · in Einzelteilen und nicht als fertige Zeile.
+       *
+       * Der Formularkopf setzt die Plattform in ihre Farbe (siehe
+       * `plattformFarbe`), und die Bildunterschrift schreibt das Datum aus:
+       * „chess.com Rapid · 11. Juli 2026". Aus einer zusammengesetzten Zeile
+       * ließe sich beides nur wieder auseinanderpflücken.
+       */
+      plattform: string;
+      zeitform: string;
+      datum: string;
+      datumLang: string;
       eco: string;
       eroeffnung: string;
       ergebnis: string;
@@ -184,6 +200,32 @@ function zugName(cut: number, san: string, locale: Locale): string {
   return nummer + translateSan(san, locale);
 }
 
+/**
+ * Die Hausfarbe einer Plattform · dieselbe wie unten bei den Wertungen.
+ *
+ * Wo „chess.com" oder „lichess" steht, sagt die Farbe es schon, bevor man das
+ * Wort gelesen hat. Groß geschrieben wird dabei nichts: Der Formularkopf setzt
+ * die Herkunft so, wie die Plattform sich selbst schreibt.
+ */
+function plattformFarbe(name: string): string | undefined {
+  const kurz = name.trim().toLowerCase();
+  if (kurz === "chess.com") return "var(--color-cc)";
+  if (kurz === "lichess" || kurz === "lichess.org") return "var(--color-blue)";
+  return undefined;
+}
+
+/** „chess.com · Rapid · 11.07.2026" · die Plattform trägt ihre Farbe. */
+function partieFeld(quelle: { plattform: string; zeitform: string; datum: string }): ReactNode {
+  const rest = [quelle.zeitform, quelle.datum].filter(Boolean).join(" · ");
+  if (!quelle.plattform) return rest;
+  return (
+    <>
+      <span style={{ color: plattformFarbe(quelle.plattform) }}>{quelle.plattform}</span>
+      {rest && ` · ${rest}`}
+    </>
+  );
+}
+
 /** „Tom 1462" · der Wert eines Namensfeldes im Formularkopf. */
 function nameMitElo(name: string, elo: string): ReactNode {
   return (
@@ -225,7 +267,7 @@ function bauen(
       felder: [
         { label: t("common.white"), wert: nameMitElo(quelle.weiss, quelle.weissElo), gross: true },
         { label: t("common.black"), wert: nameMitElo(quelle.schwarz, quelle.schwarzElo), gross: true },
-        { label: t("blatt.gameField"), wert: quelle.partie },
+        { label: t("blatt.gameField"), wert: partieFeld(quelle) },
         {
           label: t("games.colOpening"),
           wert: (
@@ -237,11 +279,20 @@ function bauen(
         },
       ],
       ergebnis: quelle.ergebnis,
+      // Zweite Zeile der Bildunterschrift wie im Entwurf: woher die Partie
+      // kommt, wann sie gespielt wurde, und erst dann die Stellung. Das Datum
+      // steht hier ausgeschrieben — die Unterschrift ist ein Satz, kein Feld.
       zeilen: [
         `${quelle.weiss} – ${quelle.schwarz}`,
-        letzterZug
-          ? t("blatt.positionAfter", { m: zugName(cut, letzterZug, locale) })
-          : t("blatt.startPosition"),
+        [
+          [quelle.plattform, quelle.zeitform].filter(Boolean).join(" "),
+          quelle.datumLang,
+          letzterZug
+            ? t("blatt.positionAfter", { m: zugName(cut, letzterZug, locale) })
+            : t("blatt.startPosition"),
+        ]
+          .filter(Boolean)
+          .join(" · "),
       ],
       davor: quelle.sans.slice(von, cut).map((_, index) => zug(von + index)),
       danach: quelle.sans.slice(cut, cut + 5).map((_, index) => zug(cut + index)),
@@ -408,11 +459,6 @@ export default function DashboardBlatt({
           <Zitat quelle={t("expl.source")}>{`„${diagramm.analyse}“`}</Zitat>
         </div>
       )}
-      {diagramm.fazit && diagramm.fazit.length > 0 && (
-        <div className="mt-[13px]">
-          <Zitat quelle={t("expl.verdict")}>{diagramm.fazit.join(" ")}</Zitat>
-        </div>
-      )}
       {diagramm.notiz && (
         <div className="mt-[13px]">
           <Zitat quelle={t("blatt.ownNote")}>{`„${diagramm.notiz}“`}</Zitat>
@@ -527,6 +573,8 @@ export default function DashboardBlatt({
     </div>
   );
 
+  // Die beiden Quadrate am Zeilenende sagen von sich aus nichts · unter der
+  // Liste steht, was sie bedeuten, wie unter jedem Register.
   const partienZeilen = (
     <div>
       {letzte.map((g) => (
@@ -539,6 +587,9 @@ export default function DashboardBlatt({
           onClick={() => onPartie(g)}
         />
       ))}
+      {letzte.length > 0 && (
+        <MarkenSchluessel notiz={t("blatt.markNote")} offen={t("blatt.markOpen")} />
+      )}
     </div>
   );
 
@@ -605,11 +656,6 @@ export default function DashboardBlatt({
         {diagramm?.analyse && (
           <div className="mt-3.5">
             <Zitat quelle={t("expl.source")}>{`„${diagramm.analyse}“`}</Zitat>
-          </div>
-        )}
-        {diagramm?.fazit && diagramm.fazit.length > 0 && (
-          <div className="mt-3">
-            <Zitat quelle={t("expl.verdict")}>{diagramm.fazit.join(" ")}</Zitat>
           </div>
         )}
         {herkunft && <div className="mt-4">{herkunft}</div>}

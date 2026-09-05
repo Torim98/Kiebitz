@@ -101,6 +101,13 @@ function nagOf(judgment: string): string | undefined {
         : undefined;
 }
 
+/**
+ * Wann die Demo-Partie der Web-Vorschau gespielt wurde · `demoGames[0].date`
+ * steht dort als fertiger deutscher Text, das Blatt braucht ein Datum, das es
+ * in der Sprache der Oberfläche ausschreiben kann.
+ */
+const DEMO_GESPIELT = new Date(2026, 6, 11);
+
 export default function Dashboard({
   go,
   openAnalysis,
@@ -320,13 +327,14 @@ export default function Dashboard({
         weissElo: String(record.color === "white" ? record.my_elo : record.opp_elo),
         schwarz: black,
         schwarzElo: String(record.color === "white" ? record.opp_elo : record.my_elo),
-        partie: [
-          record.source,
-          record.time_class,
-          new Date(record.played_ts * 1000).toLocaleDateString(dateLocale()),
-        ]
-          .filter(Boolean)
-          .join(" · "),
+        plattform: record.source ?? "",
+        zeitform: record.time_class ?? "",
+        datum: new Date(record.played_ts * 1000).toLocaleDateString(dateLocale()),
+        datumLang: new Date(record.played_ts * 1000).toLocaleDateString(dateLocale(), {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }),
         eco: record.eco,
         eroeffnung: record.opening,
         ergebnis:
@@ -369,7 +377,14 @@ export default function Dashboard({
         weissElo: "1462",
         schwarz: "DragonSlayer_88",
         schwarzElo: "1448",
-        partie: featuredGame.event,
+        plattform: demoGames[0]?.source ?? "",
+        zeitform: demoGames[0]?.tc ?? "",
+        datum: DEMO_GESPIELT.toLocaleDateString(dateLocale()),
+        datumLang: DEMO_GESPIELT.toLocaleDateString(dateLocale(), {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        }),
         eco: demoGames[0]?.eco ?? "",
         eroeffnung: demoGames[0]?.opening ?? "",
         ergebnis: "1 : 0",

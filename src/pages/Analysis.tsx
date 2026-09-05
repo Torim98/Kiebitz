@@ -21,6 +21,7 @@ import {
   ChevronUp,
   Cpu,
   FlipVertical2,
+  Layers,
   ListChecks,
   Loader2,
   MoreHorizontal,
@@ -1639,6 +1640,64 @@ export default function Analysis({
   // Gebaut wird sie deshalb nur einmal. Im Blatt trägt sie dieselben Teile im
   // Formularsatz: `blatt-formular` nimmt Rundungen und Flächen zurück (siehe
   // blatt.css), statt die Leiste ein zweites Mal zu setzen.
+  /**
+   * Die drei Wege, eine Analyse zu starten · einmal geschrieben, weil die
+   * Leiste sie auf dem Rechner als Knopf plus Menü und in der App als ein
+   * einziges Menü aufstellt.
+   */
+  const starteLauf = (options: Parameters<typeof startAnalysis>[0]) => {
+    setNotice(null);
+    setRunning(true);
+    startAnalysis(options).catch((e) => {
+      setRunning(false);
+      setNotice(String(e));
+    });
+  };
+  const analysiereDiese = () => {
+    if (selectedId == null) return;
+    starteLauf({ gameIds: [selectedId] });
+  };
+  /**
+   * Der Stapel ist die automatische Hintergrundanalyse und damit eine
+   * Plus-Funktion · sichtbar bleibt sie trotzdem, gesperrt führt sie in die
+   * Erklärung. Eine einzelne Partie zu rechnen bleibt frei.
+   */
+  const starteStapel = (options: Parameters<typeof startAnalysis>[0]) => {
+    if (!batchGate.unlocked) {
+      openPlusDialog("background_analysis");
+      return;
+    }
+    starteLauf(options);
+  };
+  const stapelBadge = !batchGate.unlocked && !batchGate.pending ? <PlusBadge /> : null;
+
+  /** „Diese Partie analysieren" als Menüeintrag · nur die App braucht ihn. */
+  const dieseAnalysieren = selectedId != null && (
+    <MenuItem onClick={analysiereDiese}>
+      <Zap size={15} /> {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
+    </MenuItem>
+  );
+
+  /**
+   * Die Zehnerportion steht nur da, wo sie etwas anderes ist als „alle": Bei
+   * acht offenen Partien wären es zwei Einträge für denselben Lauf, und genau
+   * der eine, den man dann sucht — „Alle analysieren" — fehlte.
+   */
+  const stapelEintraege = unanalyzed.length > 0 && (
+    <>
+      {unanalyzed.length > 10 && (
+        <MenuItem onClick={() => starteStapel({ limit: 10 })}>
+          <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
+          {stapelBadge}
+        </MenuItem>
+      )}
+      <MenuItem onClick={() => starteStapel({})}>
+        <Layers size={15} /> {t("an.analyzeAll", { n: unanalyzed.length })}
+        {stapelBadge}
+      </MenuItem>
+    </>
+  );
+
   const laufleiste = desktop ? (
     <div
       className={
@@ -1738,74 +1797,40 @@ export default function Analysis({
            vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
            dass die Leiste keinen Hauptknopf mehr hatte.
 
-           Auf Telefonbreite ist die Zeile knapp: Die beiden rücken enger
-           zusammen (`max-sm:px-2.5`) und dürfen umbrechen, statt über die
-           Kante der Leiste hinauszulaufen — „Diese Partie analysieren" allein
-           ist dort schon breiter als die halbe Zeile. */
+           In der App wird aus beiden ein einziger Knopf: „Diese Partie
+           analysieren" und „Mehrere Partien" nebeneinander passen auf 360 px
+           nicht in eine Zeile, und untereinander gestellt hatte die Leiste
+           zwei Hauptknöpfe übereinander. Ein Knopf, drei Wege — die Partie,
+           die nächsten zehn, alle. */
         <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:shrink-0">
-          {selectedId != null && (
-            <Button
-              primary
-              className="max-sm:px-2.5"
-              onClick={() => {
-                setNotice(null);
-                setRunning(true);
-                startAnalysis({ gameIds: [selectedId] }).catch((e) => {
-                  setRunning(false);
-                  setNotice(String(e));
-                });
-              }}
-            >
-              <Zap size={14} />
-              {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
-            </Button>
-          )}
-          {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
-              Historie ist die automatische Hintergrundanalyse und damit
-              eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
-          {unanalyzed.length > 0 && (
-            <Menu label={t("an.batchRuns")} className="max-sm:px-2.5">
-              {/* Die Zehnerportion steht nur da, wo sie etwas anderes ist als
-                  „alle": Bei acht offenen Partien wären es zwei Einträge für
-                  denselben Lauf, und genau der eine, den man dann sucht —
-                  „Alle analysieren" — fehlte. */}
-              {unanalyzed.length > 10 && (
-                <MenuItem
-                  onClick={() => {
-                    if (!batchGate.unlocked) {
-                      openPlusDialog("background_analysis");
-                      return;
-                    }
-                    setNotice(null);
-                    setRunning(true);
-                    startAnalysis({ limit: 10 }).catch((e) => {
-                      setRunning(false);
-                      setNotice(String(e));
-                    });
-                  }}
+          {mobile ? (
+            (selectedId != null || unanalyzed.length > 0) && (
+              <Menu label={t("an.analyze")} primary leading={<Zap size={14} />}>
+                {dieseAnalysieren}
+                {stapelEintraege}
+              </Menu>
+            )
+          ) : (
+            <>
+              {selectedId != null && (
+                <Button
+                  primary
+                  className="max-sm:px-2.5"
+                  onClick={analysiereDiese}
                 >
-                  <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
-                  {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-                </MenuItem>
+                  <Zap size={14} />
+                  {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
+                </Button>
               )}
-              <MenuItem
-                onClick={() => {
-                  if (!batchGate.unlocked) {
-                    openPlusDialog("background_analysis");
-                    return;
-                  }
-                  setNotice(null);
-                  setRunning(true);
-                  startAnalysis({}).catch((e) => {
-                    setRunning(false);
-                    setNotice(String(e));
-                  });
-                }}
-              >
-                <Zap size={15} /> {t("an.analyzeAll", { n: unanalyzed.length })}
-                {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-              </MenuItem>
-            </Menu>
+              {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
+                  Historie ist die automatische Hintergrundanalyse und damit
+                  eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
+              {unanalyzed.length > 0 && (
+                <Menu label={t("an.batchRuns")} className="max-sm:px-2.5">
+                  {stapelEintraege}
+                </Menu>
+              )}
+            </>
           )}
         </div>
       )}

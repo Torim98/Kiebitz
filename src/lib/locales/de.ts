@@ -41,6 +41,12 @@ export const de = {
 
   // ── App-Shell ──────────────────────────────────────────────────────────────
   "app.tagline": "Zug um Zugvogel",
+  "app.tagline2": "Einer schaut mit",
+  "app.tagline3": "Das Brett von oben",
+  "app.tagline4": "Wer kiebitzt, lernt",
+  "app.tagline5": "Sieht, was du übersiehst",
+  "app.tagline6": "Bauernzug und Vogelflug",
+  "app.tagline7": "Ein Auge fürs Brett",
   "ads.label": "Anzeige",
   "ads.preview": "Werbefläche · im Release nur mit freigegebenem Desktop-Anbieter",
   "nav.dashboard": "Dashboard",
@@ -235,6 +241,7 @@ export const de = {
   "an.progress": "Partie {i}/{n} · {opp} · Zug {a}/{b}",
   "an.running": "Analyse läuft …",
   "an.stop": "Stopp",
+  "an.analyze": "Analysieren",
   "an.reanalyze": "Neu analysieren",
   "an.analyzeThis": "Diese Partie analysieren",
   "an.nextTen": "Nächste 10 ({n} offen)",

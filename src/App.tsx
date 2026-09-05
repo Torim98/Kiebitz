@@ -62,6 +62,7 @@ import { usePlus } from "./lib/plus/usePlus";
 import { dateLocale, deInt } from "./lib/format";
 import type { GamesFilter } from "./lib/gameUi";
 import { isMobilePreview, isStoreCapture } from "./lib/storeCapture";
+import { taglineKey } from "./lib/tagline";
 import { useDiagramMode } from "./lib/diagramMode";
 import { useOpenItems } from "./lib/openItems";
 import {
@@ -629,7 +630,7 @@ export default function App() {
             <span className="text-[15px] font-semibold tracking-tight">Kiebitz</span>
             <PlanBadge />
           </div>
-          <div className="text-[11px] text-ink3">{t("app.tagline")}</div>
+          <div className="text-[11px] text-ink3">{t(taglineKey())}</div>
         </div>
       </div>
 

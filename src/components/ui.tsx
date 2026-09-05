@@ -232,7 +232,9 @@ export function Menu({
   align = "end",
   compact = false,
   up = false,
+  primary = false,
   icon,
+  leading,
   className = "",
   children,
 }: {
@@ -247,8 +249,16 @@ export function Menu({
    * dem Handy hinter der Navigationsleiste, im Fokus-Brett abgeschnitten.
    */
   up?: boolean;
+  /**
+   * Laut wie eine Hauptschaltfläche · für den Fall, dass das Menü selbst die
+   * Hauptaktion ist und nicht die Ablage neben ihr (siehe die Analyse-Leiste
+   * auf Telefonbreite).
+   */
+  primary?: boolean;
   /** Ersetzt den Pfeil · für Leisten, in denen das Blatt keine Liste ist. */
   icon?: ReactNode;
+  /** Symbol vor der Beschriftung · wie bei einer Schaltfläche mit Zeichen. */
+  leading?: ReactNode;
   /** Klassen der Schaltfläche · für Leisten, die selbst über die Breite wachen. */
   className?: string;
   children: ReactNode;
@@ -283,8 +293,9 @@ export function Menu({
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={buttonCls(false, className, compact)}
+        className={buttonCls(primary, className, compact)}
       >
+        {leading}
         {!compact && label}
         {icon ?? (
           <ChevronDown size={15} className={`transition-transform ${open ? "rotate-180" : ""}`} />

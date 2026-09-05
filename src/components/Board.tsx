@@ -447,19 +447,30 @@ function sameArrows(left: BoardArrow[], right: BoardArrow[]): boolean {
   );
 }
 
+/**
+ * Maße des Pfeils · in Brettvierteln gerechnet (ein Feld ist 12,5 breit).
+ *
+ * Die Spitze war früher ein SVG-`marker`. Ein Marker ohne `viewBox` schneidet
+ * alles ab, was über sein Fenster hinausragt, und die Spitze lag genau auf der
+ * Kante: Sie kam stumpf heraus, die beiden hinteren Ecken abgeschnitten. Hier
+ * ist der Pfeil deshalb zwei ganz gewöhnliche Formen — Schaft und Spitze — in
+ * einer Gruppe. Die Deckkraft sitzt an der Gruppe, damit an der Überlappung
+ * keine Naht entsteht.
+ */
+const ARROW_SHAFT = 2.3;
+const ARROW_HEAD_LENGTH = 4.4;
+const ARROW_HEAD_HALF = 3.1;
+
 /** Engine arrows live outside react-chessboard so a changing PV repaints one
  * SVG line instead of invalidating the board context and all 64 squares. */
 const BoardArrows = memo(function BoardArrows({
-    boardId,
     arrows,
     orientation,
   }: {
-    boardId: string;
     arrows: BoardArrow[];
     orientation: "white" | "black";
   }) {
   if (arrows.length === 0) return null;
-  const markerPrefix = `kiebitz-arrow-${boardId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const drawable = arrows.flatMap(([fromSquare, toSquare, color], index) => {
     const from = squareCenter(fromSquare, orientation);
     const to = squareCenter(toSquare, orientation);
@@ -472,15 +483,31 @@ const BoardArrows = memo(function BoardArrows({
       ([otherFrom, otherTo], otherIndex) =>
         otherIndex !== index && otherFrom !== fromSquare && otherTo === toSquare
     );
-    const reducer = sharedTarget ? 6.25 : 3.125;
+    // Wie weit vor der Feldmitte die Spitze stehen bleibt · zwei Pfeile auf
+    // dasselbe Feld bleiben weiter davor, damit sie sich nicht überlagern.
+    const reducer = sharedTarget ? 4.5 : 1.5;
+    const ux = dx / length;
+    const uy = dy / length;
+    const tip = { x: to.x - ux * reducer, y: to.y - uy * reducer };
+    const shaftLength = Math.max(0, length - reducer);
+    // Ein Pfeil über ein einziges Feld ist immer noch länger als seine
+    // Spitze · die Klammer ist für die Randfälle, nicht für den Normalfall.
+    const headLength = Math.min(ARROW_HEAD_LENGTH, shaftLength * 0.75);
+    const base = { x: tip.x - ux * headLength, y: tip.y - uy * headLength };
+    // Senkrecht zur Pfeilrichtung · daran hängen die Ecken der Spitze.
+    const px = -uy;
+    const py = ux;
+    const point = (x: number, y: number) => `${x.toFixed(2)},${y.toFixed(2)}`;
     return [{
       color: color ?? "rgb(255,170,0)",
       from,
       index,
-      to: {
-        x: from.x + (dx * (length - reducer)) / length,
-        y: from.y + (dy * (length - reducer)) / length,
-      },
+      to: base,
+      head: [
+        point(tip.x, tip.y),
+        point(base.x + px * ARROW_HEAD_HALF, base.y + py * ARROW_HEAD_HALF),
+        point(base.x - px * ARROW_HEAD_HALF, base.y - py * ARROW_HEAD_HALF),
+      ].join(" "),
     }];
   });
   if (drawable.length === 0) return null;
@@ -492,42 +519,24 @@ const BoardArrows = memo(function BoardArrows({
       data-testid="board-arrows"
       viewBox="0 0 100 100"
     >
-      <defs>
-        {drawable.map((arrow) => (
-          <marker
-            key={`marker-${arrow.index}`}
-            id={`${markerPrefix}-${arrow.index}`}
-            markerHeight="2.5"
-            markerWidth="2"
-            orient="auto"
-            refX="1.25"
-            refY="1.25"
-          >
-            <polygon fill={arrow.color} points="0.3 0, 2 1.25, 0.3 2.5" />
-          </marker>
-        ))}
-      </defs>
       {drawable.map((arrow) => (
-        <line
-          key={arrow.index}
-          data-arrow-index={arrow.index}
-          markerEnd={`url(#${markerPrefix}-${arrow.index})`}
-          opacity="0.65"
-          stroke={arrow.color}
-          strokeLinecap="round"
-          strokeWidth="2.5"
-          x1={arrow.from.x}
-          x2={arrow.to.x}
-          y1={arrow.from.y}
-          y2={arrow.to.y}
-        />
+        <g key={arrow.index} data-arrow-index={arrow.index} opacity="0.65">
+          <line
+            stroke={arrow.color}
+            strokeLinecap="round"
+            strokeWidth={ARROW_SHAFT}
+            x1={arrow.from.x}
+            x2={arrow.to.x}
+            y1={arrow.from.y}
+            y2={arrow.to.y}
+          />
+          <polygon fill={arrow.color} points={arrow.head} />
+        </g>
       ))}
     </svg>
   );
 }, (previous, next) =>
-  previous.boardId === next.boardId
-  && previous.orientation === next.orientation
-  && sameArrows(previous.arrows, next.arrows)
+  previous.orientation === next.orientation && sameArrows(previous.arrows, next.arrows)
 );
 
 /**
@@ -658,8 +667,6 @@ export default function Board({
     if (!surface) return;
 
     let drawing: { square: string; color: string; pointerId: number } | null = null;
-    /** Finger, die gerade auf dem Brett liegen · der zweite zeichnet. */
-    const fingers = new Set<number>();
     /**
      * Ein Tippen mit einem Finger wischt die Markierungen weg — aber erst beim
      * Loslassen. Sofort gelöscht wie beim Mausklick, hätte der Finger, der zum
@@ -686,9 +693,16 @@ export default function Board({
 
     const onDown = (event: PointerEvent) => {
       if (event.pointerType === "touch") {
-        const second = fingers.size > 0;
-        fingers.add(event.pointerId);
-        if (second && !drawing) {
+        // `isPrimary` sagt, der wievielte Finger das ist: Der erste einer
+        // Geste ist primär, jeder weitere daneben nicht. Das ersetzt eine
+        // eigene Liste der liegenden Finger — die hielt nur, solange auch
+        // jedes Loslassen hier ankam, und der Figurenzug unten hält sein
+        // `pointerup` bewusst auf (siehe `stopPropagation` im Zieh-Effekt).
+        // Ein einziger gezogener Zug ließ so einen Finger für immer liegen,
+        // und danach war jeder weitere Zug für das Brett schon der zweite
+        // Finger: Statt der Figur bewegte sich ein Pfeil.
+        if (!event.isPrimary) {
+          if (drawing) return;
           // Der erste Finger hat womöglich schon eine Figur angehoben · die
           // Geste ist jetzt eine andere.
           clearOnLift = false;
@@ -699,7 +713,7 @@ export default function Board({
           beginShape(event);
           return;
         }
-        if (!second) clearOnLift = true;
+        clearOnLift = true;
         return;
       }
       // Ein Linksklick wischt die Markierungen weg · wie bei Lichess, und ohne
@@ -735,9 +749,7 @@ export default function Board({
     };
 
     const finishTouch = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") return;
-      fingers.delete(event.pointerId);
-      if (fingers.size > 0 || !clearOnLift) return;
+      if (event.pointerType !== "touch" || !event.isPrimary || !clearOnLift) return;
       clearOnLift = false;
       setShapes((current) => (current.length === 0 ? current : []));
     };
@@ -767,19 +779,21 @@ export default function Board({
     // Das Kontextmenü würde den gezogenen Pfeil mit sich reißen.
     const onContextMenu = (event: MouseEvent) => event.preventDefault();
 
+    // In der Griffphase, weil der Figurenzug seine eigenen Zeigerereignisse
+    // anhält, sobald er läuft · aufgeräumt werden muss hier trotzdem.
     surface.addEventListener("pointerdown", onDown);
     surface.addEventListener("contextmenu", onContextMenu);
     surface.addEventListener("touchmove", onTouchMove, { passive: false });
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
     return () => {
       surface.removeEventListener("pointerdown", onDown);
       surface.removeEventListener("contextmenu", onContextMenu);
       surface.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
     };
   }, [orientation]);
 
@@ -1099,7 +1113,7 @@ export default function Board({
           lastMove={lastMove}
           squareStyles={squareStyles ?? EMPTY_STYLES}
         />
-        <BoardArrows boardId={boardId} arrows={shownArrows} orientation={orientation} />
+        <BoardArrows arrows={shownArrows} orientation={orientation} />
         <BoardCircles shapes={shownShapes} orientation={orientation} />
         {badges.map((badge, index) => (
           <span

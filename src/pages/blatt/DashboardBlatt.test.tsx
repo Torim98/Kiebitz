@@ -30,7 +30,10 @@ const spiel: Tagesquelle = {
   weissElo: "1462",
   schwarz: "DragonSlayer_88",
   schwarzElo: "1448",
-  partie: "chess.com",
+  plattform: "chess.com",
+  zeitform: "Rapid",
+  datum: "11.07.2026",
+  datumLang: "11. Juli 2026",
   eco: "C50",
   eroeffnung: "Italienische Partie",
   ergebnis: "1 : 0",
@@ -157,15 +160,29 @@ describe("Blatt des Starts", () => {
     });
     expect(screen.getByText("expl.source")).toBeTruthy();
     expect(screen.getByText(/Springer c6/)).toBeTruthy();
-    expect(screen.getByText("expl.verdict")).toBeTruthy();
-    // Das Fazit steht als ein Absatz, nicht als Liste.
-    expect(screen.getByText(/Solide gespielt\. Gekippt ist es bei/)).toBeTruthy();
+    // Das Fazit der ganzen Partie gehört nicht zu dieser einen Stellung.
+    expect(screen.queryByText("expl.verdict")).toBeNull();
+    expect(screen.queryByText(/Solide gespielt/)).toBeNull();
   });
 
   it("stays silent when the analysis found nothing to say", () => {
     show();
     expect(screen.queryByText("expl.source")).toBeNull();
     expect(screen.queryByText("expl.verdict")).toBeNull();
+  });
+
+  /** Kopfzeile und Bildunterschrift sagen beide, woher die Partie kommt. */
+  it("colours the platform in the head and writes the date out below", () => {
+    show();
+    // „chess.com" steht auch unten bei den Wertungen · gemeint ist der Kopf.
+    const kopf = screen
+      .getAllByText("chess.com")
+      .find((el) => el.parentElement?.textContent?.includes("Rapid"))!;
+    expect(kopf.getAttribute("style")).toContain("--color-cc");
+    expect(kopf.parentElement?.textContent).toContain("chess.com · Rapid · 11.07.2026");
+    expect(
+      screen.getByText(/chess\.com Rapid · 11\. Juli 2026 · blatt\.positionAfter/)
+    ).toBeTruthy();
   });
 
 });

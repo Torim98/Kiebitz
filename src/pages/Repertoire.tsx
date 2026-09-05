@@ -1639,21 +1639,33 @@ function AddLine({
               <span>{t("rep.transpositionAdd", { n: twins.length })}</span>
             </div>
           )}
+          {/* Drei Knöpfe in einer Zeile · auf 360 px reicht das nur, wenn
+              „Zug zurück" dort auf sein Zeichen zusammengeht. Ausgeschrieben
+              schob die Zeile das Abbrechen-Kreuz über die Kante des Schirms
+              hinaus. Was der Pfeil bedeutet, steht ohnehin unter dem Brett. */}
           <div className="mt-3 flex gap-2">
             <Button
               onClick={undo}
               title={t("rep.undoMoveHint")}
-              className={draft.length === 0 ? "opacity-50" : ""}
+              label={t("rep.undoMove")}
+              className={`shrink-0 max-sm:px-2.5 ${draft.length === 0 ? "opacity-50" : ""}`}
             >
-              <CornerUpLeft size={14} /> {t("rep.undoMove")}
+              <CornerUpLeft size={14} />
+              <span className="max-sm:hidden">{t("rep.undoMove")}</span>
             </Button>
-            <Button primary onClick={save} className={draft.length === 0 ? "opacity-50" : "flex-1"}>
+            <Button
+              primary
+              onClick={save}
+              className={`min-w-0 max-sm:px-2.5 ${draft.length === 0 ? "opacity-50" : "flex-1"}`}
+            >
               <Check size={14} />{" "}
-              {t(draft.length === 1 ? "rep.saveMoves.one" : "rep.saveMoves.many", {
-                n: draft.length,
-              })}
+              <span className="truncate">
+                {t(draft.length === 1 ? "rep.saveMoves.one" : "rep.saveMoves.many", {
+                  n: draft.length,
+                })}
+              </span>
             </Button>
-            <Button onClick={() => onDone()}>
+            <Button onClick={() => onDone()} label={t("common.cancel")} className="shrink-0" compact>
               <X size={14} />
             </Button>
           </div>

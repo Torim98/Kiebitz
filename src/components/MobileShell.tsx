@@ -9,6 +9,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import { useT, type Key } from "../lib/i18n";
+import { taglineKey } from "../lib/tagline";
 import type { PageId } from "../lib/nav";
 import PlanBadge from "./PlanBadge";
 
@@ -87,7 +88,7 @@ export function MobileAppBar({
           Start ist das der Claim, sonst der Seitenname. */}
       <span className="min-w-0 flex-1 truncate px-2 text-[15px] tracking-tight">
         <span className="font-semibold">Kiebitz</span>
-        <span className="text-ink3"> · {title ?? t("app.tagline")}</span>
+        <span className="text-ink3"> · {title ?? t(taglineKey())}</span>
       </span>
       {/* Welches Modell gerade gilt, gehört neben die Marke · nicht erst in die
           Einstellungen, wo man es suchen müsste. */}
