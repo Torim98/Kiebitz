@@ -10,13 +10,17 @@
  * Satz und nicht als Sammlung angeschalteter Knöpfe.
  *
  * Rechts der Eintrag zur gewählten Partie: Schlussstellung als Diagramm — hier
- * wird gelesen, nicht gezogen, also ein Abdruck — die Angaben als
- * Formularfelder, darunter die Stichwörter und die Notiz auf liniertem Grund.
- * Die beiden letzten sind das, was auf diesem Blatt geschrieben wird: was der
- * Nutzer selbst zu dieser Partie beiträgt. In der Liste stehen sie nicht ·
- * dort ersetzen die zwei Marken am Zeilenende die Tag-Spalte, und ein Register
- * bleibt nur lesbar, solange in seinen Zeilen nichts steht, was zur nächsten
- * nicht passt.
+ * wird gelesen, nicht gezogen, also ein Abdruck — darunter die Bildunterschrift
+ * mit dem letzten Zug und dem Ausgang, die Angaben als Formularfelder, und
+ * zuletzt die Stichwörter und die Notiz auf liniertem Grund.
+ *
+ * Geschrieben wird auf diesem Blatt nichts: Der Eintrag ist eine Seite zum
+ * Lesen, und die Angaben sind Griffe zurück in die Liste — ein Klick auf
+ * Quelle, Datum, Gegner oder Eröffnung schränkt das Verzeichnis auf genau
+ * diesen Wert ein. Der Tag-Editor bleibt in der gewöhnlichen Fassung. In der
+ * Liste stehen Stichwörter und Notiz ohnehin nicht · dort ersetzen die zwei
+ * Marken am Zeilenende die Tag-Spalte, und ein Register bleibt nur lesbar,
+ * solange in seinen Zeilen nichts steht, was zur nächsten nicht passt.
  */
 import type { ReactNode } from "react";
 import { Bildunterschrift, Diagramm } from "../../components/blatt/Diagramm";
@@ -62,16 +66,26 @@ export interface GamesBlattProps {
   gewaehlt: UiGame | undefined;
   /** Schlussstellung der gewählten Partie · schon gerechnet. */
   fen: string;
-  /** Die Bildunterschrift dazu, von der Seite gesetzt. */
-  unterschrift: string[];
-  /** Angaben zur gewählten Partie · Formularfelder unter dem Diagramm. */
-  angaben: { label: string; wert: ReactNode }[];
-  /** Stichwörter der gewählten Partie · dieselben Tags wie in der Tabelle. */
+  /**
+   * Die Bildunterschrift dazu, von der Seite gesetzt · die Nummer des
+   * Eintrags und darunter, was zu dieser Stellung zu sagen ist. Kein reiner
+   * Text: In der Titelzeile ist der Name des Gegners zugleich ein Filtergriff.
+   */
+  unterschrift: { nummer: string; zeilen: ReactNode[] };
+  /**
+   * Angaben zur gewählten Partie · Formularfelder unter dem Diagramm. Mit
+   * `onClick` wird aus der Angabe ein Griff, der die Liste auf genau diesen
+   * Wert einschränkt — dieselbe Bewegung wie in der gewöhnlichen Fassung.
+   */
+  angaben: { label: string; wert: ReactNode; onClick?: () => void }[];
+  /**
+   * Stichwörter der gewählten Partie · dieselben Tags wie in der Tabelle.
+   * Auf diesem Blatt stehen sie zum Lesen: Geschrieben werden sie in der
+   * gewöhnlichen Fassung, wo der Tag-Editor steht.
+   */
   stichwoerter: string[];
-  /** Wort, das die App selbst vergibt · steht mit, lässt sich nicht wegnehmen. */
+  /** Wort, das die App selbst vergibt · steht mit wie ein eigenes. */
   stichwortVorsatz?: string;
-  /** Fehlt sie (Demo-Partien ohne Datenbank), sind die Stichwörter nur zu lesen. */
-  onStichwoerter?: (woerter: string[]) => void;
   notiz: string;
   von: number;
   bis: number;
@@ -96,7 +110,6 @@ export default function GamesBlatt({
   angaben,
   stichwoerter,
   stichwortVorsatz,
-  onStichwoerter,
   notiz,
   von,
   bis,
@@ -110,8 +123,11 @@ export default function GamesBlatt({
 }: GamesBlattProps) {
   const { t } = useI18n();
 
+  // Über die vier festen Felder hinaus kommen die Einschränkungen dazu, die
+  // aus dem Start oder aus dem Eintrag gesetzt wurden · sie umbrechen lieber
+  // in eine zweite Zeile, als das Suchfeld auf nichts zusammenzudrücken.
   const filterfelder = (
-    <div className="flex min-w-0 flex-1 gap-6">
+    <div className="flex min-w-0 flex-1 flex-wrap gap-x-6 gap-y-2">
       {filter.map((feld) => {
         // Ein gefülltes Feld steht auf einer kräftigen Linie, ein leeres auf
         // einer blassen · so liest man den Filterzustand als Satz.
@@ -146,42 +162,63 @@ export default function GamesBlatt({
     </div>
   );
 
+  /**
+   * Der Tabellenkopf ist genauso gebaut wie die Zeile darunter: die laufende
+   * Nummer außen, alles übrige in einer zweiten Reihe mit demselben Abstand
+   * wie in `PartieZeile`. Nur so steht jede Beschriftung wirklich über ihrer
+   * Spalte — mit einem einzigen flachen Raster liefe der Kopf um die
+   * Differenz der beiden Abstände aus dem Tritt.
+   */
   const kopfzeile = (
     <div className="flex items-center gap-[9px] border-b border-ink pb-[5px]">
       <span className="blatt-feld w-8 flex-none text-ink3">{t("blatt.no")}</span>
-      <span className="blatt-feld w-[76px] flex-none text-ink3">{t("games.colDate")}</span>
-      <span className="blatt-feld w-2.5 flex-none" />
-      <span className="blatt-feld w-[168px] flex-none text-ink3">{t("games.colOpponent")}</span>
-      <span className="blatt-feld min-w-0 flex-1 text-ink3">{t("games.colOpening")}</span>
-      <span className="blatt-feld w-[34px] flex-none text-ink3">ECO</span>
-      <span className="blatt-feld w-[18px] flex-none text-center text-ink3">{t("blatt.points")}</span>
-      <span className="blatt-feld w-[52px] flex-none text-end text-ink3">
-        {t("blatt.accuracyShort")}
+      <span className="flex min-w-0 flex-1 items-center gap-[14px]">
+        <span className="blatt-feld w-[76px] flex-none text-ink3">{t("games.colDate")}</span>
+        <span className="w-2.5 flex-none" />
+        <span className="blatt-feld w-[168px] flex-none text-ink3">{t("games.colOpponent")}</span>
+        <span className="blatt-feld min-w-0 flex-1 text-ink3">{t("games.colOpening")}</span>
+        <span className="blatt-feld w-[34px] flex-none text-ink3">ECO</span>
+        <span className="blatt-feld w-[18px] flex-none text-center text-ink3">
+          {t("blatt.points")}
+        </span>
+        <span className="blatt-feld w-[52px] flex-none text-end text-ink3">
+          {t("blatt.accuracyShort")}
+        </span>
+        <span className="w-2.5 flex-none" />
       </span>
-      <span className="w-2.5 flex-none" />
     </div>
   );
 
   const liste = (
     <div>
       {!mobile && kopfzeile}
-      {zeilen.map(({ game, nummer }) => (
-        <div key={game.id} className="flex items-center gap-[9px]">
-          {!mobile && (
-            <span className="blatt-zahl w-8 flex-none text-[11px] text-ink3">{nummer ?? ""}</span>
-          )}
-          <span className="min-w-0 flex-1">
-            <PartieZeile
-              game={game}
-              mobile={mobile}
-              aktiv={gewaehlt?.id === game.id}
-              notiz={Boolean(game.note)}
-              offen={!game.analyzed}
-              onClick={() => onWaehlen(game)}
-            />
-          </span>
-        </div>
-      ))}
+      {zeilen.map(({ game, nummer }) => {
+        const aktiv = gewaehlt?.id === game.id;
+        return (
+          <div key={game.id} className="relative flex items-center gap-[9px]">
+            {/* Die Marke des laufenden Eintrags steht am Bund, also vor der
+                Nummer und nicht zwischen Nummer und Datum · sie zeigt auf die
+                ganze Zeile, nicht auf eine ihrer Spalten. Mobil gibt es keine
+                Nummernspalte; dort setzt die Zeile sie selbst. */}
+            {!mobile && aktiv && (
+              <span aria-hidden className="absolute inset-y-1.5 -start-3.5 w-[3px] bg-ink" />
+            )}
+            {!mobile && (
+              <span className="blatt-zahl w-8 flex-none text-[11px] text-ink3">{nummer ?? ""}</span>
+            )}
+            <span className="min-w-0 flex-1">
+              <PartieZeile
+                game={game}
+                mobile={mobile}
+                aktiv={mobile && aktiv}
+                notiz={Boolean(game.note)}
+                offen={!game.analyzed}
+                onClick={() => onWaehlen(game)}
+              />
+            </span>
+          </div>
+        );
+      })}
       <MarkenSchluessel notiz={t("blatt.markNote")} offen={t("blatt.markOpen")} />
     </div>
   );
@@ -223,17 +260,31 @@ export default function GamesBlatt({
       <div className="mt-3.5">
         <Diagramm fen={fen} size={mobile ? undefined : 262} gutter={13} />
         <Bildunterschrift
-          nummer={unterschrift[0]}
-          zeilen={unterschrift.slice(1)}
+          nummer={unterschrift.nummer}
+          zeilen={unterschrift.zeilen}
           breite={mobile ? undefined : 262}
           gutter={13}
         />
       </div>
+      {/* Die Angaben sind zugleich die Griffe in die Liste: Ein Klick auf das
+          Datum, die Quelle oder die Eröffnung schränkt das Verzeichnis auf
+          genau diesen Wert ein · dieselbe Bewegung wie in der gewöhnlichen
+          Fassung. */}
       <div className="mt-4 grid grid-cols-2 gap-x-[18px]">
         {angaben.map((angabe) => (
           <div key={angabe.label} className="border-b border-line py-[5px]">
             <Feldname>{angabe.label}</Feldname>
-            <div className="mt-[3px] truncate text-[12.5px] text-ink">{angabe.wert}</div>
+            {angabe.onClick ? (
+              <button
+                type="button"
+                onClick={angabe.onClick}
+                className="mt-[3px] block w-full truncate text-start text-[12.5px] text-ink hover:text-accent"
+              >
+                {angabe.wert}
+              </button>
+            ) : (
+              <div className="mt-[3px] truncate text-[12.5px] text-ink">{angabe.wert}</div>
+            )}
           </div>
         ))}
       </div>
@@ -246,9 +297,6 @@ export default function GamesBlatt({
           woerter={stichwoerter}
           vorsatz={stichwortVorsatz}
           leer={t("games.noTags")}
-          platzhalter={t("games.tagPlaceholder")}
-          entfernen={t("games.removeTag")}
-          onSchreiben={onStichwoerter}
         />
       </div>
       <div className="mt-3.5">
@@ -265,9 +313,9 @@ export default function GamesBlatt({
           {notiz ? `„${notiz}“` : <span className="text-ink3">{t("blatt.noRemark")}</span>}
         </div>
       </div>
-      {onOriginal && (
+      {onOriginal && gewaehlt && (
         <div className="mt-3 flex gap-[18px]">
-          <Weg onClick={onOriginal}>{t("games.original")}</Weg>
+          <Weg onClick={onOriginal}>{t("blatt.originalAt", { p: gewaehlt.source })}</Weg>
         </div>
       )}
     </div>

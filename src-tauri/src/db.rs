@@ -369,6 +369,9 @@ pub struct GamePageRequest {
     pub played_from: i64,
     #[serde(default)]
     pub played_to: i64,
+    /// Untere Zeitgrenze des Zeitraum-Filters (Unix-Sekunden); 0 heisst: alle.
+    #[serde(default)]
+    pub since: i64,
     #[serde(default)]
     pub opponent: String,
     #[serde(default)]
@@ -1388,7 +1391,9 @@ pub fn list_games_page(conn: &Connection, request: &GamePageRequest) -> Result<G
            AND (?8 = '' OR opening = ?8 OR (?8 = char(8212) AND opening = ''))
            AND (?9 = '' OR instr(lower(opponent), lower(?9)) > 0
                 OR instr(lower(opening), lower(?9)) > 0
-                OR instr(lower(tags), lower(?9)) > 0)";
+                OR instr(lower(tags), lower(?9)) > 0)
+           AND (?10 = 0 OR (played_ts > 0 AND played_ts >= ?10)
+                OR (played_ts <= 0 AND played_at >= date(?10, 'unixepoch')))";
     let total = conn
         .query_row(
             &format!("SELECT COUNT(*) FROM games {WHERE}"),
@@ -1401,7 +1406,8 @@ pub fn list_games_page(conn: &Connection, request: &GamePageRequest) -> Result<G
                 request.played_to,
                 request.opponent,
                 request.opening,
-                request.query
+                request.query,
+                request.since
             ],
             |r| r.get(0),
         )
@@ -1411,7 +1417,7 @@ pub fn list_games_page(conn: &Connection, request: &GamePageRequest) -> Result<G
         .map_err(|e| e.to_string())?;
     let sql = format!(
         "SELECT {GAME_SUMMARY_COLUMNS} FROM games {WHERE}
-         ORDER BY played_ts DESC, played_at DESC, id DESC LIMIT ?10 OFFSET ?11"
+         ORDER BY played_ts DESC, played_at DESC, id DESC LIMIT ?11 OFFSET ?12"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
@@ -1426,6 +1432,7 @@ pub fn list_games_page(conn: &Connection, request: &GamePageRequest) -> Result<G
                 request.opponent,
                 request.opening,
                 request.query,
+                request.since,
                 request.limit.clamp(1, 100),
                 request.offset.max(0)
             ],
@@ -1772,6 +1779,20 @@ mod tests {
         assert_eq!(page.total, 1);
         assert_eq!(page.library_total, 2);
         assert_eq!(page.items[0].id, first_id);
+
+        // Der Zeitraum-Filter greift ueber `played_ts`: Die Untergrenze laesst
+        // die juengere Partie stehen und schneidet die eine Minute aeltere ab.
+        let seit = list_games_page(
+            &conn,
+            &GamePageRequest {
+                limit: 25,
+                since: 1_783_769_082,
+                ..GamePageRequest::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(seit.total, 1);
+        assert_eq!(seit.items[0].id, first_id);
 
         let detail = get_game(&conn, first_id).unwrap();
         assert_eq!(detail.moves, "e4 c6 Qf3 e5");

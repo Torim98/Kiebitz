@@ -12,11 +12,27 @@
  * Zwei Marken am Zeilenende ersetzen die Tag-Spalte: gefülltes Quadrat = Notiz
  * vorhanden, leeres = noch ohne Analyse. Der Schlüssel dazu steht unter der
  * Liste, wie in jedem Band.
+ *
+ * `filter` macht aus einzelnen Angaben Griffe: Datum, Gegner und Eröffnung
+ * führen dann nicht in die Partie, sondern in das Partienverzeichnis, auf
+ * genau diese Angabe eingeschränkt — dieselbe Bewegung wie in der gewöhnlichen
+ * Fassung. Weil eine Schaltfläche nicht in einer Schaltfläche stehen darf,
+ * wird die Zeile in diesem Fall zur Fläche mit `role="button"`; ohne `filter`
+ * bleibt sie die schlichte Schaltfläche, die sie war.
  */
+import type { ReactNode } from "react";
 import type { UiGame } from "../../lib/gameUi";
 import { de } from "../../lib/format";
 import { Farbfeld, Punkt } from "./Satz";
 import "./blatt.css";
+
+/** Was sich aus einer Zeile heraus filtern lässt · fehlt einer, bleibt die
+ *  Angabe stehender Text. */
+export interface ZeilenFilter {
+  onDatum?: () => void;
+  onGegner?: () => void;
+  onEroeffnung?: () => void;
+}
 
 export interface PartieZeileProps {
   game: UiGame;
@@ -27,7 +43,41 @@ export interface PartieZeileProps {
   notiz?: boolean;
   /** Leeres Quadrat · diese Partie ist noch ohne Analyse. */
   offen?: boolean;
+  /** Griffe in einzelnen Spalten · nur am Rechner, siehe oben. */
+  filter?: ZeilenFilter;
   onClick: () => void;
+}
+
+/**
+ * Eine Angabe, die zugleich ein Filtergriff sein kann.
+ *
+ * Ohne `onClick` steht sie als Text da · so trägt dieselbe Zeile beide Fälle,
+ * ohne dass der Satz sich unterscheidet.
+ */
+function Angabe({
+  onClick,
+  className,
+  children,
+}: {
+  onClick?: () => void;
+  className: string;
+  children: ReactNode;
+}) {
+  if (!onClick) return <span className={className}>{children}</span>;
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        // Der Griff gilt der Spalte, nicht der Zeile · sonst öffnete er
+        // zugleich die Partie.
+        event.stopPropagation();
+        onClick();
+      }}
+      className={`${className} text-start hover:text-accent`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function PartieZeile({
@@ -36,6 +86,7 @@ export function PartieZeile({
   aktiv = false,
   notiz = false,
   offen = false,
+  filter,
   onClick,
 }: PartieZeileProps) {
   const marke = notiz ? (
@@ -71,24 +122,28 @@ export function PartieZeile({
     );
   }
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="relative flex min-h-11 w-full items-center gap-[14px] border-b border-line text-start text-[12.5px]"
-    >
+  const inhalt = (
+    <>
       {aktiv && <span aria-hidden className="absolute inset-y-1.5 -start-3.5 w-[3px] bg-ink" />}
       {/* Der Entwurf setzt hier „11.07." · die App schreibt das Datum in der
           Form der Sprache, und die ist länger. Lieber die Spalte breiter als
           das Datum beschnitten. */}
-      <span className="blatt-zahl w-[76px] flex-none whitespace-nowrap text-ink3">{game.date}</span>
+      <Angabe
+        onClick={filter?.onDatum}
+        className="blatt-zahl w-[76px] flex-none whitespace-nowrap text-ink3"
+      >
+        {game.date}
+      </Angabe>
       <Farbfeld farbe={game.color} />
-      <span className="w-[168px] flex-none truncate text-ink">
+      <Angabe onClick={filter?.onGegner} className="w-[168px] flex-none truncate text-ink">
         {game.opponent} <span className="blatt-zahl text-ink3">({game.oppElo})</span>
-      </span>
-      <span className="buch min-w-0 flex-1 truncate text-[13.5px] italic text-ink2">
+      </Angabe>
+      <Angabe
+        onClick={filter?.onEroeffnung}
+        className="buch min-w-0 flex-1 truncate text-[13.5px] italic text-ink2"
+      >
         {game.opening}
-      </span>
+      </Angabe>
       <span className="blatt-zahl w-[34px] flex-none text-[11.5px] text-ink3">{game.eco}</span>
       <span className="blatt-zahl w-[18px] flex-none text-center">
         <Punkt ergebnis={game.result} />
@@ -97,6 +152,36 @@ export function PartieZeile({
         {game.accuracy != null ? `${de(game.accuracy)} %` : "—"}
       </span>
       <span className="flex w-2.5 flex-none justify-center">{marke}</span>
+    </>
+  );
+
+  const klasse =
+    "relative flex min-h-11 w-full items-center gap-[14px] border-b border-line text-start text-[12.5px]";
+
+  // Mit Filtergriffen stehen Schaltflächen in der Zeile · dann trägt die Zeile
+  // selbst die Rolle, statt eine Schaltfläche zu sein.
+  if (filter) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onClick();
+          }
+        }}
+        className={`${klasse} cursor-pointer`}
+      >
+        {inhalt}
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={klasse}>
+      {inhalt}
     </button>
   );
 }

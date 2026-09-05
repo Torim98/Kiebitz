@@ -8,7 +8,7 @@
  */
 import { useMemo, type ReactNode } from "react";
 import { Ban, Clock, Flag, LogOut } from "lucide-react";
-import { useI18n, type Key } from "../lib/i18n";
+import { useI18n, type Key, type TFunc } from "../lib/i18n";
 import { isDecisive, type BoardEnd, type Termination } from "../lib/boardEnd";
 import type { BoardEndView } from "./Board";
 
@@ -46,6 +46,27 @@ const REASON_KEY: Record<Termination, Key> = {
 };
 
 /**
+ * Wie das Ende heißt · „Weiß gewinnt durch Aufgabe", „Remis durch Patt".
+ *
+ * Der Satz steht nicht nur auf dem Brett: Im Diagramm-Modus trägt ihn auch die
+ * Bildunterschrift unter der Schlussstellung. Deshalb steht er hier für sich
+ * und nicht in der Brettansicht eingeschlossen.
+ */
+export function endLabel(
+  reason: Termination | null,
+  winner: "white" | "black" | null,
+  t: TFunc
+): string {
+  const outcome = winner
+    ? t(winner === "white" ? "end.whiteWins" : "end.blackWins")
+    : t("end.draw");
+  if (!reason) return outcome;
+  return winner
+    ? t("end.winBy", { side: outcome, reason: t(REASON_KEY[reason]) })
+    : t("end.drawBy", { reason: t(REASON_KEY[reason]) });
+}
+
+/**
  * Übersetzte Brettansicht eines Partieendes; null, wenn keins vorliegt.
  * Der Rückgabewert ist stabil, solange sich das Ende nicht ändert · das Brett
  * ist memoisiert und soll nicht an einem neuen Objekt hängen bleiben.
@@ -64,14 +85,7 @@ export function useBoardEndView(end: BoardEnd | null): BoardEndView | null {
   return useMemo(() => {
     if (!present) return null;
     const decisive = winner != null || (reason != null && isDecisive(reason));
-    const outcome = winner
-      ? t(winner === "white" ? "end.whiteWins" : "end.blackWins")
-      : t("end.draw");
-    const label = reason
-      ? winner
-        ? t("end.winBy", { side: outcome, reason: t(REASON_KEY[reason]) })
-        : t("end.drawBy", { reason: t(REASON_KEY[reason]) })
-      : outcome;
+    const label = endLabel(reason, winner, t);
 
     return {
       square,

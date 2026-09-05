@@ -18,6 +18,7 @@
  * Die Figuren kommen aus dem Set, das gerade gilt — dieselben Zeichnungen wie
  * auf dem Brett daneben, nicht ein zweiter Satz.
  */
+import type { ReactNode } from "react";
 import { fenSquares } from "../../lib/boardSound";
 import { usePieceGlyphs } from "../../lib/pieces/usePieceSet";
 import { glyphKey } from "../../lib/pieces/sets";
@@ -188,8 +189,11 @@ export function Bildunterschrift({
   gutter = 15,
 }: {
   nummer: string;
-  /** Erste Zeile trägt den Titel, weitere stehen kursiv darunter. */
-  zeilen: readonly string[];
+  /**
+   * Erste Zeile trägt den Titel, weitere stehen kursiv darunter. Kein reiner
+   * Text: In der Titelzeile kann ein Name zugleich ein Filtergriff sein.
+   */
+  zeilen: readonly ReactNode[];
   amZug?: { farbe: "white" | "black"; text: string };
   breite?: number | string;
   gutter?: number;

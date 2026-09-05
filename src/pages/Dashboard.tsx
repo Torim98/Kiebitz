@@ -461,6 +461,7 @@ export default function Dashboard({
           onPuzzles={() => go("puzzles")}
           onAllePartien={() => openGames()}
           onPartie={(game) => (game.dbId != null ? openAnalysis(game.dbId) : openGames())}
+          onFilter={openGames}
         />
       </Suspense>
     );

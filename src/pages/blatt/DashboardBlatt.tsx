@@ -26,6 +26,7 @@ import {
   Feldname,
   Formularkopf,
   Kolumnentitel,
+  plattformFarbe,
   Rubrik,
   Weg,
   Zitat,
@@ -38,7 +39,7 @@ import { criticalPly } from "../../lib/blatt";
 import { fenAfter, fenAfterUci } from "../../lib/position";
 import { dateLocale, deInt } from "../../lib/format";
 import { PartieZeile } from "../../components/blatt/PartieZeile";
-import type { UiGame } from "../../lib/gameUi";
+import type { GamesFilter, UiGame } from "../../lib/gameUi";
 import type { DiagramSource } from "../../lib/blatt";
 
 /** Ein Zug mit dem Urteil der Auto-Analyse, soweit es eines gibt. */
@@ -160,6 +161,13 @@ export interface DashboardBlattProps {
   onPuzzles: () => void;
   onAllePartien: () => void;
   onPartie: (game: UiGame) => void;
+  /**
+   * Ein Klick auf Datum, Gegner oder Eröffnung in der Partienliste · er führt
+   * in das Partienverzeichnis, auf genau diese Angabe eingeschränkt. Dieselbe
+   * Bewegung wie in der gewöhnlichen Fassung, damit sich der Modus nicht
+   * anders bedienen lässt als die Seite, die er ersetzt.
+   */
+  onFilter?: (filter: GamesFilter) => void;
 }
 
 /** Zugfolge in der Notation der Oberflächensprache, mit den Urteilen daneben. */
@@ -198,20 +206,6 @@ function zugName(cut: number, san: string, locale: Locale): string {
   const ply = cut - 1;
   const nummer = ply % 2 === 0 ? `${ply / 2 + 1}.` : `${(ply + 1) / 2}…`;
   return nummer + translateSan(san, locale);
-}
-
-/**
- * Die Hausfarbe einer Plattform · dieselbe wie unten bei den Wertungen.
- *
- * Wo „chess.com" oder „lichess" steht, sagt die Farbe es schon, bevor man das
- * Wort gelesen hat. Groß geschrieben wird dabei nichts: Der Formularkopf setzt
- * die Herkunft so, wie die Plattform sich selbst schreibt.
- */
-function plattformFarbe(name: string): string | undefined {
-  const kurz = name.trim().toLowerCase();
-  if (kurz === "chess.com") return "var(--color-cc)";
-  if (kurz === "lichess" || kurz === "lichess.org") return "var(--color-blue)";
-  return undefined;
 }
 
 /** „chess.com · Rapid · 11.07.2026" · die Plattform trägt ihre Farbe. */
@@ -389,6 +383,7 @@ export default function DashboardBlatt({
   onPuzzles,
   onAllePartien,
   onPartie,
+  onFilter,
 }: DashboardBlattProps) {
   const { t, locale } = useI18n();
   const heute = new Date();
@@ -582,6 +577,17 @@ export default function DashboardBlatt({
           mobile={mobile}
           notiz={Boolean(g.note)}
           offen={!g.analyzed}
+          // Auf dem Telefon steht die Zeile zweizeilig und ohne eigene
+          // Spalten · dort gibt es nichts, woran ein Filtergriff hinge.
+          filter={
+            onFilter && !mobile
+              ? {
+                  onDatum: () => onFilter({ date: g.dateKey ?? g.date }),
+                  onGegner: () => onFilter({ opponent: g.opponent }),
+                  onEroeffnung: () => onFilter({ opening: g.opening }),
+                }
+              : undefined
+          }
           onClick={() => onPartie(g)}
         />
       ))}

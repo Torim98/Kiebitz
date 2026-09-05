@@ -77,6 +77,31 @@ function gameDate(r: GameSummary, locale: Locale): string {
   return d && m && y ? `${d}.${m}.${y}` : canonical;
 }
 
+/**
+ * Wann eine Partie gespielt wurde, in Unix-Sekunden · null, wenn sich das
+ * nicht sagen lässt.
+ *
+ * Aus der Datenbank kommt `dateKey` in ISO-Form; die Demo-Partien der
+ * Web-Vorschau tragen nur das gesetzte Datum („11.07.2026"). Beides muss der
+ * Zeitraum-Filter lesen können, sonst filterte er in der Vorschau nichts.
+ * Gerechnet wird in der Zeitzone des Geräts, wie in `zeitraumStart`.
+ */
+export function gamePlayedTs(game: UiGame): number | null {
+  const iso = game.dateKey ?? "";
+  const teile = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso) ?? null;
+  if (teile) {
+    return new Date(Number(teile[1]), Number(teile[2]) - 1, Number(teile[3])).getTime() / 1000;
+  }
+  const deutsch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(game.date);
+  if (deutsch) {
+    return (
+      new Date(Number(deutsch[3]), Number(deutsch[2]) - 1, Number(deutsch[1])).getTime() / 1000
+    );
+  }
+  const roh = Date.parse(game.date);
+  return Number.isNaN(roh) ? null : Math.floor(roh / 1000);
+}
+
 export function toUi(r: GameSummary, locale: Locale = "en"): UiGame {
   const date = gameDate(r, locale);
   return {

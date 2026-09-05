@@ -71,6 +71,8 @@ export interface GamePageRequest {
   played_day?: string;
   played_from?: number;
   played_to?: number;
+  /** Untere Zeitgrenze des Zeitraum-Filters (Unix-Sekunden); 0 heisst: alle. */
+  since?: number;
   opponent?: string;
   opening?: string;
   query?: string;

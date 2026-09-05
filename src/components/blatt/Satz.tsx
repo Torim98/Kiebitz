@@ -292,11 +292,11 @@ export function Stichwortzeile({
   vorsatz?: string;
   /** Was dasteht, solange keines vergeben ist. */
   leer: string;
-  /** Beschriftung des Schreibfeldes. */
-  platzhalter: string;
+  /** Beschriftung des Schreibfeldes · nur mit `onSchreiben` von Belang. */
+  platzhalter?: string;
   /** Titel des Griffs, der ein Wort wieder wegnimmt. */
-  entfernen: string;
-  /** Fehlt sie, ist die Zeile nur zu lesen. */
+  entfernen?: string;
+  /** Fehlt sie, ist die Zeile nur zu lesen · dann steht auch kein Feld darunter. */
   onSchreiben?: (woerter: string[]) => void;
 }) {
   const [entwurf, setEntwurf] = useState("");
@@ -352,6 +352,21 @@ export function Stichwortzeile({
       )}
     </div>
   );
+}
+
+/**
+ * Die Hausfarbe einer Plattform · dieselbe auf jedem Blatt.
+ *
+ * Wo „chess.com" oder „lichess" steht, sagt die Farbe es schon, bevor man das
+ * Wort gelesen hat. Groß geschrieben wird dabei nichts: Der Formularkopf setzt
+ * die Herkunft so, wie die Plattform sich selbst schreibt. Kein Farbwert steht
+ * hier · nur der Name des Tokens aus src/themes.css.
+ */
+export function plattformFarbe(name: string): string | undefined {
+  const kurz = name.trim().toLowerCase();
+  if (kurz === "chess.com") return "var(--color-cc)";
+  if (kurz === "lichess" || kurz === "lichess.org") return "var(--color-blue)";
+  return undefined;
 }
 
 /** Beschriftung eines Formularfeldes, wo kein ganzer Kopf nötig ist. */

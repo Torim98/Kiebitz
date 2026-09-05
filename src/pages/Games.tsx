@@ -29,7 +29,7 @@ import { deleteGame, getGame, listGamesForExport, listGamesPage, readPgnFile, se
 import { fetchAll } from "../lib/importer";
 import { indexPositions } from "../lib/analysis";
 import { getSettings } from "../lib/settings";
-import { tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
+import { gamePlayedTs, tcLabel, toUi, type GamesFilter, type UiGame } from "../lib/gameUi";
 import Board from "../components/Board";
 import { BOARD_MAX, BOARD_WIDTH } from "../lib/boardLayout";
 import { Button, Card, Chip, ExtLink, GameCard, ResultBadge, SourceBadge, Tag } from "../components/ui";
@@ -39,6 +39,12 @@ import MobileSheet from "../components/MobileSheet";
 import TagEditor from "../components/TagEditor";
 import { de, deInt } from "../lib/format";
 import { useDiagramMode } from "../lib/diagramMode";
+import { naechsterZeitraum, zeitraumStart, type Zeitraum } from "../lib/blatt";
+import { plattformFarbe } from "../components/blatt/Satz";
+import { endLabel } from "../components/BoardEndView";
+import { isTermination } from "../lib/boardEnd";
+import { notationLine } from "../lib/notation";
+import { openExternal } from "../lib/ext";
 
 /** Das Verzeichnis kommt nach · siehe Dashboard.tsx. */
 import { LeereSeite } from "../components/blatt/LeereSeite";
@@ -116,6 +122,10 @@ export default function Games({
   const [dateKey, setDateKey] = useState(initialFilter?.date ?? "");
   const [opponent, setOpponent] = useState(initialFilter?.opponent ?? "");
   const [opening, setOpening] = useState(initialFilter?.opening ?? "");
+  // Der Zeitraum ist ein Filter des Diagramm-Modus: Dort steht er als
+  // Formularfeld neben Quelle und Ergebnis · in der gewöhnlichen Fassung
+  // führen die Pillen dieselbe Einschränkung über das genaue Datum.
+  const [zeitraum, setZeitraum] = useState<Zeitraum>("alle");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Vorschau allein · siehe components/FocusBoard.tsx. */
   const [focused, setFocused] = useState(false);
@@ -148,6 +158,7 @@ export default function Games({
       played_day: dateKey,
       played_from: day ? Math.floor(day.getTime() / 1000) : 0,
       played_to: nextDay ? Math.floor(nextDay.getTime() / 1000) : 0,
+      since: zeitraumStart(zeitraum),
       opponent,
       opening,
       query,
@@ -163,10 +174,13 @@ export default function Games({
 
   useEffect(() => {
     if (backend.mode === "desktop") reload();
-  }, [backend.mode, locale, source, result, query, pageSize, page, tc, dateKey, opponent, opening]);
+  }, [backend.mode, locale, source, result, query, pageSize, page, tc, dateKey, opponent, opening, zeitraum]);
 
   const databaseLoaded = dbGames !== null;
   const allGames: UiGame[] = databaseLoaded ? dbGames : demoGames;
+
+  // Einmal gerechnet · die Grenze gilt für die Abfrage und für die Vorschau.
+  const zeitraumSeit = zeitraumStart(zeitraum);
 
   const filtered = useMemo(
     () => databaseLoaded
@@ -185,6 +199,9 @@ export default function Games({
             g.tc === tc ||
             g.tc.toLowerCase() === tc.toLowerCase()) &&
           (dateKey === "" || g.dateKey === dateKey || g.date === dateKey) &&
+          // Ohne lesbares Datum bleibt die Partie draußen, sobald ein
+          // Zeitraum gilt · sonst zählte sie in jedem mit.
+          (zeitraumSeit === 0 || (gamePlayedTs(g) ?? -1) >= zeitraumSeit) &&
           (opponent === "" || g.opponent === opponent) &&
           (opening === "" || g.opening === opening) &&
           (query === "" ||
@@ -192,7 +209,7 @@ export default function Games({
             g.opening.toLowerCase().includes(query.toLowerCase()) ||
             g.tags.some((tag) => tag.toLowerCase().includes(query.toLowerCase())))
       ),
-    [allGames, databaseLoaded, source, result, tc, dateKey, opponent, opening, query]
+    [allGames, databaseLoaded, source, result, tc, dateKey, opponent, opening, query, zeitraumSeit]
   );
 
   const selectedSummary = filtered.find((g) => g.id === selectedId) ?? filtered[0];
@@ -218,7 +235,7 @@ export default function Games({
   }, [selectedSummary?.dbId]);
 
   // Paginierung: bei Filter-/Seitengröße-Wechsel zurück auf Seite 1.
-  useEffect(() => setPage(1), [source, result, query, pageSize, tc, dateKey, opponent, opening]);
+  useEffect(() => setPage(1), [source, result, query, pageSize, tc, dateKey, opponent, opening, zeitraum]);
   const totalResults = databaseLoaded ? filteredTotal : filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -241,8 +258,23 @@ export default function Games({
     loss: t("games.losses"),
     draw: t("games.draws"),
   };
+  /** Wie ein Zeitraum heißt · dasselbe Wort im Feld und in der Pille. */
+  const zeitraumLabel: Record<Zeitraum, string> = {
+    alle: t("blatt.filterAll"),
+    heute: t("blatt.periodToday"),
+    monat: t("blatt.periodMonth"),
+    jahr: t("blatt.periodYear"),
+  };
   const exactFilters: ActiveFilter[] = [];
   if (dateKey) exactFilters.push({ key: "date", label: t("games.filterDate", { v: dateFilterLabel }), clear: () => setDateKey("") });
+  // Gesetzt wird er im Diagramm-Modus · sichtbar und abwerfbar bleibt er auch
+  // in der gewöhnlichen Fassung, sonst filterte dort etwas Unsichtbares mit.
+  if (zeitraum !== "alle")
+    exactFilters.push({
+      key: "period",
+      label: t("games.filterPeriod", { v: zeitraumLabel[zeitraum] }),
+      clear: () => setZeitraum("alle"),
+    });
   if (tc) exactFilters.push({ key: "tc", label: t("games.filterMode", { v: tcLabel(tc, locale) }), clear: () => setTc("") });
   if (opponent) exactFilters.push({ key: "opponent", label: t("games.filterOpponent", { v: opponent }), clear: () => setOpponent("") });
   if (opening) exactFilters.push({ key: "opening", label: t("games.filterOpening", { v: opening }), clear: () => setOpening("") });
@@ -256,6 +288,7 @@ export default function Games({
     setTc("");
     setOpponent("");
     setOpening("");
+    setZeitraum("alle");
   };
   const clearAllFilters = () => {
     clearExactFilters();
@@ -837,6 +870,43 @@ export default function Games({
   // Dieselben Daten, anders gesetzt · Filter, Liste und Eintrag stehen oben
   // schon fertig da und werden hier nur anders ausgegeben.
   if (diagramMode) {
+    // Der letzte Zug der Partie · er benennt die Stellung, die im Diagramm
+    // steht, so wie eine Bildunterschrift im Buch sie benennt.
+    const letzterZug =
+      selected?.sans && selected.sans.length > 0
+        ? notationLine(
+            [selected.sans[selected.sans.length - 1]],
+            locale,
+            selected.sans.length - 1
+          )
+        : "";
+    // Wie die Partie ausging · der Grund steht im Datensatz, geraten wird
+    // nichts. Ohne Grund bleibt der bloße Ausgang.
+    const grund =
+      selectedRecord?.termination && isTermination(selectedRecord.termination)
+        ? selectedRecord.termination
+        : null;
+    const sieger =
+      selected == null || selected.result === "draw"
+        ? null
+        : selected.result === "win"
+          ? selected.color
+          : selected.color === "white"
+            ? "black"
+            : "white";
+    const ausgang = selected ? endLabel(grund, sieger, t) : "";
+    // „nach 19...Dg6, Weiß gewinnt durch Aufgabe" · ohne Züge bleibt der
+    // Ausgang allein, weil ein „nach nichts" kein Satz wäre.
+    const beizeile = !selected
+      ? ""
+      : letzterZug
+        ? t("blatt.captionAfter", { m: letzterZug, end: ausgang })
+        : ausgang;
+    // Die laufende Nummer der gewählten Partie im Bestand.
+    const gewaehltNummer =
+      selected != null && databaseLoaded
+        ? libraryTotal - (rangeFrom - 1) - paged.findIndex((g) => g.id === selected.id)
+        : null;
     return (
       <Suspense fallback={<LeereSeite />}>
         <GamesBlatt
@@ -844,7 +914,7 @@ export default function Games({
           bestand={databaseLoaded ? libraryTotal : null}
           filter={[
             {
-              label: t("games.filters"),
+              label: t("blatt.search"),
               wert: query,
               platzhalter: t("games.searchPlaceholder"),
               leer: query === "",
@@ -852,14 +922,14 @@ export default function Games({
             },
             {
               label: t("games.colSource"),
-              wert: source === "alle" ? t("games.allSources") : source,
+              wert: source === "alle" ? t("blatt.filterAll") : source,
               leer: source === "alle",
               breite: 112,
               onClick: () => setSource(source === "alle" ? "chess.com" : source === "chess.com" ? "lichess" : "alle"),
             },
             {
               label: t("games.colResult"),
-              wert: result === "alle" ? t("games.allResults") : resultLabels[result],
+              wert: result === "alle" ? t("blatt.filterAll") : resultLabels[result],
               leer: result === "alle",
               breite: 96,
               onClick: () =>
@@ -868,12 +938,61 @@ export default function Games({
                 ),
             },
             {
-              label: t("games.colMode"),
-              wert: tc ? tcLabel(tc, locale) : t("blatt.filterAll"),
-              leer: tc === "",
-              breite: 104,
-              onClick: tc ? () => setTc("") : undefined,
+              label: t("blatt.period"),
+              wert: zeitraumLabel[zeitraum],
+              leer: zeitraum === "alle",
+              breite: 112,
+              onClick: () => setZeitraum(naechsterZeitraum(zeitraum)),
             },
+            // Was aus dem Start oder aus dem Eintrag heraus gesetzt wurde,
+            // bekommt sein eigenes Feld — aber erst dann. Ein Feld, das fast
+            // immer „alle" sagt, sagt nichts; ein Filter dagegen, der ohne
+            // Feld gilt, wäre eine Einschränkung, die niemand sieht und
+            // niemand wieder loswird. Ein Klick nimmt ihn zurück.
+            ...(tc
+              ? [
+                  {
+                    label: t("games.colMode"),
+                    wert: tcLabel(tc, locale),
+                    leer: false,
+                    breite: 104,
+                    onClick: () => setTc(""),
+                  },
+                ]
+              : []),
+            ...(dateKey
+              ? [
+                  {
+                    label: t("games.colDate"),
+                    wert: dateFilterLabel,
+                    leer: false,
+                    breite: 104,
+                    onClick: () => setDateKey(""),
+                  },
+                ]
+              : []),
+            ...(opponent
+              ? [
+                  {
+                    label: t("games.colOpponent"),
+                    wert: opponent,
+                    leer: false,
+                    breite: 136,
+                    onClick: () => setOpponent(""),
+                  },
+                ]
+              : []),
+            ...(opening
+              ? [
+                  {
+                    label: t("games.colOpening"),
+                    wert: opening,
+                    leer: false,
+                    breite: 160,
+                    onClick: () => setOpening(""),
+                  },
+                ]
+              : []),
           ]}
           treffer={totalResults}
           zeilen={paged.map((game, index) => ({
@@ -884,17 +1003,55 @@ export default function Games({
           }))}
           gewaehlt={selected}
           fen={previewFen}
-          unterschrift={[
-            selected?.id != null && databaseLoaded
-              ? `${t("blatt.entryNo", { n: deInt(libraryTotal - (rangeFrom - 1) - paged.findIndex((g) => g.id === selected?.id)) })} · ${t("blatt.finalPosition")}`
-              : t("blatt.finalPosition"),
-            selected ? `${ownName} – ${selected.opponent}` : "",
-          ]}
+          unterschrift={{
+            // Eine Eintragsnummer ist eine Kennung und keine Menge · sie steht
+            // ohne Tausenderpunkt, wie eine Seitenzahl.
+            nummer:
+              gewaehltNummer != null
+                ? `${t("blatt.entryNo", { n: String(gewaehltNummer) })} · ${t("blatt.finalPosition")}`
+                : t("blatt.finalPosition"),
+            zeilen: [
+              selected ? (
+                <>
+                  {ownName} –{" "}
+                  <button
+                    type="button"
+                    onClick={() => setOpponent(selected.opponent)}
+                    className="hover:text-accent"
+                  >
+                    {selected.opponent}
+                  </button>
+                </>
+              ) : (
+                ""
+              ),
+              beizeile,
+            ],
+          }}
           angaben={
             selected
               ? [
-                  { label: t("games.colSource"), wert: `${selected.source} · ${selected.tc}` },
-                  { label: t("games.colDate"), wert: selected.date },
+                  {
+                    label: t("games.colSource"),
+                    wert: (
+                      <>
+                        <span style={{ color: plattformFarbe(selected.source) }}>
+                          {selected.source}
+                        </span>
+                        {` · ${selected.tc}`}
+                      </>
+                    ),
+                    onClick:
+                      selected.source === "manual" ? undefined : () => setSource(selected.source),
+                  },
+                  {
+                    label: t("games.colDate"),
+                    wert: selected.date,
+                    // Aus der Datenbank kommt der ISO-Schlüssel, die
+                    // Demo-Partien tragen nur das gesetzte Datum · der Filter
+                    // nimmt beides an.
+                    onClick: () => setDateKey(selected.dateKey ?? selected.date),
+                  },
                   {
                     label: t("games.colOpening"),
                     wert: (
@@ -903,10 +1060,19 @@ export default function Games({
                         {selected.opening}
                       </>
                     ),
+                    onClick: () => setOpening(selected.opening),
                   },
                   {
-                    label: t("games.colAccuracy"),
-                    wert: selected.accuracy != null ? `${de(selected.accuracy)} %` : "—",
+                    // Nicht „Genauigkeit": Vorne steht die Zahl der Züge, die
+                    // Genauigkeit folgt ihr wie im Entwurf — zwei Angaben auf
+                    // einer Linie, und die Beschriftung nennt die erste.
+                    label: t("blatt.moves"),
+                    wert: [
+                      deInt(selected.moves),
+                      selected.accuracy != null ? `${de(selected.accuracy)} %` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
                   },
                 ]
               : []
@@ -915,7 +1081,6 @@ export default function Games({
           // wenn er schon da ist, sonst die Zeile aus der Liste.
           stichwoerter={selectedRecord?.tags ?? selected?.tags ?? []}
           stichwortVorsatz={selected?.analysisExcluded ? t("games.analysisExcludedTag") : undefined}
-          onStichwoerter={selected?.dbId ? saveTags : undefined}
           notiz={selectedRecord?.note ?? selected?.note ?? ""}
           von={rangeFrom}
           bis={rangeTo}
@@ -925,6 +1090,17 @@ export default function Games({
           onWeiter={() => setPage((value) => Math.min(totalPages, value + 1))}
           onWaehlen={(game) => setSelectedId(game.id)}
           onAnalyse={() => selected?.dbId != null && openAnalysis(selected.dbId)}
+          onOriginal={
+            selected && selected.source !== "manual"
+              ? () =>
+                  openExternal(
+                    selected.url ||
+                      (selected.source === "chess.com"
+                        ? `https://www.chess.com/games/archive/${myUser}`
+                        : `https://lichess.org/@/${myUser}/all`)
+                  )
+              : undefined
+          }
         />
       </Suspense>
     );

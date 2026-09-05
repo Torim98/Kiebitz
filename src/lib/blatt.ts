@@ -43,3 +43,37 @@ export function criticalPly(nags: readonly (string | undefined)[], moveCount: nu
   const index = [find("??"), find("?")].find((value) => value >= 0);
   return index == null ? moveCount : index;
 }
+
+/**
+ * Der Zeitraum, auf den das Partienverzeichnis eingeschränkt ist.
+ *
+ * Vier Stufen, mehr nicht: Ein Registerband kennt „alles", „heute", „dieser
+ * Monat", „dieses Jahr" — ein Datumsbereich mit zwei Kalendern wäre ein
+ * Werkzeug und kein Formularfeld.
+ */
+export const ZEITRAEUME = ["alle", "heute", "monat", "jahr"] as const;
+
+export type Zeitraum = (typeof ZEITRAEUME)[number];
+
+/**
+ * Die untere Grenze eines Zeitraums in Unix-Sekunden · 0 heißt „alle".
+ *
+ * Gerechnet wird in der Zeitzone des Geräts, weil „heute" das ist, was der
+ * Nutzer heute nennt, und nicht, was in UTC gerade gilt.
+ */
+export function zeitraumStart(zeitraum: Zeitraum, jetzt: Date = new Date()): number {
+  const grenze =
+    zeitraum === "heute"
+      ? new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate())
+      : zeitraum === "monat"
+        ? new Date(jetzt.getFullYear(), jetzt.getMonth(), 1)
+        : zeitraum === "jahr"
+          ? new Date(jetzt.getFullYear(), 0, 1)
+          : null;
+  return grenze ? Math.floor(grenze.getTime() / 1000) : 0;
+}
+
+/** Der nächste Zeitraum im Ringschluss · das Feld schaltet weiter. */
+export function naechsterZeitraum(zeitraum: Zeitraum): Zeitraum {
+  return ZEITRAEUME[(ZEITRAEUME.indexOf(zeitraum) + 1) % ZEITRAEUME.length];
+}
