@@ -102,6 +102,19 @@ function nagOf(judgment: string): string | undefined {
 }
 
 /**
+ * Das Datum im Formularkopf des Blatts · Tag und Monat zweistellig.
+ *
+ * Ein Formularfeld ist eine Tabelle, keine Prosa: „11.07.2026" steht in jeder
+ * Zeile gleich breit, „11.7.2026" hätte je nach Monat eine andere Länge.
+ * Ausgeschrieben steht dasselbe Datum in der Bildunterschrift darunter.
+ */
+const KURZDATUM: Intl.DateTimeFormatOptions = {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+};
+
+/**
  * Wann die Demo-Partie der Web-Vorschau gespielt wurde · `demoGames[0].date`
  * steht dort als fertiger deutscher Text, das Blatt braucht ein Datum, das es
  * in der Sprache der Oberfläche ausschreiben kann.
@@ -329,7 +342,7 @@ export default function Dashboard({
         schwarzElo: String(record.color === "white" ? record.opp_elo : record.my_elo),
         plattform: record.source ?? "",
         zeitform: record.time_class ?? "",
-        datum: new Date(record.played_ts * 1000).toLocaleDateString(dateLocale()),
+        datum: new Date(record.played_ts * 1000).toLocaleDateString(dateLocale(), KURZDATUM),
         datumLang: new Date(record.played_ts * 1000).toLocaleDateString(dateLocale(), {
           day: "numeric",
           month: "long",
@@ -379,7 +392,7 @@ export default function Dashboard({
         schwarzElo: "1448",
         plattform: demoGames[0]?.source ?? "",
         zeitform: demoGames[0]?.tc ?? "",
-        datum: DEMO_GESPIELT.toLocaleDateString(dateLocale()),
+        datum: DEMO_GESPIELT.toLocaleDateString(dateLocale(), KURZDATUM),
         datumLang: DEMO_GESPIELT.toLocaleDateString(dateLocale(), {
           day: "numeric",
           month: "long",

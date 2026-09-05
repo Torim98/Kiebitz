@@ -37,7 +37,7 @@ import { translateSan } from "../../lib/notation";
 import { criticalPly } from "../../lib/blatt";
 import { fenAfter, fenAfterUci } from "../../lib/position";
 import { dateLocale, deInt } from "../../lib/format";
-import { MarkenSchluessel, PartieZeile } from "../../components/blatt/PartieZeile";
+import { PartieZeile } from "../../components/blatt/PartieZeile";
 import type { UiGame } from "../../lib/gameUi";
 import type { DiagramSource } from "../../lib/blatt";
 
@@ -573,8 +573,6 @@ export default function DashboardBlatt({
     </div>
   );
 
-  // Die beiden Quadrate am Zeilenende sagen von sich aus nichts · unter der
-  // Liste steht, was sie bedeuten, wie unter jedem Register.
   const partienZeilen = (
     <div>
       {letzte.map((g) => (
@@ -587,9 +585,6 @@ export default function DashboardBlatt({
           onClick={() => onPartie(g)}
         />
       ))}
-      {letzte.length > 0 && (
-        <MarkenSchluessel notiz={t("blatt.markNote")} offen={t("blatt.markOpen")} />
-      )}
     </div>
   );
 
