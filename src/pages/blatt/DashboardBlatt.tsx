@@ -514,15 +514,20 @@ export default function DashboardBlatt({
     </div>
   );
 
+  // Der Wochentag gehört auf das Blatt: eine Seite trägt oben, an welchem Tag
+  // sie gesetzt wurde. Auf dem Telefon bleibt der Monat abgekürzt, damit der
+  // Kolumnentitel links nicht abgeschnitten wird.
   const kopfDatum = heute.toLocaleDateString(dateLocale(), {
+    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
   const kurzDatum = heute.toLocaleDateString(dateLocale(), {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
   });
 
   const diagrammBlock = diagramm && (
