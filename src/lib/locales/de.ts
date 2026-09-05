@@ -217,7 +217,6 @@ export const de = {
   "an.toEnd": "Ans Ende",
   "an.prevGame": "Vorherige Partie",
   "an.nextGame": "Nächste Partie",
-  "an.batchRuns": "Mehrere Partien",
   "an.me": "Ich",
   "an.meLower": "ich",
   "an.inaccuracy": "Ungenauigkeit",
@@ -244,7 +243,6 @@ export const de = {
   "an.analyze": "Analysieren",
   "an.reanalyze": "Neu analysieren",
   "an.analyzeThis": "Diese Partie analysieren",
-  "an.nextTen": "Nächste 10 ({n} offen)",
   "an.analyzeAll": "Alle analysieren ({n} offen)",
   "an.aborted": "Analyse abgebrochen: {e}",
   "an.stopped": "Analyse gestoppt · {n} Partien fertig.",
@@ -434,6 +432,7 @@ export const de = {
   "rep.sessionResult": "{ok} richtig · {fail} falsch · falsche Züge kommen in ~10 Minuten wieder.",
   "rep.allLearned": "Alle Repertoire-Züge sind gelernt. Komm später wieder oder ergänze neue Varianten.",
   "rep.freeTraining": "Frei üben",
+  "rep.freeTrainingShort": "Frei",
   "rep.freeTag": "frei",
   "rep.freeNote": "Freies Üben: gewürfelte Reihenfolge aus dem ganzen Buch. Der Wiederholungsplan bleibt unberührt.",
   "rep.freeResult": "{ok} richtig · {fail} falsch · frei geübt, der Plan bleibt wie er war.",
@@ -709,6 +708,7 @@ export const de = {
   "eg.randomHint": "Erzeugt eine zufällige, theoretisch entschiedene Stellung · dieselbe Technik, aber jedes Mal neu aufgestellt.",
   "eg.randomStart": "Zufallsstellung starten",
   "eg.randomNext": "Nächste Zufallsstellung",
+  "eg.nextShort": "Nächste",
   "eg.engineNote": "Die Engine spielt die Gegenseite. Mit Syzygy-Tablebases (Einstellungen → Engine) verteidigt sie perfekt.",
 
   // ── Study (Coach + Lernplan) ───────────────────────────────────────────────

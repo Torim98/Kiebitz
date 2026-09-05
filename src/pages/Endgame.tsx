@@ -385,8 +385,23 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
     return (
       <div className="mt-3 min-h-[52px]">
         {status === "solved" || status === "failed" ? (
+          /* Der Schlussstand · Urteil und die Wege, die daraus folgen.
+             Nebeneinander passt beides nur auf dem Rechner. Auf einem 360 px
+             breiten Schirm brach die Reihe früher mitten zwischen den Knöpfen
+             um: die Meldung oben, darunter „Neu starten" und das Zeichen an
+             der rechten Kante, ganz unten allein der laute Knopf — drei
+             Zeilen, die nichts miteinander zu tun zu haben schienen.
+
+             In der App stehen deshalb zwei saubere Zeilen: der Satz, darunter
+             die Knopfreihe, in der die Nebenwege links und der Weg nach vorn
+             rechts steht. Damit die drei nebeneinander bleiben, heißt der Weg
+             nach vorn dort nur „Nächste" · gegenüber von „Nochmal" sagt das
+             Wort allein schon alles, und „Nächste Zufallsstellung" hätte die
+             Reihe erneut umbrechen lassen. */
           <div
-            className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg px-4 py-2.5 ${
+            className={`flex w-full gap-2 rounded-lg px-4 py-2.5 ${
+              mobile ? "flex-col" : "flex-wrap items-center justify-between"
+            } ${
               status === "solved"
                 ? "border border-accent-dim bg-accent-soft"
                 : "border border-loss-dim bg-loss-soft"
@@ -400,10 +415,6 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               {status === "solved" ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
               {endMsg ? t(endMsg) : ""}
             </div>
-            {/* Auch die Knopfreihe bricht um · „Nächste Zufallsstellung" neben
-                „Neu starten" und dem Teilen-Symbol ist auf einem 360 px
-                breiten Schirm länger als die Zeile, und ohne Umbruch lief sie
-                im Fokus über die Kante hinaus. */}
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button onClick={() => start(drill)}>
                 <RotateCcw size={14} /> {t("eg.retry")}
@@ -411,13 +422,13 @@ export default function Endgame({ initialCategory }: { initialCategory?: Endgame
               {nebenaktionen(inFocus)}
               {/* Nach einer Zufallsaufgabe kommt die nächste Zufallsaufgabe. */}
               {status === "solved" && drill.category === "random" && (
-                <Button primary onClick={() => start(randomDrill())}>
-                  <Shuffle size={15} /> {t("eg.randomNext")}
+                <Button primary className={mobile ? "ms-auto" : ""} onClick={() => start(randomDrill())}>
+                  <Shuffle size={15} /> {t(mobile ? "eg.nextShort" : "eg.randomNext")}
                 </Button>
               )}
               {status === "solved" && drill.category !== "random" && nextUnsolved() && (
-                <Button primary onClick={() => start(nextUnsolved()!)}>
-                  <SkipForward size={15} /> {t("eg.nextDrill")}
+                <Button primary className={mobile ? "ms-auto" : ""} onClick={() => start(nextUnsolved()!)}>
+                  <SkipForward size={15} /> {t(mobile ? "eg.nextShort" : "eg.nextDrill")}
                 </Button>
               )}
             </div>

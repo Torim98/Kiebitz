@@ -236,6 +236,7 @@ export function Menu({
   icon,
   leading,
   className = "",
+  block = false,
   children,
 }: {
   label: string;
@@ -261,6 +262,12 @@ export function Menu({
   leading?: ReactNode;
   /** Klassen der Schaltfläche · für Leisten, die selbst über die Breite wachen. */
   className?: string;
+  /**
+   * Über die ganze Zeile · für Leisten, in denen das Menü die Hauptaktion ist
+   * und allein in seiner Zeile steht. Ein Knopf, der dort rechts klebt und den
+   * Rest der Zeile leer lässt, sieht aus wie ein Rest, nicht wie ein Angebot.
+   */
+  block?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -285,7 +292,7 @@ export function Menu({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative min-w-0">
+    <div ref={ref} className={`relative min-w-0 ${block ? "w-full" : ""}`}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -293,7 +300,7 @@ export function Menu({
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={buttonCls(primary, className, compact)}
+        className={buttonCls(primary, `${block ? "w-full" : ""} ${className}`, compact)}
       >
         {leading}
         {!compact && label}
@@ -307,7 +314,12 @@ export function Menu({
           // Ein Eintrag im Menü führt immer irgendwohin · danach hat das Blatt
           // seine Aufgabe erfüllt.
           onClick={() => setOpen(false)}
-          className={`absolute z-40 flex min-w-[240px] flex-col gap-0.5 rounded-xl border border-line2 bg-panel p-1.5 shadow-2xl shadow-black/40 ${
+          // `w-max` statt der Breite, die sich aus der Lage ergibt: Ein
+          // absolut gesetztes Blatt darf von Haus aus nur so breit werden wie
+          // sein Anker, und aus „Alle analysieren (1 offen)" wurden neben dem
+          // Plus-Hinweis drei gestapelte Wortfetzen. Es misst sich jetzt an
+          // seinem längsten Eintrag und erst dann am Schirm.
+          className={`absolute z-40 flex w-max min-w-[240px] max-w-[calc(100vw-1.5rem)] flex-col gap-0.5 rounded-xl border border-line2 bg-panel p-1.5 shadow-2xl shadow-black/40 ${
             up ? "bottom-full mb-1.5" : "top-full mt-1.5"
           } ${
             align === "end" ? "right-0" : "left-0"
@@ -335,7 +347,7 @@ export function MenuItem({
       role="menuitem"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] text-ink2 transition-colors hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0"
+      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] leading-snug text-ink2 transition-colors hover:bg-panel2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-45 [&>svg]:shrink-0"
     >
       {children}
     </button>

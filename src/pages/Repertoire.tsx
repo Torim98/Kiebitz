@@ -471,6 +471,13 @@ function LiveRepertoire() {
   const [mode, setMode] = useState<"browse" | "add" | "train" | "free">("browse");
   /** Zug, mit dem der Baukasten aufgeht, wenn er vom Brett aus gestartet wurde. */
   const [seedSans, setSeedSans] = useState<string[]>([]);
+  /**
+   * Ob der Baukasten gleich im Fokus aufgehen soll.
+   *
+   * Wer im Fokus-Brett einen Zug spielt, will weiterziehen und nicht die Seite
+   * wechseln · der Baukasten geht dahinter auf, das Brett bleibt vorn.
+   */
+  const [seedFocused, setSeedFocused] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [limits, setLimits] = useState<{ due: number; fresh: number }>({ due: 20, fresh: 5 });
   const now = Math.floor(Date.now() / 1000);
@@ -735,6 +742,7 @@ function LiveRepertoire() {
         <button
           onClick={() => {
             setSeedSans([]);
+            setSeedFocused(false);
             setMode("add");
           }}
           className="flex w-full items-center gap-2 rounded-lg border border-dashed border-line2 px-3 py-2 text-left text-[12.5px] text-ink3 transition-colors hover:border-accent-dim hover:text-accent"
@@ -771,6 +779,9 @@ function LiveRepertoire() {
     });
   };
 
+  /** Brett allein · siehe components/FocusBoard.tsx. */
+  const [focused, setFocused] = useState(false);
+
   /**
    * Ein Zug auf dem Brett der Übersicht ist eine Absichtserklaerung: hier
    * soll etwas ins Buch. Statt ihn wirkungslos verpuffen zu lassen, oeffnet er
@@ -782,13 +793,18 @@ function LiveRepertoire() {
       const chess = new Chess(fen);
       const move = chess.move({ from, to, promotion: "q" });
       setSeedSans([move.san]);
+      // Aus dem Fokus heraus gezogen, bleibt der Fokus · der Baukasten
+      // übernimmt ihn mit dem Zug, der ihn geöffnet hat. Das eigene Fokus-Brett
+      // der Übersicht geht dabei zu: Es hat den Zug schon abgegeben, und beim
+      // Zurückkommen aus dem Baukasten will man die Liste sehen.
+      setSeedFocused(focused);
+      setFocused(false);
       setMode("add");
       return true;
     } catch {
       return false;
     }
   };
-  const [focused, setFocused] = useState(false);
   const browseSelection = useBoardSelection(fen, startFromMove);
 
   /**
@@ -977,8 +993,13 @@ function LiveRepertoire() {
              teilen sich dort eine volle Zeile, statt umzubrechen. Untereinander
              las sich der freie Lauf wie eine Nachrangigkeit · dabei ist er an
              jedem Tag ohne fällige Wiederholung der einzige Weg, der etwas
-             hergibt. Beide dürfen schrumpfen (`flex-auto`, `min-w-0`), der
-             längere Name behält dabei seinen Vorsprung. */
+             hergibt.
+
+             Geteilt wird die Zeile aber nicht mehr hälftig: „Frei üben" heißt
+             auf dem Telefon nur „Frei" und behält damit seine volle
+             Beschriftung, statt als „Frei üb…" dazustehen. Was übrig bleibt,
+             gehört dem Trainingsknopf, dessen Zahl in Klammern sonst als
+             Erstes verschwindet. */
           <div className={compact ? "flex w-full items-center gap-2" : "flex flex-wrap items-center gap-2"}>
             <Button
               primary={dueTotal > 0}
@@ -997,10 +1018,12 @@ function LiveRepertoire() {
                 primary={dueTotal === 0}
                 onClick={() => setMode("free")}
                 title={t("rep.freeNote")}
-                className={compact ? "min-w-0 flex-auto" : ""}
+                className={compact ? "shrink-0" : ""}
               >
                 <Shuffle size={16} />
-                <span className="truncate">{t("rep.freeTraining")}</span>
+                <span className="truncate">
+                  {t(compact ? "rep.freeTrainingShort" : "rep.freeTraining")}
+                </span>
               </Button>
             )}
           </div>
@@ -1036,9 +1059,11 @@ function LiveRepertoire() {
           baseSans={baseSans}
           baseSide={selected?.side ?? null}
           seedSans={seedSans}
+          startFocused={seedFocused}
           onDone={(err) => {
             setMode("browse");
             setSeedSans([]);
+            setSeedFocused(false);
             if (err) setNotice(err);
             reload();
           }}
@@ -1416,12 +1441,18 @@ function AddLine({
   baseSans,
   baseSide,
   seedSans = [],
+  startFocused = false,
   onDone,
 }: {
   baseSans: string[];
   baseSide: "white" | "black" | null;
   /** Züge, die schon auf dem Brett standen, als der Baukasten aufging. */
   seedSans?: string[];
+  /**
+   * Gleich im Fokus aufgehen · wenn der Zug, der den Baukasten geöffnet hat,
+   * im Fokus-Brett der Übersicht gespielt wurde.
+   */
+  startFocused?: boolean;
   onDone: (err?: string) => void;
 }) {
   const t = useT();
@@ -1432,7 +1463,7 @@ function AddLine({
   const [book, setBook] = useState<ChessDbResult | null>(null);
   const [twins, setTwins] = useState<RepNode[]>([]);
   /** Brett allein · siehe components/FocusBoard.tsx. */
-  const [focused, setFocused] = useState(false);
+  const [focused, setFocused] = useState(startFocused);
   const chessRef = useRef<Chess>(new Chess());
 
   const sans = useMemo(() => [...baseSans, ...draft], [baseSans, draft]);

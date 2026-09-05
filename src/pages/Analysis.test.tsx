@@ -240,8 +240,8 @@ describe("Analysis page", () => {
     render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
 
     await gameOnBoard("7");
-    expect(screen.queryByRole("button", { name: /Nächste 10/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Diese Partie analysieren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Analysieren" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Diese Partie analysieren" }));
     expect(mocks.startAnalysis).toHaveBeenCalledWith({ gameIds: [7] });
   });
 
@@ -328,35 +328,35 @@ describe("Analysis page", () => {
     });
 
     /**
-     * Die Stapelläufe stehen im Menü · in der Leiste soll genau eine
+     * Beide Läufe stehen in einem Knopf · in der Leiste soll genau eine
      * Schaltfläche laut sein.
      */
-    it("keeps the batch runs in a menu next to the primary action", async () => {
+    it("keeps both analysis runs in one menu behind a single button", async () => {
       mocks.listGames.mockResolvedValue(twoGames);
       render(<LocaleProvider><Analysis targetGameId={7} /></LocaleProvider>);
       await gameOnBoard("7");
 
       // Zugeklappt ist die Leiste eine Zeile mit einem Hauptknopf.
       expect(screen.queryByRole("menuitem", { name: /Alle analysieren/ })).toBeNull();
-      expect(screen.getByRole("button", { name: "Diese Partie analysieren" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Diese Partie analysieren" })).toBeNull();
 
-      const trigger = screen.getByRole("button", { name: "Mehrere Partien" });
+      const trigger = screen.getByRole("button", { name: "Analysieren" });
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
       fireEvent.click(trigger);
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
-      // Zwei offene Partien sind keine Zehnerportion · dann steht dort der
-      // eine Lauf, den es wirklich gibt.
+      expect(screen.getByRole("menuitem", { name: /Diese Partie analysieren/ })).toBeTruthy();
       expect(screen.getByRole("menuitem", { name: /Alle analysieren/ })).toBeTruthy();
+      // Die Zehnerportion ist fort · anhalten kann man den Lauf jederzeit.
       expect(screen.queryByRole("menuitem", { name: /Nächste 10/ })).toBeNull();
     });
 
     /**
-     * In der App wird aus den beiden ein Knopf.
+     * Auf dem Telefon nimmt derselbe Knopf die ganze Zeile.
      *
      * „Diese Partie analysieren" neben „Mehrere Partien" passt auf 360 px
      * nicht in eine Zeile; untereinander gestellt hatte die Leiste zwei
-     * Hauptknöpfe übereinander. Ein Knopf, und alle drei Wege stehen darin.
+     * Hauptknöpfe übereinander. Ein Knopf, zwei Wege darin.
      */
     it("merges both analysis controls into one button on the phone", async () => {
       mocks.listGames.mockResolvedValue(twoGames);

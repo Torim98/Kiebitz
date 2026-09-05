@@ -19,7 +19,7 @@ import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "luci
 import type { PageId } from "../../lib/nav";
 import { deInt } from "../../lib/format";
 import { useT, type Key } from "../../lib/i18n";
-import { taglineKey } from "../../lib/tagline";
+import { COMPACT_LIMIT, taglineKey, taglineWidth } from "../../lib/tagline";
 import PlanBadge from "../PlanBadge";
 import "./blatt.css";
 
@@ -257,7 +257,7 @@ export function RegisterAppBar({
       {/* Das Kapitel steht im Buchsatz neben der Marke · aufrecht, wenn es
           eine Seite gibt, und als Claim auf dem Start. */}
       <span className="buch min-w-0 flex-1 truncate px-2 text-[14.5px] text-ink3">
-        · {title ?? t(taglineKey())}
+        · {title ?? t(taglineKey((key) => taglineWidth(t(key)) <= COMPACT_LIMIT))}
       </span>
       <PlanBadge />
       <button

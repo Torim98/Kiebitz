@@ -9,7 +9,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Bird, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import { useT, type Key } from "../lib/i18n";
-import { taglineKey } from "../lib/tagline";
+import { COMPACT_LIMIT, taglineKey, taglineWidth } from "../lib/tagline";
 import type { PageId } from "../lib/nav";
 import PlanBadge from "./PlanBadge";
 
@@ -67,6 +67,9 @@ export function MobileAppBar({
   settingsActive: boolean;
 }) {
   const t = useT();
+  // Neben der Marke bleibt auf 360 px nur eine Handbreit für den Claim · was
+  // dort nicht ganz hinpasst, wird gar nicht erst gezogen (siehe lib/tagline).
+  const claim = title ?? t(taglineKey((key) => taglineWidth(t(key)) <= COMPACT_LIMIT));
   return (
     <header
       className="mobile-app-bar flex shrink-0 items-center gap-0.5 border-b border-line bg-panel pb-2"
@@ -88,7 +91,7 @@ export function MobileAppBar({
           Start ist das der Claim, sonst der Seitenname. */}
       <span className="min-w-0 flex-1 truncate px-2 text-[15px] tracking-tight">
         <span className="font-semibold">Kiebitz</span>
-        <span className="text-ink3"> · {title ?? t(taglineKey())}</span>
+        <span className="text-ink3"> · {claim}</span>
       </span>
       {/* Welches Modell gerade gilt, gehört neben die Marke · nicht erst in die
           Einstellungen, wo man es suchen müsste. */}

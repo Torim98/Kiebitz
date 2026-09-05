@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LocaleProvider } from "../lib/i18n";
+import { grantPlus, revokePlus } from "../test/plus";
 import { ShellProvider } from "../components/MobileShell";
 import { fenAfter } from "../lib/position";
 import type { RepNode } from "../lib/repertoire";
@@ -132,6 +133,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // Ohne Zurücksetzen liefe der nächste Test unbemerkt mit Plus weiter.
+  revokePlus();
 });
 
 async function startTraining() {
@@ -183,6 +186,35 @@ describe("Repertoire training", () => {
     expect(
       await screen.findByText("Wähle unten eine Variante · oder lege mit „Variante hinzufügen“ los.")
     ).toBeTruthy();
+  });
+
+  /**
+   * „Frei üben" heißt auf dem Telefon nur „Frei".
+   *
+   * Neben dem Trainingsknopf mit seiner Zahl blieb für den vollen Namen keine
+   * Breite · er stand als „Frei üb…" da. Ein Wort sagt dasselbe und steht ganz.
+   */
+  it("shortens the free-practice button on the phone", async () => {
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <ShellProvider mobile>
+          <Repertoire />
+        </ShellProvider>
+      </LocaleProvider>
+    );
+
+    expect(await screen.findByRole("button", { name: "Frei" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Frei üben" })).toBeNull();
+
+    cleanup();
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+    // Auf dem Rechner bleibt der volle Name stehen.
+    expect(await screen.findByRole("button", { name: "Frei üben" })).toBeTruthy();
   });
 
   it("shows named variation lines and navigates lines and positions with the keyboard", async () => {
@@ -425,6 +457,64 @@ describe("Repertoire deleting and building", () => {
     const board = await screen.findByTestId("board-rep-add");
     expect(board.dataset.fen).toBe(fenAfter(["d4"]));
     expect(screen.getByRole("button", { name: "Speichern (1 Zug)" })).toBeTruthy();
+  });
+
+  /**
+   * Aus dem Fokus gezogen, bleibt man im Fokus.
+   *
+   * Ein Zug auf dem Brett der Übersicht öffnet den Baukasten. Wer dabei im
+   * Fokus-Brett stand, wollte dort weiterziehen und nicht auf eine andere
+   * Seite geworfen werden · der Baukasten geht hinter dem Brett auf.
+   */
+  it("keeps the focus board open when a move starts a new variation", async () => {
+    grantPlus();
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    await screen.findByTestId("board-repertoire");
+    fireEvent.click(screen.getByRole("button", { name: "Fokus-Brett öffnen" }));
+    expect(screen.getByTestId("board-repertoire-focus")).toBeTruthy();
+
+    mocks.drop = { from: "d2", to: "d4" };
+    fireEvent.click(screen.getByTestId("play-repertoire-focus"));
+
+    // Der Baukasten steht dahinter, das Brett im Fokus zeigt den Zug · und
+    // weiterziehen lässt es sich dort auch.
+    const focus = await screen.findByTestId("board-rep-add-focus");
+    expect(focus.dataset.fen).toBe(fenAfter(["d4"]));
+    expect(screen.getByTestId("board-rep-add")).toBeTruthy();
+    mocks.drop = { from: "d7", to: "d5" };
+    fireEvent.click(screen.getByTestId("play-rep-add-focus"));
+    await waitFor(() =>
+      expect(screen.getByTestId("board-rep-add-focus").dataset.fen).toBe(fenAfter(["d4", "d5"]))
+    );
+
+    // Zu ist der Fokus erst, wenn man ihn schließt · dann steht der Baukasten da.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("board-rep-add-focus")).toBeNull();
+    expect(screen.getByRole("button", { name: "Speichern (2 Züge)" })).toBeTruthy();
+  });
+
+  /** Ohne Fokus bleibt es beim gewohnten Weg · der Baukasten als Seite. */
+  it("opens the builder as a page when the move came from the page board", async () => {
+    grantPlus();
+    mocks.repList.mockResolvedValue(variationTree());
+    render(
+      <LocaleProvider>
+        <Repertoire />
+      </LocaleProvider>
+    );
+
+    await screen.findByTestId("board-repertoire");
+    mocks.drop = { from: "d2", to: "d4" };
+    fireEvent.click(screen.getByTestId("play-repertoire"));
+
+    await screen.findByTestId("board-rep-add");
+    expect(screen.queryByTestId("board-rep-add-focus")).toBeNull();
   });
 
   it("takes a move back with the left arrow key", async () => {

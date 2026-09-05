@@ -5,6 +5,21 @@ import { ShellProvider } from "../components/MobileShell";
 
 const engineMove = vi.hoisted(() => vi.fn(() => new Promise<string>(() => {})));
 
+const mocks = vi.hoisted(() => ({
+  /** Die Zufallsaufgabe, die die Seite bekommt · Tests dürfen sie tauschen. */
+  drill: {
+    id: "rnd-kr-k",
+    category: "random",
+    side: "white",
+    goal: "win",
+    fen: "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+    name: { de: "Zufall: Turm gegen König", en: "Random: rook vs. king" },
+    hint: { de: "Hinweis", en: "Hint" },
+  },
+  /** Der Zug, den ein Klick auf das Brett-Double auslöst. */
+  drop: { from: "a1", to: "a2" },
+}));
+
 vi.mock("../lib/backend", () => ({
   useBackendInfo: () => ({ mode: "desktop", info: { platform: "windows" } }),
 }));
@@ -25,15 +40,7 @@ vi.mock("../lib/endgame", () => ({
 }));
 
 vi.mock("../lib/randomEndgame", () => ({
-  randomDrill: () => ({
-    id: "rnd-kr-k",
-    category: "random",
-    side: "white",
-    goal: "win",
-    fen: "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
-    name: { de: "Zufall: Turm gegen König", en: "Random: rook vs. king" },
-    hint: { de: "Hinweis", en: "Hint" },
-  }),
+  randomDrill: () => mocks.drill,
 }));
 
 vi.mock("../components/Board", () => ({
@@ -44,7 +51,11 @@ vi.mock("../components/Board", () => ({
     fen: string;
     onPieceDrop: (from: string, to: string) => boolean;
   }) => (
-    <button data-testid="endgame-board" data-fen={fen} onClick={() => onPieceDrop("a1", "a2")}>
+    <button
+      data-testid="endgame-board"
+      data-fen={fen}
+      onClick={() => onPieceDrop(mocks.drop.from, mocks.drop.to)}
+    >
       make move
     </button>
   ),
@@ -60,7 +71,26 @@ vi.mock("../components/ShareDialog", () => ({
 afterEach(() => {
   cleanup();
   engineMove.mockClear();
+  mocks.drill = {
+    id: "rnd-kr-k",
+    category: "random",
+    side: "white",
+    goal: "win",
+    fen: "4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+    name: { de: "Zufall: Turm gegen König", en: "Random: rook vs. king" },
+    hint: { de: "Hinweis", en: "Hint" },
+  };
+  mocks.drop = { from: "a1", to: "a2" };
 });
+
+/** Matt in einem Zug · der kürzeste Weg zum Schlussstand einer Aufgabe. */
+function mateInOne() {
+  mocks.drill = {
+    ...mocks.drill,
+    fen: "7k/8/6K1/8/8/8/1Q6/8 w - - 0 1",
+  };
+  mocks.drop = { from: "b2", to: "b8" };
+}
 
 describe("Endgame trainer", () => {
   it("starts with a random position by default", () => {
@@ -119,6 +149,46 @@ describe("Endgame trainer", () => {
     fireEvent.click(screen.getByRole("button", { name: "an.boardActions" }));
     expect(screen.getByRole("menuitem", { name: "sh.title" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /board.focus/ })).toBeTruthy();
+  });
+
+  /**
+   * Der Schlussstand · auf dem Telefon zwei Zeilen statt drei.
+   *
+   * Nebeneinander passten Meldung und Knopfreihe dort nie; die Reihe brach
+   * mitten zwischen den Knöpfen um und ließ „Nächste Zufallsstellung" allein
+   * in einer dritten Zeile stehen. Jetzt steht der Satz oben, die Knöpfe
+   * darunter in einer Reihe · und der Weg nach vorn heißt dort nur „Nächste".
+   */
+  it("stacks the result over its buttons on the phone", () => {
+    mateInOne();
+    render(
+      <ShellProvider mobile>
+        <Endgame />
+      </ShellProvider>
+    );
+
+    fireEvent.click(screen.getByTestId("endgame-board"));
+
+    const weiter = screen.getByRole("button", { name: "eg.nextShort" });
+    expect(screen.queryByRole("button", { name: "eg.randomNext" })).toBeNull();
+    expect(screen.getByRole("button", { name: /eg.retry/ })).toBeTruthy();
+    // Meldung und Knopfreihe stehen untereinander im selben Kasten.
+    const kasten = weiter.closest("div.rounded-lg")!;
+    expect(kasten.className).toContain("flex-col");
+    expect(kasten.firstElementChild!.textContent).toContain("eg.successWin");
+  });
+
+  /** Auf dem Rechner ist Platz für den vollen Namen · und für eine Zeile. */
+  it("keeps the result and its buttons on one line on the desktop", () => {
+    mateInOne();
+    render(<Endgame />);
+
+    fireEvent.click(screen.getByTestId("endgame-board"));
+
+    const weiter = screen.getByRole("button", { name: "eg.randomNext" });
+    const kasten = weiter.closest("div.rounded-lg")!;
+    expect(kasten.className).not.toContain("flex-col");
+    expect(kasten.className).toContain("justify-between");
   });
 
   it("keeps both handles side by side on the desktop", () => {

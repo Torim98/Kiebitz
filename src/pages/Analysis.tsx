@@ -22,7 +22,6 @@ import {
   Cpu,
   FlipVertical2,
   Layers,
-  ListChecks,
   Loader2,
   MoreHorizontal,
   Save,
@@ -1671,7 +1670,7 @@ export default function Analysis({
   };
   const stapelBadge = !batchGate.unlocked && !batchGate.pending ? <PlusBadge /> : null;
 
-  /** „Diese Partie analysieren" als Menüeintrag · nur die App braucht ihn. */
+  /** „Diese Partie analysieren" · der erste Weg im Menü. */
   const dieseAnalysieren = selectedId != null && (
     <MenuItem onClick={analysiereDiese}>
       <Zap size={15} /> {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
@@ -1679,23 +1678,18 @@ export default function Analysis({
   );
 
   /**
-   * Die Zehnerportion steht nur da, wo sie etwas anderes ist als „alle": Bei
-   * acht offenen Partien wären es zwei Einträge für denselben Lauf, und genau
-   * der eine, den man dann sucht — „Alle analysieren" — fehlte.
+   * Der Stapel · alles, was noch offen ist.
+   *
+   * Eine Zehnerportion stand hier einmal daneben. Sie war die vorsichtige
+   * Antwort auf einen Lauf, den man nicht überblickt — aber der Lauf lässt
+   * sich jederzeit anhalten, und damit war sie nur ein zweiter Eintrag für
+   * dieselbe Sache, zwischen dem man sich entscheiden musste.
    */
-  const stapelEintraege = unanalyzed.length > 0 && (
-    <>
-      {unanalyzed.length > 10 && (
-        <MenuItem onClick={() => starteStapel({ limit: 10 })}>
-          <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
-          {stapelBadge}
-        </MenuItem>
-      )}
-      <MenuItem onClick={() => starteStapel({})}>
-        <Layers size={15} /> {t("an.analyzeAll", { n: unanalyzed.length })}
-        {stapelBadge}
-      </MenuItem>
-    </>
+  const stapelEintrag = unanalyzed.length > 0 && (
+    <MenuItem onClick={() => starteStapel({})}>
+      <Layers size={15} /> {t("an.analyzeAll", { n: unanalyzed.length })}
+      {stapelBadge}
+    </MenuItem>
   );
 
   const laufleiste = desktop ? (
@@ -1791,46 +1785,33 @@ export default function Analysis({
           </Button>
         </>
       ) : (
-        /* Rechts steht genau eine laute Schaltfläche: die Partie, die
-           gerade offen ist, rechnen zu lassen. Die Stapelläufe darunter
-           sind eine Entscheidung pro Import, keine pro Sitzung · als
-           vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
-           dass die Leiste keinen Hauptknopf mehr hatte.
+        /* Ein Knopf, zwei Wege · die Partie, die gerade offen ist, und der
+           Stapel über alles, was noch aussteht.
 
-           In der App wird aus beiden ein einziger Knopf: „Diese Partie
-           analysieren" und „Mehrere Partien" nebeneinander passen auf 360 px
-           nicht in eine Zeile, und untereinander gestellt hatte die Leiste
-           zwei Hauptknöpfe übereinander. Ein Knopf, drei Wege — die Partie,
-           die nächsten zehn, alle. */
+           Beides als eigener Knopf nebeneinander hatte die Leiste um ihren
+           Hauptknopf gebracht: zwei gleich laute Angebote, zwischen denen man
+           sich erst entscheiden musste, bevor man rechnen ließ. Auf 360 px kam
+           dazu, dass „Diese Partie analysieren" und „Mehrere Partien" nicht in
+           eine Zeile passten. Auf dem Rechner steht jetzt dasselbe wie in der
+           App: „Analysieren" mit einem Blatt darunter.
+
+           In der App nimmt der Knopf die ganze Zeile · rechts angeklebt ließ
+           er die halbe Leiste leer stehen. */
         <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:shrink-0">
-          {mobile ? (
-            (selectedId != null || unanalyzed.length > 0) && (
-              <Menu label={t("an.analyze")} primary leading={<Zap size={14} />}>
-                {dieseAnalysieren}
-                {stapelEintraege}
-              </Menu>
-            )
-          ) : (
-            <>
-              {selectedId != null && (
-                <Button
-                  primary
-                  className="max-sm:px-2.5"
-                  onClick={analysiereDiese}
-                >
-                  <Zap size={14} />
-                  {analyzedRows ? t("an.reanalyze") : t("an.analyzeThis")}
-                </Button>
-              )}
+          {(selectedId != null || unanalyzed.length > 0) && (
+            <Menu
+              label={t("an.analyze")}
+              primary
+              block={mobile}
+              leading={<Zap size={14} />}
+              className="max-sm:px-2.5"
+            >
+              {dieseAnalysieren}
               {/* Eine Partie analysieren bleibt frei. Der Lauf über die ganze
                   Historie ist die automatische Hintergrundanalyse und damit
                   eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
-              {unanalyzed.length > 0 && (
-                <Menu label={t("an.batchRuns")} className="max-sm:px-2.5">
-                  {stapelEintraege}
-                </Menu>
-              )}
-            </>
+              {stapelEintrag}
+            </Menu>
           )}
         </div>
       )}

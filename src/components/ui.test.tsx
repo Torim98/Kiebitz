@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { Button, Tag, SourceBadge } from "./ui";
+import { Button, Menu, MenuItem, Tag, SourceBadge } from "./ui";
 
 describe("Button", () => {
   it("renders its children and fires onClick", () => {
@@ -23,6 +23,36 @@ describe("Button", () => {
     const cls = screen.getByRole("button").className;
     expect(cls).toContain("whitespace-nowrap");
     expect(cls).toContain("[&>svg]:shrink-0");
+  });
+});
+
+describe("Menu", () => {
+  /**
+   * Das Blatt misst sich an seinem längsten Eintrag.
+   *
+   * Ein absolut gesetztes Blatt darf von Haus aus nur so breit werden wie sein
+   * Anker · daran ist „Alle analysieren (1 offen)" neben dem Plus-Hinweis in
+   * drei gestapelte Wortfetzen zerfallen. `w-max` löst es davon, der Schirm
+   * bleibt die Grenze.
+   */
+  it("sizes its sheet to the longest entry, capped by the screen", () => {
+    render(
+      <Menu label="Analysieren">
+        <MenuItem>Alle analysieren (12 offen)</MenuItem>
+      </Menu>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Analysieren" }));
+    const cls = screen.getByRole("menu").className;
+    expect(cls).toContain("w-max");
+    expect(cls).toContain("max-w-[calc(100vw-1.5rem)]");
+  });
+
+  /** Ist das Menü die Hauptaktion seiner Zeile, nimmt es die ganze Zeile. */
+  it("fills its row when it is the main action", () => {
+    const { rerender } = render(<Menu label="Analysieren"><MenuItem>Alle</MenuItem></Menu>);
+    expect(screen.getByRole("button", { name: "Analysieren" }).className).not.toContain("w-full");
+    rerender(<Menu label="Analysieren" block><MenuItem>Alle</MenuItem></Menu>);
+    expect(screen.getByRole("button", { name: "Analysieren" }).className).toContain("w-full");
   });
 });
 
