@@ -45,6 +45,15 @@ export interface GameSummary {
   analyzed: boolean;
   /** In Bibliothek behalten, aber aus Engine- und Statistik-Analysen auslassen. */
   analysis_excluded?: boolean;
+  /**
+   * Das Fazit der Auto-Analyse als JSON-Liste von `{key, params}` ·
+   * Sätze macht daraus `erklaereFazit` in lib/erklaerung.ts.
+   *
+   * Nur der Einzeldatensatz trägt es. Die Listenabfragen lassen es weg, weil
+   * ein Absatz je Partie über 1.500 Partien Nutzlast wäre, die dort niemand
+   * liest.
+   */
+  verdict?: string;
 }
 
 export interface GameRecord extends GameSummary {

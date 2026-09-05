@@ -8,7 +8,7 @@ pub struct Db(pub Mutex<Connection>);
 
 /// Current SQLite schema version. It is stored only after the complete
 /// migration has committed successfully.
-const SCHEMA_VERSION: i64 = 19;
+const SCHEMA_VERSION: i64 = 20;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameRecord {
@@ -69,6 +69,13 @@ pub struct GameRecord {
     /// daraus abgeleiteten Trainingsinhalten ausgeschlossen.
     #[serde(default)]
     pub analysis_excluded: bool,
+    /// Das Fazit der Auto-Analyse als JSON-Liste von `{key, params}`.
+    ///
+    /// Leer, solange die Partie nicht analysiert wurde oder die Analyse aus
+    /// einer Fassung vor dem Fazit stammt. Ein Import setzt es nie — es
+    /// entsteht ausschließlich in `analysis::run_worker`.
+    #[serde(default)]
+    pub verdict: String,
 }
 
 #[derive(Serialize)]
@@ -579,9 +586,34 @@ fn migrate_to_current(conn: &Connection) -> Result<(), String> {
         // Remisangebot stehen nicht in der Schlussstellung · ohne diese Spalte
         // koennte Kiebitz "auf Zeit verloren" nie anzeigen.
         ("termination", "TEXT NOT NULL DEFAULT ''"),
+        // Migration v20: Das Fazit der Partie als Liste von Satzbausteinen
+        // (JSON aus {key, params}) · gesetzt wird es aus der Auto-Analyse,
+        // gesprochen wird es erst in der Oberfläche. `verdict_version` sagt,
+        // nach welchen Regeln es entstand, damit eine spätere Fassung es ohne
+        // neuen Stockfish-Lauf ersetzen kann.
+        ("verdict", "TEXT NOT NULL DEFAULT ''"),
+        ("verdict_version", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         add_column_if_missing(conn, "games", column, definition)?;
     }
+    // Migration v20: Was die Erklärung eines Zuges braucht und die Pipeline
+    // bisher wegwarf · die Hauptvariante vor dem Zug, der Verlust in
+    // Zentibauern und das erkannte Motiv. Alles additiv: eine bestehende
+    // Datenbank behält ihre Zeilen und füllt die Spalten beim nächsten Lauf.
+    for (column, definition) in [
+        ("pv", "TEXT NOT NULL DEFAULT ''"),
+        ("loss_cp", "INTEGER"),
+        ("motif", "TEXT NOT NULL DEFAULT ''"),
+        ("motif_detail", "TEXT NOT NULL DEFAULT ''"),
+        ("expl_version", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        add_column_if_missing(conn, "move_evals", column, definition)?;
+    }
+    // Dieselbe Hauptvariante im Cache: Wer eine Stellung schon kennt, soll
+    // ihre Linie nicht ein zweites Mal rechnen lassen. Alte Zeilen haben sie
+    // nicht — leer heißt „keine Linie", nicht „ungültig", damit ein großer
+    // Cache nicht wegen einer Spalte verfällt.
+    add_column_if_missing(conn, "eval_cache", "pv", "TEXT NOT NULL DEFAULT ''")?;
     // Migration v7 (Sync-Grenzen): Repertoire-Löschungen propagieren über
     // Tombstones (Löschung gewinnt nur gegen ältere Knoten · created_ts
     // erlaubt das Wieder-Anlegen), und Puzzle-Versuche merken sich das
@@ -1169,6 +1201,11 @@ pub fn list_games(conn: &Connection) -> Result<Vec<GameRecord>, String> {
                 clocks: r.get(29)?,
                 time_control: r.get(30)?,
                 termination: r.get(31)?,
+                // Die Vollliste trägt kein Fazit: Sie holt alle Partien mit
+                // allen Zügen, und ein Absatz je Partie wäre Nutzlast, die
+                // hier niemand liest. Wer es braucht, holt die Partie einzeln
+                // (`get_game`).
+                verdict: String::new(),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1315,7 +1352,8 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameRecord, String> {
                 accuracy_opening, accuracy_middlegame, accuracy_endgame,
                 opponent_accuracy, opponent_accuracy_opening,
                 opponent_accuracy_middlegame, opponent_accuracy_endgame, moves,
-                note, tags, analyzed, analysis_excluded, clocks, time_control, termination
+                note, tags, analyzed, analysis_excluded, clocks, time_control, termination,
+                verdict
          FROM games WHERE id = ?1",
         params![id],
         |r| {
@@ -1333,6 +1371,7 @@ pub fn get_game(conn: &Connection, id: i64) -> Result<GameRecord, String> {
                 analyzed: r.get::<_, i64>(27)? != 0,
                 analysis_excluded: r.get::<_, i64>(28)? != 0,
                 clocks: r.get(29)?, time_control: r.get(30)?, termination: r.get(31)?,
+                verdict: r.get(32)?,
             })
         },
     )
@@ -1409,6 +1448,7 @@ mod tests {
 
     fn sample(source_id: &str) -> GameRecord {
         GameRecord {
+            verdict: String::new(),
             id: None,
             source: "lichess".into(),
             source_id: source_id.into(),

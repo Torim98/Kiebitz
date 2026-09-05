@@ -14,6 +14,7 @@ mod explorer;
 mod insights;
 mod legal;
 mod live;
+mod motifs;
 mod plus;
 mod puzzles;
 mod refdb;
@@ -27,6 +28,7 @@ mod study;
 mod sync;
 mod systembars;
 mod updater;
+mod verdict;
 mod widgets;
 
 use serde::Serialize;
@@ -530,6 +532,31 @@ pub fn run() {
                     if let Err(e) = sync::start_server(app.handle()) {
                         log::warn!("Sync-Server nicht gestartet: {e}");
                     }
+                }
+            }
+
+            // Erklärungen für den Bestand nachtragen · einmal je Datenstand.
+            //
+            // Der Lauf braucht keine Engine (siehe `backfill_explanations`),
+            // aber er liest und schreibt über den ganzen Bestand. Deshalb
+            // gehört er in einen eigenen Thread mit eigener Verbindung: Der
+            // erste Bildaufbau soll nicht auf tausend Partien warten, und die
+            // Verbindung der App soll nicht minutenlang gesperrt sein.
+            {
+                let state = app.state::<analysis::DbPath>();
+                let db_file = state.0.lock().map(|path| path.clone());
+                if let Ok(db_file) = db_file {
+                    std::thread::spawn(move || {
+                        let Ok(conn) = rusqlite::Connection::open(&db_file) else {
+                            return;
+                        };
+                        let _ = conn.pragma_update(None, "busy_timeout", "10000");
+                        match analysis::backfill_explanations(&conn) {
+                            Ok(0) => {}
+                            Ok(count) => log::info!("Erklärungen nachgetragen: {count} Partien"),
+                            Err(error) => log::warn!("Erklärungen nicht nachgetragen: {error}"),
+                        }
+                    });
                 }
             }
 

@@ -56,6 +56,20 @@ export interface MoveEvalRow {
   best_uci: string; // Engine-Empfehlung vor dem Zug
   judgment: "" | "inaccuracy" | "mistake" | "blunder";
   phase: "opening" | "middlegame" | "endgame";
+  /** Verlust in Zentibauern · fehlt, wo ein Matt im Spiel ist. */
+  loss_cp?: number | null;
+  /**
+   * Was an dem Zug erzählenswert ist · `fork`, `pin`, `hanging_piece` und so
+   * weiter, erkannt in `src-tauri/src/motifs.rs`. Leer, wenn nichts
+   * Belastbares gefunden wurde, und `none`, wenn der Zug zwar bemängelt
+   * wurde, aber kein Motiv dahintersteht. Zum Satz wird es in
+   * `lib/erklaerung.ts`.
+   */
+  motif?: string;
+  /** Die Felder des Motivs als JSON · leer, wenn es keine gibt. */
+  motif_detail?: string;
+  /** Die Hauptvariante vor dem Zug, in englischem SAN. */
+  pv?: string[];
 }
 
 export interface AnalysisProgress {

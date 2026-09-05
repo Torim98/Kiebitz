@@ -13,6 +13,7 @@ import { useBackendInfo } from "../lib/backend";
 import { LOCALE_TAGS, useI18n } from "../lib/i18n";
 import { getGame, listGameSummaries, type GameRecord, type GameSummary } from "../lib/db";
 import { gameAnalysis, type MoveEvalRow } from "../lib/analysis";
+import { erklaereFazit, erklaereZug } from "../lib/erklaerung";
 import { useDiagramMode } from "../lib/diagramMode";
 import { getSettings } from "../lib/settings";
 import { repStats, type RepStats } from "../lib/repertoire";
@@ -297,6 +298,15 @@ export default function Dashboard({
       const { record, rows } = blattGame;
       const sans = record.moves ? record.moves.split(" ").filter(Boolean) : [];
       if (sans.length === 0) return null;
+      // Die Sätze zur Analyse · zu jedem Halbzug einer oder keiner. Der Same
+      // hängt an Partie und Halbzug: Derselbe Zug liest sich in jeder Sitzung
+      // gleich, zwei Züge nebeneinander lesen sich verschieden.
+      const analysen = sans.map((_, index) => {
+        const row = rows[index];
+        return row
+          ? (erklaereZug(row, { t, locale, seed: `${record.id}:${row.ply}` }) ?? undefined)
+          : undefined;
+      });
       const me = record.my_name || users.name || users.cc || users.li || t("blatt.you");
       const white = record.color === "white" ? me : record.opponent;
       const black = record.color === "white" ? record.opponent : me;
@@ -304,6 +314,8 @@ export default function Dashboard({
         art: "game",
         sans,
         nags: sans.map((_, index) => nagOf(rows[index]?.judgment ?? "")),
+        analysen,
+        fazit: erklaereFazit(record.verdict, { t, locale }),
         weiss: white,
         weissElo: String(record.color === "white" ? record.my_elo : record.opp_elo),
         schwarz: black,
@@ -335,6 +347,24 @@ export default function Dashboard({
         sans: featuredGame.moves.map((move) => move.san),
         nags: featuredGame.moves.map((move) => move.nag),
         kommentare: featuredGame.moves.map((move) => move.comment),
+        // Auch in der Vorschau entstehen die Sätze in der Satzmaschine und
+        // nicht im Datensatz · so zeigt sie, was die App zeigen würde.
+        analysen: featuredGame.moves.map((move, index) =>
+          move.motif
+            ? (erklaereZug(
+                {
+                  ply: index + 1,
+                  san: move.san,
+                  judgment: move.nag === "??" ? "blunder" : "inaccuracy",
+                  motif: move.motif,
+                  motif_detail: move.motifDetail,
+                  loss_cp: move.lossCp,
+                },
+                { t, locale, seed: `demo:${index + 1}` }
+              ) ?? undefined)
+            : undefined
+        ),
+        fazit: erklaereFazit(featuredGame.verdict, { t, locale }),
         weiss: profile.name,
         weissElo: "1462",
         schwarz: "DragonSlayer_88",

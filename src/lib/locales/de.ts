@@ -1856,6 +1856,72 @@ export const de = {
   "blatt.studyTitle": "Kiebitz · Training",
   "blatt.settingsTitle": "Kiebitz · Einstellungen",
 
+  // ── Erklärungen zur Analyse ────────────────────────────────────────────────
+  //
+  // Die Sätze zu einem Zug und das Fazit einer Partie. Gebaut werden sie in
+  // `lib/erklaerung.ts` aus dem Motiv, das `src-tauri/src/motifs.rs` erkannt
+  // hat — hier steht nur die Sprache.
+  //
+  // Je Motiv zwei Formulierungen: derselbe Zug liest sich immer gleich, zwei
+  // Züge nebeneinander lesen sich verschieden. Wer eine dritte ergänzt, muss
+  // VARIANTS in lib/erklaerung.ts mitzählen lassen.
+  //
+  // Auf Pronomen für Figuren wird verzichtet („er", „ihn"): Der Springer ist
+  // männlich, die Dame weiblich, und ein Satz, der beides bedienen muss, wird
+  // in jeder Sprache anders falsch.
+  "expl.verdict": "Fazit der Partie",
+  "expl.source": "Aus der Analyse",
+  "expl.mate.1": "{san} setzt matt — hier endet die Partie.",
+  "expl.mate.2": "Matt mit {san}. Mehr ist dazu nicht zu sagen.",
+  "expl.best_move.1": "{san} ist der Zug, den auch die Engine wählt.",
+  "expl.best_move.2": "{san} trifft die Hauptvariante.",
+  "expl.missed_mate.1": "Das Matt stand bereit: {best} beendet die Partie sofort.",
+  "expl.missed_mate.2": "{best} hätte matt gesetzt — die Gelegenheit blieb liegen.",
+  "expl.allowed_mate.1": "Danach ist das Matt nicht mehr zu verhindern; {best} hielt die Stellung noch.",
+  "expl.allowed_mate.2": "Der Zug lässt Matt zu. {best} war der Ausweg.",
+  "expl.hanging_piece.1": "{piece} {square} bleibt ungedeckt: {reply} gewinnt Material.",
+  "expl.hanging_piece.2": "{reply} schlägt auf {square} — {piece} stand dort ohne Deckung.",
+  "expl.fork.1": "{reply} trifft {firstPiece} {first} und {secondPiece} {second} zugleich.",
+  "expl.fork.2": "Gabel auf {square}: nach {reply} stehen {firstPiece} {first} und {secondPiece} {second} gleichzeitig im Feuer.",
+  "expl.pin.1": "{piece} {square} kann nicht mehr weg — dahinter steht {behindPiece} {behind}.",
+  "expl.pin.2": "Die Fesselung sitzt auf {square}: dahinter steht {behindPiece} {behind}.",
+  "expl.skewer.1": "Spieß auf {square}: {piece} muss weichen, dahinter steht {behindPiece} {behind}.",
+  "expl.skewer.2": "{piece} {square} steht im Spieß — sobald das Feld frei wird, fällt {behindPiece} {behind}.",
+  "expl.discovered_attack.1": "Abzugsangriff nach {reply}: {piece} {from} trifft auf einmal {targetPiece} {square}.",
+  "expl.discovered_attack.2": "{reply} legt die Linie frei — {piece} {from} greift {targetPiece} {square} an.",
+  "expl.back_rank.1": "Die Grundreihe steht offen: der König auf {square} hat kein Luftloch.",
+  "expl.back_rank.2": "Nach dem Zug sitzt der König auf {square} hinter der eigenen Bauernreihe fest.",
+  "expl.loss.1": "{san} kostet {loss} Bauern — besser war {best}.",
+  "expl.loss.2": "{best} hielt mehr: {san} gibt {loss} Bauern ab.",
+  "expl.lossOnly.1": "{san} verschlechtert die Stellung deutlich.",
+  "expl.lossOnly.2": "Nach {san} kippt die Bewertung.",
+  "expl.motif.mate": "Matt",
+  "expl.motif.missed_mate": "übersehenes Matt",
+  "expl.motif.allowed_mate": "zugelassenes Matt",
+  "expl.motif.hanging_piece": "hängende Figur",
+  "expl.motif.fork": "Gabel",
+  "expl.motif.pin": "Fesselung",
+  "expl.motif.skewer": "Spieß",
+  "expl.motif.discovered_attack": "Abzugsangriff",
+  "expl.motif.back_rank": "Grundreihe",
+  "expl.motif.best_move": "bester Zug",
+  "verdict.grade.excellent": "{acc} % Genauigkeit — eine Partie fast ohne Fehlgriff.",
+  "verdict.grade.solid": "{acc} % Genauigkeit — solide gespielt.",
+  "verdict.grade.mixed": "{acc} % Genauigkeit — gute Züge, aber nicht durchgehend.",
+  "verdict.grade.shaky": "{acc} % Genauigkeit — die Stellung geriet mehrfach ins Rutschen.",
+  "verdict.grade.rough": "{acc} % Genauigkeit — hier ging vieles daneben.",
+  "verdict.versus.better": "Die Gegenseite blieb mit {opp} % darunter.",
+  "verdict.versus.worse": "Die Gegenseite spielte mit {opp} % genauer.",
+  "verdict.errors.none": "Kein einziger Zug fiel der Engine negativ auf.",
+  "verdict.errors.count": "Ungenauigkeiten {inaccuracies} · Fehler {mistakes} · grobe Fehler {blunders}.",
+  "verdict.phase.opening": "Am schwächsten war die Eröffnung mit {acc} %.",
+  "verdict.phase.middlegame": "Am schwächsten war das Mittelspiel mit {acc} %.",
+  "verdict.phase.endgame": "Am schwächsten war das Endspiel mit {acc} %.",
+  "verdict.turningPoint": "Gekippt ist es bei {n}. {san}.",
+  "verdict.recurring": "{n}-mal ging es um dasselbe Motiv: {motif}.",
+  "verdict.result.wellPlayedLoss": "Gut gespielt und trotzdem verloren.",
+  "verdict.result.luckyWin": "Gewonnen hat am Ende die Gegenseite mit ihren Fehlern.",
+
 } as const;
 
 export type Key = keyof typeof de;

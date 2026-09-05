@@ -144,4 +144,28 @@ describe("Blatt des Starts", () => {
     // Die Tagesliste bleibt · sie hängt nicht am Diagramm.
     expect(screen.getByText("dash.dueReviews")).toBeTruthy();
   });
+
+  it("prints what the analysis has to say about the diagram move", () => {
+    // Das Diagramm steht vor dem Patzer · erklärt wird also `sans[3]`, und
+    // nicht der Zug davor.
+    show({
+      quelle: {
+        ...spiel,
+        analysen: [undefined, undefined, undefined, "Springer c6 bleibt ungedeckt."],
+        fazit: ["Solide gespielt.", "Gekippt ist es bei 2. Sc6."],
+      },
+    });
+    expect(screen.getByText("expl.source")).toBeTruthy();
+    expect(screen.getByText(/Springer c6/)).toBeTruthy();
+    expect(screen.getByText("expl.verdict")).toBeTruthy();
+    // Das Fazit steht als ein Absatz, nicht als Liste.
+    expect(screen.getByText(/Solide gespielt\. Gekippt ist es bei/)).toBeTruthy();
+  });
+
+  it("stays silent when the analysis found nothing to say", () => {
+    show();
+    expect(screen.queryByText("expl.source")).toBeNull();
+    expect(screen.queryByText("expl.verdict")).toBeNull();
+  });
+
 });

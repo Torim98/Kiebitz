@@ -189,6 +189,18 @@ export interface AnalyzedMove {
   eval: number; // Centipawns aus Weiß-Sicht
   nag?: "!!" | "!" | "!?" | "?!" | "?" | "??";
   comment?: string;
+  /**
+   * Was die Auto-Analyse an dem Zug erkannt hätte · Motivname und Felder, wie
+   * `src-tauri/src/motifs.rs` sie ablegt.
+   *
+   * Absichtlich Daten und kein Text: Die Vorschau schickt sie durch dieselbe
+   * Satzmaschine wie die App (`lib/erklaerung.ts`) und zeigt damit, was die
+   * Engine sagen würde — in der Sprache, die gerade eingestellt ist. Ein
+   * fertiger Satz stünde hier nur auf Deutsch.
+   */
+  motif?: string;
+  motifDetail?: string;
+  lossCp?: number;
 }
 
 export const featuredGame = {
@@ -212,7 +224,15 @@ export const featuredGame = {
     { san: "Nbd2", eval: 18 }, { san: "Be6", eval: 10 },
     { san: "Bxe6", eval: 12 }, { san: "fxe6", eval: 15 },
     { san: "Nf1", eval: 10 },
-    { san: "Qe8", eval: 35, nag: "?!", comment: "Zu passiv. Besser war 12…d5 mit sofortigem Gegenspiel im Zentrum." },
+    {
+      san: "Qe8",
+      eval: 35,
+      nag: "?!",
+      comment: "Zu passiv. Besser war 12…d5 mit sofortigem Gegenspiel im Zentrum.",
+      motif: "none",
+      motifDetail: JSON.stringify({ best: "d5" }),
+      lossCp: 25,
+    },
     { san: "Ng3", eval: 30 },
     { san: "Nh7", eval: 90, nag: "?", comment: "Der Springer steht am Rand ohne Perspektive. Weiß bekommt freie Hand im Zentrum." },
     { san: "d4", eval: 85 }, { san: "exd4", eval: 95 },
@@ -220,10 +240,38 @@ export const featuredGame = {
     { san: "e5", eval: 190, nag: "?", comment: "Öffnet die Stellung zum falschen Zeitpunkt · die weißen Figuren stehen besser." },
     { san: "dxe5", eval: 185 }, { san: "dxe5", eval: 195 },
     { san: "Nxe5", eval: 210, nag: "!", comment: "Nutzt die Fesselung des e-Bauern: nach 17…Nxe5 folgt die Gabel auf d5." },
-    { san: "Nxe5", eval: 520, nag: "??", comment: "Verliert eine Figur. Nach 18.Dd5+ gibt es keine Verteidigung von e5 und g8 zugleich." },
+    {
+      san: "Nxe5",
+      eval: 520,
+      nag: "??",
+      comment: "Verliert eine Figur. Nach 18.Dd5+ gibt es keine Verteidigung von e5 und g8 zugleich.",
+      motif: "fork",
+      motifDetail: JSON.stringify({
+        best: "Qe7",
+        reply: "Qd5+",
+        piece: "Q",
+        square: "d5",
+        targets: [
+          { piece: "K", square: "g8" },
+          { piece: "N", square: "e5" },
+        ],
+      }),
+      lossCp: 310,
+    },
     { san: "Qd5+", eval: 510 }, { san: "Kh8", eval: 515 },
     { san: "Qxe5", eval: 505 }, { san: "Qg6", eval: 540 },
   ] as AnalyzedMove[],
+  /**
+   * Das Fazit, wie `src-tauri/src/verdict.rs` es ablegt · Bausteine, keine
+   * Sätze. Gesetzt wird es in `lib/erklaerung.ts`.
+   */
+  verdict: JSON.stringify([
+    { key: "verdict.grade.mixed", params: { acc: 74.6 } },
+    { key: "verdict.versus.better", params: { opp: 61.2 } },
+    { key: "verdict.errors.count", params: { inaccuracies: 1, mistakes: 2, blunders: 1 } },
+    { key: "verdict.phase.middlegame", params: { acc: 68.4 } },
+    { key: "verdict.turningPoint", params: { n: 17, san: "Nxe5" } },
+  ]),
   pvLines: [
     { eval: "+5,4", depth: 24, line: "20.Sf5 Dxg2+?? 21.Dxg2 · oder 20…Df7 21.Dxc7 mit Mehrfigur und Angriff" },
     { eval: "+4,9", depth: 24, line: "20.Te3 Tf6 21.Dxc7 Taf8 22.De5 · Weiß konsolidiert mit Mehrfigur" },

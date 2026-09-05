@@ -59,6 +59,16 @@ export type Tagesquelle =
       nags: (string | undefined)[];
       /** Anmerkungen der Demo-Partie · die App rechnet keine. */
       kommentare?: (string | undefined)[];
+      /**
+       * Der Satz der Analyse zu jedem Halbzug · gleich lang wie `sans`.
+       *
+       * Gesetzt wird er in `lib/erklaerung.ts` aus dem Motiv, das die
+       * Auto-Analyse erkannt hat. Leer bleibt, wozu es nichts Belastbares zu
+       * sagen gibt — das ist der Normalfall und kein Fehler.
+       */
+      analysen?: (string | undefined)[];
+      /** Das Fazit der Partie · schon fertige Sätze, sonst leer. */
+      fazit?: string[];
       weiss: string;
       weissElo: string;
       schwarz: string;
@@ -99,6 +109,10 @@ interface Tagesdiagramm {
   danach?: BlattZug[];
   /** Halbzüge vor `davor` · für die Zugnummern. */
   offset?: number;
+  /** Was die Analyse zum Zug im Diagramm sagt · leer, wenn nichts. */
+  analyse?: string;
+  /** Das Fazit der ganzen Partie · leer, solange keins gerechnet wurde. */
+  fazit?: string[];
   /** Eigene Notiz zur Partie, wenn eine da ist. */
   notiz?: string;
   onOeffnen?: () => void;
@@ -232,6 +246,10 @@ function bauen(
       davor: quelle.sans.slice(von, cut).map((_, index) => zug(von + index)),
       danach: quelle.sans.slice(cut, cut + 5).map((_, index) => zug(cut + index)),
       offset: von,
+      // Das Diagramm steht *vor* dem Zug, um den es geht · erklärt wird
+      // deshalb `sans[cut]` und nicht der letzte Zug davor.
+      analyse: quelle.analysen?.[cut],
+      fazit: quelle.fazit,
       notiz: quelle.notiz,
       onOeffnen: quelle.onOeffnen,
     };
@@ -383,6 +401,16 @@ export default function DashboardBlatt({
               gross={17}
             />
           </div>
+        </div>
+      )}
+      {diagramm.analyse && (
+        <div className="mt-[13px]">
+          <Zitat quelle={t("expl.source")}>{`„${diagramm.analyse}“`}</Zitat>
+        </div>
+      )}
+      {diagramm.fazit && diagramm.fazit.length > 0 && (
+        <div className="mt-[13px]">
+          <Zitat quelle={t("expl.verdict")}>{diagramm.fazit.join(" ")}</Zitat>
         </div>
       )}
       {diagramm.notiz && (
@@ -572,6 +600,16 @@ export default function DashboardBlatt({
                 gross={15}
               />
             </div>
+          </div>
+        )}
+        {diagramm?.analyse && (
+          <div className="mt-3.5">
+            <Zitat quelle={t("expl.source")}>{`„${diagramm.analyse}“`}</Zitat>
+          </div>
+        )}
+        {diagramm?.fazit && diagramm.fazit.length > 0 && (
+          <div className="mt-3">
+            <Zitat quelle={t("expl.verdict")}>{diagramm.fazit.join(" ")}</Zitat>
           </div>
         )}
         {herkunft && <div className="mt-4">{herkunft}</div>}
