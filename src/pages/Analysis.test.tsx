@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   setGameTags: vi.fn(),
   getSettings: vi.fn(),
   chessdbQuery: vi.fn(),
+  searchPosition: vi.fn(),
   engineMove: "f1c4",
   diagram: false,
 }));
@@ -49,7 +50,7 @@ vi.mock("../lib/analysis", () => ({
   onAnalysisDone: () => Promise.resolve(() => {}),
   onAnalysisGameDone: () => Promise.resolve(() => {}),
   onAnalysisProgress: () => Promise.resolve(() => {}),
-  searchPosition: () => Promise.resolve({ total_games: 0, next_moves: [], sample: [] }),
+  searchPosition: (...args: unknown[]) => mocks.searchPosition(...args),
   startAnalysis: mocks.startAnalysis,
 }));
 vi.mock("../components/Board", () => ({
@@ -185,6 +186,7 @@ beforeEach(() => {
     path: "",
   });
   mocks.chessdbQuery.mockResolvedValue({ status: "unknown", moves: [], cached: false });
+  mocks.searchPosition.mockResolvedValue({ total_games: 0, next_moves: [], sample: [] });
   mocks.explorerQuery.mockResolvedValue({
     source: "masters",
     status: "unknown",
@@ -335,7 +337,7 @@ describe("Analysis page", () => {
       await gameOnBoard("7");
 
       // Zugeklappt ist die Leiste eine Zeile mit einem Hauptknopf.
-      expect(screen.queryByRole("menuitem", { name: /Nächste 10/ })).toBeNull();
+      expect(screen.queryByRole("menuitem", { name: /Alle analysieren/ })).toBeNull();
       expect(screen.getByRole("button", { name: "Diese Partie analysieren" })).toBeTruthy();
 
       const trigger = screen.getByRole("button", { name: "Mehrere Partien" });
@@ -343,7 +345,10 @@ describe("Analysis page", () => {
       fireEvent.click(trigger);
 
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
-      expect(screen.getByRole("menuitem", { name: /Nächste 10/ })).toBeTruthy();
+      // Zwei offene Partien sind keine Zehnerportion · dann steht dort der
+      // eine Lauf, den es wirklich gibt.
+      expect(screen.getByRole("menuitem", { name: /Alle analysieren/ })).toBeTruthy();
+      expect(screen.queryByRole("menuitem", { name: /Nächste 10/ })).toBeNull();
     });
 
     /**
@@ -667,6 +672,32 @@ describe("Analysis page", () => {
       expect(count.textContent?.replace(/ /g, " ")).toBe("4,6 Mrd.");
       // Der Elo-Schnitt steht danach unangetastet daneben.
       expect(move.textContent).toContain("1605");
+    });
+
+    /**
+     * Ein Zug ist ein Zug · aus dem Buch, aus der Engine-Linie und aus den
+     * eigenen Partien führt derselbe Klick aufs Brett.
+     */
+    it("plays a move from the own games on the board", async () => {
+      mocks.searchPosition.mockResolvedValue({
+        total_games: 12,
+        next_moves: [{ san: "Nf3", games: 7, score_pct: 57 }],
+        sample: [],
+      });
+      render(<LocaleProvider><Analysis targetGameId={null} /></LocaleProvider>);
+
+      // Denselben Titel trägt die Zeile im Eröffnungsbuch · gesucht wird in
+      // der Karte, um die es hier geht.
+      const card = (await screen.findByRole("heading", { name: "Diese Stellung in deinen Partien" }))
+        .closest("section")!;
+      const move = await within(card).findByTitle("Nf3 aufs Brett legen", {}, { timeout: 3000 });
+      expect(move.textContent).toContain("7×");
+      fireEvent.click(move);
+      await waitFor(() =>
+        expect(screen.getByTestId("analysis-board").dataset.fen).toContain(
+          "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R"
+        )
+      );
     });
 
     it("shows master frequencies and plays a clicked move on the board", async () => {

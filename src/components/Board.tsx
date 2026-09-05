@@ -326,6 +326,116 @@ function squareCenter(square: string, orientation: "white" | "black") {
   return { x: (x + 0.5) * 12.5, y: (y + 0.5) * 12.5 };
 }
 
+/**
+ * Eigene Markierungen · Pfeil (`from` ≠ `to`) oder Kreis (`from` = `to`).
+ *
+ * Gezeichnet wird mit der rechten Maustaste, wie es Lichess vormacht: ziehen
+ * ergibt einen Pfeil, ein Klick auf ein Feld einen Kreis. Umschalt, Alt und
+ * beide zusammen wechseln die Farbe; ein Linksklick wischt alles wieder weg.
+ */
+type BoardShape = { from: string; to: string; color: string };
+
+/** Die vier Farben von Lichess · grün, rot, blau, gelb. */
+const SHAPE_COLORS = {
+  plain: "rgb(21,128,61)",
+  shift: "rgb(190,48,48)",
+  alt: "rgb(38,98,180)",
+  both: "rgb(203,142,20)",
+} as const;
+
+function shapeColor(event: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }): string {
+  const alt = event.altKey || event.ctrlKey;
+  if (event.shiftKey && alt) return SHAPE_COLORS.both;
+  if (event.shiftKey) return SHAPE_COLORS.shift;
+  if (alt) return SHAPE_COLORS.alt;
+  return SHAPE_COLORS.plain;
+}
+
+/**
+ * Feld unter einem Zeigerpunkt · aus der Brettkante gerechnet und nicht über
+ * `elementFromPoint` gesucht. Beim Ziehen liegt unter dem Zeiger auch mal eine
+ * Figur oder ein Overlay; die Kante des Bretts liegt immer richtig.
+ */
+function squareAtPoint(
+  x: number,
+  y: number,
+  rect: { left: number; top: number; width: number; height: number },
+  orientation: "white" | "black"
+): string | null {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const column = Math.floor(((x - rect.left) / rect.width) * 8);
+  const row = Math.floor(((y - rect.top) / rect.height) * 8);
+  if (column < 0 || column > 7 || row < 0 || row > 7) return null;
+  const file = orientation === "white" ? column : 7 - column;
+  const rank = orientation === "white" ? 8 - row : row + 1;
+  return `${String.fromCharCode(97 + file)}${rank}`;
+}
+
+/** Dieselbe Markierung noch einmal gezogen löscht sie · so wie bei Lichess. */
+function toggleShape(shapes: BoardShape[], shape: BoardShape): BoardShape[] {
+  const index = shapes.findIndex((s) => s.from === shape.from && s.to === shape.to);
+  if (index < 0) return [...shapes, shape];
+  // Dasselbe Feldpaar in einer anderen Farbe färbt um, statt zu löschen.
+  if (shapes[index].color !== shape.color) {
+    const next = shapes.slice();
+    next[index] = shape;
+    return next;
+  }
+  return shapes.filter((_, i) => i !== index);
+}
+
+function sameShapes(left: BoardShape[], right: BoardShape[]): boolean {
+  return left === right || (
+    left.length === right.length
+    && left.every((shape, index) =>
+      shape.from === right[index]?.from
+      && shape.to === right[index]?.to
+      && shape.color === right[index]?.color
+    )
+  );
+}
+
+/** Die Kreise der eigenen Markierungen · eine eigene Ebene über den Pfeilen. */
+const BoardCircles = memo(function BoardCircles({
+    shapes,
+    orientation,
+  }: {
+    shapes: BoardShape[];
+    orientation: "white" | "black";
+  }) {
+  const drawable = shapes.flatMap((shape, index) => {
+    if (shape.from !== shape.to) return [];
+    const center = squareCenter(shape.from, orientation);
+    if (!center) return [];
+    return [{ center, color: shape.color, index, square: shape.from }];
+  });
+  if (drawable.length === 0) return null;
+  return (
+    <svg
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+      data-testid="board-circles"
+      viewBox="0 0 100 100"
+    >
+      {drawable.map((circle) => (
+        <circle
+          key={circle.index}
+          cx={circle.center.x}
+          cy={circle.center.y}
+          data-circle-square={circle.square}
+          fill="none"
+          opacity="0.75"
+          r={6.25 - 0.75}
+          stroke={circle.color}
+          strokeWidth="1.5"
+        />
+      ))}
+    </svg>
+  );
+}, (previous, next) =>
+  previous.orientation === next.orientation && sameShapes(previous.shapes, next.shapes)
+);
+
 function sameArrows(left: BoardArrow[], right: BoardArrow[]): boolean {
   return left === right || (
     left.length === right.length
@@ -443,9 +553,14 @@ export default function Board({
   end = null,
 }: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const pieceGlyphs = usePieceGlyphs();
   const [w, setW] = useState(width);
   const [dragSource, setDragSource] = useState<string | null>(null);
+  /** Eigene Markierungen der laufenden Stellung · siehe `BoardShape`. */
+  const [shapes, setShapes] = useState<BoardShape[]>([]);
+  /** Die Markierung, die gerade gezogen wird · sie hängt noch am Zeiger. */
+  const [pendingShape, setPendingShape] = useState<BoardShape | null>(null);
   const dropRef = useRef(onPieceDrop);
   const squareClickRef = useRef(onSquareClick);
   const draggableRef = useRef(draggable);
@@ -517,6 +632,177 @@ export default function Board({
     cancelPointerDragRef.current?.();
     setDragSource(null);
   }, [fen]);
+
+  /**
+   * Eigene Markierungen · Ziehen ergibt einen Pfeil, ein Punkt einen Kreis.
+   *
+   * Mit der Maus geht das über die rechte Taste, wie es Lichess vormacht.
+   * Auf dem Handy gibt es keine rechte Taste, und jede Geste mit einem Finger
+   * ist schon vergeben: Ziehen bewegt eine Figur, Tippen wählt sie aus. Dort
+   * zeichnet deshalb der *zweite* Finger — einer liegt auf dem Brett, der
+   * andere zieht. So kollidiert das Zeichnen mit nichts, was das Brett sonst
+   * schon kann.
+   *
+   * Das eingebaute Zeichnen von `react-chessboard` ist abgeschaltet (siehe
+   * `allowDrawingArrows`): Es kennt die Kreise nicht, hat keine Geste fürs
+   * Handy und malte seine Pfeile in eine zweite Ebene neben die der Engine.
+   * Hier entsteht beides an derselben Stelle wie die Engine-Pfeile und geht
+   * mit derselben Stellung wieder weg.
+   *
+   * Das Feld wird aus der Brettkante gerechnet und nicht aus dem Element unter
+   * dem Zeiger gelesen · über einer Figur, einem Marker oder dem Streifen des
+   * Partieendes gäbe es sonst kein Feld.
+   */
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+
+    let drawing: { square: string; color: string; pointerId: number } | null = null;
+    /** Finger, die gerade auf dem Brett liegen · der zweite zeichnet. */
+    const fingers = new Set<number>();
+    /**
+     * Ein Tippen mit einem Finger wischt die Markierungen weg — aber erst beim
+     * Loslassen. Sofort gelöscht wie beim Mausklick, hätte der Finger, der zum
+     * Zeichnen aufs Brett kommt, jedes Mal zuerst alles Bisherige mitgenommen.
+     */
+    let clearOnLift = false;
+
+    const squareAtEvent = (event: PointerEvent) =>
+      squareAtPoint(
+        event.clientX,
+        event.clientY,
+        surface.getBoundingClientRect(),
+        orientation
+      );
+
+    const beginShape = (event: PointerEvent) => {
+      const square = squareAtEvent(event);
+      if (!square) return;
+      event.preventDefault();
+      const color = shapeColor(event);
+      drawing = { square, color, pointerId: event.pointerId };
+      setPendingShape({ from: square, to: square, color });
+    };
+
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch") {
+        const second = fingers.size > 0;
+        fingers.add(event.pointerId);
+        if (second && !drawing) {
+          // Der erste Finger hat womöglich schon eine Figur angehoben · die
+          // Geste ist jetzt eine andere.
+          clearOnLift = false;
+          cancelPointerDragRef.current?.();
+          // Das Loslassen schickt in der WebView noch einen Klick hinterher;
+          // der darf keine Figur auswählen.
+          suppressClickUntilRef.current = Date.now() + 800;
+          beginShape(event);
+          return;
+        }
+        if (!second) clearOnLift = true;
+        return;
+      }
+      // Ein Linksklick wischt die Markierungen weg · wie bei Lichess, und ohne
+      // dem Zug oder der Feldauswahl darunter in die Quere zu kommen.
+      if (event.button === 0) {
+        setShapes((current) => (current.length === 0 ? current : []));
+        setPendingShape(null);
+        return;
+      }
+      if (event.button !== 2) return;
+      beginShape(event);
+    };
+
+    const onMove = (event: PointerEvent) => {
+      if (!drawing || event.pointerId !== drawing.pointerId) return;
+      // Der Anfang wird festgehalten, bevor React die Funktion unten aufruft:
+      // `drawing` ist dann längst leer, wenn der Zeiger inzwischen los ist.
+      const { square: from, color } = drawing;
+      const square = squareAtEvent(event) ?? from;
+      setPendingShape((current) =>
+        current && current.from === from && current.to === square
+          ? current
+          : { from, to: square, color }
+      );
+    };
+
+    /**
+     * Zwei Finger auf dem Brett sind sonst eine Wischgeste · die Seite würde
+     * unter dem gezogenen Pfeil wegscrollen und die Geste abbrechen.
+     */
+    const onTouchMove = (event: TouchEvent) => {
+      if (drawing) event.preventDefault();
+    };
+
+    const finishTouch = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      fingers.delete(event.pointerId);
+      if (fingers.size > 0 || !clearOnLift) return;
+      clearOnLift = false;
+      setShapes((current) => (current.length === 0 ? current : []));
+    };
+
+    const onUp = (event: PointerEvent) => {
+      if (drawing && event.pointerId === drawing.pointerId) {
+        const shape = {
+          from: drawing.square,
+          to: squareAtEvent(event) ?? drawing.square,
+          color: drawing.color,
+        };
+        drawing = null;
+        setPendingShape(null);
+        setShapes((current) => toggleShape(current, shape));
+      }
+      finishTouch(event);
+    };
+
+    const onCancel = (event: PointerEvent) => {
+      if (drawing && event.pointerId === drawing.pointerId) {
+        drawing = null;
+        setPendingShape(null);
+      }
+      finishTouch(event);
+    };
+
+    // Das Kontextmenü würde den gezogenen Pfeil mit sich reißen.
+    const onContextMenu = (event: MouseEvent) => event.preventDefault();
+
+    surface.addEventListener("pointerdown", onDown);
+    surface.addEventListener("contextmenu", onContextMenu);
+    surface.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      surface.removeEventListener("pointerdown", onDown);
+      surface.removeEventListener("contextmenu", onContextMenu);
+      surface.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, [orientation]);
+
+  // Eine neue Stellung ist eine neue Frage · die Markierungen der alten gehen.
+  useEffect(() => {
+    setShapes((current) => (current.length === 0 ? current : []));
+    setPendingShape(null);
+  }, [fen]);
+
+  /**
+   * Engine-Pfeile zuunterst, eigene darüber: Wer selbst etwas einzeichnet,
+   * meint es und soll es auch sehen.
+   */
+  const shownShapes = useMemo(
+    () => (pendingShape ? [...shapes, pendingShape] : shapes),
+    [shapes, pendingShape]
+  );
+  const shownArrows = useMemo(() => {
+    const own = shownShapes
+      .filter((shape) => shape.from !== shape.to)
+      .map((shape): BoardArrow => [shape.from, shape.to, shape.color]);
+    return own.length === 0 ? arrows : [...arrows, ...own];
+  }, [arrows, shownShapes]);
 
   /**
    * Zug- und Schlagklänge hängen an der Stellung, nicht am Eingabeweg: so
@@ -793,7 +1079,7 @@ export default function Board({
       }}
       onDragStartCapture={(event) => event.preventDefault()}
     >
-      <div className="relative" style={{ width: w, height: w }}>
+      <div ref={surfaceRef} className="relative" style={{ width: w, height: w }}>
         <BoardSurface
           android={isAndroidWebView()}
           boardId={boardId}
@@ -813,7 +1099,8 @@ export default function Board({
           lastMove={lastMove}
           squareStyles={squareStyles ?? EMPTY_STYLES}
         />
-        <BoardArrows boardId={boardId} arrows={arrows} orientation={orientation} />
+        <BoardArrows boardId={boardId} arrows={shownArrows} orientation={orientation} />
+        <BoardCircles shapes={shownShapes} orientation={orientation} />
         {badges.map((badge, index) => (
           <span
             key={`${badge.square}-${index}`}

@@ -1736,11 +1736,17 @@ export default function Analysis({
            gerade offen ist, rechnen zu lassen. Die Stapelläufe darunter
            sind eine Entscheidung pro Import, keine pro Sitzung · als
            vierter gleich großer Knopf haben sie bisher nur dafür gesorgt,
-           dass die Leiste keinen Hauptknopf mehr hatte. */
-        <div className="flex shrink-0 items-center gap-2">
+           dass die Leiste keinen Hauptknopf mehr hatte.
+
+           Auf Telefonbreite ist die Zeile knapp: Die beiden rücken enger
+           zusammen (`max-sm:px-2.5`) und dürfen umbrechen, statt über die
+           Kante der Leiste hinauszulaufen — „Diese Partie analysieren" allein
+           ist dort schon breiter als die halbe Zeile. */
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:shrink-0">
           {selectedId != null && (
             <Button
               primary
+              className="max-sm:px-2.5"
               onClick={() => {
                 setNotice(null);
                 setRunning(true);
@@ -1758,24 +1764,11 @@ export default function Analysis({
               Historie ist die automatische Hintergrundanalyse und damit
               eine Plus-Funktion · sichtbar bleibt sie trotzdem. */}
           {unanalyzed.length > 0 && (
-            <Menu label={t("an.batchRuns")}>
-              <MenuItem
-                onClick={() => {
-                  if (!batchGate.unlocked) {
-                    openPlusDialog("background_analysis");
-                    return;
-                  }
-                  setNotice(null);
-                  setRunning(true);
-                  startAnalysis({ limit: 10 }).catch((e) => {
-                    setRunning(false);
-                    setNotice(String(e));
-                  });
-                }}
-              >
-                <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
-                {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
-              </MenuItem>
+            <Menu label={t("an.batchRuns")} className="max-sm:px-2.5">
+              {/* Die Zehnerportion steht nur da, wo sie etwas anderes ist als
+                  „alle": Bei acht offenen Partien wären es zwei Einträge für
+                  denselben Lauf, und genau der eine, den man dann sucht —
+                  „Alle analysieren" — fehlte. */}
               {unanalyzed.length > 10 && (
                 <MenuItem
                   onClick={() => {
@@ -1785,16 +1778,33 @@ export default function Analysis({
                     }
                     setNotice(null);
                     setRunning(true);
-                    startAnalysis({}).catch((e) => {
+                    startAnalysis({ limit: 10 }).catch((e) => {
                       setRunning(false);
                       setNotice(String(e));
                     });
                   }}
                 >
-                  <Zap size={15} /> {t("an.analyzeAll")}
+                  <ListChecks size={15} /> {t("an.nextTen", { n: unanalyzed.length })}
                   {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
                 </MenuItem>
               )}
+              <MenuItem
+                onClick={() => {
+                  if (!batchGate.unlocked) {
+                    openPlusDialog("background_analysis");
+                    return;
+                  }
+                  setNotice(null);
+                  setRunning(true);
+                  startAnalysis({}).catch((e) => {
+                    setRunning(false);
+                    setNotice(String(e));
+                  });
+                }}
+              >
+                <Zap size={15} /> {t("an.analyzeAll", { n: unanalyzed.length })}
+                {!batchGate.unlocked && !batchGate.pending && <PlusBadge />}
+              </MenuItem>
             </Menu>
           )}
         </div>
@@ -2303,10 +2313,17 @@ export default function Analysis({
                     })}
                   </div>
                   <div className="mt-2.5 flex flex-col gap-1.5">
+                    {/* Ein Zug hier ist derselbe Zug wie im Buch oder in der
+                        Engine-Linie · ein Klick legt ihn aufs Brett. */}
                     {posSearch.next_moves.slice(0, 4).map((m) => (
-                      <div key={m.san} className="flex items-center gap-2 text-[12.5px]">
-                        <span className="w-14 font-medium">{m.san}</span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-panel3">
+                      <button
+                        key={m.san}
+                        onClick={() => playBookMove(m.san)}
+                        title={t("an.bookPlay", { san: m.san })}
+                        className="flex items-center gap-2 rounded-md px-1 py-0.5 text-left text-[12.5px] transition-colors hover:bg-panel2"
+                      >
+                        <span className="w-14 shrink-0 font-medium">{m.san}</span>
+                        <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-panel3">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -2315,10 +2332,10 @@ export default function Analysis({
                             }}
                           />
                         </div>
-                        <span className="w-20 text-right tabular-nums text-ink3">
+                        <span className="w-20 shrink-0 text-right tabular-nums text-ink3">
                           {m.games}× · {Math.round(m.score_pct)} %
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   {posSearch.sample.filter((h) => h.game_id !== selectedId).length > 0 && (

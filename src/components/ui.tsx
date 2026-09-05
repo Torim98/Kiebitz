@@ -233,6 +233,7 @@ export function Menu({
   compact = false,
   up = false,
   icon,
+  className = "",
   children,
 }: {
   label: string;
@@ -248,6 +249,8 @@ export function Menu({
   up?: boolean;
   /** Ersetzt den Pfeil · für Leisten, in denen das Blatt keine Liste ist. */
   icon?: ReactNode;
+  /** Klassen der Schaltfläche · für Leisten, die selbst über die Breite wachen. */
+  className?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -272,7 +275,7 @@ export function Menu({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -280,7 +283,7 @@ export function Menu({
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={buttonCls(false, "", compact)}
+        className={buttonCls(false, className, compact)}
       >
         {!compact && label}
         {icon ?? (

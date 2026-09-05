@@ -392,3 +392,137 @@ describe("Board end overlay", () => {
     expect(screen.queryByTestId("board-end")).toBeNull();
   });
 });
+
+/**
+ * Eigene Markierungen · rechte Maustaste am Rechner, zweiter Finger am Handy.
+ *
+ * Das Brett rechnet das Feld aus seiner eigenen Kante; in jsdom hat die
+ * Kante keine Größe, deshalb legt `stubSurface` ihr eine an: 80 px Kante,
+ * also 10 px je Feld.
+ */
+describe("Board shapes", () => {
+  const stubSurface = () => {
+    const surface = document.querySelector<HTMLElement>(".kiebitz-board > div")!;
+    surface.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 80, height: 80, right: 80, bottom: 80, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    return surface;
+  };
+
+  /** Mittelpunkt eines Feldes auf dem gestubbten Brett (Weiß unten). */
+  const at = (square: string) => ({
+    clientX: (square.charCodeAt(0) - 97) * 10 + 5,
+    clientY: (8 - Number(square[1])) * 10 + 5,
+  });
+
+  const arrows = () =>
+    document.querySelectorAll('[data-testid="board-arrows"] line').length;
+  const circles = () =>
+    document.querySelectorAll('[data-testid="board-circles"] circle').length;
+
+  const drawWithMouse = (surface: HTMLElement, from: string, to: string, init = {}) => {
+    fireEvent.pointerDown(surface, { button: 2, buttons: 2, pointerId: 3, ...at(from), ...init });
+    fireEvent.pointerMove(window, { pointerId: 3, ...at(to), ...init });
+    fireEvent.pointerUp(window, { button: 2, pointerId: 3, ...at(to), ...init });
+  };
+
+  it("draws an arrow by dragging with the right mouse button", () => {
+    render(<Board boardId="test" fen={FEN} width={400} />);
+    const surface = stubSurface();
+
+    fireEvent.pointerDown(surface, { button: 2, buttons: 2, pointerId: 3, ...at("e2") });
+    fireEvent.pointerMove(window, { pointerId: 3, ...at("e4") });
+    // Der Pfeil hängt schon während des Ziehens am Zeiger.
+    expect(arrows()).toBe(1);
+    fireEvent.pointerUp(window, { button: 2, pointerId: 3, ...at("e4") });
+
+    expect(arrows()).toBe(1);
+    expect(circles()).toBe(0);
+  });
+
+  it("draws a circle when the right button stays on one square", () => {
+    render(<Board boardId="test" fen={FEN} width={400} />);
+    const surface = stubSurface();
+
+    drawWithMouse(surface, "d4", "d4");
+    expect(circles()).toBe(1);
+    expect(arrows()).toBe(0);
+
+    // Dieselbe Markierung noch einmal löscht sie wieder.
+    drawWithMouse(surface, "d4", "d4");
+    expect(circles()).toBe(0);
+  });
+
+  it("recolours the same squares instead of stacking a second shape", () => {
+    render(<Board boardId="test" fen={FEN} width={400} />);
+    const surface = stubSurface();
+
+    drawWithMouse(surface, "d4", "d4");
+    drawWithMouse(surface, "d4", "d4", { shiftKey: true });
+    expect(circles()).toBe(1);
+    expect(
+      document.querySelector('[data-testid="board-circles"] circle')?.getAttribute("stroke")
+    ).toBe("rgb(190,48,48)");
+  });
+
+  it("keeps the engine arrows underneath its own", () => {
+    render(<Board boardId="test" fen={FEN} width={400} arrows={[["g1", "f3", "rgb(1,2,3)"]]} />);
+    const surface = stubSurface();
+
+    drawWithMouse(surface, "e2", "e4");
+    const strokes = [...document.querySelectorAll('[data-testid="board-arrows"] line')].map(
+      (line) => line.getAttribute("stroke")
+    );
+    expect(strokes).toEqual(["rgb(1,2,3)", "rgb(21,128,61)"]);
+  });
+
+  it("wipes the shapes on a left click and on a new position", () => {
+    const { rerender } = render(<Board boardId="test" fen={FEN} width={400} />);
+    const surface = stubSurface();
+
+    drawWithMouse(surface, "e2", "e4");
+    fireEvent.pointerDown(surface, { button: 0, buttons: 1, pointerId: 4, ...at("a1") });
+    expect(arrows()).toBe(0);
+
+    drawWithMouse(surface, "e2", "e4");
+    expect(arrows()).toBe(1);
+    rerender(<Board boardId="test" fen={FEN_AFTER_E4} width={400} />);
+    expect(arrows()).toBe(0);
+  });
+
+  it("draws with a second finger and leaves the first one to the pieces", () => {
+    const onPieceDrop = vi.fn(() => true);
+    render(
+      <Board boardId="test" fen={FEN} width={400} draggable mouseDrag onPieceDrop={onPieceDrop} />
+    );
+    const surface = stubSurface();
+
+    // Der erste Finger liegt auf dem Brett · der zweite zeichnet.
+    fireEvent.pointerDown(surface, {
+      button: 0, buttons: 1, pointerId: 1, pointerType: "touch", ...at("a1"),
+    });
+    fireEvent.pointerDown(surface, {
+      button: 0, buttons: 1, pointerId: 2, pointerType: "touch", ...at("e2"),
+    });
+    fireEvent.pointerMove(window, { pointerId: 2, pointerType: "touch", ...at("e4") });
+    fireEvent.pointerUp(window, {
+      button: 0, pointerId: 2, pointerType: "touch", ...at("e4"),
+    });
+    fireEvent.pointerUp(window, {
+      button: 0, pointerId: 1, pointerType: "touch", ...at("a1"),
+    });
+
+    expect(arrows()).toBe(1);
+    expect(onPieceDrop).not.toHaveBeenCalled();
+
+    // Ein einzelner Finger wischt die Markierungen erst beim Loslassen weg ·
+    // sonst hätte der Finger, der zum Zeichnen dazukommt, sie mitgenommen.
+    fireEvent.pointerDown(surface, {
+      button: 0, buttons: 1, pointerId: 5, pointerType: "touch", ...at("b3"),
+    });
+    expect(arrows()).toBe(1);
+    fireEvent.pointerUp(window, {
+      button: 0, pointerId: 5, pointerType: "touch", ...at("b3"),
+    });
+    expect(arrows()).toBe(0);
+  });
+});
